@@ -30,6 +30,7 @@ interface MeetsMainContentProps {
   joinRoom: () => void;
   joinRoomById: (roomId: string) => void;
   enableRoomRouting: boolean;
+  forceJoinOnly: boolean;
   allowGhostMode: boolean;
   user?: {
     id?: string;
@@ -99,6 +100,7 @@ export default function MeetsMainContent({
   joinRoom,
   joinRoomById,
   enableRoomRouting,
+  forceJoinOnly,
   allowGhostMode,
   user,
   userEmail,
@@ -173,6 +175,7 @@ export default function MeetsMainContent({
           connectionState={connectionState}
           isAdmin={isAdmin}
           enableRoomRouting={enableRoomRouting}
+          forceJoinOnly={forceJoinOnly}
           allowGhostMode={allowGhostMode}
           showPermissionHint={showPermissionHint}
           rooms={availableRooms}

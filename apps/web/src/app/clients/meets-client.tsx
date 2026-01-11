@@ -38,6 +38,7 @@ const roboto = Roboto({
 export type MeetsClientProps = {
   initialRoomId?: string;
   enableRoomRouting?: boolean;
+  forceJoinOnly?: boolean;
   allowGhostMode?: boolean;
   user?: {
     id?: string;
@@ -64,6 +65,7 @@ export type MeetsClientProps = {
 export default function MeetsClient({
   initialRoomId,
   enableRoomRouting = false,
+  forceJoinOnly = false,
   allowGhostMode = true,
   user,
   isAdmin = false,
@@ -114,7 +116,7 @@ export default function MeetsClient({
   } = useMeetState({ initialRoomId });
 
   useEffect(() => {
-    if (!enableRoomRouting) return;
+    if (!enableRoomRouting && !forceJoinOnly) return;
     if (roomId.trim().length > 0) return;
     if (typeof window === "undefined") return;
     const path = window.location.pathname.replace(/^\/+/, "");
@@ -122,7 +124,7 @@ export default function MeetsClient({
     const decoded = decodeURIComponent(path);
     if (!decoded || decoded === "undefined" || decoded === "null") return;
     setRoomId(decoded);
-  }, [enableRoomRouting, roomId, setRoomId]);
+  }, [enableRoomRouting, forceJoinOnly, roomId, setRoomId]);
 
   const {
     videoQuality,
@@ -422,6 +424,7 @@ export default function MeetsClient({
       joinRoom={joinRoom}
       joinRoomById={joinRoomById}
       enableRoomRouting={enableRoomRouting}
+      forceJoinOnly={forceJoinOnly}
       allowGhostMode={allowGhostMode}
       user={currentUser}
         userEmail={userEmail}

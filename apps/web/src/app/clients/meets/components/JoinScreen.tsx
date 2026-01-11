@@ -33,6 +33,7 @@ interface JoinScreenProps {
   connectionState: ConnectionState;
   isAdmin: boolean;
   enableRoomRouting: boolean;
+  forceJoinOnly: boolean;
   allowGhostMode: boolean;
   showPermissionHint: boolean;
   rooms: RoomInfo[];
@@ -57,6 +58,7 @@ export default function JoinScreen({
   connectionState,
   isAdmin,
   enableRoomRouting,
+  forceJoinOnly,
   allowGhostMode,
   showPermissionHint,
   rooms,
@@ -77,7 +79,8 @@ export default function JoinScreen({
   const [isCameraOn, setIsCameraOn] = useState(false); // Start with camera off
   const [isMicOn, setIsMicOn] = useState(false); // Start with mic off
   const isRoutedRoom =
-    enableRoomRouting && normalizedRoomId.trim().length > 0;
+    forceJoinOnly ||
+    (enableRoomRouting && normalizedRoomId.trim().length > 0);
   const [activeTab, setActiveTab] = useState<"new" | "join">(() =>
     isRoutedRoom ? "join" : "new"
   );

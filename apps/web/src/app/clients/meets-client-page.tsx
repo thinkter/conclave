@@ -25,9 +25,13 @@ const isPublicClient = clientId === "public";
 
 type MeetsClientPageProps = {
   initialRoomId?: string;
+  forceJoinOnly?: boolean;
 };
 
-export default function MeetsClientPage({ initialRoomId }: MeetsClientPageProps) {
+export default function MeetsClientPage({
+  initialRoomId,
+  forceJoinOnly = false,
+}: MeetsClientPageProps) {
   const user = undefined;
 
   const isAdmin = false;
@@ -92,6 +96,7 @@ export default function MeetsClientPage({ initialRoomId }: MeetsClientPageProps)
       <MeetsClient
         initialRoomId={resolvedInitialRoomId}
         enableRoomRouting={isPublicClient}
+        forceJoinOnly={forceJoinOnly}
         allowGhostMode={!isPublicClient}
         getJoinInfo={getJoinInfo}
         getRooms={getRooms}

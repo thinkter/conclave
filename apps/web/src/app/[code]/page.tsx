@@ -9,5 +9,10 @@ export default function MeetRoomPage({ params }: MeetRoomPageProps) {
   const roomCode = decodeURIComponent(rawCode);
   const resolvedRoomCode =
     roomCode === "undefined" || roomCode === "null" ? "" : roomCode;
-  return <MeetsClientPage initialRoomId={resolvedRoomCode} />;
+  return (
+    <MeetsClientPage
+      initialRoomId={resolvedRoomCode}
+      forceJoinOnly={true}
+    />
+  );
 }
