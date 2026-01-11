@@ -58,6 +58,8 @@ function GridLayout({
 
   const totalParticipants = participants.size + 1;
 
+  const localDisplayName = getDisplayName(currentUserId);
+
   const getGridLayout = (count: number) => {
     if (count === 1) return "grid-cols-1 grid-rows-1";
     if (count === 2) return "grid-cols-2 grid-rows-1";
@@ -119,11 +121,19 @@ function GridLayout({
             <Hand className="w-4 h-4" />
           </div>
         )}
-        <div 
+        <div
           className="absolute bottom-3 left-3 px-3 py-1.5 bg-black/70 backdrop-blur-sm border border-[#FEFCD9]/10 rounded-full text-xs flex items-center gap-2 text-[#FEFCD9] uppercase tracking-wide"
           style={{ fontFamily: "'PolySans Mono', monospace" }}
         >
-          You {isMuted && <MicOff className="w-3 h-3 text-[#F95F4A]" />}
+          <div className="flex items-center gap-1">
+            <span className="font-medium text-[#FEFCD9] uppercase tracking-wide">
+              {localDisplayName}
+            </span>
+            <span className="text-[9px] text-[#F95F4A]/60 uppercase tracking-[0.15em]">
+              You
+            </span>
+          </div>
+          {isMuted && <MicOff className="w-3 h-3 text-[#F95F4A]" />}
         </div>
       </div>
 
