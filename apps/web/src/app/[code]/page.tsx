@@ -9,9 +9,13 @@ export default function MeetRoomPage({ params }: MeetRoomPageProps) {
   const roomCode = decodeURIComponent(rawCode);
   const resolvedRoomCode =
     roomCode === "undefined" || roomCode === "null" ? "" : roomCode;
+  const sanitizedRoomCode = resolvedRoomCode
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "")
+    .slice(0, 4);
   return (
     <MeetsClientPage
-      initialRoomId={resolvedRoomCode}
+      initialRoomId={sanitizedRoomCode}
       forceJoinOnly={true}
     />
   );

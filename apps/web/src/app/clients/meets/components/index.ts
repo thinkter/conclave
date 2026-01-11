@@ -1,6 +1,5 @@
 "use client";
 
-export { default as AdminTipsOverlay } from "./AdminTipsOverlay";
 export { default as ChatOverlay } from "./ChatOverlay";
 export { default as ChatPanel } from "./ChatPanel";
 export { default as ConnectionIndicator } from "./ConnectionIndicator";

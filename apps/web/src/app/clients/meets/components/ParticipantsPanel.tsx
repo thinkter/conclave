@@ -33,6 +33,12 @@ interface ParticipantsPanelProps {
   onPendingUserStale?: (userId: string) => void;
   getDisplayName: (userId: string) => string;
   getRooms?: ParticipantsPanelGetRooms;
+  localState?: {
+    isMuted: boolean;
+    isCameraOff: boolean;
+    isHandRaised: boolean;
+    isScreenSharing: boolean;
+  };
 }
 
 export default function ParticipantsPanel({
@@ -46,11 +52,32 @@ export default function ParticipantsPanel({
   roomId,
   onPendingUserStale,
   getRooms,
+  localState,
 }: ParticipantsPanelProps & {
   socket: Socket | null;
   isAdmin?: boolean | null;
 }) {
   const participantsList = Array.from(participants.values());
+  const hasLocalEntry = participants.has(currentUserId);
+  const localParticipant: Participant | null =
+    !hasLocalEntry && localState
+      ? {
+          userId: currentUserId,
+          videoStream: null,
+          audioStream: null,
+          screenShareStream: null,
+          audioProducerId: null,
+          videoProducerId: null,
+          screenShareProducerId: null,
+          isMuted: localState.isMuted,
+          isCameraOff: localState.isCameraOff,
+          isHandRaised: localState.isHandRaised,
+          isGhost: false,
+        }
+      : null;
+  const displayParticipants = localParticipant
+    ? [localParticipant, ...participantsList]
+    : participantsList;
   const pendingList = pendingUsers ? Array.from(pendingUsers.entries()) : [];
   const [showRedirectModal, setShowRedirectModal] = useState(false);
   const [availableRooms, setAvailableRooms] = useState<RoomInfo[]>([]);
@@ -121,7 +148,7 @@ export default function ParticipantsPanel({
         >
           <Users className="w-3.5 h-3.5" />
           Participants
-          <span className="text-[#F95F4A]">({participantsList.length + 1})</span>
+          <span className="text-[#F95F4A]">({displayParticipants.length})</span>
         </span>
         <button
           onClick={onClose}
@@ -231,10 +258,13 @@ export default function ParticipantsPanel({
       )}
 
       <div className="flex-1 min-h-0 overflow-y-auto px-2 py-2 space-y-0.5">
-        {participantsList.map((p) => {
+        {displayParticipants.map((p) => {
           const isMe = p.userId === currentUserId;
           const displayName = getDisplayName(p.userId);
           const userEmail = getEmailFromUserId(p.userId);
+          const hasScreenShare =
+            Boolean(p.screenShareStream) ||
+            (isMe && Boolean(localState?.isScreenSharing));
 
           return (
             <div
@@ -251,7 +281,7 @@ export default function ParticipantsPanel({
                 {p.isHandRaised && (
                   <Hand className="w-3 h-3 text-amber-400" />
                 )}
-                {p.screenShareStream && (
+                {hasScreenShare && (
                   <Monitor className="w-3 h-3 text-green-500" />
                 )}
                 {p.isCameraOff ? (

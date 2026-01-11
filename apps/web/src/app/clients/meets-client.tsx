@@ -109,10 +109,6 @@ export default function MeetsClient({
     setPendingUsers,
     isParticipantsOpen,
     setIsParticipantsOpen,
-    showAdminTips,
-    setShowAdminTips,
-    hasSeenTips,
-    setHasSeenTips,
   } = useMeetState({ initialRoomId });
 
   useEffect(() => {
@@ -123,7 +119,12 @@ export default function MeetsClient({
     if (!path) return;
     const decoded = decodeURIComponent(path);
     if (!decoded || decoded === "undefined" || decoded === "null") return;
-    setRoomId(decoded);
+    const sanitized = decoded
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "")
+      .slice(0, 4);
+    if (!sanitized) return;
+    setRoomId(sanitized);
   }, [enableRoomRouting, forceJoinOnly, roomId, setRoomId]);
 
   const {
@@ -258,8 +259,6 @@ export default function MeetsClient({
     userId,
     getJoinInfo,
     ghostEnabled,
-    hasSeenTips,
-    setShowAdminTips,
     displayNameInput,
     localStream,
     setLocalStream,
@@ -405,9 +404,7 @@ export default function MeetsClient({
         selectedAudioOutputDeviceId={selectedAudioOutputDeviceId}
         onAudioInputDeviceChange={handleAudioInputDeviceChange}
         onAudioOutputDeviceChange={handleAudioOutputDeviceChange}
-        isScreenSharing={isScreenSharing}
-        ghostEnabled={ghostEnabled}
-        connectionState={connectionState}
+        showShareLink={enableRoomRouting || forceJoinOnly}
       />
       {meetError && (
         <MeetsErrorBanner
@@ -471,9 +468,6 @@ export default function MeetsClient({
         setChatOverlayMessages={setChatOverlayMessages}
         socket={refs.socketRef.current}
         setPendingUsers={setPendingUsers}
-        showAdminTips={showAdminTips}
-        setShowAdminTips={setShowAdminTips}
-        setHasSeenTips={setHasSeenTips}
         resolveDisplayName={resolveDisplayName}
         reactions={reactionEvents}
         getRoomsForRedirect={getRoomsForRedirect}

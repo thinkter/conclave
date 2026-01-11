@@ -1,9 +1,10 @@
 "use client";
 
+import { RefreshCw, UserX } from "lucide-react";
+import Image from "next/image";
 import type { Dispatch, SetStateAction } from "react";
 import type { Socket } from "socket.io-client";
 import type { RoomInfo } from "@/lib/sfu-types";
-import AdminTipsOverlay from "./AdminTipsOverlay";
 import ChatOverlay from "./ChatOverlay";
 import ChatPanel from "./ChatPanel";
 import ControlsBar from "./ControlsBar";
@@ -81,9 +82,6 @@ interface MeetsMainContentProps {
   setChatOverlayMessages: Dispatch<SetStateAction<ChatMessage[]>>;
   socket: Socket | null;
   setPendingUsers: Dispatch<SetStateAction<Map<string, string>>>;
-  showAdminTips: boolean;
-  setShowAdminTips: Dispatch<SetStateAction<boolean>>;
-  setHasSeenTips: Dispatch<SetStateAction<boolean>>;
   resolveDisplayName: (userId: string) => string;
   reactions: ReactionEvent[];
   getRoomsForRedirect?: ParticipantsPanelGetRooms;
@@ -147,9 +145,6 @@ export default function MeetsMainContent({
   setChatOverlayMessages,
   socket,
   setPendingUsers,
-  showAdminTips,
-  setShowAdminTips,
-  setHasSeenTips,
   resolveDisplayName,
   reactions,
   getRoomsForRedirect,
@@ -223,28 +218,83 @@ export default function MeetsMainContent({
       )}
 
       {isJoined && (
-        <ControlsBar
-          isMuted={isMuted}
-          isCameraOff={isCameraOff}
-          isScreenSharing={isScreenSharing}
-          activeScreenShareId={activeScreenShareId}
-          isChatOpen={isChatOpen}
-          unreadCount={unreadCount}
-          isHandRaised={isHandRaised}
-          reactionOptions={reactionOptions}
-          onToggleMute={toggleMute}
-          onToggleCamera={toggleCamera}
-          onToggleScreenShare={toggleScreenShare}
-          onToggleChat={toggleChat}
-          onToggleHandRaised={toggleHandRaised}
-          onSendReaction={sendReaction}
-          onLeave={leaveRoom}
-          isAdmin={isAdmin}
-          isGhostMode={ghostEnabled}
-          isParticipantsOpen={isParticipantsOpen}
-          onToggleParticipants={() => setIsParticipantsOpen((prev) => !prev)}
-          pendingUsersCount={pendingUsers.size}
-        />
+        <div className="flex items-center justify-between gap-3">
+          <a href="/" className="flex items-center">
+            <Image
+              src="/assets/acm_topleft.svg"
+              alt="ACM Logo"
+              width={40}
+              height={40}
+            />
+          </a>
+          <div className="flex-1 flex justify-center">
+            <ControlsBar
+              isMuted={isMuted}
+              isCameraOff={isCameraOff}
+              isScreenSharing={isScreenSharing}
+              activeScreenShareId={activeScreenShareId}
+              isChatOpen={isChatOpen}
+              unreadCount={unreadCount}
+              isHandRaised={isHandRaised}
+              reactionOptions={reactionOptions}
+              onToggleMute={toggleMute}
+              onToggleCamera={toggleCamera}
+              onToggleScreenShare={toggleScreenShare}
+              onToggleChat={toggleChat}
+              onToggleHandRaised={toggleHandRaised}
+              onSendReaction={sendReaction}
+              onLeave={leaveRoom}
+              isAdmin={isAdmin}
+              isGhostMode={ghostEnabled}
+              isParticipantsOpen={isParticipantsOpen}
+              onToggleParticipants={() => setIsParticipantsOpen((prev) => !prev)}
+              pendingUsersCount={isAdmin ? pendingUsers.size : 0}
+            />
+          </div>
+          <div className="flex items-center gap-4">
+            {isScreenSharing && (
+              <div
+                className="flex items-center gap-1.5 text-[#F95F4A] text-[10px] uppercase tracking-wider"
+                style={{ fontFamily: "'PolySans Mono', monospace" }}
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-[#F95F4A] animate-pulse"></span>
+                Sharing
+              </div>
+            )}
+            {ghostEnabled && (
+              <div
+                className="flex items-center gap-1.5 text-[#FF007A] text-[10px] uppercase tracking-wider"
+                style={{ fontFamily: "'PolySans Mono', monospace" }}
+              >
+                <UserX className="w-3 h-3" />
+                Ghost
+              </div>
+            )}
+            {connectionState === "reconnecting" && (
+              <div
+                className="flex items-center gap-1.5 text-amber-400 text-[10px] uppercase tracking-wider"
+                style={{ fontFamily: "'PolySans Mono', monospace" }}
+              >
+                <RefreshCw className="w-3 h-3 animate-spin" />
+                Reconnecting
+              </div>
+            )}
+            <div className="flex flex-col items-end">
+              <span
+                className="text-sm text-[#FEFCD9]"
+                style={{ fontFamily: "'PolySans Bulky Wide', sans-serif" }}
+              >
+                c0nclav3
+              </span>
+              <span
+                className="text-[9px] uppercase tracking-[0.15em] text-[#FEFCD9]/40"
+                style={{ fontFamily: "'PolySans Mono', monospace" }}
+              >
+                by acm-vit
+              </span>
+            </div>
+          </div>
+        </div>
       )}
 
       {isJoined && isChatOpen && (
@@ -259,7 +309,7 @@ export default function MeetsMainContent({
         />
       )}
 
-      {isJoined && isParticipantsOpen && isAdmin && (
+      {isJoined && isParticipantsOpen && (
         <ParticipantsPanel
           participants={participants}
           currentUserId={currentUserId}
@@ -268,6 +318,12 @@ export default function MeetsMainContent({
           isAdmin={isAdmin}
           pendingUsers={pendingUsers}
           roomId={roomId}
+          localState={{
+            isMuted,
+            isCameraOff,
+            isHandRaised,
+            isScreenSharing,
+          }}
           getRooms={getRoomsForRedirect}
           getDisplayName={resolveDisplayName}
           onPendingUserStale={(staleUserId) => {
@@ -277,19 +333,6 @@ export default function MeetsMainContent({
               return next;
             });
           }}
-        />
-      )}
-
-      {isJoined && isAdmin && showAdminTips && (
-        <AdminTipsOverlay
-          currentStep={0}
-          onNextStep={() => setShowAdminTips(false)}
-          onSkip={() => {
-            setShowAdminTips(false);
-            setHasSeenTips(true);
-            localStorage.setItem("admin-tips-seen", "true");
-          }}
-          onClose={() => setShowAdminTips(false)}
         />
       )}
 

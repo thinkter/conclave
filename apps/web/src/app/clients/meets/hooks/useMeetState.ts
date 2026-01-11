@@ -32,13 +32,6 @@ export function useMeetState({ initialRoomId }: UseMeetStateOptions) {
     new Map()
   );
   const [isParticipantsOpen, setIsParticipantsOpen] = useState(false);
-  const [showAdminTips, setShowAdminTips] = useState(false);
-  const [hasSeenTips, setHasSeenTips] = useState(() => {
-    if (typeof window !== "undefined") {
-      return localStorage.getItem("admin-tips-seen") === "true";
-    }
-    return false;
-  });
 
   return {
     connectionState,
@@ -71,9 +64,5 @@ export function useMeetState({ initialRoomId }: UseMeetStateOptions) {
     setPendingUsers,
     isParticipantsOpen,
     setIsParticipantsOpen,
-    showAdminTips,
-    setShowAdminTips,
-    hasSeenTips,
-    setHasSeenTips,
   };
 }

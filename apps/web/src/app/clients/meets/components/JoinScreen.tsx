@@ -79,6 +79,7 @@ export default function JoinScreen({
   const [isCameraOn, setIsCameraOn] = useState(false); // Start with camera off
   const [isMicOn, setIsMicOn] = useState(false); // Start with mic off
   const isRoutedRoom = forceJoinOnly;
+  const enforceShortCode = enableRoomRouting || forceJoinOnly;
   const [activeTab, setActiveTab] = useState<"new" | "join">(() =>
     isRoutedRoom ? "join" : "new"
   );
@@ -91,8 +92,14 @@ export default function JoinScreen({
   const [guestName, setGuestName] = useState("");
   const [isSigningIn, setIsSigningIn] = useState(false);
 
-  const generateMeetingCode = () =>
-    Math.random().toString(36).slice(2, 6);
+  const generateMeetingCode = () => {
+    const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
+    let code = "";
+    for (let i = 0; i < 4; i += 1) {
+      code += alphabet[Math.floor(Math.random() * alphabet.length)];
+    }
+    return code;
+  };
   
   const { data: session, isPending: isSessionLoading } = useSession();
   
@@ -527,9 +534,15 @@ export default function JoinScreen({
                   <input
                     type="text"
                     value={normalizedRoomId}
-                    onChange={(e) => onRoomIdChange(sanitizeRoomCode(e.target.value))}
+                    onChange={(e) =>
+                      onRoomIdChange(
+                        enforceShortCode
+                          ? sanitizeRoomCode(e.target.value)
+                          : e.target.value
+                      )
+                    }
                     placeholder="Enter code"
-                    maxLength={4}
+                    maxLength={enforceShortCode ? 4 : undefined}
                     disabled={isLoading}
                     readOnly={isRoutedRoom}
                     className="w-full px-3 py-2.5 bg-[#1a1a1a] border border-[#FEFCD9]/10 rounded-lg text-sm text-[#FEFCD9] placeholder:text-[#FEFCD9]/30 focus:border-[#F95F4A]/50 focus:outline-none"

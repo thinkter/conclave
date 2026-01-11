@@ -105,20 +105,18 @@ export default function ControlsBar({
     <div className="flex justify-center items-center gap-1 shrink-0 py-2 px-3 bg-black/40 backdrop-blur-sm rounded-full mx-auto"
       style={{ fontFamily: "'PolySans Mono', monospace" }}
     >
-      {isAdmin && (
-        <button
-          onClick={onToggleParticipants}
-          className={`relative ${isParticipantsOpen ? activeButtonClass : defaultButtonClass}`}
-          title="Participants"
-        >
-          <Users className="w-4 h-4" />
-          {pendingUsersCount > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] px-1 text-[10px] font-bold bg-[#F95F4A] text-white rounded-full flex items-center justify-center">
-              {pendingUsersCount > 9 ? "9+" : pendingUsersCount}
-            </span>
-          )}
-        </button>
-      )}
+      <button
+        onClick={onToggleParticipants}
+        className={`relative ${isParticipantsOpen ? activeButtonClass : defaultButtonClass}`}
+        title="Participants"
+      >
+        <Users className="w-4 h-4" />
+        {pendingUsersCount > 0 && (
+          <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] px-1 text-[10px] font-bold bg-[#F95F4A] text-white rounded-full flex items-center justify-center">
+            {pendingUsersCount > 9 ? "9+" : pendingUsersCount}
+          </span>
+        )}
+      </button>
 
       <button
         onClick={onToggleMute}

@@ -459,6 +459,28 @@ input:focus, textarea:focus, select:focus {
 }
 
 /* ============================================================
+   REACTIONS
+   ============================================================ */
+.animate-reaction-float {
+  animation: reaction-float 2.8s ease-out forwards;
+}
+
+@keyframes reaction-float {
+  0% {
+    opacity: 0;
+    transform: translate3d(-10px, 20px, 0) scale(0.85);
+  }
+  15% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(10px, -180px, 0) scale(1.1);
+  }
+}
+
+/* ============================================================
    ACM-VIT INPUT STYLES
    ============================================================ */
 .acm-input {

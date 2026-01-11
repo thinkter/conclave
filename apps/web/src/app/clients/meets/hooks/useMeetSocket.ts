@@ -47,8 +47,6 @@ interface UseMeetSocketOptions {
     sfuUrl: string;
   }>;
   ghostEnabled: boolean;
-  hasSeenTips: boolean;
-  setShowAdminTips: (value: boolean) => void;
   displayNameInput: string;
   localStream: MediaStream | null;
   setLocalStream: React.Dispatch<React.SetStateAction<MediaStream | null>>;
@@ -93,8 +91,6 @@ export function useMeetSocket({
   userId,
   getJoinInfo,
   ghostEnabled,
-  hasSeenTips,
-  setShowAdminTips,
   displayNameInput,
   localStream,
   setLocalStream,
@@ -861,9 +857,6 @@ export function useMeetSocket({
                 console.log("[Meets] User joined:", joinedUserId);
                 if (joinedUserId !== userId) {
                   playNotificationSound("join");
-                  if (isAdmin && !hasSeenTips) {
-                    setShowAdminTips(true);
-                  }
                 }
                 if (displayName) {
                   setDisplayNames((prev) => {
@@ -1244,7 +1237,6 @@ export function useMeetSocket({
       handleRedirectRef,
       handleReconnectRef,
       getJoinInfo,
-      hasSeenTips,
       isAdmin,
       isRoomEvent,
       joinOptionsRef,
@@ -1266,7 +1258,6 @@ export function useMeetSocket({
       setIsHandRaised,
       setMeetError,
       setPendingUsers,
-      setShowAdminTips,
       setWaitingMessage,
       setVideoQuality,
       socketRef,
