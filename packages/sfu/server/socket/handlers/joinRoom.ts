@@ -92,8 +92,33 @@ export const registerJoinRoomHandler = (context: ConnectionContext): void => {
         const isGhost = Boolean(data?.ghost) && Boolean(isHost);
         context.currentUserKey = userKey;
 
-        if (!isHost && room.isLocked) {
-          callback({ error: "This meeting is locked by the host." });
+        if (!isReturningPrimaryHost && room.isLocked) {
+          Logger.info(`User ${userKey} trying to join locked room ${roomId}, adding to waiting room`);
+          room.addPendingClient(userKey, userId, socket, displayName);
+          context.pendingRoomId = roomId;
+          context.pendingRoomChannelId = roomChannelId;
+          context.pendingUserKey = userKey;
+
+          socket.emit("waitingRoomStatus", {
+            message: "This meeting is locked. Waiting for the host to let you in.",
+            roomId,
+          });
+
+          const admins = room.getAdmins();
+          for (const admin of admins) {
+            admin.socket.emit("userRequestedJoin", {
+              userId: userKey,
+              displayName,
+              roomId,
+              reason: "locked",
+            });
+          }
+
+          callback({
+            rtpCapabilities: room.rtpCapabilities,
+            existingProducers: [],
+            status: "waiting",
+          });
           return;
         }
 
