@@ -191,6 +191,11 @@ export const registerAdminHandlers = (
     }
 
     context.currentRoom.setLocked(locked);
+    if (locked) {
+      for (const userKey of context.currentRoom.userKeysById.values()) {
+        context.currentRoom.allowLockedUser(userKey);
+      }
+    }
     Logger.info(
       `Room ${context.currentRoom.id} ${locked ? "locked" : "unlocked"} by admin`,
     );

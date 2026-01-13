@@ -1178,10 +1178,18 @@ export function useMeetSocket({
               }
             );
 
-            socket.on("joinApproved", () => {
+            socket.on("joinApproved", async () => {
               console.log("[Meets] Join approved! Re-attempting join...");
               const joinOptions = joinOptionsRef.current;
-              const stream = localStreamRef.current;
+              let stream = localStreamRef.current;
+
+              if (!stream && !joinOptions.isGhost) {
+                stream = await requestMediaPermissions();
+                if (stream) {
+                  localStreamRef.current = stream;
+                  setLocalStream(stream);
+                }
+              }
               if (currentRoomIdRef.current && (stream || joinOptions.isGhost)) {
                 joinRoomInternal(
                   currentRoomIdRef.current,
@@ -1288,12 +1296,14 @@ export function useMeetSocket({
       setIsMuted,
       setIsScreenSharing,
       setIsHandRaised,
+      setLocalStream,
       setMeetError,
       setPendingUsers,
       setWaitingMessage,
       setVideoQuality,
       socketRef,
       stopLocalTrack,
+      requestMediaPermissions,
       updateVideoQualityRef,
       user,
       userId,

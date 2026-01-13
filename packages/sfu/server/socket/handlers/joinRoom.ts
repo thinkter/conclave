@@ -82,6 +82,7 @@ export const registerJoinRoomHandler = (context: ConnectionContext): void => {
         if (isHost && !room.hostUserKey) {
           room.hostUserKey = userKey;
         }
+        const isPrimaryHost = room.hostUserKey === userKey;
 
         if (isHostForExistingRoom && room.cleanupTimer) {
           Logger.info(`Host returning to room ${roomId}, cleanup cancelled.`);
@@ -93,7 +94,7 @@ export const registerJoinRoomHandler = (context: ConnectionContext): void => {
         const isGhost = Boolean(data?.ghost) && Boolean(isHost);
         context.currentUserKey = userKey;
 
-        if (!isHost && room.isLocked && !room.isLockedAllowed(userKey)) {
+        if (room.isLocked && !isPrimaryHost && !room.isLockedAllowed(userKey)) {
           Logger.info(
             `User ${userKey} trying to join locked room ${roomId}, adding to waiting room`,
           );
