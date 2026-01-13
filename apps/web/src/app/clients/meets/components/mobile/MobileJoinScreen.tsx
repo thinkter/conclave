@@ -13,6 +13,11 @@ import {
 import { memo, useEffect, useRef, useState } from "react";
 import { signIn, signOut, useSession } from "@/lib/auth-client";
 import type { ConnectionState } from "../../types";
+import {
+  generateRoomCode,
+  ROOM_CODE_MAX_LENGTH,
+  sanitizeRoomCode,
+} from "../../utils";
 
 interface MobileJoinScreenProps {
   roomId: string;
@@ -82,15 +87,6 @@ function MobileJoinScreen({
   const [guestName, setGuestName] = useState("");
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
-
-  const generateMeetingCode = () => {
-    const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
-    let code = "";
-    for (let i = 0; i < 4; i += 1) {
-      code += alphabet[Math.floor(Math.random() * alphabet.length)];
-    }
-    return code;
-  };
 
   const { data: session, isPending: isSessionLoading } = useSession();
   const canSignOut = Boolean(
@@ -209,12 +205,9 @@ function MobileJoinScreen({
     }
   };
 
-  const sanitizeRoomCode = (value: string) =>
-    value.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 4);
-
   const handleCreateRoom = () => {
     onIsAdminChange(true);
-    const id = generateMeetingCode();
+    const id = generateRoomCode();
     if (enableRoomRouting && typeof window !== "undefined") {
       window.history.pushState(null, "", `/${id}`);
     }
@@ -544,8 +537,8 @@ function MobileJoinScreen({
                     : e.target.value
                 )
               }
-              placeholder="Enter meeting code"
-              maxLength={enforceShortCode ? 4 : undefined}
+              placeholder="e.g. aster-lotus-nami"
+              maxLength={enforceShortCode ? ROOM_CODE_MAX_LENGTH : undefined}
               disabled={isLoading}
               readOnly={isRoutedRoom}
               className="w-full px-4 py-4 bg-[#1a1a1a] border border-[#FEFCD9]/10 rounded-xl text-base text-[#FEFCD9] placeholder:text-[#FEFCD9]/30 focus:border-[#F95F4A]/50 focus:outline-none text-center uppercase tracking-widest"

@@ -17,6 +17,11 @@ import { memo, useEffect, useRef, useState } from "react";
 import { signIn, useSession } from "@/lib/auth-client";
 import type { RoomInfo } from "@/lib/sfu-types";
 import type { ConnectionState } from "../types";
+import {
+  generateRoomCode,
+  ROOM_CODE_MAX_LENGTH,
+  sanitizeRoomCode,
+} from "../utils";
 
 interface JoinScreenProps {
   roomId: string;
@@ -92,15 +97,6 @@ function JoinScreen({
   const [guestName, setGuestName] = useState("");
   const [isSigningIn, setIsSigningIn] = useState(false);
 
-  const generateMeetingCode = () => {
-    const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
-    let code = "";
-    for (let i = 0; i < 4; i += 1) {
-      code += alphabet[Math.floor(Math.random() * alphabet.length)];
-    }
-    return code;
-  };
-  
   const { data: session, isPending: isSessionLoading } = useSession();
   const lastAppliedSessionUserIdRef = useRef<string | null>(null);
   
@@ -223,12 +219,9 @@ function JoinScreen({
     }
   };
 
-  const sanitizeRoomCode = (value: string) =>
-    value.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 4);
-
   const handleCreateRoom = () => {
     onIsAdminChange(true);
-    const id = generateMeetingCode();
+    const id = generateRoomCode();
     if (enableRoomRouting && typeof window !== "undefined") {
       window.history.pushState(null, "", `/${id}`);
     }
@@ -544,7 +537,7 @@ function JoinScreen({
               <div className="space-y-4">
                 <div>
                   <label className="text-[10px] uppercase tracking-wider text-[#FEFCD9]/40 mb-1.5 block" style={{ fontFamily: "'PolySans Mono', monospace" }}>
-                    Meeting Code
+                    Room Name
                   </label>
                   <input
                     type="text"
@@ -556,8 +549,8 @@ function JoinScreen({
                           : e.target.value
                       )
                     }
-                    placeholder="Enter code"
-                    maxLength={enforceShortCode ? 4 : undefined}
+                    placeholder="e.g. aster-lotus-nami"
+                    maxLength={enforceShortCode ? ROOM_CODE_MAX_LENGTH : undefined}
                     disabled={isLoading}
                     readOnly={isRoutedRoom}
                     className="w-full px-3 py-2.5 bg-[#1a1a1a] border border-[#FEFCD9]/10 rounded-lg text-sm text-[#FEFCD9] placeholder:text-[#FEFCD9]/30 focus:border-[#F95F4A]/50 focus:outline-none"

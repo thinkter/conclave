@@ -1,6 +1,97 @@
 import { EMOJI_REACTIONS, type ReactionEmoji } from "./constants";
 import type { MeetError, ReactionOption } from "./types";
 
+const ROOM_WORDS = [
+  "aloe",
+  "aster",
+  "bloom",
+  "canna",
+  "cedar",
+  "clove",
+  "dahl",
+  "daisy",
+  "erica",
+  "flora",
+  "hazel",
+  "iris",
+  "lilac",
+  "lily",
+  "lotus",
+  "maple",
+  "myrrh",
+  "olive",
+  "pansy",
+  "peony",
+  "poppy",
+  "rose",
+  "sorel",
+  "tansy",
+  "thyme",
+  "tulip",
+  "yucca",
+  "zinn",
+  "akane",
+  "akira",
+  "asuna",
+  "eren",
+  "gohan",
+  "goku",
+  "gojo",
+  "kanao",
+  "kira",
+  "levi",
+  "luffy",
+  "maki",
+  "misa",
+  "nami",
+  "riku",
+  "sokka",
+  "saber",
+  "senku",
+  "shoto",
+  "soma",
+  "sora",
+  "tanji",
+  "taki",
+  "toji",
+  "todo",
+  "toph",
+  "yami",
+  "yuki",
+  "yato",
+  "zoro",
+];
+
+const ROOM_WORDS_PER_CODE = 3;
+const ROOM_WORD_MAX_LENGTH = 5;
+const ROOM_WORD_SEPARATOR = "-";
+export const ROOM_CODE_MAX_LENGTH =
+  ROOM_WORDS_PER_CODE * ROOM_WORD_MAX_LENGTH + (ROOM_WORDS_PER_CODE - 1);
+
+export function generateRoomCode(): string {
+  const words: string[] = [];
+  for (let i = 0; i < ROOM_WORDS_PER_CODE; i += 1) {
+    const pick = ROOM_WORDS[Math.floor(Math.random() * ROOM_WORDS.length)];
+    words.push(pick);
+  }
+  return words.join(ROOM_WORD_SEPARATOR);
+}
+
+export function sanitizeRoomCode(value: string): string {
+  const normalized = value
+    .toLowerCase()
+    .replace(/[^a-z]+/g, ROOM_WORD_SEPARATOR)
+    .replace(/-+/g, ROOM_WORD_SEPARATOR)
+    .replace(/^-|-$/g, "");
+  if (!normalized) return "";
+  const words = normalized
+    .split(ROOM_WORD_SEPARATOR)
+    .filter(Boolean)
+    .slice(0, ROOM_WORDS_PER_CODE)
+    .map((word) => word.slice(0, ROOM_WORD_MAX_LENGTH));
+  return words.join(ROOM_WORD_SEPARATOR);
+}
+
 export function createMeetError(
   error: unknown,
   defaultCode: MeetError["code"] = "UNKNOWN"

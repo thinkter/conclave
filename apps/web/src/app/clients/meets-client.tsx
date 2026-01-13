@@ -26,6 +26,7 @@ import { useMeetSocket } from "./meets/hooks/useMeetSocket";
 import { useMeetState } from "./meets/hooks/useMeetState";
 import { useIsMobile } from "./meets/hooks/useIsMobile";
 import type { ParticipantsPanelGetRooms } from "./meets/components/ParticipantsPanel";
+import { sanitizeRoomCode } from "./meets/utils";
 
 const roboto = Roboto({
   subsets: ["latin"],
@@ -125,10 +126,7 @@ export default function MeetsClient({
     if (!path) return;
     const decoded = decodeURIComponent(path);
     if (!decoded || decoded === "undefined" || decoded === "null") return;
-    const sanitized = decoded
-      .toLowerCase()
-      .replace(/[^a-z0-9]/g, "")
-      .slice(0, 4);
+    const sanitized = sanitizeRoomCode(decoded);
     if (!sanitized) return;
     setRoomId(sanitized);
   }, [enableRoomRouting, forceJoinOnly, roomId, setRoomId]);

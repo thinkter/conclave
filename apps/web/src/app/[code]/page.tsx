@@ -1,5 +1,6 @@
 import { use } from "react";
 import MeetsClientPage from "../clients/meets-client-page";
+import { sanitizeRoomCode } from "../clients/meets/utils";
 
 type MeetRoomPageProps = {
   params: Promise<{ code: string }>;
@@ -11,10 +12,7 @@ export default function MeetRoomPage({ params }: MeetRoomPageProps) {
   const roomCode = decodeURIComponent(rawCode);
   const resolvedRoomCode =
     roomCode === "undefined" || roomCode === "null" ? "" : roomCode;
-  const sanitizedRoomCode = resolvedRoomCode
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, "")
-    .slice(0, 4);
+  const sanitizedRoomCode = sanitizeRoomCode(resolvedRoomCode);
   return (
     <MeetsClientPage
       initialRoomId={sanitizedRoomCode}
