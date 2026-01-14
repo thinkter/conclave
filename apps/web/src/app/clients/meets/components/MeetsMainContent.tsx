@@ -34,7 +34,6 @@ interface MeetsMainContentProps {
   isLoading: boolean;
   roomId: string;
   setRoomId: Dispatch<SetStateAction<string>>;
-  joinRoom: () => void;
   joinRoomById: (roomId: string) => void;
   enableRoomRouting: boolean;
   forceJoinOnly: boolean;
@@ -115,7 +114,6 @@ export default function MeetsMainContent({
   isLoading,
   roomId,
   setRoomId,
-  joinRoom,
   joinRoomById,
   enableRoomRouting,
   forceJoinOnly,
@@ -231,7 +229,6 @@ export default function MeetsMainContent({
         <JoinScreen
           roomId={roomId}
           onRoomIdChange={setRoomId}
-          onJoin={joinRoom}
           isLoading={isLoading}
           user={user}
           userEmail={userEmail}

@@ -42,6 +42,6 @@ services:
       NOVNC_PORT_START: "6080"
       NOVNC_PORT_END: "6100"
       BROWSER_HOST_ADDRESS: ${BROWSER_HOST_ADDRESS:-localhost}
-      BROWSER_PUBLIC_BASE_URL: ${BROWSER_PUBLIC_BASE_URL:-https://sfu.acmvit.in}
+      BROWSER_PUBLIC_BASE_URL: ${BROWSER_PUBLIC_BASE_URL:-}
       BROWSER_IMAGE_NAME: "conclave-browser:latest"
     restart: unless-stopped

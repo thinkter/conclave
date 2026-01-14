@@ -1,7 +1,7 @@
 import { EMOJI_REACTIONS, type ReactionEmoji } from "./constants";
 import type { MeetError, ReactionOption } from "./types";
 
-const ROOM_WORDS = [
+export const ROOM_WORDS = [
   "aloe",
   "aster",
   "bloom",
@@ -93,6 +93,27 @@ export function sanitizeRoomCode(value: string): string {
     .slice(0, ROOM_WORDS_PER_CODE)
     .map((word) => word.slice(0, ROOM_WORD_MAX_LENGTH));
   return words.join(ROOM_WORD_SEPARATOR);
+}
+
+export function sanitizeRoomCodeInput(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z]+/g, ROOM_WORD_SEPARATOR)
+    .replace(/-+/g, ROOM_WORD_SEPARATOR)
+    .replace(/^-+/g, "");
+}
+
+export function getRoomWordSuggestions(
+  prefix: string,
+  exclude: string[] = [],
+  limit = 5
+): string[] {
+  const normalized = prefix.trim().toLowerCase();
+  if (!normalized) return [];
+  const excludeSet = new Set(exclude);
+  return ROOM_WORDS.filter(
+    (word) => !excludeSet.has(word) && word.startsWith(normalized)
+  ).slice(0, limit);
 }
 
 export function extractRoomCode(input: string): string {

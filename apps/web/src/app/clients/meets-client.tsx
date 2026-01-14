@@ -449,7 +449,6 @@ export default function MeetsClient({
           isLoading={isLoading}
           roomId={roomId}
           setRoomId={setRoomId}
-          joinRoom={joinRoom}
           joinRoomById={joinRoomById}
           enableRoomRouting={enableRoomRouting}
           forceJoinOnly={forceJoinOnly}
@@ -560,7 +559,6 @@ export default function MeetsClient({
         isLoading={isLoading}
         roomId={roomId}
         setRoomId={setRoomId}
-        joinRoom={joinRoom}
         joinRoomById={joinRoomById}
         enableRoomRouting={enableRoomRouting}
         forceJoinOnly={forceJoinOnly}

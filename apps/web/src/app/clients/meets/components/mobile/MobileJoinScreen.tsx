@@ -10,13 +10,15 @@ import {
   Video,
   VideoOff,
 } from "lucide-react";
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { signIn, signOut, useSession } from "@/lib/auth-client";
 import type { ConnectionState, MeetError } from "../../types";
 import {
   generateRoomCode,
   ROOM_CODE_MAX_LENGTH,
   extractRoomCode,
+  getRoomWordSuggestions,
+  sanitizeRoomCodeInput,
   sanitizeRoomCode,
 } from "../../utils";
 import MeetsErrorBanner from "../MeetsErrorBanner";
@@ -24,7 +26,6 @@ import MeetsErrorBanner from "../MeetsErrorBanner";
 interface MobileJoinScreenProps {
   roomId: string;
   onRoomIdChange: (id: string) => void;
-  onJoin: () => void;
   onJoinRoom: (roomId: string) => void;
   isLoading: boolean;
   user?: {
@@ -52,7 +53,6 @@ interface MobileJoinScreenProps {
 function MobileJoinScreen({
   roomId,
   onRoomIdChange,
-  onJoin,
   onJoinRoom,
   isLoading,
   user,
@@ -91,6 +91,24 @@ function MobileJoinScreen({
     return "welcome";
   });
   const [guestName, setGuestName] = useState("");
+  const normalizedSegments = useMemo(
+    () => normalizedRoomId.split("-"),
+    [normalizedRoomId]
+  );
+  const currentSegment =
+    normalizedSegments[normalizedSegments.length - 1] ?? "";
+  const usedSegments = normalizedSegments.slice(0, -1).filter(Boolean);
+  const roomSuggestions = useMemo(() => {
+    if (!enforceShortCode) return [];
+    return getRoomWordSuggestions(currentSegment, usedSegments, 4);
+  }, [currentSegment, enforceShortCode, usedSegments]);
+  const inlineSuggestion = roomSuggestions[0] ?? "";
+  const suggestionSuffix =
+    inlineSuggestion &&
+    currentSegment &&
+    inlineSuggestion.startsWith(currentSegment)
+      ? inlineSuggestion.slice(currentSegment.length)
+      : "";
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
 
@@ -259,6 +277,23 @@ function MobileJoinScreen({
     onUserChange(guestUser);
     onIsAdminChange(false);
     setPhase("join");
+  };
+
+  const handleJoin = () => {
+    const candidate = enforceShortCode
+      ? sanitizeRoomCode(normalizedRoomId)
+      : normalizedRoomId.trim();
+    if (!candidate) return;
+    if (candidate !== normalizedRoomId) {
+      onRoomIdChange(candidate);
+    }
+    onJoinRoom(candidate);
+  };
+
+  const applySuggestion = (word: string) => {
+    const nextSegments = [...normalizedSegments];
+    nextSegments[nextSegments.length - 1] = word;
+    onRoomIdChange(nextSegments.join("-"));
   };
 
   useEffect(() => {
@@ -543,43 +578,55 @@ function MobileJoinScreen({
           </button>
         ) : (
           <div className="space-y-3">
-            <input
-              type="text"
-              value={normalizedRoomId}
-              onChange={(e) =>
-                onRoomIdChange(
-                  enforceShortCode
-                    ? sanitizeRoomCode(e.target.value)
-                    : e.target.value
-                )
-              }
-              placeholder="Paste room link or code"
-              maxLength={enforceShortCode ? ROOM_CODE_MAX_LENGTH : undefined}
-              disabled={isLoading}
-              readOnly={isRoutedRoom}
-              autoCapitalize="none"
-              autoCorrect="off"
-              spellCheck={false}
-              className="w-full px-3 py-2.5 bg-[#1a1a1a] border border-[#FEFCD9]/10 rounded-lg text-sm text-[#FEFCD9] placeholder:text-[#FEFCD9]/30 focus:border-[#F95F4A]/50 focus:outline-none"
-              style={{ fontFamily: "'PolySans Trial', sans-serif" }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && canJoin) onJoin();
-              }}
-              onPaste={(event) => {
-                const text = event.clipboardData.getData("text");
-                if (!text) return;
-                const extracted = extractRoomCode(text);
-                if (extracted) {
-                  event.preventDefault();
-                  onRoomIdChange(extracted);
+            <div className="relative">
+              {suggestionSuffix && (
+                <div
+                  className="pointer-events-none absolute inset-0 px-3 py-2.5 text-sm text-[#FEFCD9]/30 truncate"
+                  style={{ fontFamily: "'PolySans Trial', sans-serif" }}
+                >
+                  <span className="text-transparent">{normalizedRoomId}</span>
+                  <span>{suggestionSuffix}</span>
+                </div>
+              )}
+              <input
+                type="text"
+                value={normalizedRoomId}
+                onChange={(e) =>
+                  onRoomIdChange(
+                    enforceShortCode
+                      ? sanitizeRoomCodeInput(e.target.value)
+                      : e.target.value
+                  )
                 }
-              }}
-            />
-            <p className="text-[11px] text-[#FEFCD9]/40">
-              We’ll auto-detect the room code from any invite link.
-            </p>
+                placeholder="Paste room link or code"
+                maxLength={enforceShortCode ? ROOM_CODE_MAX_LENGTH : undefined}
+                disabled={isLoading}
+                readOnly={isRoutedRoom}
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                className="relative w-full px-3 py-2.5 bg-[#1a1a1a] border border-[#FEFCD9]/10 rounded-lg text-sm text-[#FEFCD9] placeholder:text-[#FEFCD9]/30 focus:border-[#F95F4A]/50 focus:outline-none"
+                style={{ fontFamily: "'PolySans Trial', sans-serif" }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && canJoin) handleJoin();
+                  if (e.key === "Tab" && suggestionSuffix) {
+                    e.preventDefault();
+                    applySuggestion(inlineSuggestion);
+                  }
+                }}
+                onPaste={(event) => {
+                  const text = event.clipboardData.getData("text");
+                  if (!text) return;
+                  const extracted = extractRoomCode(text);
+                  if (extracted) {
+                    event.preventDefault();
+                    onRoomIdChange(extracted);
+                  }
+                }}
+              />
+            </div>
             <button
-              onClick={onJoin}
+              onClick={handleJoin}
               disabled={!canJoin || isLoading}
               className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-[#F95F4A] text-white rounded-lg hover:bg-[#e8553f] transition-colors disabled:opacity-30"
             >

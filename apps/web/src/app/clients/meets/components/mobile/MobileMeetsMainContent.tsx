@@ -32,7 +32,6 @@ interface MobileMeetsMainContentProps {
   isLoading: boolean;
   roomId: string;
   setRoomId: Dispatch<SetStateAction<string>>;
-  joinRoom: () => void;
   joinRoomById: (roomId: string) => void;
   enableRoomRouting: boolean;
   forceJoinOnly: boolean;
@@ -108,7 +107,6 @@ function MobileMeetsMainContent({
   isLoading,
   roomId,
   setRoomId,
-  joinRoom,
   joinRoomById,
   enableRoomRouting,
   forceJoinOnly,
@@ -203,7 +201,6 @@ function MobileMeetsMainContent({
       <MobileJoinScreen
         roomId={roomId}
         onRoomIdChange={setRoomId}
-        onJoin={joinRoom}
         onJoinRoom={joinRoomById}
         isLoading={isLoading}
         user={user}

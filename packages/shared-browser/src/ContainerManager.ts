@@ -63,7 +63,9 @@ export class ContainerManager {
             reconnect: "true",
             show_control_bar: "0",
             show_dot: "0",
-            path: `novnc/${port}/websockify`,
+            path: this.config.publicBaseUrl
+                ? `novnc/${port}/websockify`
+                : "websockify",
         }).toString();
         if (this.config.publicBaseUrl) {
             const base = this.config.publicBaseUrl.replace(/\/+$/, "");
