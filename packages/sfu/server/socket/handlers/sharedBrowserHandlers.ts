@@ -51,7 +51,7 @@ const roomBrowserVideo: Map<
     }
 > = new Map();
 
-const getBrowserState = (channelId: string): RoomBrowserState => {
+export const getBrowserState = (channelId: string): RoomBrowserState => {
     return roomBrowserStates.get(channelId) || { active: false };
 };
 

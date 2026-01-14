@@ -14,7 +14,11 @@ import { cleanupRoom, getOrCreateRoom, getRoomChannelId } from "../../rooms.js";
 import type { ConnectionContext } from "../context.js";
 import { registerAdminHandlers } from "./adminHandlers.js";
 import { respond } from "./ack.js";
-import { cleanupRoomBrowser } from "./sharedBrowserHandlers.js";
+import {
+  cleanupRoomBrowser,
+  clearBrowserState,
+  getBrowserState,
+} from "./sharedBrowserHandlers.js";
 
 export const registerJoinRoomHandler = (context: ConnectionContext): void => {
   const { socket, io, state } = context;
@@ -71,6 +75,14 @@ export const registerJoinRoomHandler = (context: ConnectionContext): void => {
         } else if (room.getClient(userId)) {
           Logger.warn(`User ${userId} re-joining room ${roomId}`);
           room.removeClient(userId);
+        }
+
+        const browserState = getBrowserState(roomChannelId);
+        if (browserState.active && room.clients.size === 0) {
+          Logger.info(
+            `[SharedBrowser] Clearing stale browser session for empty room ${roomId}`,
+          );
+          clearBrowserState(roomChannelId);
         }
 
         const isReturningPrimaryHost =
