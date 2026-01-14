@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useEffect, useRef } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import type { Participant } from "../types";
 import { isSystemUserId } from "../utils";
 
@@ -8,12 +8,14 @@ interface SystemAudioPlayersProps {
   participants: Map<string, Participant>;
   audioOutputDeviceId?: string;
   muted?: boolean;
+  onAutoplayBlocked?: () => void;
 }
 
 function SystemAudioPlayers({
   participants,
   audioOutputDeviceId,
   muted = false,
+  onAutoplayBlocked,
 }: SystemAudioPlayersProps) {
   const systemAudioParticipants = Array.from(participants.values()).filter(
     (participant) => isSystemUserId(participant.userId) && participant.audioStream
@@ -27,6 +29,7 @@ function SystemAudioPlayers({
           stream={participant.audioStream}
           audioOutputDeviceId={audioOutputDeviceId}
           muted={muted}
+          onAutoplayBlocked={onAutoplayBlocked}
         />
       ))}
     </>
@@ -37,20 +40,28 @@ interface SystemAudioPlayerProps {
   stream: MediaStream | null;
   audioOutputDeviceId?: string;
   muted: boolean;
+  onAutoplayBlocked?: () => void;
 }
 
 function SystemAudioPlayer({
   stream,
   audioOutputDeviceId,
   muted,
+  onAutoplayBlocked,
 }: SystemAudioPlayerProps) {
   const audioRef = useRef<HTMLAudioElement>(null);
+  const [blocked, setBlocked] = useState(false);
 
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio || !stream) return;
     audio.srcObject = stream;
     audio.play().catch((err) => {
+      if (err.name === "NotAllowedError") {
+        setBlocked(true);
+        onAutoplayBlocked?.();
+        return;
+      }
       if (err.name !== "AbortError") {
         console.error("[Meets] System audio play error:", err);
       }
@@ -61,12 +72,23 @@ function SystemAudioPlayer({
     const audio = audioRef.current;
     if (!audio) return;
     audio.muted = muted;
-    if (!muted && stream && audio.paused) {
-      audio.play().catch((err) => {
-        if (err.name !== "AbortError") {
-          console.error("[Meets] System audio play error:", err);
-        }
-      });
+    if (!muted && stream) {
+      const attemptPlay = () => {
+        audio.play().catch((err) => {
+          if (err.name === "NotAllowedError") {
+            setBlocked(true);
+            onAutoplayBlocked?.();
+            return;
+          }
+          if (err.name !== "AbortError") {
+            console.error("[Meets] System audio play error:", err);
+          }
+        });
+      };
+      if (blocked) {
+        setBlocked(false);
+      }
+      attemptPlay();
     }
   }, [muted, stream]);
 

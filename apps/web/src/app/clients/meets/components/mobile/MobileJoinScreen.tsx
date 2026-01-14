@@ -48,6 +48,8 @@ interface MobileJoinScreenProps {
   onIsAdminChange: (isAdmin: boolean) => void;
   meetError?: MeetError | null;
   onDismissMeetError?: () => void;
+  onRetryMedia?: () => void;
+  onTestSpeaker?: () => void;
 }
 
 function MobileJoinScreen({
@@ -71,6 +73,8 @@ function MobileJoinScreen({
   onIsAdminChange,
   meetError,
   onDismissMeetError,
+  onRetryMedia,
+  onTestSpeaker,
 }: MobileJoinScreenProps) {
   const normalizedRoomId =
     roomId === "undefined" || roomId === "null" ? "" : roomId;
@@ -530,6 +534,37 @@ function MobileJoinScreen({
 
       {/* Bottom controls */}
       <div className="relative z-10 bg-[#0d0e0d] px-4 py-4 space-y-4">
+        <div
+          className="flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-wider"
+          style={{ fontFamily: "'PolySans Mono', monospace" }}
+        >
+          <span className="text-[#FEFCD9]/40">Preflight</span>
+          <div className="flex items-center gap-2 bg-black/40 border border-[#FEFCD9]/10 rounded-full px-3 py-1 text-[#FEFCD9]/70">
+            <span
+              className={`w-1.5 h-1.5 rounded-full ${
+                isMicOn ? "bg-emerald-400" : "bg-[#F95F4A]"
+              }`}
+            />
+            Mic {isMicOn ? "On" : "Off"}
+          </div>
+          <div className="flex items-center gap-2 bg-black/40 border border-[#FEFCD9]/10 rounded-full px-3 py-1 text-[#FEFCD9]/70">
+            <span
+              className={`w-1.5 h-1.5 rounded-full ${
+                isCameraOn ? "bg-emerald-400" : "bg-[#F95F4A]"
+              }`}
+            />
+            Camera {isCameraOn ? "On" : "Off"}
+          </div>
+          {onTestSpeaker && (
+            <button
+              type="button"
+              onClick={onTestSpeaker}
+              className="ml-auto flex items-center gap-2 bg-[#1a1a1a] border border-[#FEFCD9]/10 rounded-full px-3 py-1 text-[#FEFCD9]/70 hover:text-[#FEFCD9] hover:border-[#FEFCD9]/30 transition-colors"
+            >
+              Test speaker
+            </button>
+          )}
+        </div>
         {!isRoutedRoom && (
           <div className="flex bg-[#1a1a1a] rounded-lg p-1">
             <button
@@ -645,6 +680,19 @@ function MobileJoinScreen({
             <MeetsErrorBanner
               meetError={meetError}
               onDismiss={onDismissMeetError}
+              primaryActionLabel={
+                meetError.code === "PERMISSION_DENIED"
+                  ? "Retry Permissions"
+                  : meetError.code === "MEDIA_ERROR"
+                    ? "Retry Devices"
+                    : undefined
+              }
+              onPrimaryAction={
+                meetError.code === "PERMISSION_DENIED" ||
+                meetError.code === "MEDIA_ERROR"
+                  ? onRetryMedia
+                  : undefined
+              }
             />
           </div>
         )}

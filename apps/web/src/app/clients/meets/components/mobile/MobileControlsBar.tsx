@@ -129,6 +129,9 @@ function MobileControlsBar({
         >
           <div
             className="absolute bottom-20 left-4 right-4 flex items-center justify-center gap-3 rounded-2xl bg-[#1a1a1a] border border-[#FEFCD9]/10 px-4 py-4 overflow-x-auto touch-pan-x animate-scale-in"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Reactions"
             onClick={(e) => e.stopPropagation()}
           >
             {reactionOptions.map((reaction) => (
@@ -136,6 +139,7 @@ function MobileControlsBar({
                 key={reaction.id}
                 onClick={() => handleReactionClick(reaction)}
                 className="w-12 h-12 shrink-0 rounded-full text-2xl hover:bg-[#FEFCD9]/10 active:scale-110 flex items-center justify-center transition-transform duration-150"
+                aria-label={`React ${reaction.label}`}
               >
                 {reaction.kind === "emoji" ? (
                   reaction.value
@@ -161,6 +165,9 @@ function MobileControlsBar({
           <div
             className="absolute bottom-0 left-0 right-0 bg-[#121212] border-t border-[#FEFCD9]/10 rounded-t-3xl p-3 pb-6 max-h-[70vh] overflow-y-auto touch-pan-y shadow-[0_-18px_45px_rgba(0,0,0,0.35)] animate-slide-up"
             style={{ fontFamily: "'PolySans Trial', sans-serif" }}
+            role="dialog"
+            aria-modal="true"
+            aria-label="More actions"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="relative px-3 pt-1 pb-2">
@@ -168,6 +175,7 @@ function MobileControlsBar({
               <button
                 onClick={() => setIsMoreMenuOpen(false)}
                 className="absolute right-2 top-0 h-7 w-7 rounded-full flex items-center justify-center text-[#FEFCD9]/50 hover:text-[#FEFCD9] hover:bg-[#FEFCD9]/10"
+                aria-label="Close menu"
               >
                 <X className="h-3.5 w-3.5" />
               </button>
@@ -321,6 +329,9 @@ function MobileControlsBar({
           <div
             className="absolute bottom-0 left-0 right-0 bg-[#121212] border-t border-[#FEFCD9]/10 rounded-t-3xl p-4 pb-6 max-h-[70vh] overflow-y-auto touch-pan-y shadow-[0_-18px_45px_rgba(0,0,0,0.35)] animate-slide-up"
             style={{ fontFamily: "'PolySans Trial', sans-serif" }}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Shared browser"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="relative px-1 pb-2">
@@ -328,6 +339,7 @@ function MobileControlsBar({
               <button
                 onClick={() => setIsBrowserSheetOpen(false)}
                 className="absolute right-0 top-0 h-7 w-7 rounded-full flex items-center justify-center text-[#FEFCD9]/50 hover:text-[#FEFCD9] hover:bg-[#FEFCD9]/10"
+                aria-label="Close shared browser"
               >
                 <X className="h-3.5 w-3.5" />
               </button>
@@ -419,6 +431,7 @@ function MobileControlsBar({
                   ? mutedButtonClass
                   : defaultButtonClass
             }
+            aria-label={isGhostMode ? "Microphone locked" : isMuted ? "Unmute" : "Mute"}
           >
             {isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
           </button>
@@ -434,6 +447,7 @@ function MobileControlsBar({
                   ? mutedButtonClass
                   : defaultButtonClass
             }
+            aria-label={isGhostMode ? "Camera locked" : isCameraOff ? "Turn on camera" : "Turn off camera"}
           >
             {isCameraOff ? <VideoOff className="w-5 h-5" /> : <Video className="w-5 h-5" />}
           </button>
@@ -443,6 +457,7 @@ function MobileControlsBar({
             onClick={() => setIsReactionMenuOpen(true)}
             disabled={isGhostMode}
             className={isGhostMode ? ghostDisabledClass : defaultButtonClass}
+            aria-label={isGhostMode ? "Reactions locked" : "Reactions"}
           >
             <Smile className="w-5 h-5" />
           </button>
@@ -451,6 +466,7 @@ function MobileControlsBar({
           <button
             onClick={onToggleChat}
             className={`relative ${isChatOpen ? activeButtonClass : defaultButtonClass}`}
+            aria-label="Chat"
           >
             <MessageSquare className="w-5 h-5" />
             {unreadCount > 0 && (
@@ -464,12 +480,13 @@ function MobileControlsBar({
           <button
             onClick={() => setIsMoreMenuOpen(true)}
             className={defaultButtonClass}
+            aria-label="More actions"
           >
             <MoreVertical className="w-5 h-5" />
           </button>
 
           {/* Leave button */}
-          <button onClick={onLeave} className={leaveButtonClass}>
+          <button onClick={onLeave} className={leaveButtonClass} aria-label="Leave meeting">
             <Phone className="rotate-[135deg] w-5 h-5" />
           </button>
         </div>

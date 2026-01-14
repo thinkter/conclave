@@ -121,6 +121,8 @@ export default function MeetsClient({
     setIsBrowserAudioMuted,
   } = useMeetState({ initialRoomId });
 
+  const [browserAudioNeedsGesture, setBrowserAudioNeedsGesture] = useState(false);
+
   useEffect(() => {
     if (!enableRoomRouting && !forceJoinOnly) return;
     if (roomId.trim().length > 0) return;
@@ -252,6 +254,19 @@ export default function MeetsClient({
     audioContextRef: refs.audioContextRef,
   });
 
+  const handleRetryMedia = useCallback(async () => {
+    const stream = await requestMediaPermissions();
+    if (!stream) return;
+    localStream?.getTracks().forEach((track) => stopLocalTrack(track));
+    setLocalStream(stream);
+    setMeetError(null);
+  }, [localStream, requestMediaPermissions, setLocalStream, setMeetError, stopLocalTrack]);
+
+  const handleTestSpeaker = useCallback(() => {
+    primeAudioOutput();
+    playNotificationSound("join");
+  }, [playNotificationSound, primeAudioOutput]);
+
   const { toggleHandRaised } = useMeetHandRaise({
     isHandRaised,
     setIsHandRaised,
@@ -375,8 +390,13 @@ export default function MeetsClient({
   }, [playNotificationSound, socket.cleanup]);
 
   const toggleBrowserAudio = useCallback(() => {
+    setBrowserAudioNeedsGesture(false);
     setIsBrowserAudioMuted((prev) => !prev);
   }, [setIsBrowserAudioMuted]);
+
+  const handleBrowserAudioAutoplayBlocked = useCallback(() => {
+    setBrowserAudioNeedsGesture(true);
+  }, []);
 
   const screenTrack = refs.screenProducerRef.current?.track;
   const localScreenShareStream = useMemo(() => {
@@ -441,6 +461,19 @@ export default function MeetsClient({
           <MeetsErrorBanner
             meetError={meetError}
             onDismiss={() => setMeetError(null)}
+            primaryActionLabel={
+              meetError.code === "PERMISSION_DENIED"
+                ? "Retry Permissions"
+                : meetError.code === "MEDIA_ERROR"
+                  ? "Retry Devices"
+                  : undefined
+            }
+            onPrimaryAction={
+              meetError.code === "PERMISSION_DENIED" ||
+                meetError.code === "MEDIA_ERROR"
+                ? handleRetryMedia
+                : undefined
+            }
           />
         )}
         <MobileMeetsMainContent
@@ -510,8 +543,12 @@ export default function MeetsClient({
           onClearBrowserError={clearBrowserError}
           isBrowserAudioMuted={isBrowserAudioMuted}
           onToggleBrowserAudio={toggleBrowserAudio}
+          browserAudioNeedsGesture={browserAudioNeedsGesture}
+          onBrowserAudioAutoplayBlocked={handleBrowserAudioAutoplayBlocked}
           meetError={meetError}
           onDismissMeetError={() => setMeetError(null)}
+          onRetryMedia={handleRetryMedia}
+          onTestSpeaker={handleTestSpeaker}
         />
       </div>
     );
@@ -551,6 +588,19 @@ export default function MeetsClient({
         <MeetsErrorBanner
           meetError={meetError}
           onDismiss={() => setMeetError(null)}
+          primaryActionLabel={
+            meetError.code === "PERMISSION_DENIED"
+              ? "Retry Permissions"
+              : meetError.code === "MEDIA_ERROR"
+                ? "Retry Devices"
+                : undefined
+          }
+          onPrimaryAction={
+            meetError.code === "PERMISSION_DENIED" ||
+              meetError.code === "MEDIA_ERROR"
+              ? handleRetryMedia
+              : undefined
+          }
         />
       )}
       <MeetsMainContent
@@ -624,8 +674,12 @@ export default function MeetsClient({
         onClearBrowserError={clearBrowserError}
         isBrowserAudioMuted={isBrowserAudioMuted}
         onToggleBrowserAudio={toggleBrowserAudio}
+        browserAudioNeedsGesture={browserAudioNeedsGesture}
+        onBrowserAudioAutoplayBlocked={handleBrowserAudioAutoplayBlocked}
         meetError={meetError}
         onDismissMeetError={() => setMeetError(null)}
+        onRetryMedia={handleRetryMedia}
+        onTestSpeaker={handleTestSpeaker}
       />
     </div>
   );

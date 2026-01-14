@@ -10,6 +10,7 @@ import ChatOverlay from "./ChatOverlay";
 import ChatPanel from "./ChatPanel";
 import ControlsBar from "./ControlsBar";
 import GridLayout from "./GridLayout";
+import ConnectionBanner from "./ConnectionBanner";
 import JoinScreen from "./JoinScreen";
 import ParticipantsPanel from "./ParticipantsPanel";
 import PresentationLayout from "./PresentationLayout";
@@ -106,6 +107,10 @@ interface MeetsMainContentProps {
   onToggleBrowserAudio: () => void;
   meetError?: MeetError | null;
   onDismissMeetError?: () => void;
+  browserAudioNeedsGesture: boolean;
+  onBrowserAudioAutoplayBlocked: () => void;
+  onRetryMedia?: () => void;
+  onTestSpeaker?: () => void;
 }
 
 export default function MeetsMainContent({
@@ -180,9 +185,24 @@ export default function MeetsMainContent({
   onClearBrowserError,
   isBrowserAudioMuted,
   onToggleBrowserAudio,
+  browserAudioNeedsGesture,
+  onBrowserAudioAutoplayBlocked,
   meetError,
   onDismissMeetError,
+  onRetryMedia,
+  onTestSpeaker,
 }: MeetsMainContentProps) {
+  const nonSystemParticipants = useMemo(
+    () =>
+      Array.from(participants.values()).filter(
+        (participant) => !isSystemUserId(participant.userId)
+      ),
+    [participants]
+  );
+  const visibleParticipantCount = useMemo(
+    () => nonSystemParticipants.length,
+    [nonSystemParticipants]
+  );
   const handleToggleParticipants = useCallback(
     () => setIsParticipantsOpen((prev) => !prev),
     [setIsParticipantsOpen]
@@ -214,10 +234,12 @@ export default function MeetsMainContent({
   );
   return (
     <div className="flex-1 flex flex-col p-4 overflow-hidden relative">
+      {isJoined && <ConnectionBanner state={connectionState} />}
       <SystemAudioPlayers
         participants={participants}
         audioOutputDeviceId={audioOutputDeviceId}
         muted={isBrowserAudioMuted}
+        onAutoplayBlocked={onBrowserAudioAutoplayBlocked}
       />
       {isJoined && reactions.length > 0 && (
         <ReactionOverlay
@@ -250,6 +272,8 @@ export default function MeetsMainContent({
           onIsAdminChange={onIsAdminChange}
           meetError={meetError}
           onDismissMeetError={onDismissMeetError}
+          onRetryMedia={onRetryMedia}
+          onTestSpeaker={onTestSpeaker}
         />
       ) : browserState?.active && browserState.noVncUrl ? (
         <BrowserLayout
@@ -395,6 +419,13 @@ export default function MeetsMainContent({
                 Reconnecting
               </div>
             )}
+            <div
+              className="flex items-center gap-1 text-[#FEFCD9]/60 text-[10px] uppercase tracking-wider"
+              style={{ fontFamily: "'PolySans Mono', monospace" }}
+            >
+              <span className="inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400" />
+              {visibleParticipantCount + 1} in call
+            </div>
             <div className="flex flex-col items-end">
               <span
                 className="text-sm text-[#FEFCD9]"
@@ -410,6 +441,11 @@ export default function MeetsMainContent({
               </span>
             </div>
           </div>
+          {browserAudioNeedsGesture && (
+            <div className="w-full mt-2 text-center text-[11px] text-[#F95F4A]/70 uppercase tracking-[0.3em]">
+              Click “Shared browser audio” to unlock the system sound.
+            </div>
+          )}
         </div>
       )}
 

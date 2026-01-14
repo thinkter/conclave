@@ -1,10 +1,9 @@
 "use client";
 
-import { Ghost, RefreshCw, UserX } from "lucide-react";
+import { Ghost, RefreshCw } from "lucide-react";
 import { memo, useCallback, useMemo } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { Socket } from "socket.io-client";
-import type { RoomInfo } from "@/lib/sfu-types";
 import type {
   ChatMessage,
   ConnectionState,
@@ -15,6 +14,7 @@ import type {
 } from "../../types";
 import type { BrowserState } from "../../hooks/useSharedBrowser";
 import ChatOverlay from "../ChatOverlay";
+import ConnectionBanner from "../ConnectionBanner";
 import ReactionOverlay from "../ReactionOverlay";
 import MobileChatPanel from "./MobileChatPanel";
 import MobileControlsBar from "./MobileControlsBar";
@@ -97,8 +97,12 @@ interface MobileMeetsMainContentProps {
   onClearBrowserError?: () => void;
   isBrowserAudioMuted: boolean;
   onToggleBrowserAudio: () => void;
+  browserAudioNeedsGesture: boolean;
+  onBrowserAudioAutoplayBlocked: () => void;
   meetError?: MeetError | null;
   onDismissMeetError?: () => void;
+  onRetryMedia?: () => void;
+  onTestSpeaker?: () => void;
 }
 
 function MobileMeetsMainContent({
@@ -168,8 +172,12 @@ function MobileMeetsMainContent({
   onClearBrowserError,
   isBrowserAudioMuted,
   onToggleBrowserAudio,
+  browserAudioNeedsGesture,
+  onBrowserAudioAutoplayBlocked,
   meetError,
   onDismissMeetError,
+  onRetryMedia,
+  onTestSpeaker,
 }: MobileMeetsMainContentProps) {
   const handleToggleParticipants = useCallback(
     () => setIsParticipantsOpen((prev) => !prev),
@@ -219,16 +227,20 @@ function MobileMeetsMainContent({
         onIsAdminChange={onIsAdminChange}
         meetError={meetError}
         onDismissMeetError={onDismissMeetError}
+        onRetryMedia={onRetryMedia}
+        onTestSpeaker={onTestSpeaker}
       />
     );
   }
 
   return (
     <div className="flex-1 flex flex-col bg-[#0d0e0d] overflow-hidden relative h-full">
+      {isJoined && <ConnectionBanner state={connectionState} compact />}
       <SystemAudioPlayers
         participants={participants}
         audioOutputDeviceId={audioOutputDeviceId}
         muted={isBrowserAudioMuted}
+        onAutoplayBlocked={onBrowserAudioAutoplayBlocked}
       />
       {/* Status bar area */}
       <div className="safe-area-pt bg-[#0d0e0d]" />
@@ -360,6 +372,11 @@ function MobileMeetsMainContent({
       )}
 
       {/* Controls bar */}
+      {browserAudioNeedsGesture && (
+        <div className="px-4 mt-2 text-[11px] text-[#F95F4A]/70 text-center uppercase tracking-[0.4em]">
+          Tap “Shared browser audio” to unlock the system sound.
+        </div>
+      )}
       <MobileControlsBar
         isMuted={isMuted}
         isCameraOff={isCameraOff}
