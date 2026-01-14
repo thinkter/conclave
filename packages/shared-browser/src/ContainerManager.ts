@@ -57,8 +57,14 @@ export class ContainerManager {
     }
 
     private buildNoVncUrl(port: number): string {
-        const params =
-            "autoconnect=true&resize=scale&reconnect=true&show_control_bar=0&show_dot=0";
+        const params = new URLSearchParams({
+            autoconnect: "true",
+            resize: "scale",
+            reconnect: "true",
+            show_control_bar: "0",
+            show_dot: "0",
+            path: `novnc/${port}/websockify`,
+        }).toString();
         if (this.config.publicBaseUrl) {
             const base = this.config.publicBaseUrl.replace(/\/+$/, "");
             return `${base}/novnc/${port}/vnc_lite.html?${params}`;
