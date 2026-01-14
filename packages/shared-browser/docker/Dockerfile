@@ -2,7 +2,7 @@ FROM debian:bookworm-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     xvfb \
     tigervnc-standalone-server \
     x11-xserver-utils \
@@ -19,14 +19,15 @@ RUN apt-get update && apt-get install -y \
     ffmpeg \
     supervisor \
     procps \
-    && rm -rf /var/lib/apt/lists/*
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 RUN useradd -m -s /bin/bash browser && \
     mkdir -p /home/browser/.config/chromium && \
     chown -R browser:browser /home/browser
 
 ENV DISPLAY=:99
-ENV RESOLUTION=1280x720x24
+ENV RESOLUTION=1024x576x24
 
 RUN mkdir -p /opt/scripts
 

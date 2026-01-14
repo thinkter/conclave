@@ -28,7 +28,7 @@ done
 
 pactl set-default-sink browser_sink >/dev/null || true
 
-BITRATE="${AUDIO_BITRATE:-128k}"
+BITRATE="${AUDIO_BITRATE:-64k}"
 PAYLOAD="${AUDIO_PAYLOAD_TYPE:-111}"
 SSRC="${AUDIO_SSRC:-11111111}"
 RTCP_PORT="${AUDIO_RTCP_PORT:-$((AUDIO_TARGET_PORT + 1))}"
