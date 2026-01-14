@@ -2,7 +2,7 @@
 
 import { RefreshCw, UserX } from "lucide-react";
 import Image from "next/image";
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { Socket } from "socket.io-client";
 import type { RoomInfo } from "@/lib/sfu-types";
@@ -25,6 +25,7 @@ import type {
   ReactionEvent,
   ReactionOption,
 } from "../types";
+import { isSystemUserId } from "../utils";
 
 interface MeetsMainContentProps {
   isJoined: boolean;
@@ -101,6 +102,8 @@ interface MeetsMainContentProps {
   onNavigateBrowser?: (url: string) => Promise<boolean>;
   onCloseBrowser?: () => Promise<boolean>;
   onClearBrowserError?: () => void;
+  isBrowserAudioMuted: boolean;
+  onToggleBrowserAudio: () => void;
 }
 
 export default function MeetsMainContent({
@@ -174,6 +177,8 @@ export default function MeetsMainContent({
   onNavigateBrowser,
   onCloseBrowser,
   onClearBrowserError,
+  isBrowserAudioMuted,
+  onToggleBrowserAudio,
 }: MeetsMainContentProps) {
   const handleToggleParticipants = useCallback(
     () => setIsParticipantsOpen((prev) => !prev),
@@ -196,11 +201,20 @@ export default function MeetsMainContent({
     },
     [onPendingUserStale, setPendingUsers]
   );
+  const hasBrowserAudio = useMemo(
+    () =>
+      Array.from(participants.values()).some(
+        (participant) =>
+          isSystemUserId(participant.userId) && Boolean(participant.audioStream)
+      ),
+    [participants]
+  );
   return (
     <div className="flex-1 flex flex-col p-4 overflow-hidden relative">
       <SystemAudioPlayers
         participants={participants}
         audioOutputDeviceId={audioOutputDeviceId}
+        muted={isBrowserAudioMuted}
       />
       {isJoined && reactions.length > 0 && (
         <ReactionOverlay
@@ -344,6 +358,9 @@ export default function MeetsMainContent({
               isBrowserLaunching={isBrowserLaunching}
               onLaunchBrowser={onLaunchBrowser}
               onCloseBrowser={onCloseBrowser}
+              hasBrowserAudio={hasBrowserAudio}
+              isBrowserAudioMuted={isBrowserAudioMuted}
+              onToggleBrowserAudio={onToggleBrowserAudio}
             />
           </div>
           <div className="flex items-center gap-4">

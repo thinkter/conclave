@@ -95,6 +95,8 @@ interface MobileMeetsMainContentProps {
   onNavigateBrowser?: (url: string) => Promise<boolean>;
   onCloseBrowser?: () => Promise<boolean>;
   onClearBrowserError?: () => void;
+  isBrowserAudioMuted: boolean;
+  onToggleBrowserAudio: () => void;
 }
 
 function MobileMeetsMainContent({
@@ -163,6 +165,8 @@ function MobileMeetsMainContent({
   onNavigateBrowser,
   onCloseBrowser,
   onClearBrowserError,
+  isBrowserAudioMuted,
+  onToggleBrowserAudio,
 }: MobileMeetsMainContentProps) {
   const handleToggleParticipants = useCallback(
     () => setIsParticipantsOpen((prev) => !prev),
@@ -178,6 +182,14 @@ function MobileMeetsMainContent({
       Array.from(participants.values()).filter(
         (participant) => !isSystemUserId(participant.userId)
       ).length,
+    [participants]
+  );
+  const hasBrowserAudio = useMemo(
+    () =>
+      Array.from(participants.values()).some(
+        (participant) =>
+          isSystemUserId(participant.userId) && Boolean(participant.audioStream)
+      ),
     [participants]
   );
 
@@ -212,6 +224,7 @@ function MobileMeetsMainContent({
       <SystemAudioPlayers
         participants={participants}
         audioOutputDeviceId={audioOutputDeviceId}
+        muted={isBrowserAudioMuted}
       />
       {/* Status bar area */}
       <div className="safe-area-pt bg-[#0d0e0d]" />
@@ -371,6 +384,9 @@ function MobileMeetsMainContent({
         onLaunchBrowser={onLaunchBrowser}
         onNavigateBrowser={onNavigateBrowser}
         onCloseBrowser={onCloseBrowser}
+        hasBrowserAudio={hasBrowserAudio}
+        isBrowserAudioMuted={isBrowserAudioMuted}
+        onToggleBrowserAudio={onToggleBrowserAudio}
       />
 
       {/* Full-screen chat panel */}

@@ -7,11 +7,13 @@ import { isSystemUserId } from "../utils";
 interface SystemAudioPlayersProps {
   participants: Map<string, Participant>;
   audioOutputDeviceId?: string;
+  muted?: boolean;
 }
 
 function SystemAudioPlayers({
   participants,
   audioOutputDeviceId,
+  muted = false,
 }: SystemAudioPlayersProps) {
   const systemAudioParticipants = Array.from(participants.values()).filter(
     (participant) => isSystemUserId(participant.userId) && participant.audioStream
@@ -24,6 +26,7 @@ function SystemAudioPlayers({
           key={participant.userId}
           stream={participant.audioStream}
           audioOutputDeviceId={audioOutputDeviceId}
+          muted={muted}
         />
       ))}
     </>
@@ -33,11 +36,13 @@ function SystemAudioPlayers({
 interface SystemAudioPlayerProps {
   stream: MediaStream | null;
   audioOutputDeviceId?: string;
+  muted: boolean;
 }
 
 function SystemAudioPlayer({
   stream,
   audioOutputDeviceId,
+  muted,
 }: SystemAudioPlayerProps) {
   const audioRef = useRef<HTMLAudioElement>(null);
 
@@ -51,6 +56,19 @@ function SystemAudioPlayer({
       }
     });
   }, [stream]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.muted = muted;
+    if (!muted && stream && audio.paused) {
+      audio.play().catch((err) => {
+        if (err.name !== "AbortError") {
+          console.error("[Meets] System audio play error:", err);
+        }
+      });
+    }
+  }, [muted, stream]);
 
   useEffect(() => {
     const audio = audioRef.current as HTMLAudioElement & {
@@ -67,6 +85,7 @@ function SystemAudioPlayer({
       ref={audioRef}
       autoPlay
       playsInline
+      muted={muted}
       style={{
         width: 0,
         height: 0,

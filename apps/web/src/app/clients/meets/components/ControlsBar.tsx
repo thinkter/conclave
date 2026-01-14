@@ -14,6 +14,8 @@ import {
   Phone,
   PlaySquare,
   Presentation,
+  Volume2,
+  VolumeX,
   Sparkles,
   StickyNote,
   Trello,
@@ -55,6 +57,9 @@ interface ControlsBarProps {
   isBrowserLaunching?: boolean;
   onLaunchBrowser?: (url: string) => Promise<boolean>;
   onCloseBrowser?: () => Promise<boolean>;
+  hasBrowserAudio?: boolean;
+  isBrowserAudioMuted?: boolean;
+  onToggleBrowserAudio?: () => void;
 }
 
 const BROWSER_APPS = [
@@ -150,6 +155,9 @@ function ControlsBar({
   isBrowserLaunching = false,
   onLaunchBrowser,
   onCloseBrowser,
+  hasBrowserAudio = false,
+  isBrowserAudioMuted = false,
+  onToggleBrowserAudio,
 }: ControlsBarProps) {
   const canStartScreenShare = !activeScreenShareId || isScreenSharing;
   const [isReactionMenuOpen, setIsReactionMenuOpen] = useState(false);
@@ -438,6 +446,23 @@ function ControlsBar({
             </div>
           )}
         </div>
+      )}
+      {(hasBrowserAudio || isBrowserActive) && onToggleBrowserAudio && (
+        <button
+          onClick={onToggleBrowserAudio}
+          className={isBrowserAudioMuted ? mutedButtonClass : defaultButtonClass}
+          title={
+            isBrowserAudioMuted
+              ? "Unmute shared browser audio"
+              : "Mute shared browser audio"
+          }
+        >
+          {isBrowserAudioMuted ? (
+            <VolumeX className="w-4 h-4" />
+          ) : (
+            <Volume2 className="w-4 h-4" />
+          )}
+        </button>
       )}
 
       <button

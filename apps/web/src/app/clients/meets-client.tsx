@@ -117,6 +117,8 @@ export default function MeetsClient({
     setIsParticipantsOpen,
     isRoomLocked,
     setIsRoomLocked,
+    isBrowserAudioMuted,
+    setIsBrowserAudioMuted,
   } = useMeetState({ initialRoomId });
 
   useEffect(() => {
@@ -372,6 +374,10 @@ export default function MeetsClient({
     socket.cleanup();
   }, [playNotificationSound, socket.cleanup]);
 
+  const toggleBrowserAudio = useCallback(() => {
+    setIsBrowserAudioMuted((prev) => !prev);
+  }, [setIsBrowserAudioMuted]);
+
   const screenTrack = refs.screenProducerRef.current?.track;
   const localScreenShareStream = useMemo(() => {
     if (!screenTrack) return null;
@@ -503,6 +509,8 @@ export default function MeetsClient({
           onNavigateBrowser={navigateBrowser}
           onCloseBrowser={closeBrowser}
           onClearBrowserError={clearBrowserError}
+          isBrowserAudioMuted={isBrowserAudioMuted}
+          onToggleBrowserAudio={toggleBrowserAudio}
         />
       </div>
     );
@@ -614,6 +622,8 @@ export default function MeetsClient({
         onNavigateBrowser={navigateBrowser}
         onCloseBrowser={closeBrowser}
         onClearBrowserError={clearBrowserError}
+        isBrowserAudioMuted={isBrowserAudioMuted}
+        onToggleBrowserAudio={toggleBrowserAudio}
       />
     </div>
   );
