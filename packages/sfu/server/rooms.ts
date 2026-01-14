@@ -3,6 +3,7 @@ import { Room } from "../config/classes/Room.js";
 import { config } from "../config/config.js";
 import getWorker from "../utilities/getWorker.js";
 import { Logger } from "../utilities/loggers.js";
+import { cleanupRoomBrowser } from "./socket/handlers/sharedBrowserHandlers.js";
 import type { SfuState } from "./state.js";
 
 export const getRoomChannelId = (clientId: string, roomId: string): string =>
@@ -38,6 +39,7 @@ export const cleanupRoom = (state: SfuState, channelId: string): boolean => {
     room.close();
     state.rooms.delete(channelId);
     Logger.info(`Closed empty room: ${room.id} (${room.clientId})`);
+    void cleanupRoomBrowser(channelId);
     return true;
   }
   return false;
