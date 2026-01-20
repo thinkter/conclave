@@ -44,6 +44,13 @@ export function useMeetPictureInPicture({
     const animationFrameRef = useRef<number | null>(null);
     const pipWindowRef = useRef<PictureInPictureWindow | null>(null);
     const manualExitRef = useRef(false);
+    const lastRemoteSpeakerRef = useRef<string | null>(null);
+
+    useEffect(() => {
+        if (activeSpeakerId && activeSpeakerId !== currentUserId) {
+            lastRemoteSpeakerRef.current = activeSpeakerId;
+        }
+    }, [activeSpeakerId, currentUserId]);
 
     // Check PiP support on mount
     useEffect(() => {
@@ -61,25 +68,42 @@ export function useMeetPictureInPicture({
             return { stream: presentationStream, name: presenterName };
         }
 
-        // Priority 2: Active speaker (if not self)
+        // Priority 2: Active speaker (prefer remote)
         if (activeSpeakerId && activeSpeakerId !== currentUserId) {
             const speakerParticipant = participants.get(activeSpeakerId);
-            if (speakerParticipant?.videoStream) {
+            return {
+                stream: speakerParticipant?.videoStream ?? null,
+                name: getDisplayName(activeSpeakerId),
+            };
+        }
+
+        // Priority 3: Last remote speaker (fallback when local is active)
+        if (lastRemoteSpeakerRef.current) {
+            const lastSpeakerId = lastRemoteSpeakerRef.current;
+            if (lastSpeakerId !== currentUserId) {
+                const lastSpeaker = participants.get(lastSpeakerId);
                 return {
-                    stream: speakerParticipant.videoStream,
-                    name: getDisplayName(activeSpeakerId)
+                    stream: lastSpeaker?.videoStream ?? null,
+                    name: getDisplayName(lastSpeakerId),
                 };
             }
         }
 
-        // Priority 3: First participant with video
+        // Priority 4: First remote participant with video
         for (const [userId, participant] of participants) {
+            if (userId === currentUserId) continue;
             if (participant.videoStream && !participant.isCameraOff) {
                 return { stream: participant.videoStream, name: getDisplayName(userId) };
             }
         }
 
-        // Priority 4: Local stream (self)
+        // Priority 5: Any remote participant (even without video)
+        for (const [userId] of participants) {
+            if (userId === currentUserId) continue;
+            return { stream: null, name: getDisplayName(userId) };
+        }
+
+        // Priority 6: Local stream (self)
         if (localStream && !isCameraOff) {
             return { stream: localStream, name: "You" };
         }
@@ -111,9 +135,13 @@ export function useMeetPictureInPicture({
 
         const { stream, name } = getVideoSource();
 
-        if (stream && video.srcObject !== stream) {
-            video.srcObject = stream;
-            video.play().catch(() => { });
+        if (stream) {
+            if (video.srcObject !== stream) {
+                video.srcObject = stream;
+                video.play().catch(() => { });
+            }
+        } else if (video.srcObject) {
+            video.srcObject = null;
         }
 
         // Draw video frame
