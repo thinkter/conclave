@@ -196,7 +196,10 @@ export function truncateDisplayName(value: string, maxLength = 16): string {
   const parts = trimmed.split(/\s+/).filter(Boolean);
   if (parts.length >= 2) {
     const first = parts[0];
-    const lastInitial = parts[parts.length - 1]?.[0];
+    const firstTwo = parts.slice(0, 2).join(" ");
+    if (firstTwo.length <= maxLength) return firstTwo;
+    const lastAlphaToken = [...parts].reverse().find((part) => /[A-Za-z]/.test(part));
+    const lastInitial = lastAlphaToken?.match(/[A-Za-z]/)?.[0];
     const combined = lastInitial ? `${first} ${lastInitial}.` : first;
     if (combined.length <= maxLength) return combined;
   }
