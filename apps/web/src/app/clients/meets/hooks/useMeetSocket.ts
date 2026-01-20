@@ -31,6 +31,7 @@ import type {
 } from "../types";
 import type { ParticipantAction } from "../participant-reducer";
 import { createMeetError, normalizeDisplayName } from "../utils";
+import { normalizeChatMessage } from "../chat-commands";
 import type { MeetRefs } from "./useMeetRefs";
 
 interface UseMeetSocketOptions {
@@ -88,6 +89,11 @@ interface UseMeetSocketOptions {
     setUnreadCount: React.Dispatch<React.SetStateAction<number>>;
     isChatOpenRef: React.MutableRefObject<boolean>;
   };
+  onTtsMessage?: (payload: {
+    userId: string;
+    displayName: string;
+    text: string;
+  }) => void;
 }
 
 export function useMeetSocket({
@@ -128,6 +134,7 @@ export function useMeetSocket({
   addReaction,
   clearReactions,
   chat,
+  onTtsMessage,
 }: UseMeetSocketOptions) {
   const {
     socketRef,
@@ -1099,14 +1106,22 @@ export function useMeetSocket({
 
             socket.on("chatMessage", (message: ChatMessage) => {
               console.log("[Meets] Chat message received:", message);
-              chat.setChatMessages((prev) => [...prev, message]);
-              if (message.userId !== userId) {
-                chat.setChatOverlayMessages((prev) => [...prev, message]);
+              const { message: normalized, ttsText } = normalizeChatMessage(message);
+              chat.setChatMessages((prev) => [...prev, normalized]);
+              if (normalized.userId !== userId) {
+                chat.setChatOverlayMessages((prev) => [...prev, normalized]);
                 setTimeout(() => {
                   chat.setChatOverlayMessages((prev) =>
-                    prev.filter((m) => m.id !== message.id)
+                    prev.filter((m) => m.id !== normalized.id)
                   );
                 }, 5000);
+              }
+              if (ttsText) {
+                onTtsMessage?.({
+                  userId: normalized.userId,
+                  displayName: normalized.displayName,
+                  text: ttsText,
+                });
               }
               if (!chat.isChatOpenRef.current) {
                 chat.setUnreadCount((prev) => prev + 1);
@@ -1376,6 +1391,7 @@ export function useMeetSocket({
       updateVideoQualityRef,
       user,
       userId,
+      onTtsMessage,
     ]
   );
 

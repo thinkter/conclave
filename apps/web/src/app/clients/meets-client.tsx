@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { RoomInfo } from "@/lib/sfu-types";
 import { signOut } from "@/lib/auth-client";
 import MeetsErrorBanner from "./meets/components/MeetsErrorBanner";
@@ -23,6 +23,7 @@ import { useMeetSocket } from "./meets/hooks/useMeetSocket";
 import { useMeetState } from "./meets/hooks/useMeetState";
 import { useIsMobile } from "./meets/hooks/useIsMobile";
 import { useMeetPictureInPicture } from "./meets/hooks/useMeetPictureInPicture";
+import { useMeetTts } from "./meets/hooks/useMeetTts";
 import { useSharedBrowser } from "./meets/hooks/useSharedBrowser";
 import type { ParticipantsPanelGetRooms } from "./meets/components/ParticipantsPanel";
 import { sanitizeRoomCode } from "./meets/utils";
@@ -116,6 +117,26 @@ export default function MeetsClient({
 
   const [browserAudioNeedsGesture, setBrowserAudioNeedsGesture] = useState(false);
   const [isBrowserServiceAvailable, setIsBrowserServiceAvailable] = useState(false);
+  const toggleMuteCommandRef = useRef<(() => void) | null>(null);
+  const toggleCameraCommandRef = useRef<(() => void) | null>(null);
+  const setHandRaisedCommandRef = useRef<((raised: boolean) => void) | null>(null);
+  const leaveRoomCommandRef = useRef<(() => void) | null>(null);
+
+  const handleToggleMuteCommand = useCallback(() => {
+    toggleMuteCommandRef.current?.();
+  }, []);
+
+  const handleToggleCameraCommand = useCallback(() => {
+    toggleCameraCommandRef.current?.();
+  }, []);
+
+  const handleSetHandRaisedCommand = useCallback((raised: boolean) => {
+    setHandRaisedCommandRef.current?.(raised);
+  }, []);
+
+  const handleLeaveCommand = useCallback(() => {
+    leaveRoomCommandRef.current?.();
+  }, []);
 
   useEffect(() => {
     if (!enableRoomRouting && !forceJoinOnly) return;
@@ -189,6 +210,9 @@ export default function MeetsClient({
     reactionAssets,
   });
 
+  const { ttsSpeakerId, handleTtsMessage } = useMeetTts();
+  const effectiveActiveSpeakerId = ttsSpeakerId ?? activeSpeakerId;
+
   const {
     chatMessages,
     setChatMessages,
@@ -202,7 +226,17 @@ export default function MeetsClient({
     toggleChat,
     sendChat,
     isChatOpenRef,
-  } = useMeetChat({ socketRef: refs.socketRef, ghostEnabled });
+  } = useMeetChat({
+    socketRef: refs.socketRef,
+    ghostEnabled,
+    isMuted,
+    isCameraOff,
+    onToggleMute: handleToggleMuteCommand,
+    onToggleCamera: handleToggleCameraCommand,
+    onSetHandRaised: handleSetHandRaisedCommand,
+    onLeaveRoom: handleLeaveCommand,
+    onTtsMessage: handleTtsMessage,
+  });
 
   const {
     showPermissionHint,
@@ -248,6 +282,14 @@ export default function MeetsClient({
     audioContextRef: refs.audioContextRef,
   });
 
+  useEffect(() => {
+    toggleMuteCommandRef.current = toggleMute;
+  }, [toggleMute]);
+
+  useEffect(() => {
+    toggleCameraCommandRef.current = toggleCamera;
+  }, [toggleCamera]);
+
   const handleRetryMedia = useCallback(async () => {
     const stream = await requestMediaPermissions();
     if (!stream) return;
@@ -261,13 +303,17 @@ export default function MeetsClient({
     playNotificationSound("join");
   }, [playNotificationSound, primeAudioOutput]);
 
-  const { toggleHandRaised } = useMeetHandRaise({
+  const { toggleHandRaised, setHandRaisedState } = useMeetHandRaise({
     isHandRaised,
     setIsHandRaised,
     isHandRaisedRef: refs.isHandRaisedRef,
     ghostEnabled,
     socketRef: refs.socketRef,
   });
+
+  useEffect(() => {
+    setHandRaisedCommandRef.current = setHandRaisedState;
+  }, [setHandRaisedState]);
 
   const socket = useMeetSocket({
     refs,
@@ -312,6 +358,7 @@ export default function MeetsClient({
       setUnreadCount,
       isChatOpenRef,
     },
+    onTtsMessage: handleTtsMessage,
   });
 
   useMeetAudioActivity({
@@ -386,6 +433,10 @@ export default function MeetsClient({
     playNotificationSound("leave");
     socket.cleanup();
   }, [playNotificationSound, socket.cleanup]);
+
+  useEffect(() => {
+    leaveRoomCommandRef.current = leaveRoom;
+  }, [leaveRoom]);
 
   const toggleBrowserAudio = useCallback(() => {
     setBrowserAudioNeedsGesture(false);
@@ -464,7 +515,7 @@ export default function MeetsClient({
     isJoined: connectionState === "joined",
     localStream,
     participants,
-    activeSpeakerId,
+    activeSpeakerId: effectiveActiveSpeakerId,
     presentationStream,
     presenterName,
     currentUserId: userId,
@@ -554,7 +605,7 @@ export default function MeetsClient({
           isHandRaised={isHandRaised}
           participants={participants}
           isMirrorCamera={isMirrorCamera}
-          activeSpeakerId={activeSpeakerId}
+          activeSpeakerId={effectiveActiveSpeakerId}
           currentUserId={userId}
           audioOutputDeviceId={selectedAudioOutputDeviceId}
           activeScreenShareId={activeScreenShareId}
@@ -684,7 +735,7 @@ export default function MeetsClient({
         isHandRaised={isHandRaised}
         participants={participants}
         isMirrorCamera={isMirrorCamera}
-        activeSpeakerId={activeSpeakerId}
+        activeSpeakerId={effectiveActiveSpeakerId}
         currentUserId={userId}
         audioOutputDeviceId={selectedAudioOutputDeviceId}
         activeScreenShareId={activeScreenShareId}

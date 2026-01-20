@@ -3,6 +3,7 @@
 import { memo } from "react";
 import { MessageSquare, X } from "lucide-react";
 import type { ChatMessage } from "../types";
+import { getActionText } from "../chat-commands";
 
 interface ChatOverlayProps {
   messages: ChatMessage[];
@@ -23,9 +24,21 @@ function ChatOverlay({ messages, onDismiss }: ChatOverlayProps) {
               <p className="text-xs font-medium text-white/70 truncate">
                 {message.displayName}
               </p>
-              <p className="text-sm text-white break-words">
-                {message.content}
-              </p>
+              {(() => {
+                const actionText = getActionText(message.content);
+                if (!actionText) {
+                  return (
+                    <p className="text-sm text-white break-words">
+                      {message.content}
+                    </p>
+                  );
+                }
+                return (
+                  <p className="text-sm text-white/80 italic break-words">
+                    {actionText}
+                  </p>
+                );
+              })()}
             </div>
             <button
               onClick={() => onDismiss(message.id)}

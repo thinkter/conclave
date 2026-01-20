@@ -1,8 +1,9 @@
 "use client";
 
 import { Send, X } from "lucide-react";
-import { memo, useEffect, useRef } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import type { ChatMessage } from "../../types";
+import { getActionText, getCommandSuggestions } from "../../chat-commands";
 
 interface MobileChatPanelProps {
   messages: ChatMessage[];
@@ -27,16 +28,60 @@ function MobileChatPanel({
 }: MobileChatPanelProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const [activeCommandIndex, setActiveCommandIndex] = useState(0);
+
+  const commandSuggestions = getCommandSuggestions(chatInput);
+  const showCommandSuggestions =
+    !isGhostMode && chatInput.startsWith("/") && commandSuggestions.length > 0;
+  const isPickingCommand =
+    showCommandSuggestions && !chatInput.slice(1).includes(" ");
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  useEffect(() => {
+    setActiveCommandIndex(0);
+  }, [chatInput]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (chatInput.trim() && !isGhostMode) {
       onSend(chatInput.trim());
       onInputChange("");
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (showCommandSuggestions) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setActiveCommandIndex((prev) =>
+          (prev + 1) % commandSuggestions.length
+        );
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setActiveCommandIndex((prev) =>
+          (prev - 1 + commandSuggestions.length) % commandSuggestions.length
+        );
+        return;
+      }
+      if (isPickingCommand && (e.key === "Tab" || e.key === "Enter")) {
+        const command = commandSuggestions[activeCommandIndex];
+        const isExactMatch =
+          command &&
+          chatInput.trim().toLowerCase() === `/${command.label}`;
+        if (e.key === "Enter" && isExactMatch) {
+          return;
+        }
+        e.preventDefault();
+        if (command) {
+          onInputChange(command.insertText);
+        }
+        return;
+      }
     }
   };
 
@@ -82,6 +127,20 @@ function MobileChatPanel({
         ) : (
           messages.map((message) => {
             const isOwn = message.userId === currentUserId;
+            const actionText = getActionText(message.content);
+            if (actionText) {
+              return (
+                <div
+                  key={message.id}
+                  className="text-[11px] text-[#FEFCD9]/70 italic px-1"
+                >
+                  <span className="text-[#F95F4A]/80">
+                    {isOwn ? "You" : resolveDisplayName(message.userId)}
+                  </span>{" "}
+                  {actionText}
+                </div>
+              );
+            }
             return (
               <div
                 key={message.id}
@@ -114,14 +173,46 @@ function MobileChatPanel({
       {/* Input */}
       <form
         onSubmit={handleSubmit}
-        className="flex items-center gap-2 px-4 py-3 border-t border-[#FEFCD9]/10 bg-[#1a1a1a]"
+        className="relative flex items-center gap-2 px-4 py-3 border-t border-[#FEFCD9]/10 bg-[#1a1a1a]"
       >
+        {showCommandSuggestions && (
+          <div className="absolute bottom-full mb-2 left-0 right-0 max-h-40 overflow-y-auto rounded-2xl border border-[#FEFCD9]/10 bg-[#0d0e0d]/95 shadow-xl">
+            {commandSuggestions.map((command, index) => {
+              const isActive = index === activeCommandIndex;
+              return (
+                <button
+                  key={command.id}
+                  type="button"
+                  onClick={() => onInputChange(command.insertText)}
+                  className={`w-full px-3 py-2 text-left text-sm transition-colors ${
+                    isActive
+                      ? "bg-[#F95F4A]/20 text-[#FEFCD9]"
+                      : "text-[#FEFCD9]/70 hover:bg-[#FEFCD9]/10"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium">/{command.label}</span>
+                    <span className="text-[10px] text-[#FEFCD9]/40">
+                      {command.usage}
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-[#FEFCD9]/45">
+                    {command.description}
+                  </p>
+                </button>
+              );
+            })}
+          </div>
+        )}
         <input
           ref={inputRef}
           type="text"
           value={chatInput}
           onChange={(e) => onInputChange(e.target.value)}
-          placeholder={isGhostMode ? "Ghost mode: chat disabled" : "Type a message..."}
+          onKeyDown={handleKeyDown}
+          placeholder={
+            isGhostMode ? "Ghost mode: chat disabled" : "Type a message or /..."
+          }
           disabled={isGhostMode}
           className="flex-1 bg-[#2a2a2a] border border-[#FEFCD9]/10 rounded-full px-4 py-2.5 text-sm text-[#FEFCD9] placeholder:text-[#FEFCD9]/30 focus:outline-none focus:border-[#F95F4A]/50 disabled:opacity-50"
         />
