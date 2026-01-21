@@ -12,6 +12,7 @@ import {
   SOCKET_TIMEOUT_MS,
   STANDARD_VIDEO_MAX_BITRATE,
   TRANSPORT_DISCONNECT_GRACE_MS,
+  PRODUCER_SYNC_INTERVAL_MS,
 } from "../constants";
 import type {
   ChatMessage,
@@ -163,12 +164,17 @@ export function useMeetSocket({
     producerTransportDisconnectTimeoutRef,
     consumerTransportDisconnectTimeoutRef,
     iceRestartInFlightRef,
+    producerSyncIntervalRef,
   } = refs;
 
   const cleanupRoomResources = useCallback(
     (options?: { resetRoomId?: boolean }) => {
       const resetRoomId = options?.resetRoomId !== false;
       console.log("[Meets] Cleaning up room resources...");
+      if (producerSyncIntervalRef.current) {
+        window.clearInterval(producerSyncIntervalRef.current);
+        producerSyncIntervalRef.current = null;
+      }
 
       consumersRef.current.forEach((consumer) => {
         try {
@@ -244,6 +250,7 @@ export function useMeetSocket({
       videoProducerRef,
       producerTransportDisconnectTimeoutRef,
       consumerTransportDisconnectTimeoutRef,
+      producerSyncIntervalRef,
     ]
   );
 
@@ -252,6 +259,10 @@ export function useMeetSocket({
 
     intentionalDisconnectRef.current = true;
     cleanupRoomResources();
+    if (producerSyncIntervalRef.current) {
+      window.clearInterval(producerSyncIntervalRef.current);
+      producerSyncIntervalRef.current = null;
+    }
 
     localStream?.getTracks().forEach((track) => {
       stopLocalTrack(track);
@@ -276,6 +287,7 @@ export function useMeetSocket({
     socketRef,
     deviceRef,
     stopLocalTrack,
+    producerSyncIntervalRef,
   ]);
 
   const scheduleParticipantRemoval = useCallback(
@@ -867,6 +879,64 @@ export function useMeetSocket({
     ]
   );
 
+  const syncProducers = useCallback(async () => {
+    const socket = socketRef.current;
+    const device = deviceRef.current;
+    if (!socket || !socket.connected || !device) return;
+    if (!currentRoomIdRef.current) return;
+
+    try {
+      const producers = await new Promise<ProducerInfo[]>((resolve, reject) => {
+        socket.emit(
+          "getProducers",
+          (response: { producers: ProducerInfo[] } | { error: string }) => {
+            if ("error" in response) {
+              reject(new Error(response.error));
+            } else {
+              resolve(response.producers || []);
+            }
+          },
+        );
+      });
+
+      const serverProducerIds = new Set(
+        producers.map((producer) => producer.producerId),
+      );
+
+      for (const producerId of producerMapRef.current.keys()) {
+        if (!serverProducerIds.has(producerId)) {
+          handleProducerClosed(producerId);
+        }
+      }
+
+      for (const producerInfo of producers) {
+        if (consumersRef.current.has(producerInfo.producerId)) continue;
+        if (pendingProducersRef.current.has(producerInfo.producerId)) continue;
+        await consumeProducer(producerInfo);
+      }
+    } catch (err) {
+      console.error("[Meets] Failed to sync producers:", err);
+    }
+  }, [
+    socketRef,
+    deviceRef,
+    currentRoomIdRef,
+    producerMapRef,
+    consumersRef,
+    pendingProducersRef,
+    consumeProducer,
+    handleProducerClosed,
+  ]);
+
+  const startProducerSync = useCallback(() => {
+    if (producerSyncIntervalRef.current) {
+      window.clearInterval(producerSyncIntervalRef.current);
+    }
+    producerSyncIntervalRef.current = window.setInterval(() => {
+      void syncProducers();
+    }, PRODUCER_SYNC_INTERVAL_MS);
+  }, [producerSyncIntervalRef, syncProducers]);
+
   const flushPendingProducers = useCallback(async () => {
     if (!pendingProducersRef.current.size) return;
     const pending = Array.from(pendingProducersRef.current.values());
@@ -944,6 +1014,8 @@ export function useMeetSocket({
               await flushPendingProducers();
 
               setConnectionState("joined");
+              startProducerSync();
+              void syncProducers();
               playNotificationSound("join");
               resolve("joined");
             } catch (err) {
@@ -966,6 +1038,8 @@ export function useMeetSocket({
       consumeProducer,
       flushPendingProducers,
       playNotificationSound,
+      startProducerSync,
+      syncProducers,
     ]
   );
 

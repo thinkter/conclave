@@ -61,6 +61,7 @@ export function useMeetRefs() {
     producer: false,
     consumer: false,
   });
+  const producerSyncIntervalRef = useRef<number | null>(null);
 
   return {
     socketRef,
@@ -97,6 +98,7 @@ export function useMeetRefs() {
     producerTransportDisconnectTimeoutRef,
     consumerTransportDisconnectTimeoutRef,
     iceRestartInFlightRef,
+    producerSyncIntervalRef,
   };
 }
 
