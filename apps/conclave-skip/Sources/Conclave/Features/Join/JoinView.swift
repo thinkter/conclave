@@ -182,7 +182,7 @@ struct JoinView: View {
 #endif
                                     .scaleEffect(0.8)
                             } else {
-                                ACMSystemIcon.image("globe", androidName: "Icons.Outlined.Public")
+                                ACMSystemIcon.image("globe", androidName: "Icons.Outlined.AccountCircle")
                                     .font(.system(size: 16))
                             }
 
@@ -376,7 +376,7 @@ struct JoinView: View {
                         } label: {
                             ACMSystemIcon.image(
                                 isMicOn ? "mic.fill" : "mic.slash.fill",
-                                androidName: isMicOn ? "Icons.Filled.Mic" : "Icons.Filled.MicOff"
+                                androidName: isMicOn ? "Icons.Filled.Call" : "Icons.Filled.Close"
                             )
                                 .font(.system(size: 16))
                                 .foregroundStyle(Color.white)
@@ -391,7 +391,7 @@ struct JoinView: View {
                         } label: {
                             ACMSystemIcon.image(
                                 isCameraOn ? "video.fill" : "video.slash.fill",
-                                androidName: isCameraOn ? "Icons.Filled.Videocam" : "Icons.Filled.VideocamOff"
+                                androidName: isCameraOn ? "Icons.Filled.PlayArrow" : "Icons.Filled.Close"
                             )
                                 .font(.system(size: 16))
                                 .foregroundStyle(Color.white)

@@ -109,7 +109,7 @@ struct WaitingRoomView: View {
                 }
 
                 HStack(spacing: 8) {
-                    ACMSystemIcon.image("number", androidName: "info.circle")
+                    ACMSystemIcon.image("number", androidName: "Icons.Outlined.Info")
                         .font(.system(size: 12))
                         .foregroundStyle(ACMColors.creamDim)
 

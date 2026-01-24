@@ -113,7 +113,7 @@ struct VideoGridItem: View {
             acmColor01(red: 0.0, green: 0.0, blue: 0.0, opacity: 0.4)
 
             VStack(spacing: 8) {
-                ACMSystemIcon.image("theatermasks.fill", androidName: "Icons.Filled.TheaterComedy")
+                ACMSystemIcon.image("theatermasks.fill", androidName: "Icons.Filled.Face")
                     .font(.system(size: 48))
                     .foregroundStyle(ACMColors.primaryPink)
                     .shadow(color: ACMColors.primaryPinkSoft, radius: 16.0)
@@ -138,7 +138,7 @@ struct VideoGridItem: View {
     var handRaisedBadge: some View {
         VStack {
             HStack {
-                ACMSystemIcon.image("hand.raised.fill", androidName: "Icons.Filled.PanTool")
+                ACMSystemIcon.image("hand.raised.fill", androidName: "Icons.Filled.ThumbUp")
                     .font(.system(size: 14))
                     .foregroundStyle(acmColor01(red: 1.0, green: 0.5, blue: 0.0, opacity: 0.9))
                     .padding(8)
@@ -178,7 +178,7 @@ struct VideoGridItem: View {
                     }
 
                     if isMuted {
-                        ACMSystemIcon.image("mic.slash.fill", androidName: "Icons.Filled.MicOff")
+                        ACMSystemIcon.image("mic.slash.fill", androidName: "Icons.Filled.Close")
                             .font(.system(size: 10))
                             .foregroundStyle(ACMColors.primaryOrange)
                     }

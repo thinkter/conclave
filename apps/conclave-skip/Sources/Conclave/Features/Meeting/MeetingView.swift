@@ -133,7 +133,7 @@ struct MeetingHeaderView: View {
             
             Button(action: onParticipantsPressed) {
                 HStack(spacing: 4) {
-                    ACMSystemIcon.image("person.2.fill", androidName: "Icons.Filled.People")
+                    ACMSystemIcon.image("person.2.fill", androidName: "Icons.Filled.Person")
                         .font(.system(size: 12))
                     
                     Text("\(participantCount)")
@@ -257,7 +257,7 @@ struct LocalVideoTileView: View {
                     acmColor01(red: 0.0, green: 0.0, blue: 0.0, opacity: 0.4)
                     
                     VStack(spacing: 8) {
-                        ACMSystemIcon.image("theatermasks.fill", androidName: "Icons.Filled.TheaterComedy")
+                        ACMSystemIcon.image("theatermasks.fill", androidName: "Icons.Filled.Face")
                             .font(.system(size: 48))
                             .foregroundStyle(ACMColors.primaryPink)
                             .shadow(color: ACMColors.primaryPinkSoft, radius: 16.0)
@@ -282,7 +282,7 @@ struct LocalVideoTileView: View {
             if isHandRaised {
                 VStack {
                     HStack {
-                        ACMSystemIcon.image("hand.raised.fill", androidName: "Icons.Filled.PanTool")
+                        ACMSystemIcon.image("hand.raised.fill", androidName: "Icons.Filled.ThumbUp")
                             .font(.system(size: 14))
                             .foregroundStyle(acmColor01(red: 1.0, green: 0.5, blue: 0.0, opacity: 0.9))
                             .padding(8)
@@ -318,7 +318,7 @@ struct LocalVideoTileView: View {
                             .tracking(2)
                         
                         if isMuted {
-                            ACMSystemIcon.image("mic.slash.fill", androidName: "Icons.Filled.MicOff")
+                            ACMSystemIcon.image("mic.slash.fill", androidName: "Icons.Filled.Close")
                                 .font(.system(size: 10))
                                 .foregroundStyle(ACMColors.primaryOrange)
                         }
@@ -382,7 +382,7 @@ struct RemoteVideoTileView: View {
                     acmColor01(red: 0.0, green: 0.0, blue: 0.0, opacity: 0.4)
                     
                     VStack(spacing: 8) {
-                        ACMSystemIcon.image("theatermasks.fill", androidName: "Icons.Filled.TheaterComedy")
+                        ACMSystemIcon.image("theatermasks.fill", androidName: "Icons.Filled.Face")
                             .font(.system(size: 48))
                             .foregroundStyle(ACMColors.primaryPink)
                             .shadow(color: ACMColors.primaryPinkSoft, radius: 16.0)
@@ -407,7 +407,7 @@ struct RemoteVideoTileView: View {
             if participant.isHandRaised {
                 VStack {
                     HStack {
-                        ACMSystemIcon.image("hand.raised.fill", androidName: "Icons.Filled.PanTool")
+                        ACMSystemIcon.image("hand.raised.fill", androidName: "Icons.Filled.ThumbUp")
                             .font(.system(size: 14))
                             .foregroundStyle(acmColor01(red: 1.0, green: 0.5, blue: 0.0, opacity: 0.9))
                             .padding(8)
@@ -438,7 +438,7 @@ struct RemoteVideoTileView: View {
                             .tracking(1)
                         
                         if participant.isMuted {
-                            ACMSystemIcon.image("mic.slash.fill", androidName: "Icons.Filled.MicOff")
+                            ACMSystemIcon.image("mic.slash.fill", androidName: "Icons.Filled.Close")
                                 .font(.system(size: 10))
                                 .foregroundStyle(ACMColors.primaryOrange)
                         }
@@ -482,7 +482,7 @@ struct PresentationLayoutView: View {
                         RemoteVideoView(trackWrapper: trackWrapper)
                     } else {
                         VStack(spacing: 8) {
-                            ACMSystemIcon.image("rectangle.on.rectangle", androidName: "Icons.Filled.PresentToAll")
+                            ACMSystemIcon.image("rectangle.on.rectangle", androidName: "Icons.Filled.Share")
                                 .font(.system(size: 48))
                                 .foregroundStyle(ACMColors.creamMuted)
                             
@@ -549,56 +549,56 @@ struct ControlsBarView: View {
         let isCompact = availableWidth < 420
         let participantsIcon: String = {
             #if SKIP
-            return "Icons.Filled.People"
+            return "Icons.Filled.Person"
             #else
             return "person.2.fill"
             #endif
         }()
         let lockIcon: String = {
             #if SKIP
-            return viewModel.state.isRoomLocked ? "Icons.Filled.Lock" : "Icons.Filled.LockOpen"
+            return viewModel.state.isRoomLocked ? "Icons.Filled.Lock" : "Icons.Outlined.Lock"
             #else
             return viewModel.state.isRoomLocked ? "lock.fill" : "lock.open.fill"
             #endif
         }()
         let micIcon: String = {
             #if SKIP
-            return viewModel.state.isMuted ? "Icons.Filled.MicOff" : "Icons.Filled.Mic"
+            return viewModel.state.isMuted ? "Icons.Filled.Close" : "Icons.Filled.Call"
             #else
             return viewModel.state.isMuted ? "mic.slash.fill" : "mic.fill"
             #endif
         }()
         let cameraIcon: String = {
             #if SKIP
-            return viewModel.state.isCameraOff ? "Icons.Filled.VideocamOff" : "Icons.Filled.Videocam"
+            return viewModel.state.isCameraOff ? "Icons.Filled.Close" : "Icons.Filled.PlayArrow"
             #else
             return viewModel.state.isCameraOff ? "video.slash.fill" : "video.fill"
             #endif
         }()
         let screenShareIcon: String = {
             #if SKIP
-            return "Icons.Filled.PresentToAll"
+            return "Icons.Filled.Share"
             #else
             return "rectangle.on.rectangle"
             #endif
         }()
         let handRaiseIcon: String = {
             #if SKIP
-            return "Icons.Filled.PanTool"
+            return "Icons.Filled.ThumbUp"
             #else
             return "hand.raised.fill"
             #endif
         }()
         let chatIcon: String = {
             #if SKIP
-            return "Icons.Outlined.Chat"
+            return "Icons.Outlined.MailOutline"
             #else
             return "message.fill"
             #endif
         }()
         let reactionIcon: String = {
             #if SKIP
-            return "Icons.Outlined.EmojiEmotions"
+            return "Icons.Outlined.ThumbUp"
             #else
             return "face.smiling"
             #endif
@@ -713,7 +713,7 @@ struct ControlsBarView: View {
             Button {
                 viewModel.leaveRoom()
             } label: {
-                ACMSystemIcon.image("phone.down.fill", androidName: "Icons.Filled.CallEnd")
+                    ACMSystemIcon.image("phone.down.fill", androidName: "Icons.Filled.Call")
                     .font(.system(size: 16))
                     .foregroundStyle(acmColor01(red: 1.0, green: 0.0, blue: 0.0, opacity: 0.9))
                     .rotationEffect(.degrees(135))
@@ -1019,7 +1019,7 @@ struct ParticipantsSheetView: View {
                         }
                         
                         if viewModel.state.isMuted {
-                            ACMSystemIcon.image("mic.slash.fill", androidName: "Icons.Filled.MicOff")
+                            ACMSystemIcon.image("mic.slash.fill", androidName: "Icons.Filled.Close")
                                 .font(.system(size: 12))
                                 .foregroundStyle(Color.red)
                         }
@@ -1040,7 +1040,7 @@ struct ParticipantsSheetView: View {
                                 .font(ACMFont.trial(14, weight: .medium))
                             
                             if participant.isGhost {
-                                ACMSystemIcon.image("theatermasks.fill", androidName: "Icons.Filled.TheaterComedy")
+                                ACMSystemIcon.image("theatermasks.fill", androidName: "Icons.Filled.Face")
                                     .font(.system(size: 12))
                                     .foregroundStyle(ACMColors.primaryPink)
                             }
@@ -1053,7 +1053,7 @@ struct ParticipantsSheetView: View {
                             }
                             
                             if participant.isMuted {
-                                ACMSystemIcon.image("mic.slash.fill", androidName: "Icons.Filled.MicOff")
+                                ACMSystemIcon.image("mic.slash.fill", androidName: "Icons.Filled.Close")
                                     .font(.system(size: 12))
                                     .foregroundStyle(Color.red)
                             }
