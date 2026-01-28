@@ -4,12 +4,11 @@
   "packageManager": "pnpm@9.12.3",
   "workspaces": [
     "apps/*",
+    "!apps/mobile",
     "packages/*"
   ],
-  "pnpm": {
-    "overrides": {
-      "tar@<=7.5.2": ">=7.5.3",
-      "tar@<=7.5.3": ">=7.5.4"
-    }
+  "overrides": {
+    "tar@<=7.5.2": ">=7.5.3",
+    "tar@<=7.5.3": ">=7.5.4"
   }
 }
