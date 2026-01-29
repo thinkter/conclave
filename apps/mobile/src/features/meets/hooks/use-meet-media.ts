@@ -1011,32 +1011,54 @@ export function useMeetMedia({
     requestAndroidPermissions,
   ]);
 
-  const toggleScreenShare = useCallback(async () => {
-    if (ghostEnabled) return;
-    if (isScreenSharing) {
+  const stopScreenShare = useCallback(
+    (options?: { notify?: boolean }) => {
       const producer = screenProducerRef.current;
+      const shouldNotify = options?.notify !== false;
+
       if (producer) {
-        socketRef.current?.emit(
-          "closeProducer",
-          { producerId: producer.id },
-          () => {}
-        );
+        if (shouldNotify) {
+          socketRef.current?.emit(
+            "closeProducer",
+            { producerId: producer.id },
+            () => {}
+          );
+        }
         try {
           producer.close();
         } catch {}
         if (producer.track) {
           producer.track.onended = null;
+          stopLocalTrack(producer.track);
         }
       }
+
       screenProducerRef.current = null;
+
       if (screenShareStreamRef.current) {
         screenShareStreamRef.current
           .getTracks()
           .forEach((track) => stopLocalTrack(track));
         screenShareStreamRef.current = null;
-        setScreenShareStream(null);
       }
+
+      setScreenShareStream(null);
       setIsScreenSharing(false);
+    },
+    [
+      screenProducerRef,
+      screenShareStreamRef,
+      socketRef,
+      setScreenShareStream,
+      setIsScreenSharing,
+      stopLocalTrack,
+    ]
+  );
+
+  const toggleScreenShare = useCallback(async () => {
+    if (ghostEnabled) return;
+    if (isScreenSharing) {
+      stopScreenShare({ notify: true });
       return;
     }
 
@@ -1093,23 +1115,7 @@ export function useMeetMedia({
       setIsScreenSharing(true);
 
       track.onended = () => {
-        socketRef.current?.emit(
-          "closeProducer",
-          { producerId: producer.id },
-          () => {}
-        );
-        try {
-          producer.close();
-        } catch {}
-        screenProducerRef.current = null;
-        if (screenShareStreamRef.current) {
-          screenShareStreamRef.current
-            .getTracks()
-            .forEach((streamTrack) => stopLocalTrack(streamTrack));
-          screenShareStreamRef.current = null;
-          setScreenShareStream(null);
-        }
-        setIsScreenSharing(false);
+        stopScreenShare({ notify: true });
       };
     } catch (err) {
       if (screenShareStreamRef.current) {
@@ -1156,7 +1162,15 @@ export function useMeetMedia({
     screenShareStreamRef,
     setMeetError,
     stopLocalTrack,
+    stopScreenShare,
   ]);
+
+  useEffect(() => {
+    if (connectionState === "joined") return;
+    if (isScreenSharing) {
+      stopScreenShare({ notify: false });
+    }
+  }, [connectionState, isScreenSharing, stopScreenShare]);
 
   useEffect(() => {
     localStreamRef.current = localStream;
@@ -1173,6 +1187,7 @@ export function useMeetMedia({
     toggleMute,
     toggleCamera,
     toggleScreenShare,
+    stopScreenShare,
     stopLocalTrack,
     handleLocalTrackEnded,
     primeAudioOutput,

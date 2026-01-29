@@ -103,7 +103,7 @@ export function ParticipantTile({
             styles.handRaisedBadge,
             { width: handBadgeSize, height: handBadgeSize, borderRadius: handBadgeSize / 2 }
           ]}>
-            <Hand size={isTablet ? 16 : 14} color="#000000" strokeWidth={2} />
+            <Hand size={isTablet ? 16 : 14} color={COLORS.cream} strokeWidth={2} />
           </RNView>
         </RNView>
       )}

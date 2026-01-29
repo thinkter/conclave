@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { StatusBar } from "expo-status-bar";
 import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
 import {
+  AppState,
   NativeModules,
   Platform,
   StyleSheet,
@@ -32,6 +33,7 @@ import { useMeetReactions } from "../hooks/use-meet-reactions";
 import { useMeetRefs } from "../hooks/use-meet-refs";
 import { useMeetSocket } from "../hooks/use-meet-socket";
 import { useMeetState } from "../hooks/use-meet-state";
+import { useDeviceLayout } from "../hooks/use-device-layout";
 import type { Participant } from "../types";
 import { createMeetError } from "../utils";
 import { getCachedUser, hydrateCachedUser, setCachedUser } from "../auth-session";
@@ -42,7 +44,7 @@ import { JoinScreen } from "./join-screen";
 import { ParticipantsPanel } from "./participants-panel";
 import { ReactionOverlay } from "./reaction-overlay";
 import { ReactionSheet } from "./reaction-sheet";
-import { AudioRouteSheet, type AudioRoute } from "./audio-route-sheet";
+import { SettingsSheet } from "./settings-sheet";
 
 const clientId = process.env.EXPO_PUBLIC_SFU_CLIENT_ID || "public";
 const apiBaseUrl =
@@ -63,12 +65,23 @@ const readError = async (response: Response) => {
   return response.statusText || "Request failed";
 };
 
-export function MeetScreen() {
+export function MeetScreen({ initialRoomId }: { initialRoomId?: string } = {}) {
   if (process.env.EXPO_OS !== "web") {
     ensureWebRTCGlobals();
   }
 
+  const { isTablet } = useDeviceLayout();
   const refs = useMeetRefs();
+  const isAppActiveRef = useRef(AppState.currentState === "active");
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (state) => {
+      isAppActiveRef.current = state === "active";
+    });
+    return () => {
+      subscription.remove();
+    };
+  }, []);
   const {
     connectionState,
     setConnectionState,
@@ -103,7 +116,7 @@ export function MeetScreen() {
     pendingUsers,
     isRoomLocked,
     setIsRoomLocked,
-  } = useMeetState({ initialRoomId: "" });
+  } = useMeetState({ initialRoomId });
 
   const {
     videoQuality,
@@ -213,6 +226,7 @@ export function MeetScreen() {
     toggleMute,
     toggleCamera,
     toggleScreenShare,
+    stopScreenShare,
     stopLocalTrack,
     handleLocalTrackEnded,
     playNotificationSound,
@@ -352,6 +366,7 @@ export function MeetScreen() {
       setUnreadCount,
       isChatOpenRef,
     },
+    isAppActiveRef,
   });
 
   useMeetAudioActivity({
@@ -401,8 +416,12 @@ export function MeetScreen() {
   const playNotificationSoundRef = useRef(playNotificationSound);
   playNotificationSoundRef.current = playNotificationSound;
 
+  const stopScreenShareRef = useRef(stopScreenShare);
+  stopScreenShareRef.current = stopScreenShare;
+
   const handleLeave = useCallback(() => {
     playNotificationSoundRef.current("leave");
+    stopScreenShareRef.current({ notify: true });
     socketCleanupRef.current();
     if (callIdRef.current) endCallSession(callIdRef.current);
     stopInCall();
@@ -423,7 +442,7 @@ export function MeetScreen() {
       );
       callIdRef.current = activeCallId;
       startInCall();
-      setAudioRoute(audioRoute);
+      setAudioRoute("speaker");
       cleanupHandlers = registerCallKeepHandlers(() => {
         handleLeave();
       });
@@ -453,15 +472,26 @@ export function MeetScreen() {
   );
 
   const [isReactionSheetOpen, setIsReactionSheetOpen] = useState(false);
-  const [isAudioSheetOpen, setIsAudioSheetOpen] = useState(false);
-  const [audioRoute, setAudioRouteState] = useState<AudioRoute>("speaker");
+  const [isSettingsSheetOpen, setIsSettingsSheetOpen] = useState(false);
 
   const handleToggleChat = useCallback(() => {
     setIsParticipantsOpen(false);
     setIsReactionSheetOpen(false);
-    setIsAudioSheetOpen(false);
+    setIsSettingsSheetOpen(false);
     toggleChat();
-  }, [toggleChat, setIsParticipantsOpen, setIsReactionSheetOpen, setIsAudioSheetOpen]);
+  }, [toggleChat, setIsParticipantsOpen, setIsReactionSheetOpen, setIsSettingsSheetOpen]);
+
+  useEffect(() => {
+    if (initialRoomId && !roomId) {
+      setRoomId(initialRoomId);
+    }
+  }, [initialRoomId, roomId, setRoomId]);
+
+  useEffect(() => {
+    if (isTablet && isSettingsSheetOpen) {
+      setIsSettingsSheetOpen(false);
+    }
+  }, [isTablet, isSettingsSheetOpen]);
 
   type ScreenSharePickerHandle = React.Component<any, any>;
   const ScreenSharePicker =
@@ -557,6 +587,23 @@ export function MeetScreen() {
   const { presentationStream, presenterName } = useMemo(() => {
     if (localScreenShareStream) {
       return { presentationStream: localScreenShareStream, presenterName: "You" };
+    }
+
+    if (activeScreenShareId) {
+      for (const participant of participants.values()) {
+        if (
+          participant.screenShareStream &&
+          participant.screenShareProducerId === activeScreenShareId
+        ) {
+          const track = participant.screenShareStream.getVideoTracks()[0];
+          if (track && track.readyState === "live") {
+            return {
+              presentationStream: participant.screenShareStream,
+              presenterName: resolveDisplayName(participant.userId),
+            };
+          }
+        }
+      }
     }
 
     if (activeScreenShareId) {
@@ -661,7 +708,7 @@ export function MeetScreen() {
           onToggleParticipants={() => {
             if (isChatOpen) toggleChat();
             setIsReactionSheetOpen(false);
-            setIsAudioSheetOpen(false);
+            setIsSettingsSheetOpen(false);
             setIsParticipantsOpen((prev) => !prev);
           }}
           onToggleRoomLock={(locked) => {
@@ -670,11 +717,12 @@ export function MeetScreen() {
           onSendReaction={(emoji) => {
             sendReaction({ kind: "emoji", id: emoji, value: emoji, label: emoji });
           }}
-          onOpenAudio={() => {
+          onOpenSettings={() => {
+            if (isTablet) return;
             if (isChatOpen) toggleChat();
             setIsParticipantsOpen(false);
             setIsReactionSheetOpen(false);
-            setIsAudioSheetOpen(true);
+            setIsSettingsSheetOpen(true);
           }}
           onLeave={handleLeave}
           isAdmin={isAdmin}
@@ -683,7 +731,13 @@ export function MeetScreen() {
         />
       )}
 
-      {isJoined ? <ReactionOverlay reactions={reactions} /> : null}
+      {isJoined ? (
+        <ReactionOverlay
+          reactions={reactions}
+          currentUserId={userId}
+          resolveDisplayName={resolveDisplayName}
+        />
+      ) : null}
 
       {isJoined ? (
         <ChatPanel
@@ -731,16 +785,20 @@ export function MeetScreen() {
         />
       ) : null}
 
-      {isJoined ? (
-        <AudioRouteSheet
-          visible={isAudioSheetOpen}
-          currentRoute={audioRoute}
-          onSelect={(route) => {
-            setAudioRouteState(route);
-            setAudioRoute(route);
-            setIsAudioSheetOpen(false);
+      {isJoined && !isTablet ? (
+        <SettingsSheet
+          visible={isSettingsSheetOpen}
+          isScreenSharing={isScreenSharing}
+          isHandRaised={isHandRaised}
+          onToggleScreenShare={() => {
+            setIsSettingsSheetOpen(false);
+            handleToggleScreenShare();
           }}
-          onClose={() => setIsAudioSheetOpen(false)}
+          onToggleHandRaised={() => {
+            setIsSettingsSheetOpen(false);
+            toggleHandRaised();
+          }}
+          onClose={() => setIsSettingsSheetOpen(false)}
         />
       ) : null}
 

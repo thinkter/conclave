@@ -91,6 +91,7 @@ interface UseMeetSocketOptions {
     setUnreadCount: React.Dispatch<React.SetStateAction<number>>;
     isChatOpenRef: React.MutableRefObject<boolean>;
   };
+  isAppActiveRef?: React.MutableRefObject<boolean>;
   onTtsMessage?: (payload: {
     userId: string;
     displayName: string;
@@ -142,6 +143,7 @@ export function useMeetSocket({
   addReaction,
   clearReactions,
   chat,
+  isAppActiveRef,
   onTtsMessage,
   prewarm,
 }: UseMeetSocketOptions) {
@@ -789,6 +791,13 @@ export function useMeetSocket({
                 kind: response.kind,
                 rtpParameters: response.rtpParameters,
               });
+
+              if (response.kind === "video") {
+                consumer.track.enabled = true;
+              }
+              if (typeof consumer.resume === "function") {
+                consumer.resume();
+              }
 
               consumersRef.current.set(producerInfo.producerId, consumer);
               producerMapRef.current.set(producerInfo.producerId, {
@@ -1711,6 +1720,10 @@ export function useMeetSocket({
 
     try {
       while (reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {
+        if (isAppActiveRef && !isAppActiveRef.current) {
+          await new Promise((r) => setTimeout(r, RECONNECT_DELAY_MS));
+          continue;
+        }
         setConnectionState("reconnecting");
         reconnectAttemptsRef.current++;
         const delay =
@@ -1732,7 +1745,14 @@ export function useMeetSocket({
           await connectSocket(reconnectRoomId);
 
           const joinOptions = joinOptionsRef.current;
-          const stream = localStreamRef.current || localStream;
+          let stream = localStreamRef.current || localStream;
+          if (!stream && !joinOptions.isGhost) {
+            stream = await requestMediaPermissions();
+            if (stream) {
+              localStreamRef.current = stream;
+              setLocalStream(stream);
+            }
+          }
           if (reconnectRoomId && (stream || joinOptions.isGhost)) {
             await joinRoomInternal(reconnectRoomId, stream, joinOptions);
           }
@@ -1748,6 +1768,12 @@ export function useMeetSocket({
         recoverable: false,
       });
       setConnectionState("error");
+      const streamToStop = localStreamRef.current || localStream;
+      if (streamToStop) {
+        streamToStop.getTracks().forEach((track) => stopLocalTrack(track));
+      }
+      localStreamRef.current = null;
+      setLocalStream(null);
     } finally {
       reconnectInFlightRef.current = false;
     }
@@ -1755,15 +1781,19 @@ export function useMeetSocket({
     cleanupRoomResources,
     connectSocket,
     currentRoomIdRef,
+    isAppActiveRef,
     joinOptionsRef,
     joinRoomInternal,
     localStream,
     localStreamRef,
     reconnectAttemptsRef,
     reconnectInFlightRef,
+    requestMediaPermissions,
     setConnectionState,
     setMeetError,
+    setLocalStream,
     socketRef,
+    stopLocalTrack,
   ]);
 
   useEffect(() => {
