@@ -517,7 +517,7 @@
 				CODE_SIGN_ENTITLEMENTS = ScreenShareExtension/ScreenShareExtension.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 4;
 				DEVELOPMENT_TEAM = RZGK9VX3KX;
 				INFOPLIST_FILE = ScreenShareExtension/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
@@ -655,13 +655,14 @@
 		};
 		FEFFC0C43BC372125C8D6D0B /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 85B604BA6D699F1A41084F60 /* Pods-mobile.release.xcconfig */;
 			buildSettings = {
 				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = ScreenShareExtension/ScreenShareExtension.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 4;
 				DEVELOPMENT_TEAM = RZGK9VX3KX;
 				INFOPLIST_FILE = ScreenShareExtension/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
