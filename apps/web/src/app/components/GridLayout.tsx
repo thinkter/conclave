@@ -244,8 +244,8 @@ function GridLayout({
 
   const gridClass = getGridLayout(totalParticipants);
 
-  const localSpeakerHighlight = isLocalActiveSpeaker 
-    ? "speaking" 
+  const localSpeakerHighlight = isLocalActiveSpeaker
+    ? "speaking"
     : "";
 
   const copyToClipboard = async (value: string) => {
@@ -510,6 +510,10 @@ function GridLayout({
           </div>
         </div>
       ) : null}
+      <HiddenParticipantsAudio
+        participants={hiddenParticipants}
+        audioOutputDeviceId={audioOutputDeviceId}
+      />
     </div>
   );
 }
@@ -671,6 +675,84 @@ const OverflowGalleryTile = memo(function OverflowGalleryTile({
         </div>
       </div>
     </button>
+  );
+});
+
+const HiddenParticipantAudio = memo(function HiddenParticipantAudio({
+  participant,
+  audioOutputDeviceId,
+}: {
+  participant: Participant;
+  audioOutputDeviceId?: string;
+}) {
+  const audioRef = useRef<HTMLAudioElement>(null);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    if (!participant.audioStream) {
+      if (audio.srcObject) {
+        audio.srcObject = null;
+      }
+      return;
+    }
+
+    if (audio.srcObject !== participant.audioStream) {
+      audio.srcObject = participant.audioStream;
+    }
+
+    const playAudio = () => {
+      audio.play().catch(() => {});
+    };
+
+    playAudio();
+
+    if (audioOutputDeviceId) {
+      const audioElement = audio as HTMLAudioElement & {
+        setSinkId?: (sinkId: string) => Promise<void>;
+      };
+      if (audioElement.setSinkId) {
+        audioElement.setSinkId(audioOutputDeviceId).catch(() => {});
+      }
+    }
+
+    const audioTrack = participant.audioStream.getAudioTracks()[0];
+    if (!audioTrack) return;
+
+    audioTrack.addEventListener("unmute", playAudio);
+    return () => {
+      audioTrack.removeEventListener("unmute", playAudio);
+    };
+  }, [
+    participant.audioStream,
+    participant.audioProducerId,
+    participant.isMuted,
+    audioOutputDeviceId,
+  ]);
+
+  return <audio ref={audioRef} autoPlay className="hidden" />;
+});
+
+const HiddenParticipantsAudio = memo(function HiddenParticipantsAudio({
+  participants,
+  audioOutputDeviceId,
+}: {
+  participants: Participant[];
+  audioOutputDeviceId?: string;
+}) {
+  if (participants.length === 0) return null;
+
+  return (
+    <div className="hidden" aria-hidden="true">
+      {participants.map((participant) => (
+        <HiddenParticipantAudio
+          key={participant.userId}
+          participant={participant}
+          audioOutputDeviceId={audioOutputDeviceId}
+        />
+      ))}
+    </div>
   );
 });
 
