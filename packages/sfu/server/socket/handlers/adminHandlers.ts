@@ -15,7 +15,7 @@ import {
   toPendingUserSnapshots,
   toRoomSnapshot,
 } from "../../admin/controlPlane.js";
-import { forceCloseRoom } from "../../rooms.js";
+import { forceCloseRoom, markRoomEnded } from "../../rooms.js";
 import type { ConnectionContext } from "../context.js";
 import { respond } from "./ack.js";
 
@@ -671,7 +671,13 @@ export const registerAdminHandlers = (
   });
 
   socket.on("admin:getRoomsDetailed", (cb) => {
-    const clientId = resolveClientId(context);
+    const guard = ensureAdminRoom(context);
+    if ("error" in guard) {
+      respond(cb, guard);
+      return;
+    }
+
+    const clientId = guard.room.clientId;
     const rooms = Array.from(state.rooms.values())
       .filter((room) => room.clientId === clientId)
       .map((room) => toRoomSnapshot(room));
@@ -1302,6 +1308,11 @@ export const registerAdminHandlers = (
     const delayMs = parseEndRoomDelay(data?.delayMs);
     const roomChannelId = guard.room.channelId;
     const roomId = guard.room.id;
+
+    markRoomEnded(state, guard.room, {
+      message,
+      endedBy: guard.adminId,
+    });
 
     io.to(roomChannelId).emit("roomEnded", {
       roomId,

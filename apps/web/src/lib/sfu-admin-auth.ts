@@ -78,10 +78,6 @@ export type AuthorizedSfuAdminUser = {
 };
 
 const isAllowlisted = (user: AuthorizedSfuAdminUser): boolean => {
-  if (!hasAllowlistEntries) {
-    return !isAllowlistRequired;
-  }
-
   if (allowlistedUserIds.has(user.id)) {
     return true;
   }
@@ -99,6 +95,18 @@ const isAllowlisted = (user: AuthorizedSfuAdminUser): boolean => {
   }
 
   return false;
+};
+
+const getAllowlistConfigurationError = (): string | null => {
+  if (hasAllowlistEntries) {
+    return null;
+  }
+
+  if (isAllowlistRequired) {
+    return "SFU admin allowlist is required but not configured. Set SFU_ADMIN_ALLOWLIST_* env vars.";
+  }
+
+  return "SFU admin access is disabled until an allowlist is configured. Set SFU_ADMIN_ALLOWLIST_* env vars.";
 };
 
 export const resolveSfuUrl = (): string =>
@@ -137,12 +145,12 @@ export const requireSfuAdminUser = async (
     return { ok: false, status: 401, error: "Authentication required" };
   }
 
-  if (isAllowlistRequired && !hasAllowlistEntries) {
+  const allowlistConfigurationError = getAllowlistConfigurationError();
+  if (allowlistConfigurationError) {
     return {
       ok: false,
       status: 503,
-      error:
-        "SFU admin allowlist is required but not configured. Set SFU_ADMIN_ALLOWLIST_* env vars.",
+      error: allowlistConfigurationError,
     };
   }
 
