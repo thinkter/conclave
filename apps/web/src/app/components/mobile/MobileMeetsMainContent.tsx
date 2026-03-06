@@ -37,6 +37,7 @@ import { useApps } from "@conclave/apps-sdk";
 import DevPlaygroundLayout from "../DevPlaygroundLayout";
 import DevMeetToolsPanel from "../DevMeetToolsPanel";
 import ParticipantVideo from "../ParticipantVideo";
+import { useStableSpeakerId } from "../../hooks/useStableSpeakerId";
 
 interface MobileMeetsMainContentProps {
   isJoined: boolean;
@@ -123,6 +124,12 @@ interface MobileMeetsMainContentProps {
   onToggleBrowserAudio: () => void;
   browserAudioNeedsGesture: boolean;
   onBrowserAudioAutoplayBlocked: () => void;
+  isVoiceAgentRunning?: boolean;
+  isVoiceAgentStarting?: boolean;
+  voiceAgentError?: string | null;
+  onStartVoiceAgent?: () => void;
+  onStopVoiceAgent?: () => void;
+  onClearVoiceAgentError?: () => void;
   meetError?: MeetError | null;
   onDismissMeetError?: () => void;
   onRetryMedia?: () => void;
@@ -194,6 +201,9 @@ type PipDragMeta = {
 
 const clamp = (value: number, min: number, max: number) =>
   Math.min(Math.max(value, min), max);
+
+const WEBINAR_SPEAKER_PROMOTE_DELAY_MS = 450;
+const WEBINAR_SPEAKER_MIN_SWITCH_INTERVAL_MS = 1800;
 
 const getPipCornerClass = (corner: PipCorner): string => {
   switch (corner) {
@@ -288,6 +298,12 @@ function MobileMeetsMainContent({
   onToggleBrowserAudio,
   browserAudioNeedsGesture,
   onBrowserAudioAutoplayBlocked,
+  isVoiceAgentRunning = false,
+  isVoiceAgentStarting = false,
+  voiceAgentError = null,
+  onStartVoiceAgent,
+  onStopVoiceAgent,
+  onClearVoiceAgentError,
   meetError,
   onDismissMeetError,
   onRetryMedia,
@@ -439,6 +455,17 @@ function MobileMeetsMainContent({
       ),
     [participantsArray],
   );
+  const webinarParticipantIds = useMemo(
+    () => webinarParticipants.map((participant) => participant.userId),
+    [webinarParticipants],
+  );
+  const stableWebinarSpeakerId = useStableSpeakerId({
+    primarySpeakerId: webinarSpeakerUserId,
+    secondarySpeakerId: activeSpeakerId,
+    participantIds: webinarParticipantIds,
+    promoteDelayMs: WEBINAR_SPEAKER_PROMOTE_DELAY_MS,
+    minSwitchIntervalMs: WEBINAR_SPEAKER_MIN_SWITCH_INTERVAL_MS,
+  });
   const mentionableParticipants = useMemo(
     () =>
       webinarParticipants
@@ -527,6 +554,7 @@ function MobileMeetsMainContent({
     }
 
     const preferredIds = [
+      stableWebinarSpeakerId ?? null,
       webinarSpeakerUserId ?? null,
       activeSpeakerId ?? null,
     ].filter((value, index, list): value is string => {
@@ -581,6 +609,7 @@ function MobileMeetsMainContent({
     activeScreenShareId,
     activeSpeakerId,
     resolveDisplayName,
+    stableWebinarSpeakerId,
     webinarParticipants,
     webinarSpeakerUserId,
   ]);
@@ -978,6 +1007,23 @@ function MobileMeetsMainContent({
           </p>
         </div>
       )}
+      {isJoined && !isWebinarAttendee && voiceAgentError && (
+        <div className="absolute top-16 left-4 right-4 z-40 mobile-sheet-card border border-[#F95F4A]/30 px-3 py-2 text-xs text-[#FEFCD9]/90 shadow-2xl">
+          <div className="flex items-start gap-2">
+            <span className="font-medium text-[#F95F4A]">Voice agent error</span>
+            {onClearVoiceAgentError && (
+              <button
+                onClick={onClearVoiceAgentError}
+                className="ml-auto text-[#FEFCD9]/50 hover:text-[#FEFCD9]"
+                aria-label="Dismiss voice agent error"
+              >
+                X
+              </button>
+            )}
+          </div>
+          <p className="mt-1 text-[11px] text-[#FEFCD9]/70">{voiceAgentError}</p>
+        </div>
+      )}
 
       {/* Controls bar */}
       {!isWebinarAttendee && browserAudioNeedsGesture && (
@@ -1034,6 +1080,10 @@ function MobileMeetsMainContent({
         onCloseDevPlayground={isAdmin ? handleCloseDevPlayground : undefined}
         isAppsLocked={appsState.locked}
         onToggleAppsLock={isAdmin ? handleToggleAppsLock : undefined}
+        isVoiceAgentRunning={isVoiceAgentRunning}
+        isVoiceAgentStarting={isVoiceAgentStarting}
+        onStartVoiceAgent={isAdmin ? onStartVoiceAgent : undefined}
+        onStopVoiceAgent={isAdmin ? onStopVoiceAgent : undefined}
         audioInputDeviceId={selectedAudioInputDeviceId}
         audioOutputDeviceId={audioOutputDeviceId}
         onAudioInputDeviceChange={onAudioInputDeviceChange}

@@ -43,6 +43,7 @@ import {
   isSystemUserId,
 } from "../lib/utils";
 import { useApps } from "@conclave/apps-sdk";
+import { useStableSpeakerId } from "../hooks/useStableSpeakerId";
 
 interface MeetsMainContentProps {
   isJoined: boolean;
@@ -132,6 +133,12 @@ interface MeetsMainContentProps {
   onDismissMeetError?: () => void;
   browserAudioNeedsGesture: boolean;
   onBrowserAudioAutoplayBlocked: () => void;
+  isVoiceAgentRunning?: boolean;
+  isVoiceAgentStarting?: boolean;
+  voiceAgentError?: string | null;
+  onStartVoiceAgent?: () => void;
+  onStopVoiceAgent?: () => void;
+  onClearVoiceAgentError?: () => void;
   onRetryMedia?: () => void;
   onTestSpeaker?: () => void;
   isPopoutActive?: boolean;
@@ -205,6 +212,9 @@ type PipDragMeta = {
 
 const clamp = (value: number, min: number, max: number) =>
   Math.min(Math.max(value, min), max);
+
+const WEBINAR_SPEAKER_PROMOTE_DELAY_MS = 450;
+const WEBINAR_SPEAKER_MIN_SWITCH_INTERVAL_MS = 1800;
 
 const getPipCornerClass = (corner: PipCorner): string => {
   switch (corner) {
@@ -300,6 +310,12 @@ export default function MeetsMainContent({
   onToggleBrowserAudio,
   browserAudioNeedsGesture,
   onBrowserAudioAutoplayBlocked,
+  isVoiceAgentRunning = false,
+  isVoiceAgentStarting = false,
+  voiceAgentError = null,
+  onStartVoiceAgent,
+  onStopVoiceAgent,
+  onClearVoiceAgentError,
   meetError,
   onDismissMeetError,
   onRetryMedia,
@@ -368,6 +384,17 @@ export default function MeetsMainContent({
       ),
     [participantsArray],
   );
+  const webinarParticipantIds = useMemo(
+    () => nonSystemParticipants.map((participant) => participant.userId),
+    [nonSystemParticipants],
+  );
+  const stableWebinarSpeakerId = useStableSpeakerId({
+    primarySpeakerId: webinarSpeakerUserId,
+    secondarySpeakerId: activeSpeakerId,
+    participantIds: webinarParticipantIds,
+    promoteDelayMs: WEBINAR_SPEAKER_PROMOTE_DELAY_MS,
+    minSwitchIntervalMs: WEBINAR_SPEAKER_MIN_SWITCH_INTERVAL_MS,
+  });
   const webinarStageRef = useRef<HTMLDivElement>(null);
   const pipDragRef = useRef<PipDragMeta | null>(null);
   const [pipCorner, setPipCorner] = useState<PipCorner>("bottom-right");
@@ -437,6 +464,7 @@ export default function MeetsMainContent({
     }
 
     const preferredIds = [
+      stableWebinarSpeakerId ?? null,
       webinarSpeakerUserId ?? null,
       activeSpeakerId ?? null,
     ].filter((value, index, list): value is string => {
@@ -492,6 +520,7 @@ export default function MeetsMainContent({
     activeSpeakerId,
     nonSystemParticipants,
     resolveDisplayName,
+    stableWebinarSpeakerId,
     webinarSpeakerUserId,
   ]);
   const pipCornerClass = useMemo(() => getPipCornerClass(pipCorner), [pipCorner]);
@@ -652,6 +681,14 @@ export default function MeetsMainContent({
     if (!isChatOpen || chatOverlayMessages.length === 0) return;
     setChatOverlayMessages([]);
   }, [isChatOpen, chatOverlayMessages.length, setChatOverlayMessages]);
+
+  const sendChatRef = useRef(sendChat);
+  useEffect(() => {
+    sendChatRef.current = sendChat;
+  }, [sendChat]);
+  const handleSendChat = useCallback((content: string) => {
+    sendChatRef.current(content);
+  }, []);
 
   const handleToggleTtsDisabled = useCallback(() => {
     if (!socket) return;
@@ -982,6 +1019,25 @@ export default function MeetsMainContent({
           </p>
         </div>
       )}
+      {isJoined && voiceAgentError && (
+        <div className="absolute top-4 left-4 max-w-[340px] rounded-lg border border-[#F95F4A]/30 bg-[#0d0e0d]/95 px-4 py-3 text-xs text-[#FEFCD9]/90 shadow-2xl">
+          <div className="flex items-start gap-3">
+            <span className="font-medium text-[#F95F4A]">
+              Voice agent error
+            </span>
+            {onClearVoiceAgentError && (
+              <button
+                onClick={onClearVoiceAgentError}
+                className="ml-auto text-[#FEFCD9]/50 hover:text-[#FEFCD9]"
+                aria-label="Dismiss voice agent error"
+              >
+                X
+              </button>
+            )}
+          </div>
+          <p className="mt-1 text-[11px] text-[#FEFCD9]/70">{voiceAgentError}</p>
+        </div>
+      )}
 
       {isJoined &&
         (isWebinarAttendee ? (
@@ -1055,6 +1111,10 @@ export default function MeetsMainContent({
                 }
                 isAppsLocked={appsState.locked}
                 onToggleAppsLock={isAdmin ? handleToggleAppsLock : undefined}
+                isVoiceAgentRunning={isVoiceAgentRunning}
+                isVoiceAgentStarting={isVoiceAgentStarting}
+                onStartVoiceAgent={isAdmin ? onStartVoiceAgent : undefined}
+                onStopVoiceAgent={isAdmin ? onStopVoiceAgent : undefined}
                 isPopoutActive={isPopoutActive}
                 isPopoutSupported={isPopoutSupported}
                 onOpenPopout={onOpenPopout}
@@ -1140,7 +1200,7 @@ export default function MeetsMainContent({
           messages={chatMessages}
           chatInput={chatInput}
           onInputChange={setChatInput}
-          onSend={sendChat}
+          onSend={handleSendChat}
           onClose={handleToggleChat}
           currentUserId={currentUserId}
           isGhostMode={ghostEnabled}

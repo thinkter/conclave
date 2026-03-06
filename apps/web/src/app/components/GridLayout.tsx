@@ -4,6 +4,7 @@ import { Ghost, Hand, MicOff } from "lucide-react";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import type { Participant } from "../lib/types";
 import { isSystemUserId, truncateDisplayName } from "../lib/utils";
+import ParticipantAudio from "./ParticipantAudio";
 import ParticipantVideo from "./ParticipantVideo";
 
 interface GridLayoutProps {
@@ -26,6 +27,9 @@ interface GridLayoutProps {
 }
 
 const MAX_GRID_TILES = 16;
+const isParticipantVideoOn = (participant: Participant) =>
+  !participant.isCameraOff &&
+  Boolean(participant.videoProducerId || participant.videoStream);
 
 function GridLayout({
   localStream,
@@ -116,30 +120,50 @@ function GridLayout({
       .filter((participant): participant is Participant => Boolean(participant));
   }, [remoteParticipants]);
 
+  const prioritizedRemoteParticipants = useMemo(() => {
+    const withVideo: Participant[] = [];
+    const withoutVideo: Participant[] = [];
+
+    for (const participant of orderedRemoteParticipants) {
+      if (isParticipantVideoOn(participant)) {
+        withVideo.push(participant);
+      } else {
+        withoutVideo.push(participant);
+      }
+    }
+
+    return withVideo.concat(withoutVideo);
+  }, [orderedRemoteParticipants]);
+
   const stableRemoteParticipants = useMemo(() => {
     if (
       !activeSpeakerId ||
       activeSpeakerId === currentUserId ||
       maxRemoteWithoutOverflow <= 0
     ) {
-      return orderedRemoteParticipants;
+      return prioritizedRemoteParticipants;
     }
 
-    const activeSpeakerIndex = orderedRemoteParticipants.findIndex(
+    const activeSpeakerIndex = prioritizedRemoteParticipants.findIndex(
       (participant) => participant.userId === activeSpeakerId
     );
     if (activeSpeakerIndex < 0 || activeSpeakerIndex < maxRemoteWithoutOverflow) {
-      return orderedRemoteParticipants;
+      return prioritizedRemoteParticipants;
+    }
+
+    const activeSpeaker = prioritizedRemoteParticipants[activeSpeakerIndex];
+    if (!activeSpeaker || !isParticipantVideoOn(activeSpeaker)) {
+      return prioritizedRemoteParticipants;
     }
 
     // If the active speaker is in the overflow panel, promote them into the top-16 band.
-    const nextParticipants = [...orderedRemoteParticipants];
-    const [activeSpeaker] = nextParticipants.splice(activeSpeakerIndex, 1);
-    if (!activeSpeaker) return orderedRemoteParticipants;
-    nextParticipants.splice(maxRemoteWithoutOverflow - 1, 0, activeSpeaker);
+    const nextParticipants = [...prioritizedRemoteParticipants];
+    const [speakerToPromote] = nextParticipants.splice(activeSpeakerIndex, 1);
+    if (!speakerToPromote) return prioritizedRemoteParticipants;
+    nextParticipants.splice(maxRemoteWithoutOverflow - 1, 0, speakerToPromote);
     return nextParticipants;
   }, [
-    orderedRemoteParticipants,
+    prioritizedRemoteParticipants,
     activeSpeakerId,
     currentUserId,
     maxRemoteWithoutOverflow,
@@ -180,7 +204,7 @@ function GridLayout({
     const activeParticipant = stableRemoteParticipants.find(
       (participant) => participant.userId === activeSpeakerId
     );
-    if (!activeParticipant) {
+    if (!activeParticipant || !isParticipantVideoOn(activeParticipant)) {
       return baseVisible;
     }
 
@@ -308,6 +332,19 @@ function GridLayout({
 
   return (
     <div className="relative flex flex-1 min-h-0 flex-col">
+      <div
+        className="pointer-events-none h-0 w-0 overflow-hidden"
+        aria-hidden={true}
+      >
+        {stableRemoteParticipants.map((participant) => (
+          <ParticipantAudio
+            key={`audio-${participant.userId}`}
+            participant={participant}
+            audioOutputDeviceId={audioOutputDeviceId}
+          />
+        ))}
+      </div>
+
       <div className={`flex-1 min-h-0 grid ${gridClass} gap-3 overflow-hidden p-4`}>
         <div
           className={`acm-video-tile ${localSpeakerHighlight}`}
@@ -403,6 +440,7 @@ function GridLayout({
             displayName={getDisplayName(participant.userId)}
             isActiveSpeaker={activeSpeakerId === participant.userId}
             audioOutputDeviceId={audioOutputDeviceId}
+            disableAudio
             isAdmin={isAdmin}
             isSelected={selectedParticipantId === participant.userId}
             onAdminClick={onParticipantClick}

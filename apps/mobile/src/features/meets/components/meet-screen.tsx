@@ -44,7 +44,7 @@ import { useMeetRefs } from "../hooks/use-meet-refs";
 import { useMeetSocket } from "../hooks/use-meet-socket";
 import { useMeetState } from "../hooks/use-meet-state";
 import { useMeetTts } from "../hooks/use-meet-tts";
-import { useDeviceLayout } from "../hooks/use-device-layout";
+import { useVoiceAgentParticipant } from "../hooks/use-voice-agent-participant";
 import type { JoinMode, Participant } from "../types";
 import {
   createMeetError,
@@ -108,7 +108,6 @@ export function MeetScreen({
   }
 
   const router = useRouter();
-  const { isTablet } = useDeviceLayout();
   const refs = useMeetRefs();
   const meetingSessionIdRef = useRef(`meet-screen:${refs.sessionIdRef.current}`);
   const [appsSocket, setAppsSocket] = useState<Socket | null>(null);
@@ -201,6 +200,11 @@ export function MeetScreen({
   const isWebinarSession = isWebinarAttendee || Boolean(webinarConfig?.enabled);
   const effectiveGhostMode = isGhostMode || isWebinarAttendee;
   const [isScreenSharePending, setIsScreenSharePending] = useState(false);
+  const iosScreenShareIntentUntilRef = useRef(0);
+  const appStateChangedAtRef = useRef(Date.now());
+  const iosScreenSharePickerShownAtRef = useRef(0);
+  const iosScreenShareSawInactiveRef = useRef(false);
+  const iosScreenShareSawActiveAfterInactiveRef = useRef(false);
 
   useEffect(() => {
     if (joinMode === "webinar_attendee") return;
@@ -215,6 +219,8 @@ export function MeetScreen({
   const isCameraOffRef = useRef(isCameraOff);
   const isMutedRef = useRef(isMuted);
   const isScreenSharingRef = useRef(isScreenSharing);
+  const isScreenSharePendingRef = useRef(false);
+  const activeScreenShareIdRef = useRef(activeScreenShareId);
   const hasActiveCallRef = useRef(false);
   const connectionStateRef = useRef(connectionState);
   const shouldKeepAliveInBackground =
@@ -376,6 +382,7 @@ export function MeetScreen({
     primeAudioOutput,
     startAudioKeepAlive,
     stopAudioKeepAlive,
+    getDisplayMedia,
   } = useMeetMedia({
     ghostEnabled: effectiveGhostMode,
     connectionState,
@@ -485,8 +492,16 @@ export function MeetScreen({
   }, [isScreenSharing]);
 
   useEffect(() => {
+    activeScreenShareIdRef.current = activeScreenShareId;
+  }, [activeScreenShareId]);
+
+  useEffect(() => {
     hasActiveCallRef.current = hasActiveCall;
   }, [hasActiveCall]);
+
+  useEffect(() => {
+    isScreenSharePendingRef.current = isScreenSharePending;
+  }, [isScreenSharePending]);
 
   useEffect(() => {
     connectionStateRef.current = connectionState;
@@ -510,6 +525,15 @@ export function MeetScreen({
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (state) => {
       const isActive = state === "active";
+      appStateChangedAtRef.current = Date.now();
+      if (isScreenSharePending && Platform.OS === "ios") {
+        if (state === "inactive" || state === "background") {
+          iosScreenShareSawInactiveRef.current = true;
+        }
+        if (state === "active" && iosScreenShareSawInactiveRef.current) {
+          iosScreenShareSawActiveAfterInactiveRef.current = true;
+        }
+      }
       isAppActiveRef.current = isActive;
       setIsAppActive(isActive);
       if (!isJoined && !hasActiveCall) return;
@@ -547,6 +571,7 @@ export function MeetScreen({
     hasActiveCall,
     isCameraOff,
     isMuted,
+    isScreenSharePending,
     toggleCamera,
     toggleMute,
     startAudioKeepAlive,
@@ -592,6 +617,9 @@ export function MeetScreen({
   } = useMeetChat({
     socketRef: refs.socketRef,
     ghostEnabled: effectiveGhostMode,
+    currentUserId: userId,
+    currentUserDisplayName:
+      displayNameInput || user?.name || user?.email || user?.id || "You",
     isChatLocked,
     isAdmin,
     isDmEnabled,
@@ -873,6 +901,87 @@ export function MeetScreen({
     lastActiveSpeakerRef: refs.lastActiveSpeakerRef,
   });
 
+  const voiceAgent = useVoiceAgentParticipant({
+    roomId,
+    isJoined,
+    isAdmin,
+    isMuted,
+    activeSpeakerId,
+    localUserId: userId,
+    localStream,
+    participants,
+    recentMessages: chatMessages,
+    resolveDisplayName,
+  });
+  const voiceAgentApiKeyRef = useRef("");
+  const [hasVoiceAgentApiKey, setHasVoiceAgentApiKey] = useState(false);
+  const [voiceAgentApiKeyInput, setVoiceAgentApiKeyInput] = useState("");
+  const [voiceAgentApiKeyError, setVoiceAgentApiKeyError] = useState<
+    string | null
+  >(null);
+
+  const handleVoiceAgentApiKeyChange = useCallback(
+    (value: string) => {
+      setVoiceAgentApiKeyInput(value);
+      if (voiceAgentApiKeyError) {
+        setVoiceAgentApiKeyError(null);
+      }
+    },
+    [voiceAgentApiKeyError]
+  );
+
+  const handleStartVoiceAgent = useCallback(() => {
+    if (!isAdmin) {
+      setVoiceAgentApiKeyError("Only hosts can start the voice agent.");
+      return;
+    }
+    const typedKey = voiceAgentApiKeyInput.trim();
+    const apiKey = typedKey || voiceAgentApiKeyRef.current.trim();
+    if (!apiKey) {
+      setVoiceAgentApiKeyError("Enter your OpenAI API key.");
+      return;
+    }
+    if (!apiKey.startsWith("sk-")) {
+      setVoiceAgentApiKeyError(
+        "OpenAI API keys usually start with \"sk-\"."
+      );
+      return;
+    }
+    voiceAgentApiKeyRef.current = apiKey;
+    setHasVoiceAgentApiKey(true);
+    setVoiceAgentApiKeyInput("");
+    setVoiceAgentApiKeyError(null);
+    void voiceAgent.start(apiKey);
+  }, [isAdmin, voiceAgent, voiceAgentApiKeyInput]);
+
+  useEffect(() => {
+    if (!voiceAgent.error) return;
+    const lower = voiceAgent.error.toLowerCase();
+    const isApiKeyError =
+      lower.includes("api key") ||
+      lower.includes("unauthorized") ||
+      lower.includes("401");
+    if (!isApiKeyError) return;
+    voiceAgentApiKeyRef.current = "";
+    setHasVoiceAgentApiKey(false);
+    setVoiceAgentApiKeyInput("");
+    setVoiceAgentApiKeyError("API key rejected. Enter a valid key.");
+  }, [voiceAgent.error]);
+
+  const handleStopVoiceAgent = useCallback(() => {
+    voiceAgentApiKeyRef.current = "";
+    setHasVoiceAgentApiKey(false);
+    setVoiceAgentApiKeyInput("");
+    setVoiceAgentApiKeyError(null);
+    voiceAgent.stop();
+  }, [voiceAgent]);
+
+  useEffect(() => {
+    return () => {
+      voiceAgentApiKeyRef.current = "";
+    };
+  }, []);
+
   const { mounted } = useMeetLifecycle({
     cleanup: socket.cleanup,
     abortControllerRef: refs.abortControllerRef,
@@ -904,8 +1013,21 @@ export function MeetScreen({
 
   const stopScreenShareRef = useRef(stopScreenShare);
   stopScreenShareRef.current = stopScreenShare;
+  const startScreenShareRef = useRef(startScreenShare);
+  startScreenShareRef.current = startScreenShare;
+
+  const exitCurrentMeetingRef = useRef<(options?: { playLeaveSound?: boolean; reason?: string; allowDuringScreenSharePending?: boolean }) => void>(() => {});
+  const handleLeaveRef = useRef<() => void>(() => {});
 
   const cancelPendingScreenShareStart = useCallback(() => {
+    console.log("[Meets][ScreenShare][iOS] Cancelling pending screen share start", {
+      requestToken: screenShareRequestTokenRef.current,
+      hasRetryTimer: Boolean(screenShareRetryTimerRef.current),
+    });
+    iosScreenShareIntentUntilRef.current = 0;
+    iosScreenSharePickerShownAtRef.current = 0;
+    iosScreenShareSawInactiveRef.current = false;
+    iosScreenShareSawActiveAfterInactiveRef.current = false;
     screenShareRequestTokenRef.current += 1;
     if (screenShareRetryTimerRef.current) {
       clearTimeout(screenShareRetryTimerRef.current);
@@ -914,10 +1036,23 @@ export function MeetScreen({
     setIsScreenSharePending(false);
   }, []);
 
-  const exitCurrentMeeting = useCallback((options?: { playLeaveSound?: boolean }) => {
+  const exitCurrentMeeting = useCallback((options?: {
+    playLeaveSound?: boolean;
+    reason?: string;
+    allowDuringScreenSharePending?: boolean;
+  }) => {
     const playLeaveSound = options?.playLeaveSound !== false;
+    const reason = options?.reason ?? "unspecified";
+    const allowDuringScreenSharePending =
+      options?.allowDuringScreenSharePending === true;
+
+    if (Platform.OS === "ios" && isScreenSharePendingRef.current && !allowDuringScreenSharePending) {
+      return;
+    }
+
     setHasActiveCall(false);
     hasActiveCallRef.current = false;
+    handleStopVoiceAgent();
     if (playLeaveSound) {
       playNotificationSoundRef.current("leave");
     }
@@ -929,14 +1064,16 @@ export function MeetScreen({
       callIdRef.current = null;
     }
     stopInCall();
-  }, [cancelPendingScreenShareStart]);
+  }, [cancelPendingScreenShareStart, handleStopVoiceAgent]);
+  exitCurrentMeetingRef.current = exitCurrentMeeting;
 
   const handleLeave = useCallback(() => {
-    exitCurrentMeeting({ playLeaveSound: true });
+    exitCurrentMeeting({ playLeaveSound: true, reason: "handleLeave" });
     if (hideJoinUI) {
       router.replace("/");
     }
   }, [exitCurrentMeeting, hideJoinUI, router]);
+  handleLeaveRef.current = handleLeave;
 
   useEffect(() => {
     if (!isWebinarSession || !isParticipantsOpen) return;
@@ -951,12 +1088,15 @@ export function MeetScreen({
         hasActiveCall: hasActiveCallRef.current,
       }),
       relinquish: async () => {
-        exitCurrentMeeting({ playLeaveSound: false });
+        exitCurrentMeetingRef.current({
+          playLeaveSound: false,
+          reason: "meetingSession.relinquish",
+        });
       },
     });
 
     return unregister;
-  }, [exitCurrentMeeting, refs.currentRoomIdRef]);
+  }, [refs.currentRoomIdRef]);
 
   useEffect(() => {
     if (Platform.OS !== "ios") return;
@@ -994,7 +1134,7 @@ export function MeetScreen({
         });
         foregroundStarted = true;
         foregroundActionsCleanup = registerForegroundCallServiceHandlers({
-          onLeave: handleLeave,
+          onLeave: () => handleLeaveRef.current(),
           onToggleMute: () => {
             void toggleMute();
           },
@@ -1009,7 +1149,29 @@ export function MeetScreen({
       startInCall();
       setAudioRoute("auto");
       cleanupHandlers = registerCallKeepHandlers(() => {
-        handleLeave();
+        const now = Date.now();
+        const suppressForReplayKit =
+          Platform.OS === "ios" &&
+          (isScreenSharePendingRef.current || now < iosScreenShareIntentUntilRef.current + 10000);
+        console.warn("[Meets][CallKeep] endCall event", {
+          now,
+          suppressForReplayKit,
+          suppressUntil: iosScreenShareIntentUntilRef.current,
+          isScreenSharePending: isScreenSharePendingRef.current,
+          isScreenSharing: isScreenSharingRef.current,
+          connectionState: connectionStateRef.current,
+        });
+        if (suppressForReplayKit) {
+          console.warn(
+            "[Meets][CallKeep] Ignoring endCall during ReplayKit picker/start window"
+          );
+          return;
+        }
+        exitCurrentMeetingRef.current({
+          playLeaveSound: true,
+          reason: "callkeep.endCall",
+          allowDuringScreenSharePending: false,
+        });
       });
     })();
 
@@ -1025,7 +1187,10 @@ export function MeetScreen({
       callIdRef.current = null;
       stopInCall();
     };
-  }, [hasActiveCall, handleLeave, roomId]);
+  }, [
+    hasActiveCall,
+    roomId,
+  ]);
 
   useEffect(() => {
     if (!hasActiveCall) return;
@@ -1335,41 +1500,68 @@ export function MeetScreen({
     void handleJoin(targetRoomId, { isHost: false });
   }, [autoJoinOnMount, handleJoin, initialRoomId, roomId]);
 
-  useEffect(() => {
-    if (isTablet && isSettingsSheetOpen) {
-      setIsSettingsSheetOpen(false);
-    }
-  }, [isTablet, isSettingsSheetOpen]);
-
   type ScreenSharePickerHandle = React.Component<any, any>;
+  const IOS_SCREENSHARE_EXTENSION_BUNDLE_ID =
+    "com.acmvit.conclave.ScreenShareExtension";
   const ScreenSharePicker =
     ScreenCapturePickerView as unknown as React.ComponentType<
-      ViewProps & { ref?: React.Ref<ScreenSharePickerHandle> }
+      ViewProps & {
+        ref?: React.Ref<ScreenSharePickerHandle>;
+        preferredExtension?: string;
+      }
     >;
   const screenSharePickerRef = useRef<ScreenSharePickerHandle | null>(null);
   const showScreenSharePicker = useCallback(() => {
     if (Platform.OS !== "ios") return;
     const nodeHandle = findNodeHandle(screenSharePickerRef.current);
-    if (!nodeHandle) return;
     const pickerModule =
       NativeModules.ScreenCapturePickerView ??
       NativeModules.ScreenCapturePickerViewManager;
+    console.log("[Meets][ScreenShare][iOS] Opening broadcast picker", {
+      hasPickerRef: Boolean(screenSharePickerRef.current),
+      nodeHandle,
+      hasPickerModule: Boolean(pickerModule),
+      pickerModuleKeys: pickerModule ? Object.keys(pickerModule) : [],
+      preferredExtension: IOS_SCREENSHARE_EXTENSION_BUNDLE_ID,
+    });
+    if (!nodeHandle) {
+      console.warn("[Meets][ScreenShare][iOS] Cannot open picker: missing node handle");
+      return;
+    }
+    if (!pickerModule?.show) {
+      console.warn("[Meets][ScreenShare][iOS] Cannot open picker: native show() unavailable");
+      return;
+    }
+    iosScreenShareIntentUntilRef.current = Date.now() + 15000;
+    iosScreenSharePickerShownAtRef.current = Date.now();
+    iosScreenShareSawInactiveRef.current = false;
+    iosScreenShareSawActiveAfterInactiveRef.current = false;
     pickerModule?.show?.(nodeHandle);
+    console.log("[Meets][ScreenShare][iOS] Broadcast picker shown");
   }, []);
 
-  const handleToggleScreenShare = useCallback(() => {
+  const handleToggleScreenShare = useCallback(async () => {
+    console.log("[Meets][ScreenShare] Toggle requested", {
+      platform: Platform.OS,
+      isScreenSharing,
+      isScreenSharePending,
+      connectionState,
+      activeScreenShareId,
+    });
     if (Platform.OS !== "ios") {
       void toggleScreenShare();
       return;
     }
 
     if (isScreenSharing) {
+      console.log("[Meets][ScreenShare][iOS] Stopping existing screen share");
       cancelPendingScreenShareStart();
       stopScreenShare({ notify: true });
       return;
     }
 
     if (isScreenSharePending) {
+      console.log("[Meets][ScreenShare][iOS] Toggle pressed while pending; cancelling pending start");
       cancelPendingScreenShareStart();
       return;
     }
@@ -1380,6 +1572,9 @@ export function MeetScreen({
         message: "Someone else is already sharing their screen",
         recoverable: true,
       });
+      console.warn("[Meets][ScreenShare][iOS] Blocked: active remote screen share", {
+        activeScreenShareId,
+      });
       return;
     }
 
@@ -1387,9 +1582,41 @@ export function MeetScreen({
       return;
     }
 
-    showScreenSharePicker();
-    screenShareRequestTokenRef.current += 1;
     setIsScreenSharePending(true);
+    iosScreenShareIntentUntilRef.current = Date.now() + 30000;
+
+    console.log("[Meets][ScreenShare][iOS] Creating socket listener via getDisplayMedia");
+    let preStream: MediaStream | null = null;
+    try {
+      preStream = await getDisplayMedia();
+      console.log("[Meets][ScreenShare][iOS] getDisplayMedia resolved", {
+        hasStream: Boolean(preStream),
+        tracks: preStream?.getTracks().length,
+      });
+    } catch (err) {
+      console.warn("[Meets][ScreenShare][iOS] getDisplayMedia failed", { error: err });
+      setIsScreenSharePending(false);
+      iosScreenShareIntentUntilRef.current = 0;
+      return;
+    }
+
+    if (!preStream) {
+      console.warn("[Meets][ScreenShare][iOS] getDisplayMedia returned null");
+      setIsScreenSharePending(false);
+      iosScreenShareIntentUntilRef.current = 0;
+      return;
+    }
+
+    console.log("[Meets][ScreenShare][iOS] Socket ready, showing picker");
+    showScreenSharePicker();
+
+    const result = await startScreenShare({ preStream });
+    console.log("[Meets][ScreenShare][iOS] startScreenShare result", {
+      result,
+      isScreenSharing: isScreenSharingRef.current,
+    });
+    setIsScreenSharePending(false);
+    iosScreenShareIntentUntilRef.current = 0;
   }, [
     isScreenSharing,
     connectionState,
@@ -1399,70 +1626,9 @@ export function MeetScreen({
     cancelPendingScreenShareStart,
     activeScreenShareId,
     isScreenSharePending,
-    setMeetError,
-  ]);
-
-  useEffect(() => {
-    if (Platform.OS !== "ios") return;
-    if (!isScreenSharePending || isScreenSharing) return;
-
-    const requestToken = ++screenShareRequestTokenRef.current;
-    let attempts = 0;
-    const maxAttempts = 12;
-    const delayMs = 650;
-
-    const schedule = (delay: number) => {
-      if (screenShareRetryTimerRef.current) {
-        clearTimeout(screenShareRetryTimerRef.current);
-      }
-      screenShareRetryTimerRef.current = setTimeout(() => {
-        void attempt();
-      }, delay);
-    };
-
-    const attempt = async () => {
-      if (screenShareRequestTokenRef.current !== requestToken) return;
-      if (
-        !hasActiveCallRef.current ||
-        connectionStateRef.current !== "joined"
-      ) {
-        cancelPendingScreenShareStart();
-        return;
-      }
-
-      attempts += 1;
-      const result = await startScreenShare();
-
-      if (screenShareRequestTokenRef.current !== requestToken) return;
-
-      if (result === "started" || isScreenSharingRef.current) {
-        setIsScreenSharePending(false);
-        return;
-      }
-
-      if (result === "blocked" || attempts >= maxAttempts) {
-        setIsScreenSharePending(false);
-        return;
-      }
-
-      schedule(delayMs);
-    };
-
-    schedule(350);
-    return () => {
-      if (screenShareRequestTokenRef.current === requestToken) {
-        screenShareRequestTokenRef.current += 1;
-      }
-      if (screenShareRetryTimerRef.current) {
-        clearTimeout(screenShareRetryTimerRef.current);
-        screenShareRetryTimerRef.current = null;
-      }
-    };
-  }, [
-    isScreenSharePending,
-    isScreenSharing,
     startScreenShare,
-    cancelPendingScreenShareStart,
+    getDisplayMedia,
+    setMeetError,
   ]);
 
   const localParticipant = useMemo<Participant>(
@@ -1674,7 +1840,6 @@ export function MeetScreen({
             sendReaction({ kind: "emoji", id: emoji, value: emoji, label: emoji });
           }}
           onOpenSettings={() => {
-            if (isTablet) return;
             if (isChatOpen) toggleChat();
             setIsParticipantsOpen(false);
             setIsReactionSheetOpen(false);
@@ -1725,6 +1890,7 @@ export function MeetScreen({
       {Platform.OS === "ios" ? (
         <ScreenSharePicker
           ref={screenSharePickerRef}
+          preferredExtension={IOS_SCREENSHARE_EXTENSION_BUNDLE_ID}
           style={styles.screenSharePicker}
         />
       ) : null}
@@ -1775,7 +1941,7 @@ export function MeetScreen({
         />
       ) : null}
 
-      {isJoined && !isTablet && !isWebinarAttendee ? (
+      {isJoined && !isWebinarAttendee ? (
         <SettingsSheet
           visible={isSettingsSheetOpen}
           isHandRaised={isHandRaised}
@@ -1791,6 +1957,15 @@ export function MeetScreen({
           webinarConfig={webinarConfig}
           webinarLink={webinarLink}
           onSetWebinarLink={setWebinarLink}
+          isVoiceAgentRunning={voiceAgent.isRunning}
+          isVoiceAgentStarting={voiceAgent.isStarting}
+          voiceAgentError={voiceAgent.error}
+          voiceAgentApiKeyInput={voiceAgentApiKeyInput}
+          hasVoiceAgentApiKey={hasVoiceAgentApiKey}
+          voiceAgentApiKeyError={voiceAgentApiKeyError}
+          onVoiceAgentApiKeyChange={handleVoiceAgentApiKeyChange}
+          onStartVoiceAgent={handleStartVoiceAgent}
+          onStopVoiceAgent={handleStopVoiceAgent}
           onGetMeetingConfig={socket.getMeetingConfig}
           onUpdateMeetingConfig={socket.updateMeetingConfig}
           onGetWebinarConfig={socket.getWebinarConfig}

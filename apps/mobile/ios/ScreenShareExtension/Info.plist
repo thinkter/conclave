@@ -20,6 +20,8 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>RTCAppGroupIdentifier</key>
+	<string>group.com.acmvit.conclave.screenshare</string>
 	<key>NSExtension</key>
 	<dict>
 		<key>NSExtensionPointIdentifier</key>
@@ -29,7 +31,5 @@
 		<key>RPBroadcastProcessMode</key>
 		<string>RPBroadcastProcessModeSampleBuffer</string>
 	</dict>
-	<key>RCTNewArchEnabled</key>
-	<true/>
 </dict>
 </plist>
