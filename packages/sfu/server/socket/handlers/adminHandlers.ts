@@ -671,7 +671,13 @@ export const registerAdminHandlers = (
   });
 
   socket.on("admin:getRoomsDetailed", (cb) => {
-    const clientId = resolveClientId(context);
+    const guard = ensureAdminRoom(context);
+    if ("error" in guard) {
+      respond(cb, guard);
+      return;
+    }
+
+    const clientId = guard.room.clientId;
     const rooms = Array.from(state.rooms.values())
       .filter((room) => room.clientId === clientId)
       .map((room) => toRoomSnapshot(room));
