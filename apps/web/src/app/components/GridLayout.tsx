@@ -2,6 +2,7 @@
 
 import { Ghost, Hand, MicOff } from "lucide-react";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { useSmartParticipantOrder } from "../hooks/useSmartParticipantOrder";
 import type { Participant } from "../lib/types";
 import { isSystemUserId, truncateDisplayName } from "../lib/utils";
 import ParticipantAudio from "./ParticipantAudio";
@@ -27,9 +28,6 @@ interface GridLayoutProps {
 }
 
 const MAX_GRID_TILES = 16;
-const isParticipantVideoOn = (participant: Participant) =>
-  !participant.isCameraOff &&
-  Boolean(participant.videoProducerId || participant.videoStream);
 
 function GridLayout({
   localStream,
@@ -50,7 +48,6 @@ function GridLayout({
   getDisplayName,
 }: GridLayoutProps) {
   const localVideoRef = useRef<HTMLVideoElement>(null);
-  const stableOrderRef = useRef<string[]>([]);
   const [isOverflowOpen, setIsOverflowOpen] = useState(false);
   const [copyStatus, setCopyStatus] = useState<"idle" | "copied">("idle");
   const [inviteStatus, setInviteStatus] = useState<"idle" | "shared" | "copied">(
@@ -84,99 +81,16 @@ function GridLayout({
     };
   }, []);
 
-  const remoteParticipants = useMemo(
-    () =>
-      Array.from(participants.values()).filter(
-        (participant) =>
-          !isSystemUserId(participant.userId) &&
-          participant.userId !== currentUserId
-      ),
-    [participants, currentUserId]
+  const orderedRemoteParticipants = useSmartParticipantOrder(
+    Array.from(participants.values()).filter(
+      (participant) =>
+        !isSystemUserId(participant.userId) &&
+        participant.userId !== currentUserId
+    ),
+    activeSpeakerId
   );
-
-  const orderedRemoteParticipants = useMemo(() => {
-    const participantMap = new Map(
-      remoteParticipants.map((participant) => [participant.userId, participant])
-    );
-    const nextOrder: string[] = [];
-    const seen = new Set<string>();
-
-    for (const userId of stableOrderRef.current) {
-      if (participantMap.has(userId)) {
-        nextOrder.push(userId);
-        seen.add(userId);
-      }
-    }
-
-    for (const participant of remoteParticipants) {
-      if (!seen.has(participant.userId)) {
-        nextOrder.push(participant.userId);
-        seen.add(participant.userId);
-      }
-    }
-
-    return nextOrder
-      .map((userId) => participantMap.get(userId))
-      .filter((participant): participant is Participant => Boolean(participant));
-  }, [remoteParticipants]);
-
-  const prioritizedRemoteParticipants = useMemo(() => {
-    const withVideo: Participant[] = [];
-    const withoutVideo: Participant[] = [];
-
-    for (const participant of orderedRemoteParticipants) {
-      if (isParticipantVideoOn(participant)) {
-        withVideo.push(participant);
-      } else {
-        withoutVideo.push(participant);
-      }
-    }
-
-    return withVideo.concat(withoutVideo);
-  }, [orderedRemoteParticipants]);
-
-  const stableRemoteParticipants = useMemo(() => {
-    if (
-      !activeSpeakerId ||
-      activeSpeakerId === currentUserId ||
-      maxRemoteWithoutOverflow <= 0
-    ) {
-      return prioritizedRemoteParticipants;
-    }
-
-    const activeSpeakerIndex = prioritizedRemoteParticipants.findIndex(
-      (participant) => participant.userId === activeSpeakerId
-    );
-    if (activeSpeakerIndex < 0 || activeSpeakerIndex < maxRemoteWithoutOverflow) {
-      return prioritizedRemoteParticipants;
-    }
-
-    const activeSpeaker = prioritizedRemoteParticipants[activeSpeakerIndex];
-    if (!activeSpeaker || !isParticipantVideoOn(activeSpeaker)) {
-      return prioritizedRemoteParticipants;
-    }
-
-    // If the active speaker is in the overflow panel, promote them into the top-16 band.
-    const nextParticipants = [...prioritizedRemoteParticipants];
-    const [speakerToPromote] = nextParticipants.splice(activeSpeakerIndex, 1);
-    if (!speakerToPromote) return prioritizedRemoteParticipants;
-    nextParticipants.splice(maxRemoteWithoutOverflow - 1, 0, speakerToPromote);
-    return nextParticipants;
-  }, [
-    prioritizedRemoteParticipants,
-    activeSpeakerId,
-    currentUserId,
-    maxRemoteWithoutOverflow,
-  ]);
-
-  useEffect(() => {
-    stableOrderRef.current = stableRemoteParticipants.map(
-      (participant) => participant.userId
-    );
-  }, [stableRemoteParticipants]);
-
-  const hasOverflow = stableRemoteParticipants.length > maxRemoteWithoutOverflow;
-  const isSolo = stableRemoteParticipants.length === 0;
+  const hasOverflow = orderedRemoteParticipants.length > maxRemoteWithoutOverflow;
+  const isSolo = orderedRemoteParticipants.length === 0;
   const maxVisibleRemoteParticipants = hasOverflow
     ? isOverflowOpen
       ? maxRemoteWithoutOverflow
@@ -187,45 +101,17 @@ function GridLayout({
       return [];
     }
 
-    if (stableRemoteParticipants.length <= maxVisibleRemoteParticipants) {
-      return stableRemoteParticipants;
-    }
-
-    const baseVisible = stableRemoteParticipants.slice(0, maxVisibleRemoteParticipants);
-
-    if (!activeSpeakerId || activeSpeakerId === currentUserId) {
-      return baseVisible;
-    }
-
-    if (baseVisible.some((participant) => participant.userId === activeSpeakerId)) {
-      return baseVisible;
-    }
-
-    const activeParticipant = stableRemoteParticipants.find(
-      (participant) => participant.userId === activeSpeakerId
-    );
-    if (!activeParticipant || !isParticipantVideoOn(activeParticipant)) {
-      return baseVisible;
-    }
-
-    const nextVisible = baseVisible.slice(0, maxVisibleRemoteParticipants - 1);
-    nextVisible.push(activeParticipant);
-    return nextVisible;
-  }, [
-    stableRemoteParticipants,
-    activeSpeakerId,
-    currentUserId,
-    maxVisibleRemoteParticipants,
-  ]);
+    return orderedRemoteParticipants.slice(0, maxVisibleRemoteParticipants);
+  }, [orderedRemoteParticipants, maxVisibleRemoteParticipants]);
 
   const hiddenParticipants = useMemo(() => {
     const visibleIds = new Set(
       visibleParticipants.map((participant) => participant.userId)
     );
-    return stableRemoteParticipants.filter(
+    return orderedRemoteParticipants.filter(
       (participant) => !visibleIds.has(participant.userId)
     );
-  }, [stableRemoteParticipants, visibleParticipants]);
+  }, [orderedRemoteParticipants, visibleParticipants]);
   const hiddenParticipantsCount = hiddenParticipants.length;
   const showOverflowTile = hiddenParticipantsCount > 0;
   const showOverflowTileInGrid = showOverflowTile && !isOverflowOpen;
@@ -270,6 +156,9 @@ function GridLayout({
 
   const localSpeakerHighlight = isLocalActiveSpeaker 
     ? "speaking" 
+    : "";
+  const localHandRaisedHighlight = isHandRaised
+    ? "border-amber-400/45 shadow-[0_0_22px_rgba(251,191,36,0.24)]"
     : "";
 
   const copyToClipboard = async (value: string) => {
@@ -336,7 +225,7 @@ function GridLayout({
         className="pointer-events-none h-0 w-0 overflow-hidden"
         aria-hidden={true}
       >
-        {stableRemoteParticipants.map((participant) => (
+        {orderedRemoteParticipants.map((participant) => (
           <ParticipantAudio
             key={`audio-${participant.userId}`}
             participant={participant}
@@ -347,7 +236,7 @@ function GridLayout({
 
       <div className={`flex-1 min-h-0 grid ${gridClass} gap-3 overflow-hidden p-4`}>
         <div
-          className={`acm-video-tile ${localSpeakerHighlight}`}
+          className={`acm-video-tile ${localSpeakerHighlight} ${localHandRaisedHighlight}`}
           style={{ fontFamily: "'PolySans Trial', sans-serif" }}
         >
           <video

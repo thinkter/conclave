@@ -2,6 +2,7 @@
 
 import { Hand, MicOff, VenetianMask } from "lucide-react";
 import { memo, useEffect, useMemo, useRef } from "react";
+import { useSmartParticipantOrder } from "../../hooks/useSmartParticipantOrder";
 import type { Participant } from "../../lib/types";
 import { isSystemUserId, truncateDisplayName } from "../../lib/utils";
 import ParticipantAudio from "../ParticipantAudio";
@@ -23,9 +24,6 @@ interface MobileGridLayoutProps {
 }
 
 const MAX_GRID_TILES = 8;
-const isParticipantVideoOn = (participant: Participant) =>
-  !participant.isCameraOff &&
-  Boolean(participant.videoProducerId || participant.videoStream);
 
 function MobileGridLayout({
   localStream,
@@ -43,7 +41,6 @@ function MobileGridLayout({
   getDisplayName,
 }: MobileGridLayoutProps) {
   const localVideoRef = useRef<HTMLVideoElement>(null);
-  const stableOrderRef = useRef<string[]>([]);
   const isLocalActiveSpeaker = activeSpeakerId === currentUserId;
 
   useEffect(() => {
@@ -58,104 +55,28 @@ function MobileGridLayout({
     }
   }, [localStream]);
 
-  const remoteParticipants = useMemo(
-    () =>
-      Array.from(participants.values()).filter(
-        (participant) =>
-          !isSystemUserId(participant.userId) &&
-          participant.userId !== currentUserId
-      ),
-    [participants, currentUserId]
+  const orderedRemoteParticipants = useSmartParticipantOrder(
+    Array.from(participants.values()).filter(
+      (participant) =>
+        !isSystemUserId(participant.userId) &&
+        participant.userId !== currentUserId
+    ),
+    activeSpeakerId
   );
 
-  const stableRemoteParticipants = useMemo(() => {
-    const participantMap = new Map(
-      remoteParticipants.map((participant) => [participant.userId, participant])
-    );
-    const nextOrder: string[] = [];
-    const seen = new Set<string>();
-
-    for (const userId of stableOrderRef.current) {
-      if (participantMap.has(userId)) {
-        nextOrder.push(userId);
-        seen.add(userId);
-      }
-    }
-
-    for (const participant of remoteParticipants) {
-      if (!seen.has(participant.userId)) {
-        nextOrder.push(participant.userId);
-        seen.add(participant.userId);
-      }
-    }
-
-    return nextOrder
-      .map((userId) => participantMap.get(userId))
-      .filter((participant): participant is Participant => Boolean(participant));
-  }, [remoteParticipants]);
-
-  const prioritizedRemoteParticipants = useMemo(() => {
-    const withVideo: Participant[] = [];
-    const withoutVideo: Participant[] = [];
-
-    for (const participant of stableRemoteParticipants) {
-      if (isParticipantVideoOn(participant)) {
-        withVideo.push(participant);
-      } else {
-        withoutVideo.push(participant);
-      }
-    }
-
-    return withVideo.concat(withoutVideo);
-  }, [stableRemoteParticipants]);
-
-  useEffect(() => {
-    stableOrderRef.current = stableRemoteParticipants.map(
-      (participant) => participant.userId
-    );
-  }, [stableRemoteParticipants]);
-
   const maxRemoteWithoutOverflow = Math.max(0, MAX_GRID_TILES - 1);
-  const hasOverflow = prioritizedRemoteParticipants.length > maxRemoteWithoutOverflow;
+  const hasOverflow = orderedRemoteParticipants.length > maxRemoteWithoutOverflow;
   const maxVisibleRemoteParticipants = maxRemoteWithoutOverflow;
   const visibleParticipants = useMemo(() => {
     if (maxVisibleRemoteParticipants <= 0) {
       return [];
     }
 
-    if (prioritizedRemoteParticipants.length <= maxVisibleRemoteParticipants) {
-      return prioritizedRemoteParticipants;
-    }
-
-    const baseVisible = prioritizedRemoteParticipants.slice(0, maxVisibleRemoteParticipants);
-
-    if (!activeSpeakerId || activeSpeakerId === currentUserId) {
-      return baseVisible;
-    }
-
-    if (baseVisible.some((participant) => participant.userId === activeSpeakerId)) {
-      return baseVisible;
-    }
-
-    const activeParticipant = prioritizedRemoteParticipants.find(
-      (participant) => participant.userId === activeSpeakerId
-    );
-    if (!activeParticipant || !isParticipantVideoOn(activeParticipant)) {
-      return baseVisible;
-    }
-
-    const nextVisible = baseVisible.slice(0, maxVisibleRemoteParticipants - 1);
-    nextVisible.push(activeParticipant);
-    return nextVisible;
-  }, [
-    prioritizedRemoteParticipants,
-    activeSpeakerId,
-    currentUserId,
-    maxVisibleRemoteParticipants,
-  ]);
+    return orderedRemoteParticipants.slice(0, maxVisibleRemoteParticipants);
+  }, [orderedRemoteParticipants, maxVisibleRemoteParticipants]);
   const hiddenParticipantsCount = Math.max(
     0,
-    prioritizedRemoteParticipants.length - visibleParticipants.length
+    orderedRemoteParticipants.length - visibleParticipants.length
   );
   const showOverflowTile = hiddenParticipantsCount > 0;
   const totalCount = visibleParticipants.length + 1 + (showOverflowTile ? 1 : 0);
@@ -176,6 +97,10 @@ function MobileGridLayout({
 
   const speakerRing = (isActive: boolean) =>
     isActive ? "mobile-tile-active" : "";
+  const handRaisedRing = (isRaised: boolean) =>
+    isRaised
+      ? "ring-2 ring-amber-400/70 shadow-[0_0_20px_rgba(251,191,36,0.24)]"
+      : "";
   const maxLabelLength = totalCount <= 2 ? 16 : totalCount <= 4 ? 12 : 10;
 
   return (
@@ -184,7 +109,7 @@ function MobileGridLayout({
         className="pointer-events-none absolute h-0 w-0 overflow-hidden"
         aria-hidden={true}
       >
-        {prioritizedRemoteParticipants.map((participant) => (
+        {orderedRemoteParticipants.map((participant) => (
           <ParticipantAudio
             key={`audio-${participant.userId}`}
             participant={participant}
@@ -196,7 +121,9 @@ function MobileGridLayout({
       <div className={`w-full h-full grid ${getGridClass()} gap-3 p-3 auto-rows-fr`}>
         {/* Local video tile */}
         <div
-          className={`mobile-tile ${speakerRing(isLocalActiveSpeaker)}`}
+          className={`mobile-tile ${speakerRing(isLocalActiveSpeaker)} ${handRaisedRing(
+            isHandRaised
+          )}`}
         >
           <video
             ref={localVideoRef}
@@ -340,10 +267,13 @@ const ParticipantTile = memo(function ParticipantTile({
 
   const showPlaceholder = !participant.videoStream || participant.isCameraOff;
   const speakerRing = isActiveSpeaker ? "mobile-tile-active" : "";
+  const handRaisedRing = participant.isHandRaised
+    ? "ring-2 ring-amber-400/70 shadow-[0_0_20px_rgba(251,191,36,0.24)]"
+    : "";
 
   return (
     <div
-      className={`mobile-tile ${speakerRing}`}
+      className={`mobile-tile ${speakerRing} ${handRaisedRing}`}
     >
       <video
         ref={videoRef}

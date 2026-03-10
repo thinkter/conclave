@@ -681,13 +681,17 @@ function JoinScreen({
                     Camera {isCameraOn ? "On" : "Off"}
                   </div>
                   {onTestSpeaker && (
-                    <button
-                      type="button"
-                      onClick={onTestSpeaker}
-                      className="ml-auto flex items-center gap-2 bg-[#1a1a1a] border border-[#FEFCD9]/10 rounded-full px-3 py-1 text-[#FEFCD9]/70 hover:text-[#FEFCD9] hover:border-[#FEFCD9]/30 transition-colors"
-                    >
-                      Test speaker
-                    </button>
+                    <div className="ml-auto flex items-center gap-2">
+                      {onTestSpeaker && (
+                        <button
+                          type="button"
+                          onClick={onTestSpeaker}
+                          className="flex items-center gap-2 bg-[#1a1a1a] border border-[#FEFCD9]/10 rounded-full px-3 py-1 text-[#FEFCD9]/70 hover:text-[#FEFCD9] hover:border-[#FEFCD9]/30 transition-colors"
+                        >
+                          Test speaker
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
 

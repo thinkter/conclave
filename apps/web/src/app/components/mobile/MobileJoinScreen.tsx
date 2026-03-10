@@ -687,116 +687,121 @@ function MobileJoinScreen({
             isOpen={showAndroidUpsell}
             onClose={dismissAndroidUpsell}
           />
-        <div className="flex mobile-glass mobile-pill p-1">
-          <button
-            onClick={() => {
-              setActiveTab("new");
-              onIsAdminChange(true);
-            }}
-            className={`flex-1 py-2.5 text-xs uppercase tracking-[0.25em] rounded-full transition-all ${
-              activeTab === "new"
-                ? "bg-[#F95F4A] text-white"
-                : "text-[#FEFCD9]/50"
-            }`}
-            style={{ fontFamily: "'PolySans Trial', sans-serif" }}
-            disabled={isRoutedRoom}
-            aria-disabled={isRoutedRoom}
-          >
-            New Meeting
-          </button>
-          <button
-            onClick={() => {
-              setActiveTab("join");
-              onIsAdminChange(false);
-            }}
-            className={`flex-1 py-2.5 text-xs uppercase tracking-[0.25em] rounded-full transition-all ${
-              activeTab === "join"
-                ? "bg-[#F95F4A] text-white"
-                : "text-[#FEFCD9]/50"
-            } ${isRoutedRoom ? "opacity-60" : ""}`}
-            style={{ fontFamily: "'PolySans Trial', sans-serif" }}
-          >
-            Join
-          </button>
-        </div>
+          <div className="flex mobile-glass mobile-pill p-1">
+            <button
+              onClick={() => {
+                setActiveTab("new");
+                onIsAdminChange(true);
+              }}
+              className={`flex-1 py-2.5 text-xs uppercase tracking-[0.25em] rounded-full transition-all ${
+                activeTab === "new"
+                  ? "bg-[#F95F4A] text-white"
+                  : "text-[#FEFCD9]/50"
+              }`}
+              style={{ fontFamily: "'PolySans Trial', sans-serif" }}
+              disabled={isRoutedRoom}
+              aria-disabled={isRoutedRoom}
+            >
+              New Meeting
+            </button>
+            <button
+              onClick={() => {
+                setActiveTab("join");
+                onIsAdminChange(false);
+              }}
+              className={`flex-1 py-2.5 text-xs uppercase tracking-[0.25em] rounded-full transition-all ${
+                activeTab === "join"
+                  ? "bg-[#F95F4A] text-white"
+                  : "text-[#FEFCD9]/50"
+              } ${isRoutedRoom ? "opacity-60" : ""}`}
+              style={{ fontFamily: "'PolySans Trial', sans-serif" }}
+            >
+              Join
+            </button>
+          </div>
 
-        <div className="mobile-glass-soft mobile-pill p-1 h-[52px]">
-          {activeTab === "join" || isRoutedRoom ? (
-            <div className="flex items-center gap-2 h-full px-2">
-              <div className="relative flex-1 h-full">
-                {suggestionSuffix && (
-                  <div
-                    className="pointer-events-none absolute inset-0 px-2 flex items-center text-sm text-[#FEFCD9]/30 truncate"
+          <div className="mobile-glass-soft mobile-pill p-1 h-[52px]">
+            {activeTab === "join" || isRoutedRoom ? (
+              <div className="flex items-center gap-2 h-full px-2">
+                <div className="relative flex-1 h-full">
+                  {suggestionSuffix && (
+                    <div
+                      className="pointer-events-none absolute inset-0 px-2 flex items-center text-sm text-[#FEFCD9]/30 truncate"
+                      style={{ fontFamily: "'PolySans Trial', sans-serif" }}
+                    >
+                      <span className="text-transparent">{normalizedRoomId}</span>
+                      <span>{suggestionSuffix}</span>
+                    </div>
+                  )}
+                  <input
+                    type="text"
+                    value={normalizedRoomId}
+                    onChange={(e) =>
+                      onRoomIdChange(
+                        enforceShortCode
+                          ? sanitizeRoomCodeInput(e.target.value)
+                          : e.target.value
+                      )
+                    }
+                    placeholder="Paste room link or code"
+                    maxLength={enforceShortCode ? ROOM_CODE_MAX_LENGTH : undefined}
+                    disabled={isLoading}
+                    readOnly={isRoutedRoom}
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    className="relative w-full h-full bg-transparent px-2 text-sm text-[#FEFCD9] placeholder:text-[#FEFCD9]/30 focus:outline-none"
                     style={{ fontFamily: "'PolySans Trial', sans-serif" }}
-                  >
-                    <span className="text-transparent">{normalizedRoomId}</span>
-                    <span>{suggestionSuffix}</span>
-                  </div>
-                )}
-                <input
-                  type="text"
-                  value={normalizedRoomId}
-                  onChange={(e) =>
-                    onRoomIdChange(
-                      enforceShortCode
-                        ? sanitizeRoomCodeInput(e.target.value)
-                        : e.target.value
-                    )
-                  }
-                  placeholder="Paste room link or code"
-                  maxLength={enforceShortCode ? ROOM_CODE_MAX_LENGTH : undefined}
-                  disabled={isLoading}
-                  readOnly={isRoutedRoom}
-                  autoCapitalize="none"
-                  autoCorrect="off"
-                  spellCheck={false}
-                  className="relative w-full h-full bg-transparent px-2 text-sm text-[#FEFCD9] placeholder:text-[#FEFCD9]/30 focus:outline-none"
-                  style={{ fontFamily: "'PolySans Trial', sans-serif" }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && canJoin) handleJoin();
-                    if (e.key === "Tab" && suggestionSuffix) {
-                      e.preventDefault();
-                      applySuggestion(inlineSuggestion);
-                    }
-                  }}
-                  onPaste={(event) => {
-                    const text = event.clipboardData.getData("text");
-                    if (!text) return;
-                    const extracted = extractRoomCode(text);
-                    if (extracted) {
-                      event.preventDefault();
-                      onRoomIdChange(extracted);
-                    }
-                  }}
-                />
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && canJoin) handleJoin();
+                      if (e.key === "Tab" && suggestionSuffix) {
+                        e.preventDefault();
+                        applySuggestion(inlineSuggestion);
+                      }
+                    }}
+                    onPaste={(event) => {
+                      const text = event.clipboardData.getData("text");
+                      if (!text) return;
+                      const extracted = extractRoomCode(text);
+                      if (extracted) {
+                        event.preventDefault();
+                        onRoomIdChange(extracted);
+                      }
+                    }}
+                  />
+                </div>
+                <button
+                  onClick={handleJoin}
+                  disabled={!canJoin || isLoading}
+                  className="w-9 h-9 rounded-full bg-[#F95F4A] text-white flex items-center justify-center disabled:opacity-40 transition-colors"
+                >
+                  {isLoading ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <ArrowRight className="w-4 h-4" />
+                  )}
+                </button>
               </div>
+            ) : (
               <button
-                onClick={handleJoin}
-                disabled={!canJoin || isLoading}
-                className="w-9 h-9 rounded-full bg-[#F95F4A] text-white flex items-center justify-center disabled:opacity-40 transition-colors"
+                onClick={handleCreateRoom}
+                disabled={isLoading}
+                className="w-full h-full flex items-center justify-center gap-2 px-4 bg-[#F95F4A] text-white rounded-full hover:bg-[#e8553f] transition-colors disabled:opacity-50"
               >
                 {isLoading ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <Loader2 className="w-5 h-5 animate-spin" />
                 ) : (
-                  <ArrowRight className="w-4 h-4" />
+                  <Plus className="w-5 h-5" />
                 )}
+                <span
+                  className="text-sm font-medium"
+                  style={{ fontFamily: "'PolySans Trial', sans-serif" }}
+                >
+                  Start Meeting
+                </span>
               </button>
-            </div>
-          ) : (
-            <button
-              onClick={handleCreateRoom}
-              disabled={isLoading}
-              className="w-full h-full flex items-center justify-center gap-2 px-4 bg-[#F95F4A] text-white rounded-full hover:bg-[#e8553f] transition-colors disabled:opacity-50"
-            >
-              {isLoading ? (
-                <Loader2 className="w-5 h-5 animate-spin" />
-              ) : (
-                <Plus className="w-5 h-5" />
-              )}
-              <span className="text-sm font-medium" style={{ fontFamily: "'PolySans Trial', sans-serif" }}>Start Meeting</span>
-            </button>
-          )}
-        </div>
+            )}
+          </div>
 
         {meetError && onDismissMeetError && (
           <div className="mt-4">

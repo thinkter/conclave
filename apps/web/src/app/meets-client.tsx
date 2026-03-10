@@ -26,6 +26,7 @@ import { useMeetChat } from "./hooks/useMeetChat";
 import { useMeetDisplayName } from "./hooks/useMeetDisplayName";
 import { useMeetGhostMode } from "./hooks/useMeetGhostMode";
 import { useMeetHandRaise } from "./hooks/useMeetHandRaise";
+import { useMeetHandRaiseSound } from "./hooks/useMeetHandRaiseSound";
 import { useMeetLifecycle } from "./hooks/useMeetLifecycle";
 import { useMeetMedia } from "./hooks/useMeetMedia";
 import { useMeetMediaSettings } from "./hooks/useMeetMediaSettings";
@@ -571,6 +572,14 @@ export default function MeetsClient({
     ghostEnabled,
     isObserverMode: isWebinarAttendee,
     socketRef: refs.socketRef,
+  });
+
+  useMeetHandRaiseSound({
+    participants,
+    connectionState,
+    currentUserId: userId,
+    isHandRaised,
+    playNotificationSound,
   });
 
   useEffect(() => {

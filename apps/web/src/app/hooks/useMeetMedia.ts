@@ -125,40 +125,54 @@ export function useMeetMedia({
   }, [audioContextRef]);
 
   const playNotificationSound = useCallback(
-    (type: "join" | "leave" | "waiting") => {
+    (type: "join" | "leave" | "waiting" | "handRaise") => {
       const audioContext = getAudioContext();
       if (!audioContext) return;
 
+      const playPattern = () => {
+        const now = audioContext.currentTime;
+        const frequencies =
+          type === "join"
+            ? [523.25, 659.25]
+            : type === "waiting"
+            ? [440.0, 523.25, 659.25]
+            : type === "handRaise"
+            ? [587.33]
+            : [392.0, 261.63];
+        const duration =
+          type === "waiting" ? 0.1 : type === "handRaise" ? 0.12 : 0.12;
+        const gap = 0.03;
+        const peakGain = type === "handRaise" ? 0.13 : 0.16;
+
+        frequencies.forEach((frequency, index) => {
+          const start = now + index * (duration + gap);
+          const oscillator = audioContext.createOscillator();
+          const gain = audioContext.createGain();
+          oscillator.type = "sine";
+          oscillator.frequency.value = frequency;
+
+          gain.gain.setValueAtTime(0, start);
+          gain.gain.linearRampToValueAtTime(peakGain, start + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+
+          oscillator.connect(gain);
+          gain.connect(audioContext.destination);
+          oscillator.start(start);
+          oscillator.stop(start + duration + 0.02);
+        });
+      };
+
       if (audioContext.state === "suspended") {
-        audioContext.resume().catch(() => {});
+        audioContext
+          .resume()
+          .then(() => {
+            playPattern();
+          })
+          .catch(() => {});
+        return;
       }
 
-      const now = audioContext.currentTime;
-      const frequencies =
-        type === "join"
-          ? [523.25, 659.25]
-          : type === "waiting"
-          ? [440.0, 523.25, 659.25]
-          : [392.0, 261.63];
-      const duration = type === "waiting" ? 0.1 : 0.12;
-      const gap = 0.03;
-
-      frequencies.forEach((frequency, index) => {
-        const start = now + index * (duration + gap);
-        const oscillator = audioContext.createOscillator();
-        const gain = audioContext.createGain();
-        oscillator.type = "sine";
-        oscillator.frequency.value = frequency;
-
-        gain.gain.setValueAtTime(0, start);
-        gain.gain.linearRampToValueAtTime(0.16, start + 0.02);
-        gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
-
-        oscillator.connect(gain);
-        gain.connect(audioContext.destination);
-        oscillator.start(start);
-        oscillator.stop(start + duration + 0.02);
-      });
+      playPattern();
     },
     [getAudioContext]
   );
