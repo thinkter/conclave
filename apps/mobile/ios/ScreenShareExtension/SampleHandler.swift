@@ -13,8 +13,8 @@ final class SampleHandler: RPBroadcastSampleHandler {
   private var didFinishBroadcast = false
   private var lastConnectionAttempt: TimeInterval = 0
   private let connectionRetryInterval: TimeInterval = 0.75
-  private let initialConnectionTimeout: TimeInterval = 8
-  private let reconnectTimeout: TimeInterval = 3
+  private let initialConnectionTimeout: TimeInterval = 12
+  private let reconnectTimeout: TimeInterval = 6
 
   override func broadcastStarted(withSetupInfo setupInfo: [String: NSObject]?) {
     didFinishBroadcast = false
@@ -62,7 +62,7 @@ final class SampleHandler: RPBroadcastSampleHandler {
         if now - disconnectedSince >= timeout {
           finishDueToConnectionLoss(
             message: hasConnectedAtLeastOnce
-              ? "Screen sharing ended because the call disconnected."
+              ? "Screen sharing ended. Return to Conclave to start again."
               : "Unable to start screen sharing. Please try again."
           )
           return
@@ -105,7 +105,7 @@ final class SampleHandler: RPBroadcastSampleHandler {
       }
       if hasConnectedAtLeastOnce {
         finishDueToConnectionLoss(
-          message: "Screen sharing ended because the call disconnected."
+          message: "Screen sharing ended. Return to Conclave to start again."
         )
       }
       return

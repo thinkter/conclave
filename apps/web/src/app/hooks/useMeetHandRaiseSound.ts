@@ -21,37 +21,45 @@ export function useMeetHandRaiseSound({
 }: UseMeetHandRaiseSoundOptions) {
   const hasInitializedRef = useRef(false);
   const lastSoundAtRef = useRef(0);
-  const previousRemoteRaisedCountRef = useRef(0);
+  const previousRemoteRaisedMapRef = useRef<Map<string, boolean>>(new Map());
   const previousLocalRaisedRef = useRef(false);
 
   useEffect(() => {
-    const remoteRaisedCount = Array.from(participants.values()).filter(
-      (participant) =>
-        participant.userId !== currentUserId &&
-        !isSystemUserId(participant.userId) &&
-        participant.isHandRaised
-    ).length;
+    const remoteRaisedMap = new Map<string, boolean>();
+    for (const participant of participants.values()) {
+      if (
+        participant.userId === currentUserId ||
+        isSystemUserId(participant.userId)
+      ) {
+        continue;
+      }
+
+      remoteRaisedMap.set(participant.userId, Boolean(participant.isHandRaised));
+    }
 
     if (connectionState !== "joined") {
       hasInitializedRef.current = false;
-      previousRemoteRaisedCountRef.current = remoteRaisedCount;
+      previousRemoteRaisedMapRef.current = remoteRaisedMap;
       previousLocalRaisedRef.current = isHandRaised;
       return;
     }
 
     if (!hasInitializedRef.current) {
       hasInitializedRef.current = true;
-      previousRemoteRaisedCountRef.current = remoteRaisedCount;
+      previousRemoteRaisedMapRef.current = remoteRaisedMap;
       previousLocalRaisedRef.current = isHandRaised;
       return;
     }
 
-    const remoteRaisedIncreased =
-      remoteRaisedCount > previousRemoteRaisedCountRef.current;
-    const localRaisedNow = isHandRaised;
-    const localJustRaised = !previousLocalRaisedRef.current && localRaisedNow;
+    const remoteJustRaised = Array.from(remoteRaisedMap.entries()).some(
+      ([userId, raised]) => {
+        const wasRaised = previousRemoteRaisedMapRef.current.get(userId) ?? false;
+        return raised && !wasRaised;
+      }
+    );
+    const localJustRaised = !previousLocalRaisedRef.current && isHandRaised;
 
-    if (remoteRaisedIncreased || localJustRaised) {
+    if (remoteJustRaised || localJustRaised) {
       const now = Date.now();
       if (now - lastSoundAtRef.current >= 500) {
         playNotificationSound("handRaise");
@@ -59,8 +67,8 @@ export function useMeetHandRaiseSound({
       }
     }
 
-    previousRemoteRaisedCountRef.current = remoteRaisedCount;
-    previousLocalRaisedRef.current = localRaisedNow;
+    previousRemoteRaisedMapRef.current = remoteRaisedMap;
+    previousLocalRaisedRef.current = isHandRaised;
   }, [
     participants,
     connectionState,

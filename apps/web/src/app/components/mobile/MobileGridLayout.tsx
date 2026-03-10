@@ -1,10 +1,11 @@
 "use client";
 
-import { Ghost, Hand, MicOff } from "lucide-react";
-import { memo, useEffect, useRef } from "react";
+import { Hand, MicOff, VenetianMask } from "lucide-react";
+import { memo, useEffect, useMemo, useRef } from "react";
 import { useSmartParticipantOrder } from "../../hooks/useSmartParticipantOrder";
 import type { Participant } from "../../lib/types";
 import { isSystemUserId, truncateDisplayName } from "../../lib/utils";
+import ParticipantAudio from "../ParticipantAudio";
 
 interface MobileGridLayoutProps {
   localStream: MediaStream | null;
@@ -18,8 +19,11 @@ interface MobileGridLayoutProps {
   activeSpeakerId: string | null;
   currentUserId: string;
   audioOutputDeviceId?: string;
+  onOpenParticipantsPanel?: () => void;
   getDisplayName: (userId: string) => string;
 }
+
+const MAX_GRID_TILES = 8;
 
 function MobileGridLayout({
   localStream,
@@ -32,6 +36,8 @@ function MobileGridLayout({
   isMirrorCamera,
   activeSpeakerId,
   currentUserId,
+  audioOutputDeviceId,
+  onOpenParticipantsPanel,
   getDisplayName,
 }: MobileGridLayoutProps) {
   const localVideoRef = useRef<HTMLVideoElement>(null);
@@ -49,13 +55,35 @@ function MobileGridLayout({
     }
   }, [localStream]);
 
-  const participantArray = useSmartParticipantOrder(
+  const orderedRemoteParticipants = useSmartParticipantOrder(
     Array.from(participants.values()).filter(
-      (participant) => !isSystemUserId(participant.userId)
+      (participant) =>
+        !isSystemUserId(participant.userId) &&
+        participant.userId !== currentUserId
     ),
     activeSpeakerId
   );
-  const totalCount = participantArray.length + 1;
+
+  const maxRemoteWithoutOverflow = Math.max(0, MAX_GRID_TILES - 1);
+  const hasOverflow = orderedRemoteParticipants.length > maxRemoteWithoutOverflow;
+  const maxVisibleRemoteParticipants = maxRemoteWithoutOverflow;
+  const visibleParticipants = useMemo(() => {
+    if (maxVisibleRemoteParticipants <= 0) {
+      return [];
+    }
+
+    return orderedRemoteParticipants.slice(0, maxVisibleRemoteParticipants);
+  }, [orderedRemoteParticipants, maxVisibleRemoteParticipants]);
+  const hiddenParticipantsCount = Math.max(
+    0,
+    orderedRemoteParticipants.length - visibleParticipants.length
+  );
+  const showOverflowTile = hiddenParticipantsCount > 0;
+  const totalCount = visibleParticipants.length + 1 + (showOverflowTile ? 1 : 0);
+  const localDisplayName = truncateDisplayName(
+    getDisplayName(currentUserId) || userEmail || "You",
+    totalCount <= 2 ? 16 : totalCount <= 4 ? 12 : 10
+  );
 
   // Determine grid layout based on participant count
   const getGridClass = () => {
@@ -68,7 +96,7 @@ function MobileGridLayout({
   };
 
   const speakerRing = (isActive: boolean) =>
-    isActive ? "ring-2 ring-[#F95F4A]" : "";
+    isActive ? "mobile-tile-active" : "";
   const handRaisedRing = (isRaised: boolean) =>
     isRaised
       ? "ring-2 ring-amber-400/70 shadow-[0_0_20px_rgba(251,191,36,0.24)]"
@@ -76,62 +104,119 @@ function MobileGridLayout({
   const maxLabelLength = totalCount <= 2 ? 16 : totalCount <= 4 ? 12 : 10;
 
   return (
-    <div className={`w-full h-full grid ${getGridClass()} gap-1.5 p-2 auto-rows-fr`}>
-      {/* Local video tile */}
+    <div className="relative w-full h-full">
       <div
-        className={`relative bg-[#1a1a1a] rounded-xl overflow-hidden ${speakerRing(isLocalActiveSpeaker)} ${handRaisedRing(isHandRaised)}`}
+        className="pointer-events-none absolute h-0 w-0 overflow-hidden"
+        aria-hidden={true}
       >
-        <video
-          ref={localVideoRef}
-          autoPlay
-          muted
-          playsInline
-          className={`w-full h-full object-cover ${isCameraOff ? "hidden" : ""} ${isMirrorCamera ? "scale-x-[-1]" : ""}`}
-        />
-        {isCameraOff && (
-          <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-[#1a1a1a] to-[#0d0e0d]">
-            <div className={`rounded-full bg-gradient-to-br from-[#F95F4A]/20 to-[#FF007A]/20 border border-[#FEFCD9]/20 flex items-center justify-center text-[#FEFCD9] font-bold ${totalCount <= 2 ? "w-20 h-20 text-3xl" : totalCount <= 4 ? "w-14 h-14 text-xl" : "w-10 h-10 text-lg"}`}>
-              {userEmail[0]?.toUpperCase() || "?"}
-            </div>
-          </div>
-        )}
-        {isGhost && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none bg-black/40">
-            <Ghost className={`text-[#FF007A] drop-shadow-[0_0_20px_rgba(255,0,122,0.5)] ${totalCount <= 2 ? "w-12 h-12" : "w-8 h-8"}`} />
-          </div>
-        )}
-        {isHandRaised && (
-          <div className="absolute top-2 left-2 p-1.5 rounded-full bg-amber-500/20 border border-amber-400/40 text-amber-300 shadow-[0_0_15px_rgba(251,191,36,0.3)]">
-            <Hand className="w-4 h-4" />
-          </div>
-        )}
-        {/* Name label */}
-        <div className="absolute bottom-1.5 left-1.5 right-1.5 flex items-center">
-          <div 
-            className="bg-black/70 backdrop-blur-sm border border-[#FEFCD9]/10 rounded-full px-2 py-1 flex items-center gap-1.5"
-            style={{ fontFamily: "'PolySans Mono', monospace" }}
-          >
-            <span className={`text-[#FEFCD9] font-medium uppercase tracking-wide truncate ${totalCount <= 4 ? "text-xs" : "text-[10px]"}`}>
-              You
-            </span>
-            {isMuted && <MicOff className="w-3 h-3 text-[#F95F4A] shrink-0" />}
-          </div>
-        </div>
+        {orderedRemoteParticipants.map((participant) => (
+          <ParticipantAudio
+            key={`audio-${participant.userId}`}
+            participant={participant}
+            audioOutputDeviceId={audioOutputDeviceId}
+          />
+        ))}
       </div>
 
-      {/* Participant tiles */}
-      {participantArray.map((participant) => (
-        <ParticipantTile
-          key={participant.userId}
-          participant={participant}
-          displayName={truncateDisplayName(
-            getDisplayName(participant.userId),
-            maxLabelLength
+      <div className={`w-full h-full grid ${getGridClass()} gap-3 p-3 auto-rows-fr`}>
+        {/* Local video tile */}
+        <div
+          className={`mobile-tile ${speakerRing(isLocalActiveSpeaker)} ${handRaisedRing(
+            isHandRaised
+          )}`}
+        >
+          <video
+            ref={localVideoRef}
+            autoPlay
+            muted
+            playsInline
+            className={`w-full h-full object-cover ${isCameraOff ? "hidden" : ""} ${isMirrorCamera ? "scale-x-[-1]" : ""}`}
+          />
+          {isCameraOff && (
+            <div className="absolute inset-0 flex items-center justify-center bg-[#0d0e0d]">
+              <div className="absolute inset-0 bg-gradient-to-br from-[#F95F4A]/15 to-[#FF007A]/10" />
+              <div
+                className={`relative rounded-full mobile-avatar flex items-center justify-center text-[#FEFCD9] font-bold ${totalCount <= 2 ? "w-20 h-20 text-3xl" : totalCount <= 4 ? "w-14 h-14 text-xl" : "w-10 h-10 text-lg"}`}
+                style={{ fontFamily: "'PolySans Bulky Wide', sans-serif" }}
+              >
+                {userEmail[0]?.toUpperCase() || "?"}
+              </div>
+            </div>
           )}
-          isActiveSpeaker={activeSpeakerId === participant.userId}
-          totalCount={totalCount}
-        />
-      ))}
+          {isGhost && (
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none mobile-ghost-overlay">
+              <div className="flex flex-col items-center gap-2">
+                <VenetianMask
+                  className={`text-[#FF007A] ${totalCount <= 2 ? "w-10 h-10" : "w-8 h-8"}`}
+                />
+                <span
+                  className="mobile-ghost-badge rounded-full px-3 py-1 text-[10px] tracking-[0.25em] text-[#FF007A]"
+                  style={{ fontFamily: "'PolySans Mono', monospace" }}
+                >
+                  GHOST
+                </span>
+              </div>
+            </div>
+          )}
+          {isHandRaised && (
+            <div className="absolute top-2 left-2 p-2 rounded-full mobile-hand-badge text-amber-200">
+              <Hand className="w-3.5 h-3.5" />
+            </div>
+          )}
+          {/* Name label */}
+          <div className="absolute bottom-1.5 left-1.5 right-1.5 flex items-center">
+            <div
+              className="mobile-name-pill px-2.5 py-1 flex items-center gap-2 backdrop-blur-md"
+              style={{ fontFamily: "'PolySans Mono', monospace" }}
+            >
+              <span className={`text-[#FEFCD9] font-medium uppercase tracking-[0.18em] truncate ${totalCount <= 4 ? "text-xs" : "text-[10px]"}`}>
+                {localDisplayName}
+              </span>
+              <span className="text-[9px] uppercase tracking-[0.25em] text-[#F95F4A]/70">
+                YOU
+              </span>
+              {isMuted && <MicOff className="w-3 h-3 text-[#F95F4A] shrink-0" />}
+            </div>
+          </div>
+        </div>
+
+        {/* Participant tiles */}
+        {visibleParticipants.map((participant) => (
+          <ParticipantTile
+            key={participant.userId}
+            participant={participant}
+            displayName={truncateDisplayName(
+              getDisplayName(participant.userId),
+              maxLabelLength
+            )}
+            isActiveSpeaker={activeSpeakerId === participant.userId}
+            totalCount={totalCount}
+          />
+        ))}
+
+        {showOverflowTile ? (
+          <button
+            type="button"
+            onClick={onOpenParticipantsPanel}
+            disabled={!onOpenParticipantsPanel}
+            aria-label={`View ${hiddenParticipantsCount} more participants`}
+            className={`mobile-tile flex flex-col items-center justify-center border-dashed border-[#FEFCD9]/20 bg-[#0d0e0d]/85 text-[#FEFCD9] ${
+              onOpenParticipantsPanel ? "cursor-pointer" : "opacity-70"
+            }`}
+            style={{ fontFamily: "'PolySans Trial', sans-serif" }}
+          >
+            <div className="text-2xl font-semibold text-[#FEFCD9]">
+              +{hiddenParticipantsCount}
+            </div>
+            <div
+              className="mt-1 text-[10px] uppercase tracking-[0.35em] text-[#FEFCD9]/60"
+              style={{ fontFamily: "'PolySans Mono', monospace" }}
+            >
+              More
+            </div>
+          </button>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -149,7 +234,6 @@ const ParticipantTile = memo(function ParticipantTile({
   totalCount: number;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const audioRef = useRef<HTMLAudioElement>(null);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -181,45 +265,15 @@ const ParticipantTile = memo(function ParticipantTile({
     };
   }, [participant.videoStream, participant.videoProducerId, participant.isCameraOff]);
 
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-
-    if (!participant.audioStream) {
-      if (audio.srcObject) {
-        audio.srcObject = null;
-      }
-      return;
-    }
-
-    if (audio.srcObject !== participant.audioStream) {
-      audio.srcObject = participant.audioStream;
-    }
-
-    const playAudio = () => {
-      audio.play().catch(() => {});
-    };
-
-    playAudio();
-
-    const audioTrack = participant.audioStream.getAudioTracks()[0];
-    if (!audioTrack) return;
-    audioTrack.addEventListener("unmute", playAudio);
-
-    return () => {
-      audioTrack.removeEventListener("unmute", playAudio);
-    };
-  }, [participant.audioStream, participant.audioProducerId, participant.isMuted]);
-
   const showPlaceholder = !participant.videoStream || participant.isCameraOff;
-  const speakerRing = isActiveSpeaker ? "ring-2 ring-[#F95F4A]" : "";
+  const speakerRing = isActiveSpeaker ? "mobile-tile-active" : "";
   const handRaisedRing = participant.isHandRaised
     ? "ring-2 ring-amber-400/70 shadow-[0_0_20px_rgba(251,191,36,0.24)]"
     : "";
 
   return (
     <div
-      className={`relative bg-[#1a1a1a] rounded-xl overflow-hidden ${speakerRing} ${handRaisedRing}`}
+      className={`mobile-tile ${speakerRing} ${handRaisedRing}`}
     >
       <video
         ref={videoRef}
@@ -228,30 +282,43 @@ const ParticipantTile = memo(function ParticipantTile({
         className={`w-full h-full object-cover ${showPlaceholder ? "hidden" : ""}`}
       />
       {showPlaceholder && (
-        <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-[#1a1a1a] to-[#0d0e0d]">
-          <div className={`rounded-full bg-gradient-to-br from-[#F95F4A]/20 to-[#FF007A]/20 border border-[#FEFCD9]/20 flex items-center justify-center text-[#FEFCD9] font-bold ${totalCount <= 2 ? "w-20 h-20 text-3xl" : totalCount <= 4 ? "w-14 h-14 text-xl" : "w-10 h-10 text-lg"}`}>
+        <div className="absolute inset-0 flex items-center justify-center bg-[#0d0e0d]">
+          <div className="absolute inset-0 bg-gradient-to-br from-[#F95F4A]/15 to-[#FF007A]/10" />
+          <div
+            className={`relative rounded-full mobile-avatar flex items-center justify-center text-[#FEFCD9] font-bold ${totalCount <= 2 ? "w-20 h-20 text-3xl" : totalCount <= 4 ? "w-14 h-14 text-xl" : "w-10 h-10 text-lg"}`}
+            style={{ fontFamily: "'PolySans Bulky Wide', sans-serif" }}
+          >
             {displayName[0]?.toUpperCase() || "?"}
           </div>
         </div>
       )}
       {participant.isGhost && (
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none bg-black/40">
-          <Ghost className={`text-[#FF007A] drop-shadow-[0_0_20px_rgba(255,0,122,0.5)] ${totalCount <= 2 ? "w-12 h-12" : "w-8 h-8"}`} />
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none mobile-ghost-overlay">
+          <div className="flex flex-col items-center gap-2">
+            <VenetianMask
+              className={`text-[#FF007A] ${totalCount <= 2 ? "w-10 h-10" : "w-8 h-8"}`}
+            />
+            <span
+              className="mobile-ghost-badge rounded-full px-3 py-1 text-[10px] tracking-[0.25em] text-[#FF007A]"
+              style={{ fontFamily: "'PolySans Mono', monospace" }}
+            >
+              GHOST
+            </span>
+          </div>
         </div>
       )}
       {participant.isHandRaised && (
-        <div className="absolute top-2 left-2 p-1.5 rounded-full bg-amber-500/20 border border-amber-400/40 text-amber-300 shadow-[0_0_15px_rgba(251,191,36,0.3)]">
-          <Hand className="w-4 h-4" />
+        <div className="absolute top-2 left-2 p-2 rounded-full mobile-hand-badge text-amber-200">
+          <Hand className="w-3.5 h-3.5" />
         </div>
       )}
-      <audio ref={audioRef} autoPlay />
       {/* Name label */}
       <div className="absolute bottom-1.5 left-1.5 right-1.5 flex items-center">
         <div 
-          className="bg-black/70 backdrop-blur-sm border border-[#FEFCD9]/10 rounded-full px-2 py-1 flex items-center gap-1.5 max-w-full"
+          className="mobile-name-pill px-2.5 py-1 flex items-center gap-2 max-w-full backdrop-blur-md"
           style={{ fontFamily: "'PolySans Mono', monospace" }}
         >
-          <span className={`text-[#FEFCD9] font-medium uppercase tracking-wide truncate ${totalCount <= 4 ? "text-xs" : "text-[10px]"}`}>
+          <span className={`text-[#FEFCD9] font-medium uppercase tracking-[0.18em] truncate ${totalCount <= 4 ? "text-xs" : "text-[10px]"}`}>
             {displayName}
           </span>
           {participant.isMuted && <MicOff className="w-3 h-3 text-[#F95F4A] shrink-0" />}

@@ -4,6 +4,7 @@ import { Ghost, Hand, Info, MicOff } from "lucide-react";
 import { memo, useEffect, useRef, useState } from "react";
 import type { Participant } from "../lib/types";
 import { truncateDisplayName } from "../lib/utils";
+import ParticipantAudio from "./ParticipantAudio";
 
 interface ParticipantVideoProps {
   participant: Participant;
@@ -14,6 +15,11 @@ interface ParticipantVideoProps {
   isAdmin?: boolean;
   isSelected?: boolean;
   onAdminClick?: (userId: string) => void;
+  videoObjectFit?: "cover" | "contain";
+  onAudioAutoplayBlocked?: () => void;
+  onAudioPlaybackStarted?: () => void;
+  audioPlaybackAttemptToken?: number;
+  disableAudio?: boolean;
 }
 
 function ParticipantVideo({
@@ -25,9 +31,13 @@ function ParticipantVideo({
   isAdmin = false,
   isSelected = false,
   onAdminClick,
+  videoObjectFit = "cover",
+  onAudioAutoplayBlocked,
+  onAudioPlaybackStarted,
+  audioPlaybackAttemptToken,
+  disableAudio = false,
 }: ParticipantVideoProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const audioRef = useRef<HTMLAudioElement>(null);
   const [isNew, setIsNew] = useState(true);
   const labelWidthClass = compact ? "max-w-[65%]" : "max-w-[75%]";
   const displayLabel = truncateDisplayName(displayName, compact ? 12 : 18);
@@ -52,74 +62,96 @@ function ParticipantVideo({
       video.srcObject = participant.videoStream;
     }
 
+    let cancelled = false;
+    const replayTimeouts: number[] = [];
+    let replayRafId: number | null = null;
+
     const playVideo = () => {
+      if (cancelled) return;
       video.play().catch((err) => {
         if (err.name !== "AbortError") {
+          if (err.name === "NotAllowedError") {
+            video.muted = true;
+            video.play().catch(() => {});
+            return;
+          }
           console.error("[Meets] Video play error:", err);
         }
       });
     };
 
-    playVideo();
+    const scheduleReplay = () => {
+      playVideo();
+      if (typeof window !== "undefined") {
+        for (const delay of [80, 220, 480, 900, 1500]) {
+          replayTimeouts.push(window.setTimeout(playVideo, delay));
+        }
+        let frameAttempts = 0;
+        const replayOnFrame = () => {
+          if (cancelled) return;
+          if (video.paused || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+            playVideo();
+          }
+          frameAttempts += 1;
+          if (frameAttempts < 24) {
+            replayRafId = window.requestAnimationFrame(replayOnFrame);
+          }
+        };
+        replayRafId = window.requestAnimationFrame(replayOnFrame);
+      }
+    };
+
+    scheduleReplay();
 
     const videoTrack = participant.videoStream.getVideoTracks()[0];
-    if (!videoTrack) return;
-    videoTrack.addEventListener("unmute", playVideo);
+    const handleTrackUnmuted = () => {
+      scheduleReplay();
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        scheduleReplay();
+      }
+    };
+    const handleResize = () => {
+      scheduleReplay();
+    };
+    const handleOrientationChange = () => {
+      scheduleReplay();
+    };
+
+    if (videoTrack) {
+      videoTrack.addEventListener("unmute", handleTrackUnmuted);
+    }
+    video.addEventListener("loadedmetadata", scheduleReplay);
+    video.addEventListener("loadeddata", scheduleReplay);
+    video.addEventListener("canplay", scheduleReplay);
+    video.addEventListener("stalled", scheduleReplay);
+    video.addEventListener("suspend", scheduleReplay);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("resize", handleResize);
+    window.addEventListener("orientationchange", handleOrientationChange);
 
     return () => {
-      videoTrack.removeEventListener("unmute", playVideo);
+      cancelled = true;
+      if (videoTrack) {
+        videoTrack.removeEventListener("unmute", handleTrackUnmuted);
+      }
+      video.removeEventListener("loadedmetadata", scheduleReplay);
+      video.removeEventListener("loadeddata", scheduleReplay);
+      video.removeEventListener("canplay", scheduleReplay);
+      video.removeEventListener("stalled", scheduleReplay);
+      video.removeEventListener("suspend", scheduleReplay);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("resize", handleResize);
+      window.removeEventListener("orientationchange", handleOrientationChange);
+      for (const timeoutId of replayTimeouts) {
+        window.clearTimeout(timeoutId);
+      }
+      if (replayRafId !== null) {
+        window.cancelAnimationFrame(replayRafId);
+      }
     };
   }, [participant.videoStream, participant.videoProducerId, participant.isCameraOff]);
-
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-
-    if (!participant.audioStream) {
-      if (audio.srcObject) {
-        audio.srcObject = null;
-      }
-      return;
-    }
-
-    if (audio.srcObject !== participant.audioStream) {
-      audio.srcObject = participant.audioStream;
-    }
-
-    const playAudio = () => {
-      audio.play().catch((err) => {
-        if (err.name !== "AbortError") {
-          console.error("[Meets] Audio play error:", err);
-        }
-      });
-    };
-
-    playAudio();
-
-    if (audioOutputDeviceId) {
-      const audioElement = audio as HTMLAudioElement & {
-        setSinkId?: (sinkId: string) => Promise<void>;
-      };
-      if (audioElement.setSinkId) {
-        audioElement.setSinkId(audioOutputDeviceId).catch((err) => {
-          console.error("[Meets] Failed to update audio output:", err);
-        });
-      }
-    }
-
-    const audioTrack = participant.audioStream.getAudioTracks()[0];
-    if (!audioTrack) return;
-    audioTrack.addEventListener("unmute", playAudio);
-
-    return () => {
-      audioTrack.removeEventListener("unmute", playAudio);
-    };
-  }, [
-    participant.audioStream,
-    participant.audioProducerId,
-    participant.isMuted,
-    audioOutputDeviceId,
-  ]);
 
   const showPlaceholder = !participant.videoStream || participant.isCameraOff;
 
@@ -157,8 +189,11 @@ function ParticipantVideo({
       <video
         ref={videoRef}
         autoPlay
+        muted
         playsInline
-        className={`w-full h-full object-cover ${
+        className={`w-full h-full ${
+          videoObjectFit === "contain" ? "object-contain bg-black" : "object-cover"
+        } ${
           showPlaceholder ? "hidden" : ""
         }`}
       />
@@ -195,7 +230,15 @@ function ParticipantVideo({
           </div>
         </div>
       )}
-      <audio ref={audioRef} autoPlay />
+      {!disableAudio && (
+        <ParticipantAudio
+          participant={participant}
+          audioOutputDeviceId={audioOutputDeviceId}
+          onAudioAutoplayBlocked={onAudioAutoplayBlocked}
+          onAudioPlaybackStarted={onAudioPlaybackStarted}
+          audioPlaybackAttemptToken={audioPlaybackAttemptToken}
+        />
+      )}
       {participant.isHandRaised && (
         <div
           className={`absolute top-3 left-3 rounded-full bg-amber-500/20 border border-amber-400/40 text-amber-300 shadow-[0_0_15px_rgba(251,191,36,0.3)] ${

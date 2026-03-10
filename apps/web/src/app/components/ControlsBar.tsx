@@ -5,8 +5,6 @@ import {
   Hand,
   LayoutGrid,
   Loader2,
-  Lock,
-  LockOpen,
   MessageSquare,
   Mic,
   MicOff,
@@ -15,6 +13,7 @@ import {
   Phone,
   PlaySquare,
   Presentation,
+  Shield,
   Volume2,
   VolumeX,
   Sparkles,
@@ -28,10 +27,18 @@ import {
   X,
 } from "lucide-react";
 import { memo, useCallback, useEffect, useRef, useState, type FormEvent } from "react";
-import type { ReactionOption } from "../lib/types";
+import type {
+  MeetingConfigSnapshot,
+  MeetingUpdateRequest,
+  ReactionOption,
+  WebinarConfigSnapshot,
+  WebinarLinkResponse,
+  WebinarUpdateRequest,
+} from "../lib/types";
 import { normalizeBrowserUrl } from "../lib/utils";
 import { HOTKEYS } from "../lib/hotkeys";
 import HotkeyTooltip from "./HotkeyTooltip";
+import MeetSettingsPanel from "./MeetSettingsPanel";
 
 interface ControlsBarProps {
   isMuted: boolean;
@@ -56,6 +63,14 @@ interface ControlsBarProps {
   pendingUsersCount?: number;
   isRoomLocked?: boolean;
   onToggleLock?: () => void;
+  isNoGuests?: boolean;
+  onToggleNoGuests?: () => void;
+  isChatLocked?: boolean;
+  onToggleChatLock?: () => void;
+  isTtsDisabled?: boolean;
+  onToggleTtsDisabled?: () => void;
+  isDmEnabled?: boolean;
+  onToggleDmEnabled?: () => void;
   isBrowserActive?: boolean;
   isBrowserLaunching?: boolean;
   showBrowserControls?: boolean;
@@ -73,10 +88,29 @@ interface ControlsBarProps {
   onCloseDevPlayground?: () => void;
   isAppsLocked?: boolean;
   onToggleAppsLock?: () => void;
+  isVoiceAgentRunning?: boolean;
+  isVoiceAgentStarting?: boolean;
+  onStartVoiceAgent?: () => void;
+  onStopVoiceAgent?: () => void;
   isPopoutActive?: boolean;
   isPopoutSupported?: boolean;
   onOpenPopout?: () => void;
   onClosePopout?: () => void;
+  meetingRequiresInviteCode?: boolean;
+  webinarConfig?: WebinarConfigSnapshot | null;
+  webinarRole?: "attendee" | "participant" | "host" | null;
+  webinarLink?: string | null;
+  onSetWebinarLink?: (link: string | null) => void;
+  onGetMeetingConfig?: () => Promise<MeetingConfigSnapshot | null>;
+  onUpdateMeetingConfig?: (
+    update: MeetingUpdateRequest,
+  ) => Promise<MeetingConfigSnapshot | null>;
+  onGetWebinarConfig?: () => Promise<WebinarConfigSnapshot | null>;
+  onUpdateWebinarConfig?: (
+    update: WebinarUpdateRequest,
+  ) => Promise<WebinarConfigSnapshot | null>;
+  onGenerateWebinarLink?: () => Promise<WebinarLinkResponse | null>;
+  onRotateWebinarLink?: () => Promise<WebinarLinkResponse | null>;
 }
 
 const BROWSER_APPS = [
@@ -168,6 +202,14 @@ function ControlsBar({
   pendingUsersCount = 0,
   isRoomLocked = false,
   onToggleLock,
+  isNoGuests = false,
+  onToggleNoGuests,
+  isChatLocked = false,
+  onToggleChatLock,
+  isTtsDisabled = false,
+  onToggleTtsDisabled,
+  isDmEnabled = true,
+  onToggleDmEnabled,
   isBrowserActive = false,
   isBrowserLaunching = false,
   showBrowserControls = true,
@@ -185,20 +227,37 @@ function ControlsBar({
   onCloseDevPlayground,
   isAppsLocked = false,
   onToggleAppsLock,
+  isVoiceAgentRunning = false,
+  isVoiceAgentStarting = false,
+  onStartVoiceAgent,
+  onStopVoiceAgent,
   isPopoutActive = false,
   isPopoutSupported = false,
   onOpenPopout,
   onClosePopout,
+  meetingRequiresInviteCode = false,
+  webinarConfig,
+  webinarRole,
+  webinarLink,
+  onSetWebinarLink,
+  onGetMeetingConfig,
+  onUpdateMeetingConfig,
+  onGetWebinarConfig,
+  onUpdateWebinarConfig,
+  onGenerateWebinarLink,
+  onRotateWebinarLink,
 }: ControlsBarProps) {
   const canStartScreenShare = !activeScreenShareId || isScreenSharing;
   const [isReactionMenuOpen, setIsReactionMenuOpen] = useState(false);
   const [isBrowserMenuOpen, setIsBrowserMenuOpen] = useState(false);
   const [isAppsMenuOpen, setIsAppsMenuOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [browserUrlInput, setBrowserUrlInput] = useState("");
   const [browserUrlError, setBrowserUrlError] = useState<string | null>(null);
   const reactionMenuRef = useRef<HTMLDivElement>(null);
   const browserMenuRef = useRef<HTMLDivElement>(null);
   const appsMenuRef = useRef<HTMLDivElement>(null);
+  const settingsMenuRef = useRef<HTMLDivElement>(null);
   const lastReactionTimeRef = useRef<number>(0);
   const REACTION_COOLDOWN_MS = 150;
 
@@ -215,7 +274,12 @@ function ControlsBar({
       (onOpenDevPlayground || onCloseDevPlayground)
   );
   const canShowAppsMenu =
-    canManageWhiteboard || canManageDevPlayground || Boolean(onToggleAppsLock);
+    canManageWhiteboard ||
+    canManageDevPlayground ||
+    Boolean(onToggleAppsLock);
+  const canManageVoiceAgent = Boolean(
+    isAdmin && (onStartVoiceAgent || onStopVoiceAgent),
+  );
 
   useEffect(() => {
     if (!isReactionMenuOpen) return;
@@ -262,6 +326,22 @@ function ControlsBar({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [isAppsMenuOpen]);
 
+  useEffect(() => {
+    if (!isSettingsOpen) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        settingsMenuRef.current &&
+        !settingsMenuRef.current.contains(event.target as Node)
+      ) {
+        setIsSettingsOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [isSettingsOpen]);
+
   const handleReactionClick = useCallback(
     (reaction: ReactionOption) => {
       const now = Date.now();
@@ -294,21 +374,42 @@ function ControlsBar({
       </HotkeyTooltip>
 
       {isAdmin && (
-        <button
-          onClick={onToggleLock}
-          className={isRoomLocked
-            ? `${baseButtonClass} !bg-amber-400 !text-black`
-            : defaultButtonClass
-          }
-          title={isRoomLocked ? "Unlock meeting" : "Lock meeting"}
-          aria-label={isRoomLocked ? "Unlock meeting" : "Lock meeting"}
-        >
-          {isRoomLocked ? (
-            <Lock className="w-4 h-4" />
-          ) : (
-            <LockOpen className="w-4 h-4" />
+        <div ref={settingsMenuRef} className="relative">
+          <button
+            onClick={() => setIsSettingsOpen((prev) => !prev)}
+            className={isSettingsOpen ? activeButtonClass : defaultButtonClass}
+            title="Meeting settings"
+            aria-label="Meeting settings"
+          >
+            <Shield className="w-4 h-4" />
+          </button>
+          {isSettingsOpen && (
+            <MeetSettingsPanel
+              isRoomLocked={isRoomLocked}
+              onToggleLock={onToggleLock}
+              isNoGuests={isNoGuests}
+              onToggleNoGuests={onToggleNoGuests}
+              isChatLocked={isChatLocked}
+              onToggleChatLock={onToggleChatLock}
+              isTtsDisabled={isTtsDisabled}
+              onToggleTtsDisabled={onToggleTtsDisabled}
+              isDmEnabled={isDmEnabled}
+              onToggleDmEnabled={onToggleDmEnabled}
+              meetingRequiresInviteCode={meetingRequiresInviteCode}
+              onGetMeetingConfig={onGetMeetingConfig}
+              onUpdateMeetingConfig={onUpdateMeetingConfig}
+              webinarConfig={webinarConfig}
+              webinarRole={webinarRole}
+              webinarLink={webinarLink}
+              onSetWebinarLink={onSetWebinarLink}
+              onGetWebinarConfig={onGetWebinarConfig}
+              onUpdateWebinarConfig={onUpdateWebinarConfig}
+              onGenerateWebinarLink={onGenerateWebinarLink}
+              onRotateWebinarLink={onRotateWebinarLink}
+              onClose={() => setIsSettingsOpen(false)}
+            />
           )}
-        </button>
+        </div>
       )}
 
       <HotkeyTooltip label={HOTKEYS.toggleMute.label} hotkey={HOTKEYS.toggleMute.keys}>
@@ -358,37 +459,30 @@ function ControlsBar({
         </button>
       </HotkeyTooltip>
 
-      <button
-        onClick={onToggleScreenShare}
-        disabled={screenShareDisabled}
-        className={
-          isScreenSharing
-            ? activeButtonClass
-            : screenShareDisabled
-              ? ghostDisabledClass
-              : defaultButtonClass
-        }
-        title={
-          isGhostMode
-            ? "Ghost mode: screen share locked"
-            : !canStartScreenShare
-              ? "Someone else is presenting"
-              : isScreenSharing
-                ? "Stop sharing"
-                : "Share screen"
-        }
-        aria-label={
-          isGhostMode
-            ? "Ghost mode: screen share locked"
-            : !canStartScreenShare
-              ? "Someone else is presenting"
-              : isScreenSharing
-                ? "Stop sharing"
-                : "Share screen"
-        }
-      >
-        <Monitor className="w-4 h-4" />
-      </button>
+      <HotkeyTooltip label={HOTKEYS.toggleScreenShare.label} hotkey={HOTKEYS.toggleScreenShare.keys}>
+        <button
+          onClick={onToggleScreenShare}
+          disabled={screenShareDisabled}
+          className={
+            isScreenSharing
+              ? activeButtonClass
+              : screenShareDisabled
+                ? ghostDisabledClass
+                : defaultButtonClass
+          }
+          aria-label={
+            isGhostMode
+              ? "Ghost mode: screen share locked"
+              : !canStartScreenShare
+                ? "Someone else is presenting"
+                : isScreenSharing
+                  ? "Stop sharing"
+                  : "Share screen"
+          }
+        >
+          <Monitor className="w-4 h-4" />
+        </button>
+      </HotkeyTooltip>
       {showBrowserControls && isAdmin && onLaunchBrowser && (
         <div className="relative" ref={browserMenuRef}>
           <button
@@ -546,9 +640,44 @@ function ControlsBar({
           )}
         </button>
       )}
+      {canManageVoiceAgent && (
+        <button
+          onClick={() => {
+            if (isVoiceAgentRunning) {
+              onStopVoiceAgent?.();
+              return;
+            }
+            onStartVoiceAgent?.();
+          }}
+          disabled={isVoiceAgentStarting}
+          className={
+            isVoiceAgentRunning
+              ? activeButtonClass
+              : isVoiceAgentStarting
+                ? ghostDisabledClass
+                : defaultButtonClass
+          }
+          title={
+            isVoiceAgentRunning
+              ? "Stop AI participant"
+              : "Start AI participant"
+          }
+          aria-label={
+            isVoiceAgentRunning
+              ? "Stop AI participant"
+              : "Start AI participant"
+          }
+        >
+          {isVoiceAgentStarting ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <Sparkles className="w-4 h-4" />
+          )}
+        </button>
+      )}
 
       <HotkeyTooltip
-        label={HOTKEYS.toggleHandRaise.label}
+        label={isGhostMode ? "Ghost mode: hand raise locked" : isHandRaised ? "Lower hand" : "Raise hand"}
         hotkey={HOTKEYS.toggleHandRaise.keys}
       >
         <button
@@ -574,24 +703,25 @@ function ControlsBar({
       </HotkeyTooltip>
 
       <div ref={reactionMenuRef} className="relative">
-        <button
-          onClick={() => setIsReactionMenuOpen((prev) => !prev)}
-          disabled={isGhostMode}
-          className={
-            isGhostMode
-              ? ghostDisabledClass
-              : isReactionMenuOpen
-                ? activeButtonClass
-                : defaultButtonClass
-          }
-          title={isGhostMode ? "Ghost mode: reactions locked" : "Reactions"}
-          aria-label={isGhostMode ? "Ghost mode: reactions locked" : "Reactions"}
-        >
-          <Smile className="w-4 h-4" />
-        </button>
+        <HotkeyTooltip label={HOTKEYS.toggleReactions.label} hotkey={HOTKEYS.toggleReactions.keys}>
+          <button
+            onClick={() => setIsReactionMenuOpen((prev) => !prev)}
+            disabled={isGhostMode}
+            className={
+              isGhostMode
+                ? ghostDisabledClass
+                : isReactionMenuOpen
+                  ? activeButtonClass
+                  : defaultButtonClass
+            }
+            aria-label={isGhostMode ? "Ghost mode: reactions locked" : "Reactions"}
+          >
+            <Smile className="w-4 h-4" />
+          </button>
+        </HotkeyTooltip>
 
         {isReactionMenuOpen && (
-          <div className="absolute bottom-14 left-1/2 -translate-x-1/2 flex items-center gap-1 rounded-full bg-black/90 backdrop-blur-md px-2 py-1.5 max-w-[300px] overflow-x-auto no-scrollbar">
+          <div className="z-100 absolute bottom-14 left-1/2 -translate-x-1/2 flex items-center gap-1 rounded-full bg-black/90 backdrop-blur-md px-2 py-1.5 max-w-[300px] overflow-x-auto no-scrollbar">
             {reactionOptions.map((reaction) => (
               <button
                 key={reaction.id}
@@ -618,14 +748,15 @@ function ControlsBar({
 
       {canShowAppsMenu && (
         <div ref={appsMenuRef} className="relative">
-          <button
-            onClick={() => setIsAppsMenuOpen((prev) => !prev)}
-            className={defaultButtonClass}
-            title="Apps"
-            aria-label="Apps"
-          >
-            <LayoutGrid className="w-4 h-4" />
-          </button>
+          <HotkeyTooltip label={HOTKEYS.toggleApps.label} hotkey={HOTKEYS.toggleApps.keys}>
+            <button
+              onClick={() => setIsAppsMenuOpen((prev) => !prev)}
+              className={defaultButtonClass}
+              aria-label="Apps"
+            >
+              <LayoutGrid className="w-4 h-4" />
+            </button>
+          </HotkeyTooltip>
 
           {isAppsMenuOpen && (
             <div className="absolute bottom-14 left-1/2 -translate-x-1/2 w-56 rounded-xl border border-white/10 bg-[#0f0f0f] p-3 shadow-xl">
@@ -696,14 +827,15 @@ function ControlsBar({
       </HotkeyTooltip>
 
       {isPopoutSupported && (onOpenPopout || onClosePopout) && (
-        <button
-          onClick={isPopoutActive ? onClosePopout : onOpenPopout}
-          className={isPopoutActive ? activeButtonClass : defaultButtonClass}
-          title={isPopoutActive ? "Close mini view" : "Pop out mini view"}
-          aria-label={isPopoutActive ? "Close mini view" : "Pop out mini view"}
-        >
-          <PictureInPicture2 className="w-4 h-4" />
-        </button>
+        <HotkeyTooltip label={HOTKEYS.toggleMiniView.label} hotkey={HOTKEYS.toggleMiniView.keys}>
+          <button
+            onClick={isPopoutActive ? onClosePopout : onOpenPopout}
+            className={isPopoutActive ? activeButtonClass : defaultButtonClass}
+            aria-label={isPopoutActive ? "Close mini view" : "Pop out mini view"}
+          >
+            <PictureInPicture2 className="w-4 h-4" />
+          </button>
+        </HotkeyTooltip>
       )}
 
       <div className="w-px h-6 bg-[#FEFCD9]/10 mx-1" />

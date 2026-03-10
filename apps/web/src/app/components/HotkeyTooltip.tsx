@@ -23,9 +23,11 @@ export default function HotkeyTooltip({
           style={{ fontFamily: "'PolySans Mono', monospace" }}
         >
           <span className="text-[11px] text-[#FEFCD9]/60">{label}</span>
-          <kbd className="rounded border border-[#FEFCD9]/15 bg-[#FEFCD9]/[0.06] px-1.5 py-px font-mono text-[10px] text-[#FEFCD9]/45">
-            {formatForDisplay(hotkey)}
-          </kbd>
+          {hotkey && (
+            <kbd className="rounded border border-[#FEFCD9]/15 bg-[#FEFCD9]/[0.06] px-1.5 py-px font-mono text-[10px] text-[#FEFCD9]/45">
+              {formatForDisplay(hotkey)}
+            </kbd>
+          )}
         </div>
         {/* downward arrow */}
         <div className="relative h-[7px] w-[14px] overflow-hidden">

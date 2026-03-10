@@ -62,7 +62,7 @@ function WhiteboardLayout({
   );
 
   return (
-    <div className="flex flex-1 min-h-0 min-w-0 gap-4 overflow-hidden">
+    <div className="flex flex-1 min-h-0 min-w-0 gap-4 overflow-hidden mt-5">
       <div className="flex-1 min-h-0 min-w-0 rounded-2xl border border-white/10 bg-[#0b0b0b] p-4 shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
         <WhiteboardWebApp />
       </div>

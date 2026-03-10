@@ -17,7 +17,7 @@
       "expo-router",
       "expo-font"
     ],
-    "version": "1.0",
+    "version": "1.0.7",
     "ios": {
       "supportsTablet": true,
       "associatedDomains": [
@@ -33,7 +33,7 @@
         "NSBluetoothAlwaysUsageDescription": "Conclave uses Bluetooth for audio routing."
       },
       "bundleIdentifier": "com.acmvit.conclave",
-      "buildNumber": "15"
+      "buildNumber": "20"
     },
     "android": {
       "permissions": [
@@ -47,6 +47,8 @@
         "FOREGROUND_SERVICE_MICROPHONE",
         "FOREGROUND_SERVICE_CAMERA",
         "WAKE_LOCK",
+        "BLUETOOTH",
+        "BLUETOOTH_ADMIN",
         "BLUETOOTH_CONNECT",
         "MANAGE_OWN_CALLS"
       ],
@@ -61,13 +63,19 @@
           "data": [
             {
               "scheme": "https",
-              "host": "conclave.acmvit.in"
+              "host": "conclave.acmvit.in",
+              "pathPrefix": "/w/"
+            },
+            {
+              "scheme": "https",
+              "host": "conclave.acmvit.in",
+              "pathPattern": "/.*-.*-.*"
             }
           ]
         }
       ],
       "package": "com.acmvit.conclave",
-      "versionCode": 5
+      "versionCode": 20
     },
     "name": "Conclave",
     "slug": "conclave"

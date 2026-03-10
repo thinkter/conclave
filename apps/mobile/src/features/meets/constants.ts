@@ -4,9 +4,9 @@ export const SOCKET_TIMEOUT_MS = 15000;
 export const SOCKET_CONNECT_TIMEOUT_MS = 15000;
 export const TRANSPORT_DISCONNECT_GRACE_MS = 5000;
 export const PRODUCER_SYNC_INTERVAL_MS = 15000;
-export const SPEAKER_CHECK_INTERVAL_MS = 250;
+export const SPEAKER_CHECK_INTERVAL_MS = 400;
 export const SPEAKER_THRESHOLD = 0.03;
-export const ACTIVE_SPEAKER_HOLD_MS = 900;
+export const ACTIVE_SPEAKER_HOLD_MS = 50;
 export const REACTION_LIFETIME_MS = 3800;
 export const MAX_REACTIONS = 30;
 export const EMOJI_REACTIONS = [
@@ -21,15 +21,15 @@ export const EMOJI_REACTIONS = [
 ] as const;
 
 export const STANDARD_QUALITY_CONSTRAINTS = {
-  width: { ideal: 1280, max: 1280 },
-  height: { ideal: 720, max: 720 },
-  frameRate: { ideal: 30, max: 30 },
+  width: { ideal: 960, max: 960 },
+  height: { ideal: 540, max: 540 },
+  frameRate: { ideal: 24, max: 24 },
 };
 
 export const LOW_QUALITY_CONSTRAINTS = {
   width: { ideal: 640, max: 640 },
   height: { ideal: 360, max: 360 },
-  frameRate: { ideal: 20, max: 24 },
+  frameRate: { ideal: 15, max: 20 },
 };
 
 export const DEFAULT_AUDIO_CONSTRAINTS: MediaTrackConstraints = {
@@ -41,22 +41,50 @@ export const DEFAULT_AUDIO_CONSTRAINTS: MediaTrackConstraints = {
   sampleSize: { ideal: 16 },
 };
 
-export const STANDARD_VIDEO_MAX_BITRATE = 1200000;
-export const LOW_VIDEO_MAX_BITRATE = 350000;
+export const STANDARD_VIDEO_MAX_BITRATE = 850000;
+export const LOW_VIDEO_MAX_BITRATE = 250000;
+export const SCREEN_SHARE_MAX_BITRATE = 1700000;
+export const SCREEN_SHARE_MAX_FRAMERATE = 24;
 export const OPUS_MAX_AVERAGE_BITRATE = 64000;
 
-const turnUrlsRaw =
-  process.env.EXPO_PUBLIC_TURN_URLS ||
-  process.env.EXPO_PUBLIC_TURN_URL ||
-  process.env.NEXT_PUBLIC_TURN_URLS ||
-  process.env.NEXT_PUBLIC_TURN_URL ||
-  "";
+const DEFAULT_PUBLIC_STUN_URLS = [
+  "stun:stun.l.google.com:19302",
+  "stun:stun1.l.google.com:19302",
+  "stun:stun2.l.google.com:19302",
+];
 
-export const MEETS_ICE_SERVERS: RTCIceServer[] = (() => {
-  const urls = turnUrlsRaw
+const splitIceUrls = (value: string): string[] =>
+  value
     .split(",")
-    .map((value) => value.trim())
+    .map((entry) => entry.trim())
     .filter(Boolean);
+
+export const MEETS_STUN_ICE_SERVERS: RTCIceServer[] = (() => {
+  const configuredStunUrls = splitIceUrls(
+    process.env.EXPO_PUBLIC_STUN_URLS ||
+      process.env.EXPO_PUBLIC_STUN_URL ||
+      process.env.NEXT_PUBLIC_STUN_URLS ||
+      process.env.NEXT_PUBLIC_STUN_URL ||
+      "",
+  );
+  const urls =
+    configuredStunUrls.length > 0 ? configuredStunUrls : DEFAULT_PUBLIC_STUN_URLS;
+
+  return [
+    {
+      urls: urls.length === 1 ? urls[0] : urls,
+    },
+  ];
+})();
+
+export const MEETS_TURN_ICE_SERVERS: RTCIceServer[] = (() => {
+  const urls = splitIceUrls(
+    process.env.EXPO_PUBLIC_TURN_URLS ||
+      process.env.EXPO_PUBLIC_TURN_URL ||
+      process.env.NEXT_PUBLIC_TURN_URLS ||
+      process.env.NEXT_PUBLIC_TURN_URL ||
+      "",
+  );
 
   if (!urls.length) return [];
 
@@ -68,12 +96,22 @@ export const MEETS_ICE_SERVERS: RTCIceServer[] = (() => {
   const credential =
     process.env.EXPO_PUBLIC_TURN_PASSWORD || process.env.NEXT_PUBLIC_TURN_PASSWORD;
 
-  if (username && credential) {
+  if ((username && !credential) || (!username && credential)) {
+    console.warn(
+      "[Meets] TURN credentials are partially configured. Set both TURN username and password.",
+    );
+  } else if (!username && !credential && urls.some((url) => /^turns?:/i.test(url))) {
+    console.warn(
+      "[Meets] TURN URLs are configured without credentials. Relay candidates may fail if your TURN server requires auth.",
+    );
+  } else if (username && credential) {
     iceServer.username = username;
     iceServer.credential = credential;
   }
 
   return [iceServer];
 })();
+
+export const MEETS_ICE_SERVERS = MEETS_STUN_ICE_SERVERS;
 
 export type ReactionEmoji = (typeof EMOJI_REACTIONS)[number];

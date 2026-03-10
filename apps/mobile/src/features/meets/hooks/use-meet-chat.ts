@@ -10,9 +10,17 @@ import {
   parseChatCommand,
 } from "../chat-commands";
 
+const DIRECT_MESSAGE_INTENT_PATTERN =
+  /^(?:@\S+\s+[\s\S]+|\/dm\s+\S+\s+[\s\S]+)$/i;
+
 interface UseMeetChatOptions {
   socketRef: React.MutableRefObject<Socket | null>;
   ghostEnabled: boolean;
+  currentUserId?: string;
+  currentUserDisplayName?: string;
+  isChatLocked?: boolean;
+  isAdmin?: boolean;
+  isDmEnabled?: boolean;
   isMuted?: boolean;
   isCameraOff?: boolean;
   onToggleMute?: () => void;
@@ -24,11 +32,17 @@ interface UseMeetChatOptions {
     displayName: string;
     text: string;
   }) => void;
+  isTtsDisabled?: boolean;
 }
 
 export function useMeetChat({
   socketRef,
   ghostEnabled,
+  currentUserId = "local-user",
+  currentUserDisplayName = "You",
+  isChatLocked = false,
+  isAdmin = false,
+  isDmEnabled = true,
   isMuted,
   isCameraOff,
   onToggleMute,
@@ -36,6 +50,7 @@ export function useMeetChat({
   onSetHandRaised,
   onLeaveRoom,
   onTtsMessage,
+  isTtsDisabled,
 }: UseMeetChatOptions) {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatOverlayMessages, setChatOverlayMessages] = useState<ChatMessage[]>(
@@ -53,6 +68,18 @@ export function useMeetChat({
     [setChatMessages]
   );
 
+  const buildOptimisticMessage = useCallback(
+    (content: string): ChatMessage =>
+      normalizeChatMessage({
+        id: `optimistic-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        userId: currentUserId,
+        displayName: currentUserDisplayName,
+        content,
+        timestamp: Date.now(),
+      }).message,
+    [currentUserDisplayName, currentUserId]
+  );
+
   const clearChat = useCallback(() => {
     setChatMessages([]);
     setChatOverlayMessages([]);
@@ -62,11 +89,15 @@ export function useMeetChat({
   const sendChatInternal = useCallback(
     (content: string) => {
       const socket = socketRef.current;
-      if (!socket || !content.trim()) return;
+      const trimmedContent = content.trim();
+      if (!socket || !trimmedContent) return;
+
+      const optimisticMessage = buildOptimisticMessage(trimmedContent);
+      setChatMessages((prev) => [...prev, optimisticMessage]);
 
       socket.emit(
         "sendChat",
-        { content: content.trim() },
+        { content: trimmedContent },
         (
           response:
             | { success: boolean; message?: ChatMessage }
@@ -74,23 +105,50 @@ export function useMeetChat({
         ) => {
           if ("error" in response) {
             console.error("[Meets] Chat error:", response.error);
+            setChatMessages((prev) =>
+              prev.filter((message) => message.id !== optimisticMessage.id)
+            );
+            appendLocalMessage(response.error);
             return;
           }
           if (response.message) {
             const { message, ttsText } = normalizeChatMessage(response.message);
-            setChatMessages((prev) => [...prev, message]);
-            if (ttsText) {
+            setChatMessages((prev) => {
+              const optimisticIndex = prev.findIndex(
+                (item) => item.id === optimisticMessage.id
+              );
+              if (optimisticIndex === -1) {
+                if (prev.some((item) => item.id === message.id)) {
+                  return prev;
+                }
+                return [...prev, message];
+              }
+              const next = [...prev];
+              next[optimisticIndex] = message;
+              return next;
+            });
+            if (ttsText && !isTtsDisabled) {
               onTtsMessage?.({
                 userId: message.userId,
                 displayName: message.displayName,
                 text: ttsText,
               });
             }
+            return;
           }
+          setChatMessages((prev) =>
+            prev.filter((message) => message.id !== optimisticMessage.id)
+          );
         }
       );
     },
-    [socketRef, onTtsMessage]
+    [
+      socketRef,
+      onTtsMessage,
+      isTtsDisabled,
+      appendLocalMessage,
+      buildOptimisticMessage,
+    ]
   );
 
   const toggleChat = useCallback(() => {
@@ -107,8 +165,16 @@ export function useMeetChat({
   const sendChat = useCallback(
     (content: string) => {
       if (ghostEnabled) return;
+      if (isChatLocked && !isAdmin) {
+        appendLocalMessage("Chat is locked by the host.");
+        return;
+      }
       const trimmed = content.trim();
       if (!trimmed) return;
+      if (DIRECT_MESSAGE_INTENT_PATTERN.test(trimmed) && !isDmEnabled) {
+        appendLocalMessage("Private messages are disabled by the host.");
+        return;
+      }
 
       const parsed = parseChatCommand(trimmed);
       if (parsed) {
@@ -122,6 +188,10 @@ export function useMeetChat({
           return;
         }
         if (command.id === "tts") {
+          if (isTtsDisabled) {
+            appendLocalMessage("TTS is disabled by the host in this room.");
+            return;
+          }
           if (!args) {
             appendLocalMessage("Usage: /tts <text>");
             return;
@@ -193,6 +263,10 @@ export function useMeetChat({
     },
     [
       ghostEnabled,
+      isChatLocked,
+      isAdmin,
+      isDmEnabled,
+      isTtsDisabled,
       appendLocalMessage,
       clearChat,
       sendChatInternal,

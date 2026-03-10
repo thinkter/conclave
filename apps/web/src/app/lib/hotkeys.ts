@@ -10,6 +10,11 @@ export type HotkeyAction =
   | "toggleCamera"
   | "toggleHandRaise"
   | "toggleChat"
+  | "toggleLockMeeting"
+  | "toggleReactions"
+  | "toggleScreenShare"
+  | "toggleApps"
+  | "toggleMiniView"
   | "toggleParticipants";
 
 export const HOTKEYS: Record<HotkeyAction, HotkeyDefinition> = {
@@ -29,14 +34,39 @@ export const HOTKEYS: Record<HotkeyAction, HotkeyDefinition> = {
     description: "Raise or lower your hand to get the presenter's attention.",
   },
   toggleChat: {
-    keys: "Mod+Alt+C",
+    keys: "Mod+Shift+C",
     label: "Chat",
     description: "Open or close the chat panel.",
   },
   toggleParticipants: {
-    keys: "Mod+Alt+P",
+    keys: "Mod+Shift+P",
     label: "Participants",
     description: "Open or close the participants panel.",
+  },
+  toggleLockMeeting: {
+    keys: "Mod+Shift+L",
+    label: "Lock Meeting",
+    description: "Locks the meeting, preventing new participants from joining.",
+  },
+  toggleScreenShare: {
+    keys: "Mod+Shift+S",
+    label: "Share Screen",
+    description: "Start or stop sharing your screen.",
+  },
+  toggleReactions: {
+    keys: "",
+    label: "Reactions",
+    description: "Open or close the reactions panel.",
+  },
+  toggleApps: {
+    keys: "",
+    label: "Apps",
+    description: "Open or close the apps panel.",
+  },
+  toggleMiniView: {
+    keys: "Mod+M",
+    label: "Pop out Mini-view",
+    description: "Pops out a mini view panel.",
   },
 } as const;
 
