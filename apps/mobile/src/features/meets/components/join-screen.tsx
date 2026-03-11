@@ -561,7 +561,7 @@ export function JoinScreen({
                 </View>
 
                 <Text style={[styles.tagline, { color: COLORS.creamLighter }]}>
-                  ACM-VIT's in-house video conferencing platform
+                  Video conferencing for meetings, webinars, and collaboration
                 </Text>
 
                 <Pressable
