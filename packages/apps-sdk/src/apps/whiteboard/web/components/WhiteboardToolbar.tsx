@@ -1,8 +1,11 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import type { ToolKind, ToolSettings } from "../../core/tools/engine";
 import { TOOL_COLORS } from "../../shared/constants/tools";
 
-const Icon = ({ children, size = 20 }: { children: React.ReactNode; size?: number }) => (
+/* ── SVG icon wrapper ── */
+
+const Icon = ({ children, size = 16 }: { children: React.ReactNode; size?: number }) => (
   <svg
     width={size}
     height={size}
@@ -17,10 +20,21 @@ const Icon = ({ children, size = 20 }: { children: React.ReactNode; size?: numbe
   </svg>
 );
 
+/* ── Tool icons ── */
+
 const SelectIcon = () => (
   <Icon>
     <path d="M5 3l14 8-7 2-3 7z" />
     <path d="M12 13l5 5" />
+  </Icon>
+);
+
+const PanIcon = () => (
+  <Icon>
+    <path d="M18 11V6a2 2 0 00-2-2v0a2 2 0 00-2 2v0" />
+    <path d="M14 10V4a2 2 0 00-2-2v0a2 2 0 00-2 2v0" />
+    <path d="M10 10.5V6a2 2 0 00-2-2v0a2 2 0 00-2 2v4" />
+    <path d="M18 11a2 2 0 012 2v3a8 8 0 01-16 0v-5a2 2 0 012-2h0" />
   </Icon>
 );
 
@@ -89,15 +103,18 @@ const StickyIcon = () => (
 );
 
 const ExportIcon = () => (
-  <Icon size={16}>
+  <Icon>
     <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
     <polyline points="7 10 12 15 17 10" />
     <line x1="12" y1="15" x2="12" y2="3" />
   </Icon>
 );
 
+/* ── Maps ── */
+
 const TOOL_ICONS: Record<ToolKind, React.FC> = {
   select: SelectIcon,
+  pan: PanIcon,
   pen: PenIcon,
   highlighter: HighlighterIcon,
   eraser: EraserIcon,
@@ -111,6 +128,7 @@ const TOOL_ICONS: Record<ToolKind, React.FC> = {
 
 const TOOL_KEYS: Record<ToolKind, string> = {
   select: "1",
+  pan: "H",
   pen: "2",
   highlighter: "3",
   eraser: "4",
@@ -122,49 +140,43 @@ const TOOL_KEYS: Record<ToolKind, string> = {
   sticky: "9",
 };
 
-const TOOL_ORDER: ToolKind[] = [
-  "select",
-  "pen",
-  "highlighter",
-  "eraser",
-  "rect",
-  "ellipse",
-  "line",
-  "arrow",
-  "text",
-  "sticky",
-];
+const STROKE_WIDTHS = [2, 3, 5, 8, 12] as const;
 
-const STROKE_WIDTHS = [2, 3, 5, 8, 12];
+/* ── Helpers ── */
 
-/* ── Floating Island Container ── */
+const normalizeHex = (raw: string): string | null => {
+  const stripped = raw.replace(/^#/, "").toLowerCase();
+  if (/^[0-9a-f]{6}$/.test(stripped)) return `#${stripped}`;
+  if (/^[0-9a-f]{3}$/.test(stripped)) {
+    const [r, g, b] = stripped.split("");
+    return `#${r}${r}${g}${g}${b}${b}`;
+  }
+  return null;
+};
 
-function Island({
-  children,
-  className = "",
-  padding = 1,
-}: {
-  children: React.ReactNode;
-  className?: string;
-  padding?: number;
-}) {
-  return (
-    <div
-      className={`relative rounded-lg bg-[#232329] ${className}`}
-      style={{
-        padding: `${padding * 4}px`,
-        boxShadow:
-          "0px 0px 0.93px 0px rgba(0,0,0,0.25), 0px 0px 3.13px 0px rgba(0,0,0,0.16), 0px 7px 14px 0px rgba(0,0,0,0.12)",
-      }}
-    >
-      {children}
-    </div>
-  );
+const perceivedBrightness = (hex: string): number => {
+  const c = hex.replace("#", "").padEnd(6, "0");
+  const r = parseInt(c.substring(0, 2), 16);
+  const g = parseInt(c.substring(2, 4), 16);
+  const b = parseInt(c.substring(4, 6), 16);
+  return (r * 299 + g * 587 + b * 114) / 1000;
+};
+
+/* ── Shared portal popup positioner ── */
+
+const GAP = 8;
+
+function calcPopupStyle(triggerRect: DOMRect): React.CSSProperties {
+  return {
+    position: "fixed",
+    left: triggerRect.left + triggerRect.width / 2,
+    top: triggerRect.bottom + GAP,
+    transform: "translate(-50%, 0)",
+    zIndex: 9999,
+  };
 }
 
-function ToolDivider() {
-  return <div className="w-px h-10 mt-0.5 mx-0.5 bg-white/10" />;
-}
+/* ── Toolbar button ── */
 
 function ToolButton({
   toolId,
@@ -179,17 +191,6 @@ function ToolButton({
 }) {
   const IconComponent = TOOL_ICONS[toolId];
   const keyHint = TOOL_KEYS[toolId];
-  const buttonStyle: React.CSSProperties = active
-    ? {
-        backgroundColor: "rgba(254, 252, 217, 0.12)",
-        border: "1px solid rgba(254, 252, 217, 0.38)",
-        color: "#FEFCD9",
-      }
-    : {
-        backgroundColor: "transparent",
-        border: "1px solid transparent",
-        color: "rgba(254, 252, 217, 0.7)",
-      };
 
   return (
     <button
@@ -198,41 +199,44 @@ function ToolButton({
       onClick={onClick}
       aria-pressed={active}
       title={`${toolId.charAt(0).toUpperCase() + toolId.slice(1)} (${keyHint})`}
-      className={`
-        group flex w-9 flex-col items-center gap-0.5 rounded-md transition-all duration-150 ease-in-out
-        ${disabled ? "opacity-30 cursor-not-allowed" : "cursor-pointer"}
-      `}
+      className={`relative flex h-8 w-8 items-center justify-center rounded-lg transition-all duration-100 ${
+        disabled ? "opacity-25 cursor-not-allowed" : "cursor-pointer"
+      }`}
+      style={
+        active
+          ? {
+              backgroundColor: "rgba(168,165,255,0.15)",
+              border: "1px solid rgba(168,165,255,0.4)",
+              color: "#c4c2ff",
+            }
+          : {
+              backgroundColor: "transparent",
+              border: "1px solid transparent",
+              color: "rgba(255,255,255,0.45)",
+            }
+      }
     >
-      <span
-        className={`relative flex h-9 w-9 items-center justify-center rounded-lg transition-all duration-150 ${
-          active ? "" : "group-hover:bg-white/5"
-        }`}
-        style={buttonStyle}
-      >
-        <IconComponent />
-      </span>
-      <span
-        className="select-none"
-        style={{
-          color: active ? "rgba(254,252,217,0.36)" : "rgba(254,252,217,0.18)",
-          fontSize: 7,
-          lineHeight: "7px",
-          fontWeight: 400,
-          letterSpacing: "0.02em",
-          fontFamily: "'PolySans Mono', monospace",
-        }}
-        onClick={(event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          if (!disabled) {
-            onClick();
-          }
-        }}
-      >
-      </span>
+      <IconComponent />
+      {active && (
+        <span
+          className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full"
+          style={{ backgroundColor: "#a8a5ff" }}
+        />
+      )}
     </button>
   );
 }
+
+function ToolDivider() {
+  return (
+    <div
+      className="w-px self-stretch my-1 mx-0.5"
+      style={{ backgroundColor: "rgba(255,255,255,0.08)" }}
+    />
+  );
+}
+
+/* ── Compact color picker ── */
 
 function ColorPicker({
   settings,
@@ -244,109 +248,379 @@ function ColorPicker({
   locked: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  const handleClickOutside = useCallback(
-    (event: MouseEvent) => {
-      if (ref.current && !ref.current.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    },
-    []
-  );
+  const [popupStyle, setPopupStyle] = useState<React.CSSProperties>({});
+  const [hexInput, setHexInput] = useState(settings.strokeColor.replace("#", ""));
+  const [hexError, setHexError] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const popupRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (open) {
-      document.addEventListener("mousedown", handleClickOutside);
-      return () => document.removeEventListener("mousedown", handleClickOutside);
+    setHexInput(settings.strokeColor.replace("#", ""));
+    setHexError(false);
+  }, [settings.strokeColor]);
+
+  const applyColor = useCallback(
+    (color: string) => {
+      onSettingsChange({ ...settings, strokeColor: color, textColor: color });
+    },
+    [settings, onSettingsChange]
+  );
+
+  const reposition = useCallback(() => {
+    const trigger = triggerRef.current;
+    if (!trigger) return;
+    setPopupStyle(calcPopupStyle(trigger.getBoundingClientRect()));
+  }, []);
+
+  const handleOpen = useCallback(() => {
+    if (locked) return;
+    reposition();
+    setOpen((prev) => !prev);
+  }, [locked, reposition]);
+
+  const handleClickOutside = useCallback((event: MouseEvent) => {
+    const target = event.target as Node;
+    if (
+      popupRef.current &&
+      !popupRef.current.contains(target) &&
+      triggerRef.current &&
+      !triggerRef.current.contains(target)
+    ) {
+      setOpen(false);
     }
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [open, handleClickOutside]);
 
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(false);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    return () => {
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+    };
+  }, [open]);
+
+  const handleHexCommit = (raw: string) => {
+    const normalized = normalizeHex(raw);
+    if (normalized) {
+      setHexError(false);
+      applyColor(normalized);
+    } else {
+      setHexError(true);
+    }
+  };
+
+  const currentColor = settings.strokeColor;
+  const bright = perceivedBrightness(currentColor.replace("#", "").padEnd(6, "0")) > 140;
+
+  const popup = open && !locked ? (
+    <div ref={popupRef} style={popupStyle}>
+      <div
+        className="rounded-xl p-2.5"
+        style={{
+          backgroundColor: "#1c1c22",
+          border: "1px solid rgba(255,255,255,0.08)",
+          boxShadow: "0 8px 32px rgba(0,0,0,0.6), 0 2px 8px rgba(0,0,0,0.4)",
+          width: 236,
+        }}
+      >
+        {/* Swatches row */}
+        <div className="flex flex-wrap gap-1 mb-2.5">
+          {TOOL_COLORS.map((color) => {
+            const isSelected = color.toLowerCase() === currentColor.toLowerCase();
+            const swatchBright = perceivedBrightness(color.replace("#", "").padEnd(6, "0")) > 140;
+            return (
+              <button
+                key={color}
+                type="button"
+                title={color}
+                onClick={() => {
+                  applyColor(color);
+                  setOpen(false);
+                }}
+                className="relative flex items-center justify-center rounded-md transition-all duration-100 hover:scale-110 active:scale-95 cursor-pointer"
+                style={{
+                  width: 22,
+                  height: 22,
+                  backgroundColor: color,
+                  outline: isSelected
+                    ? `2px solid ${swatchBright ? "rgba(0,0,0,0.5)" : "rgba(255,255,255,0.75)"}`
+                    : "2px solid transparent",
+                  outlineOffset: isSelected ? 1 : 0,
+                  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.12), 0 1px 3px rgba(0,0,0,0.3)",
+                }}
+              >
+                {isSelected && (
+                  <svg
+                    width="9"
+                    height="9"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke={swatchBright ? "rgba(0,0,0,0.6)" : "rgba(255,255,255,0.9)"}
+                    strokeWidth="3.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Divider */}
+        <div className="h-px mb-2.5" style={{ backgroundColor: "rgba(255,255,255,0.06)" }} />
+
+        {/* Hex input row */}
+        <div className="flex items-center gap-2">
+          <div
+            className="w-7 h-7 rounded-md shrink-0 border border-white/10"
+            style={{ backgroundColor: currentColor }}
+          />
+          <div className="relative flex-1 flex items-center">
+            <span
+              className="absolute left-2 text-[11px] font-mono pointer-events-none select-none"
+              style={{ color: "rgba(255,255,255,0.25)" }}
+            >
+              #
+            </span>
+            <input
+              type="text"
+              maxLength={6}
+              value={hexInput}
+              onChange={(e) => setHexInput(e.target.value)}
+              onBlur={(e) => handleHexCommit(e.target.value)}
+              onKeyDown={(e) => {
+                e.stopPropagation();
+                if (e.key === "Enter") handleHexCommit((e.target as HTMLInputElement).value);
+              }}
+              spellCheck={false}
+              className="w-full rounded-md pl-6 pr-2 py-1.5 text-[11px] font-mono outline-none"
+              style={{
+                backgroundColor: hexError ? "rgba(239,68,68,0.12)" : "rgba(255,255,255,0.06)",
+                border: hexError ? "1px solid rgba(239,68,68,0.4)" : "1px solid rgba(255,255,255,0.08)",
+                color: hexError ? "#fca5a5" : "#e3e3e8",
+              }}
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
   return (
-    <div ref={ref} className="relative">
+    <div className="relative flex items-center justify-center">
       <button
+        ref={triggerRef}
         type="button"
         disabled={locked}
-        onClick={() => setOpen(!open)}
-        className={`
-          flex items-center justify-center w-9 h-9 rounded-lg transition-all duration-150
-          hover:bg-[#2e2d39]
-          ${locked ? "opacity-30 cursor-not-allowed" : "cursor-pointer"}
-        `}
+        onClick={handleOpen}
+        title="Stroke color"
+        className={`relative flex items-center justify-center w-8 h-8 rounded-lg transition-all duration-100 ${
+          locked ? "opacity-30 cursor-not-allowed" : "cursor-pointer"
+        }`}
+        style={
+          open
+            ? {
+                backgroundColor: "rgba(168,165,255,0.12)",
+                border: "1px solid rgba(168,165,255,0.35)",
+              }
+            : {
+                border: "1px solid transparent",
+              }
+        }
       >
+        {/* Swatch circle with ring showing stroke width */}
         <div
-          className="w-5 h-5 rounded-md border border-white/20 shadow-inner"
-          style={{ backgroundColor: settings.strokeColor }}
+          className="rounded-full"
+          style={{
+            width: 20,
+            height: 20,
+            backgroundColor: currentColor,
+            boxShadow: `0 0 0 1.5px rgba(255,255,255,0.15), 0 1px 4px rgba(0,0,0,0.4)`,
+          }}
         />
       </button>
 
-      {open && !locked && (
-        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 z-50">
-          <Island padding={2}>
-            <div className="flex flex-col gap-3">
-              <div>
-                <div className="text-[10px] font-semibold uppercase tracking-widest text-[#b8b8b8] mb-2 px-0.5">
-                  Stroke color
-                </div>
-                <div className="grid grid-cols-4 gap-1.5">
-                  {TOOL_COLORS.map((color) => (
-                    <button
-                      key={color}
-                      type="button"
-                      onClick={() => {
-                        onSettingsChange({ ...settings, strokeColor: color, textColor: color });
-                      }}
-                      className={`
-                        w-7 h-7 rounded-md transition-all duration-100
-                        ${
-                          settings.strokeColor === color
-                            ? "ring-2 ring-[#a8a5ff] ring-offset-1 ring-offset-[#232329] scale-110"
-                            : "hover:scale-110"
-                        }
-                      `}
-                      style={{ backgroundColor: color }}
-                    />
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <div className="text-[10px] font-semibold uppercase tracking-widest text-[#b8b8b8] mb-2 px-0.5">
-                  Stroke width
-                </div>
-                <div className="flex items-center gap-1">
-                  {STROKE_WIDTHS.map((size) => (
-                    <button
-                      key={size}
-                      type="button"
-                      onClick={() => onSettingsChange({ ...settings, strokeWidth: size })}
-                      className={`
-                        w-8 h-8 rounded-md flex items-center justify-center transition-all duration-100
-                        ${
-                          settings.strokeWidth === size
-                            ? "bg-[#403e6a] shadow-[inset_0_0_0_1px_rgba(169,165,255,0.4)]"
-                            : "hover:bg-[#2e2d39]"
-                        }
-                      `}
-                    >
-                      <span
-                        className="rounded-full bg-[#e3e3e8]"
-                        style={{
-                          width: Math.max(3, size + 1),
-                          height: Math.max(3, size + 1),
-                        }}
-                      />
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </Island>
-        </div>
-      )}
+      {typeof document !== "undefined" ? createPortal(popup, document.body) : null}
     </div>
   );
 }
+
+/* ── Stroke width picker ── */
+
+function StrokeWidthPicker({
+  settings,
+  onSettingsChange,
+  locked,
+}: {
+  settings: ToolSettings;
+  onSettingsChange: (next: ToolSettings) => void;
+  locked: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [popupStyle, setPopupStyle] = useState<React.CSSProperties>({});
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const popupRef = useRef<HTMLDivElement>(null);
+
+  const reposition = useCallback(() => {
+    const trigger = triggerRef.current;
+    if (!trigger) return;
+    setPopupStyle(calcPopupStyle(trigger.getBoundingClientRect()));
+  }, []);
+
+  const handleOpen = useCallback(() => {
+    if (locked) return;
+    reposition();
+    setOpen((prev) => !prev);
+  }, [locked, reposition]);
+
+  const handleClickOutside = useCallback((event: MouseEvent) => {
+    const target = event.target as Node;
+    if (
+      popupRef.current &&
+      !popupRef.current.contains(target) &&
+      triggerRef.current &&
+      !triggerRef.current.contains(target)
+    ) {
+      setOpen(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [open, handleClickOutside]);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(false);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    return () => {
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+    };
+  }, [open]);
+
+  const popup = open && !locked ? (
+    <div ref={popupRef} style={popupStyle}>
+      <div
+        className="rounded-xl p-2"
+        style={{
+          backgroundColor: "#1c1c22",
+          border: "1px solid rgba(255,255,255,0.08)",
+          boxShadow: "0 8px 32px rgba(0,0,0,0.6), 0 2px 8px rgba(0,0,0,0.4)",
+        }}
+      >
+        <p
+          className="text-[9px] font-semibold uppercase tracking-widest mb-2 px-1"
+          style={{ color: "rgba(255,255,255,0.28)" }}
+        >
+          Stroke width
+        </p>
+        <div className="flex items-end gap-1">
+          {STROKE_WIDTHS.map((size) => {
+            const isSelected = settings.strokeWidth === size;
+            return (
+              <button
+                key={size}
+                type="button"
+                title={`${size}px`}
+                onClick={() => {
+                  onSettingsChange({ ...settings, strokeWidth: size });
+                  setOpen(false);
+                }}
+                className="flex flex-col items-center justify-end gap-1.5 rounded-lg px-2 py-2 transition-all duration-100 cursor-pointer"
+                style={{
+                  minWidth: 40,
+                  backgroundColor: isSelected
+                    ? "rgba(168,165,255,0.15)"
+                    : "rgba(255,255,255,0.04)",
+                  border: isSelected
+                    ? "1px solid rgba(168,165,255,0.4)"
+                    : "1px solid rgba(255,255,255,0.06)",
+                }}
+              >
+                {/* Line preview */}
+                <div
+                  className="rounded-full w-6"
+                  style={{
+                    height: size,
+                    backgroundColor: isSelected
+                      ? "#a8a5ff"
+                      : "rgba(255,255,255,0.35)",
+                  }}
+                />
+                <span
+                  className="text-[9px] font-mono"
+                  style={{
+                    color: isSelected ? "#c4c2ff" : "rgba(255,255,255,0.3)",
+                  }}
+                >
+                  {size}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  ) : null;
+
+  return (
+    <div className="relative flex items-center justify-center">
+      <button
+        ref={triggerRef}
+        type="button"
+        disabled={locked}
+        onClick={handleOpen}
+        title="Stroke width"
+        className={`relative flex items-center justify-center w-8 h-8 rounded-lg transition-all duration-100 ${
+          locked ? "opacity-30 cursor-not-allowed" : "cursor-pointer"
+        }`}
+        style={
+          open
+            ? {
+                backgroundColor: "rgba(168,165,255,0.12)",
+                border: "1px solid rgba(168,165,255,0.35)",
+                color: "#c4c2ff",
+              }
+            : {
+                border: "1px solid transparent",
+                color: "rgba(255,255,255,0.45)",
+              }
+        }
+      >
+        {/* Line preview at current width */}
+        <svg width="16" height="16" viewBox="0 0 16 16">
+          <line
+            x1="2"
+            y1="8"
+            x2="14"
+            y2="8"
+            stroke="currentColor"
+            strokeWidth={Math.min(settings.strokeWidth, 8)}
+            strokeLinecap="round"
+          />
+        </svg>
+      </button>
+
+      {typeof document !== "undefined" ? createPortal(popup, document.body) : null}
+    </div>
+  );
+}
+
+/* ── Main toolbar ── */
 
 export function WhiteboardToolbar({
   tool,
@@ -363,79 +637,108 @@ export function WhiteboardToolbar({
   locked: boolean;
   onExport: () => void;
 }) {
-  const pointerTools: ToolKind[] = ["select"];
+  const pointerTools: ToolKind[] = ["select", "pan"];
   const drawTools: ToolKind[] = ["pen", "highlighter", "eraser"];
   const shapeTools: ToolKind[] = ["rect", "ellipse", "line", "arrow"];
   const insertTools: ToolKind[] = ["text", "sticky"];
 
   return (
-    <Island padding={1} className="shrink-0">
-      <div className="flex items-start gap-0.5">
-        {pointerTools.map((id) => (
-          <ToolButton
-            key={id}
-            toolId={id}
-            active={tool === id}
-            disabled={locked && id !== "select"}
-            onClick={() => onToolChange(id)}
-          />
-        ))}
-
-        <ToolDivider />
-
-        {drawTools.map((id) => (
-          <ToolButton
-            key={id}
-            toolId={id}
-            active={tool === id}
-            disabled={locked && id !== "select"}
-            onClick={() => onToolChange(id)}
-          />
-        ))}
-
-        <ToolDivider />
-
-        {shapeTools.map((id) => (
-          <ToolButton
-            key={id}
-            toolId={id}
-            active={tool === id}
-            disabled={locked && id !== "select"}
-            onClick={() => onToolChange(id)}
-          />
-        ))}
-
-        <ToolDivider />
-
-        {insertTools.map((id) => (
-          <ToolButton
-            key={id}
-            toolId={id}
-            active={tool === id}
-            disabled={locked && id !== "select"}
-            onClick={() => onToolChange(id)}
-          />
-        ))}
-
-        <ToolDivider />
-
-        <ColorPicker
-          settings={settings}
-          onSettingsChange={onSettingsChange}
-          locked={locked}
+    <div
+      className="flex items-center gap-0.5 rounded-xl px-1.5 py-1.5"
+      style={{
+        backgroundColor: "#1c1c22",
+        border: "1px solid rgba(255,255,255,0.07)",
+        boxShadow:
+          "0 4px 6px -1px rgba(0,0,0,0.3), 0 10px 24px -4px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.04)",
+      }}
+    >
+      {/* Pointer tools */}
+      {pointerTools.map((id) => (
+        <ToolButton
+          key={id}
+          toolId={id}
+          active={tool === id}
+          disabled={locked && id !== "select" && id !== "pan"}
+          onClick={() => onToolChange(id)}
         />
+      ))}
 
-        <ToolDivider />
+      <ToolDivider />
 
-        <button
-          type="button"
-          onClick={onExport}
-          title="Export as PNG"
-          className="flex items-center justify-center w-9 h-9 rounded-lg text-[#b8b8b8] hover:bg-[#2e2d39] hover:text-[#e3e3e8] transition-all duration-150 cursor-pointer"
-        >
-          <ExportIcon />
-        </button>
-      </div>
-    </Island>
+      {/* Draw tools */}
+      {drawTools.map((id) => (
+        <ToolButton
+          key={id}
+          toolId={id}
+          active={tool === id}
+          disabled={locked && id !== "select" && id !== "pan"}
+          onClick={() => onToolChange(id)}
+        />
+      ))}
+
+      <ToolDivider />
+
+      {/* Shape tools */}
+      {shapeTools.map((id) => (
+        <ToolButton
+          key={id}
+          toolId={id}
+          active={tool === id}
+          disabled={locked && id !== "select" && id !== "pan"}
+          onClick={() => onToolChange(id)}
+        />
+      ))}
+
+      <ToolDivider />
+
+      {/* Insert tools */}
+      {insertTools.map((id) => (
+        <ToolButton
+          key={id}
+          toolId={id}
+          active={tool === id}
+          disabled={locked && id !== "select" && id !== "pan"}
+          onClick={() => onToolChange(id)}
+        />
+      ))}
+
+      <ToolDivider />
+
+      {/* Color + stroke width */}
+      <ColorPicker
+        settings={settings}
+        onSettingsChange={onSettingsChange}
+        locked={locked}
+      />
+      <StrokeWidthPicker
+        settings={settings}
+        onSettingsChange={onSettingsChange}
+        locked={locked}
+      />
+
+      <ToolDivider />
+
+      {/* Export */}
+      <button
+        type="button"
+        onClick={onExport}
+        title="Export as PNG"
+        className="flex items-center justify-center w-8 h-8 rounded-lg transition-all duration-100 cursor-pointer"
+        style={{
+          border: "1px solid transparent",
+          color: "rgba(255,255,255,0.4)",
+        }}
+        onMouseEnter={(e) => {
+          (e.currentTarget as HTMLElement).style.backgroundColor = "rgba(255,255,255,0.05)";
+          (e.currentTarget as HTMLElement).style.color = "rgba(255,255,255,0.8)";
+        }}
+        onMouseLeave={(e) => {
+          (e.currentTarget as HTMLElement).style.backgroundColor = "transparent";
+          (e.currentTarget as HTMLElement).style.color = "rgba(255,255,255,0.4)";
+        }}
+      >
+        <ExportIcon />
+      </button>
+    </div>
   );
 }

@@ -314,16 +314,35 @@ const renderGrid = (
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
+  translateX: number,
+  translateY: number,
+  scale: number,
 ) => {
+  // Fill background in screen space (before transform)
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.fillStyle = "#121212";
   ctx.fillRect(0, 0, width, height);
+  ctx.restore();
 
   const step = 20;
-  const dotR = 0.6;
-  ctx.fillStyle = "rgba(255, 255, 255, 0.06)";
+  // Clamp dot radius so it stays visible when zoomed out but not huge when zoomed in
+  const dotR = Math.min(1.2, Math.max(0.4, 0.6 / scale));
+  const majorDotR = Math.min(2.0, Math.max(0.7, 1.0 / scale));
 
-  for (let x = step; x < width; x += step) {
-    for (let y = step; y < height; y += step) {
+  // Compute the visible canvas-space range so we only draw dots in view
+  const canvasLeft = -translateX / scale;
+  const canvasTop = -translateY / scale;
+  const canvasRight = canvasLeft + width / scale;
+  const canvasBottom = canvasTop + height / scale;
+
+  // Snap start to the nearest grid line behind the visible edge
+  const startX = Math.floor(canvasLeft / step) * step;
+  const startY = Math.floor(canvasTop / step) * step;
+
+  ctx.fillStyle = "rgba(255, 255, 255, 0.06)";
+  for (let x = startX; x < canvasRight; x += step) {
+    for (let y = startY; y < canvasBottom; y += step) {
       ctx.beginPath();
       ctx.arc(x, y, dotR, 0, Math.PI * 2);
       ctx.fill();
@@ -331,11 +350,14 @@ const renderGrid = (
   }
 
   const major = step * 5;
+  const majorStartX = Math.floor(canvasLeft / major) * major;
+  const majorStartY = Math.floor(canvasTop / major) * major;
+
   ctx.fillStyle = "rgba(169, 165, 255, 0.05)";
-  for (let x = major; x < width; x += major) {
-    for (let y = major; y < height; y += major) {
+  for (let x = majorStartX; x < canvasRight; x += major) {
+    for (let y = majorStartY; y < canvasBottom; y += major) {
       ctx.beginPath();
-      ctx.arc(x, y, 1.0, 0, Math.PI * 2);
+      ctx.arc(x, y, majorDotR, 0, Math.PI * 2);
       ctx.fill();
     }
   }
@@ -410,11 +432,21 @@ export const renderCanvas = (
   width: number,
   height: number,
   imageCache?: Map<string, HTMLImageElement>,
+  viewport?: { translateX: number; translateY: number; scale: number },
 ) => {
-  ctx.clearRect(0, 0, width, height);
+  // clearRect must operate in screen space — reset to identity (ignoring any
+  // pre-applied DPR or viewport transform) then restore after clearing.
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+  ctx.restore();
+
   ctx.save();
 
-  renderGrid(ctx, width, height);
+  const tx = viewport?.translateX ?? 0;
+  const ty = viewport?.translateY ?? 0;
+  const sc = viewport?.scale ?? 1;
+  renderGrid(ctx, width, height, tx, ty, sc);
 
   for (const element of elements) {
     const seed = seedFrom(element.id);
