@@ -1009,13 +1009,7 @@ export function WhiteboardCanvas({
   const handleWheel = useCallback(
     (event: React.WheelEvent<HTMLCanvasElement>) => {
       if (editingElementId) return;
-      // Ctrl+wheel or pinch-to-zoom => zoom the viewport
-      if (event.ctrlKey || event.metaKey) {
-        event.preventDefault();
-        onViewportWheel?.(event);
-        return;
-      }
-      // Regular scroll without modifier — first check if we're over a sticky note
+      // Check if we're over a scrollable sticky note first — that takes priority
       const rect = event.currentTarget.getBoundingClientRect();
       const canvasPoint = toCanvasPoint(event.clientX, event.clientY, rect);
       const sticky = [...elements]
@@ -1038,7 +1032,7 @@ export function WhiteboardCanvas({
           return;
         }
       }
-      // Otherwise pan/zoom the viewport
+      // All other scroll/pinch — zoom the viewport
       event.preventDefault();
       onViewportWheel?.(event);
     },
