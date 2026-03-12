@@ -382,12 +382,12 @@ function ColorPicker({
         {/* Hex input row */}
         <div className="flex items-center gap-2">
           <div
-            className="w-7 h-7 rounded-md shrink-0 border border-white/10"
-            style={{ backgroundColor: currentColor }}
+            className="rounded-md shrink-0 border border-white/10"
+            style={{ width: 22, height: 22, backgroundColor: currentColor }}
           />
           <div className="relative flex-1 flex items-center">
             <span
-              className="absolute left-2 text-[11px] font-mono pointer-events-none select-none"
+              className="absolute left-2.5 text-[11px] font-mono pointer-events-none select-none"
               style={{ color: "rgba(255,255,255,0.25)" }}
             >
               #
