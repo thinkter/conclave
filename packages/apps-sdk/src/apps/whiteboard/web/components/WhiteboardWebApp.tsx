@@ -185,11 +185,23 @@ export function WhiteboardWebApp() {
     );
   }
 
-  const remoteCursors = states.filter(
-    (state) =>
-      state.cursor &&
-      state.user?.name &&
-      state.clientId !== awareness.clientID,
+  const remoteCursors = useMemo(
+    () =>
+      states
+        .filter(
+          (state) =>
+            state.cursor &&
+            state.user?.name &&
+            state.clientId !== awareness.clientID,
+        )
+        .map((state) => ({
+          clientId: state.clientId,
+          color: state.user?.color ?? "#a8a5ff",
+          name: state.user?.name ?? "",
+          x: (state.cursor?.x ?? 0) * viewport.scale + viewport.translateX,
+          y: (state.cursor?.y ?? 0) * viewport.scale + viewport.translateY,
+        })),
+    [awareness.clientID, states, viewport],
   );
 
   return (
@@ -310,12 +322,12 @@ export function WhiteboardWebApp() {
           </div>
         </div>
 
-        {remoteCursors.map((state) => (
+        {remoteCursors.map((cursor) => (
           <div
-            key={state.clientId}
+            key={cursor.clientId}
             className="absolute pointer-events-none z-50"
             style={{
-              transform: `translate(${state.cursor?.x ?? 0}px, ${state.cursor?.y ?? 0}px)`,
+              transform: `translate(${cursor.x}px, ${cursor.y}px)`,
               transition: "transform 80ms linear",
             }}
           >
@@ -323,7 +335,7 @@ export function WhiteboardWebApp() {
               width="16"
               height="20"
               viewBox="0 0 16 20"
-              fill={state.user?.color ?? "#a8a5ff"}
+              fill={cursor.color}
               stroke="white"
               strokeWidth="1"
               style={{ filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.4))" }}
@@ -333,11 +345,11 @@ export function WhiteboardWebApp() {
             <div
               className="ml-4 -mt-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium text-white whitespace-nowrap"
               style={{
-                backgroundColor: state.user?.color ?? "#a8a5ff",
+                backgroundColor: cursor.color,
                 boxShadow: "0 1px 3px rgba(0,0,0,0.3)",
               }}
             >
-              {state.user?.name ?? ""}
+              {cursor.name}
             </div>
           </div>
         ))}
