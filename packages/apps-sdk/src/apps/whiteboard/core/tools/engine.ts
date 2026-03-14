@@ -13,7 +13,8 @@ export type ToolKind =
   | "line"
   | "arrow"
   | "text"
-  | "sticky";
+  | "sticky"
+  | "pan";
 
 export type ToolSettings = {
   strokeColor: string;
@@ -75,7 +76,7 @@ export class ToolEngine {
       this.activeElementId = null;
       this.dragStart = null;
       this.lastPoint = null;
-      if (tool !== "select") {
+      if (tool !== "select" && tool !== "pan") {
         this.selectedId = null;
       }
     }
@@ -193,6 +194,10 @@ export class ToolEngine {
       return;
     }
 
+    if (this.tool === "pan") {
+      return;
+    }
+
     if (this.tool === "select") {
       const elements = getPageElements(this.doc, this.pageId);
       const hit = [...elements].reverse().find((element) => hitTestElement(element, point));
@@ -207,6 +212,8 @@ export class ToolEngine {
 
   onPointerMove(point: Point) {
     if (!this.dragStart || !this.lastPoint) return;
+
+    if (this.tool === "pan") return;
 
     if (this.tool === "pen" || this.tool === "highlighter") {
       if (!this.activeElementId) return;

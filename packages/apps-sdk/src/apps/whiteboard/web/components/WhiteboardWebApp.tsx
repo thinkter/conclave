@@ -3,6 +3,7 @@ import { useAppDoc } from "../../../../sdk/hooks/useAppDoc";
 import { useAppPresence } from "../../../../sdk/hooks/useAppPresence";
 import { useApps } from "../../../../sdk/hooks/useApps";
 import { useToolState } from "../../shared/hooks/useToolState";
+import { useViewport } from "../../shared/hooks/useViewport";
 import { WhiteboardToolbar } from "./WhiteboardToolbar";
 import { WhiteboardCanvas, type WhiteboardStressResult } from "./WhiteboardCanvas";
 import { useWhiteboardPages } from "../../shared/hooks/useWhiteboardPages";
@@ -12,6 +13,8 @@ export function WhiteboardWebApp() {
   const { doc, awareness, locked } = useAppDoc("whiteboard");
   const { states } = useAppPresence("whiteboard");
   const { tool, setTool, settings, setSettings } = useToolState();
+  const { viewport, panBy, zoomAt, resetViewport, panStartRef } = useViewport();
+  const lastPanPosRef = useRef<{ x: number; y: number } | null>(null);
   const isReadOnly = locked && !isAdmin;
   const {
     pages,
@@ -48,6 +51,31 @@ export function WhiteboardWebApp() {
     }
   }, [isReadOnly]);
 
+  const handlePanStart = useCallback((screenX: number, screenY: number) => {
+    lastPanPosRef.current = { x: screenX, y: screenY };
+  }, []);
+
+  const handlePanMove = useCallback((screenX: number, screenY: number) => {
+    const last = lastPanPosRef.current;
+    if (!last) return;
+    const dx = screenX - last.x;
+    const dy = screenY - last.y;
+    lastPanPosRef.current = { x: screenX, y: screenY };
+    panBy(dx, dy);
+  }, [panBy]);
+
+  const handlePanEnd = useCallback(() => {
+    lastPanPosRef.current = null;
+  }, []);
+
+  const handleViewportWheel = useCallback((event: React.WheelEvent<HTMLCanvasElement>) => {
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    const screenX = event.clientX - rect.left;
+    const screenY = event.clientY - rect.top;
+    const factor = event.deltaY < 0 ? 1.1 : 1 / 1.1;
+    zoomAt(screenX, screenY, factor);
+  }, [zoomAt]);
+
   const triggerStressTest = useCallback(() => {
     if (isReadOnly || stressTestRunning) return;
     setStressTestRunning(true);
@@ -72,6 +100,7 @@ export function WhiteboardWebApp() {
       a: "arrow",
       "8": "text",
       "9": "sticky",
+      h: "pan",
     };
     const toolsByCode: Record<string, typeof tool> = {
       Digit1: "select",
@@ -84,6 +113,7 @@ export function WhiteboardWebApp() {
       KeyA: "arrow",
       Digit8: "text",
       Digit9: "sticky",
+      KeyH: "pan",
       Numpad1: "select",
       Numpad2: "pen",
       Numpad3: "highlighter",
@@ -155,11 +185,23 @@ export function WhiteboardWebApp() {
     );
   }
 
-  const remoteCursors = states.filter(
-    (state) =>
-      state.cursor &&
-      state.user?.name &&
-      state.clientId !== awareness.clientID,
+  const remoteCursors = useMemo(
+    () =>
+      states
+        .filter(
+          (state) =>
+            state.cursor &&
+            state.user?.name &&
+            state.clientId !== awareness.clientID,
+        )
+        .map((state) => ({
+          clientId: state.clientId,
+          color: state.user?.color ?? "#a8a5ff",
+          name: state.user?.name ?? "",
+          x: (state.cursor?.x ?? 0) * viewport.scale + viewport.translateX,
+          y: (state.cursor?.y ?? 0) * viewport.scale + viewport.translateY,
+        })),
+    [awareness.clientID, states, viewport],
   );
 
   return (
@@ -181,6 +223,11 @@ export function WhiteboardWebApp() {
             onToolChange={setTool}
             stressTestRequestId={stressTestRequestId}
             onStressTestComplete={handleStressTestComplete}
+            viewport={viewport}
+            onPanStart={handlePanStart}
+            onPanMove={handlePanMove}
+            onPanEnd={handlePanEnd}
+            onWheel={handleViewportWheel}
           />
         </div>
 
@@ -203,6 +250,22 @@ export function WhiteboardWebApp() {
                   Locked
                 </div>
               ) : null}
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={resetViewport}
+                  title="Reset view (100%)"
+                  className="rounded-lg px-2 py-1.5 text-[11px] font-medium text-[#d8d8d8] transition-colors cursor-pointer hover:text-white tabular-nums"
+                  style={{
+                    backgroundColor: "#2b2b33",
+                    boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.08)",
+                    minWidth: 52,
+                    textAlign: "center",
+                  }}
+                >
+                  {Math.round(viewport.scale * 100)}%
+                </button>
+              </div>
               {stressToolsEnabled ? (
                 <>
                   <button
@@ -259,12 +322,12 @@ export function WhiteboardWebApp() {
           </div>
         </div>
 
-        {remoteCursors.map((state) => (
+        {remoteCursors.map((cursor) => (
           <div
-            key={state.clientId}
+            key={cursor.clientId}
             className="absolute pointer-events-none z-50"
             style={{
-              transform: `translate(${state.cursor?.x ?? 0}px, ${state.cursor?.y ?? 0}px)`,
+              transform: `translate(${cursor.x}px, ${cursor.y}px)`,
               transition: "transform 80ms linear",
             }}
           >
@@ -272,7 +335,7 @@ export function WhiteboardWebApp() {
               width="16"
               height="20"
               viewBox="0 0 16 20"
-              fill={state.user?.color ?? "#a8a5ff"}
+              fill={cursor.color}
               stroke="white"
               strokeWidth="1"
               style={{ filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.4))" }}
@@ -282,11 +345,11 @@ export function WhiteboardWebApp() {
             <div
               className="ml-4 -mt-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium text-white whitespace-nowrap"
               style={{
-                backgroundColor: state.user?.color ?? "#a8a5ff",
+                backgroundColor: cursor.color,
                 boxShadow: "0 1px 3px rgba(0,0,0,0.3)",
               }}
             >
-              {state.user?.name ?? ""}
+              {cursor.name}
             </div>
           </div>
         ))}

@@ -1,12 +1,30 @@
+// Curated flat palette — one row of 20 colours shown in the compact picker
 export const TOOL_COLORS = [
+  // Neutrals
+  "#ffffff",
   "#e3e3e8",
-  "#a8a5ff",
-  "#60A5FA",
-  "#4ADE80",
-  "#FBBF24",
-  "#FB7185",
-  "#F97316",
+  "#71717a",
   "#1e1e1e",
+  // Reds / Pinks
+  "#f87171",
+  "#ef4444",
+  "#fb7185",
+  "#ec4899",
+  // Oranges / Yellows
+  "#fb923c",
+  "#f97316",
+  "#facc15",
+  "#fbbf24",
+  // Greens / Teals
+  "#4ade80",
+  "#22c55e",
+  "#2dd4bf",
+  "#14b8a6",
+  // Blues / Purples
+  "#60a5fa",
+  "#3b82f6",
+  "#a8a5ff",
+  "#c084fc",
 ];
 
 export const DEFAULT_TOOL_SETTINGS = {

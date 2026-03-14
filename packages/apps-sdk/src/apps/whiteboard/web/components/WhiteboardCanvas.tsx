@@ -31,6 +31,11 @@ export type WhiteboardCanvasProps = {
   onToolChange?: (tool: ToolKind) => void;
   stressTestRequestId?: number | null;
   onStressTestComplete?: (result: WhiteboardStressResult) => void;
+  viewport: { translateX: number; translateY: number; scale: number };
+  onPanStart?: (screenX: number, screenY: number) => void;
+  onPanMove?: (screenX: number, screenY: number) => void;
+  onPanEnd?: () => void;
+  onWheel?: (event: React.WheelEvent<HTMLCanvasElement>) => void;
 };
 
 export type WhiteboardStressResult = {
@@ -353,6 +358,11 @@ export function WhiteboardCanvas({
   onToolChange,
   stressTestRequestId,
   onStressTestComplete,
+  viewport,
+  onPanStart,
+  onPanMove,
+  onPanEnd,
+  onWheel: onViewportWheel,
 }: WhiteboardCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const internalCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -380,6 +390,18 @@ export function WhiteboardCanvas({
   const [editingElementId, setEditingElementId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState("");
   const [stickyScrollOffsets, setStickyScrollOffsets] = useState<Record<string, number>>({});
+
+  const toCanvasPoint = useCallback(
+    (screenX: number, screenY: number, rect: DOMRect) => {
+      const relX = screenX - rect.left;
+      const relY = screenY - rect.top;
+      return {
+        x: (relX - viewport.translateX) / viewport.scale,
+        y: (relY - viewport.translateY) / viewport.scale,
+      };
+    },
+    [viewport]
+  );
 
   useEffect(() => {
     if (!engineRef.current) {
@@ -496,6 +518,11 @@ export function WhiteboardCanvas({
     latestCursorRef.current = null;
     awareness.setLocalStateField("cursor", null);
   }, [awareness]);
+
+  useEffect(() => {
+    if (tool !== "pan") return;
+    clearCursor();
+  }, [clearCursor, tool]);
 
   useEffect(() => {
     return () => {
@@ -665,6 +692,8 @@ export function WhiteboardCanvas({
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     ctx.setTransform(scale, 0, 0, scale, 0, 0);
+    ctx.translate(viewport.translateX, viewport.translateY);
+    ctx.scale(viewport.scale, viewport.scale);
     // Keep sticky background visible while editing by only hiding sticky text.
     // For plain text elements, hide the element entirely under the editor.
     const renderedElements = editingElementId
@@ -684,8 +713,8 @@ export function WhiteboardCanvas({
       if (clamped === 0) return element;
       return { ...element, stickyScrollOffset: clamped };
     });
-    renderCanvas(ctx, renderList, rect.width, rect.height, imageCacheRef.current);
-  }, [elements, editingElementId, imageVersion, stickyScrollOffsets]);
+    renderCanvas(ctx, renderList, rect.width, rect.height, imageCacheRef.current, viewport);
+  }, [elements, editingElementId, imageVersion, stickyScrollOffsets, viewport]);
 
   useEffect(() => {
     drawRef.current = drawCanvas;
@@ -803,8 +832,14 @@ export function WhiteboardCanvas({
       if (editingElementId) {
         commitEditing();
       }
+      if (tool === "pan") {
+        clearCursor();
+        onPanStart?.(event.clientX, event.clientY);
+        return;
+      }
       const rect = event.currentTarget.getBoundingClientRect();
-      const point = { x: event.clientX - rect.left, y: event.clientY - rect.top, pressure: event.pressure };
+      const canvasPoint = toCanvasPoint(event.clientX, event.clientY, event.currentTarget.getBoundingClientRect());
+      const point = { x: canvasPoint.x, y: canvasPoint.y, pressure: event.pressure };
       event.currentTarget.setPointerCapture(event.pointerId);
       pendingMoveRef.current = null;
       if (moveRafRef.current !== null) {
@@ -865,21 +900,28 @@ export function WhiteboardCanvas({
     },
     [
       commitEditing,
+      clearCursor,
       editingElementId,
       elements,
       locked,
+      onPanStart,
       onToolChange,
       scheduleCursorSync,
       selectedId,
       startEditingById,
+      toCanvasPoint,
       tool,
     ]
   );
 
   const handlePointerMove = useCallback(
     (event: React.PointerEvent<HTMLCanvasElement>) => {
-      const rect = event.currentTarget.getBoundingClientRect();
-      const point = { x: event.clientX - rect.left, y: event.clientY - rect.top, pressure: event.pressure };
+      const canvasPoint = toCanvasPoint(event.clientX, event.clientY, event.currentTarget.getBoundingClientRect());
+      const point = { x: canvasPoint.x, y: canvasPoint.y, pressure: event.pressure };
+      if (tool === "pan") {
+        if (event.buttons) onPanMove?.(event.clientX, event.clientY);
+        return;
+      }
       if (!locked && event.buttons) {
         const rotateSession = rotateSessionRef.current;
         if (rotateSession) {
@@ -927,12 +969,17 @@ export function WhiteboardCanvas({
       }
       scheduleCursorSync(point.x, point.y);
     },
-    [doc, locked, pageId, queuePointerMove, scheduleCursorSync]
+    [doc, locked, onPanMove, pageId, queuePointerMove, scheduleCursorSync, toCanvasPoint, tool]
   );
 
   const handlePointerUp = useCallback((event: React.PointerEvent<HTMLCanvasElement>) => {
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    if (tool === "pan") {
+      clearCursor();
+      onPanEnd?.();
+      return;
     }
     const rotateSession = rotateSessionRef.current;
     if (rotateSession) {
@@ -954,50 +1001,58 @@ export function WhiteboardCanvas({
       setSelectedId(engineRef.current?.getSelectedId() ?? null);
     }
     clearCursor();
-  }, [locked, clearCursor, flushPendingMove]);
+  }, [locked, clearCursor, flushPendingMove, onPanEnd, tool]);
 
   const handlePointerLeave = useCallback(
     (event: React.PointerEvent<HTMLCanvasElement>) => {
+      if (tool === "pan") {
+        clearCursor();
+        onPanEnd?.();
+        return;
+      }
       handlePointerUp(event);
     },
-    [handlePointerUp]
+    [clearCursor, handlePointerUp, tool, onPanEnd]
   );
 
   const handleWheel = useCallback(
     (event: React.WheelEvent<HTMLCanvasElement>) => {
       if (editingElementId) return;
+      // Check if we're over a scrollable sticky note first — that takes priority
       const rect = event.currentTarget.getBoundingClientRect();
-      const point = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+      const canvasPoint = toCanvasPoint(event.clientX, event.clientY, rect);
       const sticky = [...elements]
         .reverse()
         .find(
           (element): element is StickyElement =>
-            element.type === "sticky" && hitTestElement(element, point, 0)
+            element.type === "sticky" && hitTestElement(element, canvasPoint, 0)
         );
-      if (!sticky) return;
-      const maxScroll = getMaxStickyScroll(sticky);
-      if (maxScroll <= 0) return;
-
+      if (sticky) {
+        const maxScroll = getMaxStickyScroll(sticky);
+        if (maxScroll > 0) {
+          event.preventDefault();
+          event.stopPropagation();
+          setStickyScrollOffsets((prev) => {
+            const current = prev[sticky.id] ?? 0;
+            const next = Math.min(Math.max(current + event.deltaY, 0), maxScroll);
+            if (Math.abs(next - current) < 0.5) return prev;
+            return { ...prev, [sticky.id]: next };
+          });
+          return;
+        }
+      }
+      // All other scroll/pinch — zoom the viewport
       event.preventDefault();
-      event.stopPropagation();
-      setStickyScrollOffsets((prev) => {
-        const current = prev[sticky.id] ?? 0;
-        const next = Math.min(Math.max(current + event.deltaY, 0), maxScroll);
-        if (Math.abs(next - current) < 0.5) return prev;
-        return { ...prev, [sticky.id]: next };
-      });
+      onViewportWheel?.(event);
     },
-    [editingElementId, elements]
+    [editingElementId, elements, toCanvasPoint, onViewportWheel]
   );
 
   const handleDoubleClick = useCallback(
     (event: React.MouseEvent<HTMLCanvasElement>) => {
       if (locked) return;
       const rect = event.currentTarget.getBoundingClientRect();
-      const point = {
-        x: event.clientX - rect.left,
-        y: event.clientY - rect.top,
-      };
+      const point = toCanvasPoint(event.clientX, event.clientY, rect);
       const hit = [...elements]
         .reverse()
         .find((element) => isEditableElement(element) && hitTestElement(element, point));
@@ -1020,7 +1075,7 @@ export function WhiteboardCanvas({
         }
       }
     },
-    [elements, locked, onToolChange, startEditingById, tool]
+    [elements, locked, onToolChange, startEditingById, toCanvasPoint, tool]
   );
 
   const selectedElement = useMemo(
@@ -1134,7 +1189,10 @@ export function WhiteboardCanvas({
       <canvas
         ref={resolvedCanvasRef}
         className="w-full h-full"
-        style={{ touchAction: "manipulation" }}
+        style={{
+          touchAction: "manipulation",
+          cursor: tool === "pan" ? "grab" : undefined,
+        }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
@@ -1142,122 +1200,132 @@ export function WhiteboardCanvas({
         onWheel={handleWheel}
         onDoubleClick={handleDoubleClick}
       />
-      {selectionBounds && tool === "select" && !editingElement ? (
-        <div
-          className="absolute pointer-events-none"
-          style={{
-            left: selectionBounds.x - 4,
-            top: selectionBounds.y - 4,
-            width: Math.max(1, selectionBounds.width) + 8,
-            height: Math.max(1, selectionBounds.height) + 8,
-            border: "1.5px solid #6965db",
-            borderRadius: 4,
-          }}
-        >
-          {canResizeSelectedElement
-            ? [
-                { left: -4, top: -4 },
-                { right: -4, top: -4 },
-                { left: -4, bottom: -4 },
-                { right: -4, bottom: -4 },
-              ].map((position, index) => (
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          transform: `translate(${viewport.translateX}px, ${viewport.translateY}px) scale(${viewport.scale})`,
+          transformOrigin: "0 0",
+          pointerEvents: "none",
+        }}
+      >
+        {selectionBounds && tool === "select" && !editingElement ? (
+          <div
+            className="absolute pointer-events-none"
+            style={{
+              left: selectionBounds.x - 4,
+              top: selectionBounds.y - 4,
+              width: Math.max(1, selectionBounds.width) + 8,
+              height: Math.max(1, selectionBounds.height) + 8,
+              border: "1.5px solid #6965db",
+              borderRadius: 4,
+            }}
+          >
+            {canResizeSelectedElement
+              ? [
+                  { left: -4, top: -4 },
+                  { right: -4, top: -4 },
+                  { left: -4, bottom: -4 },
+                  { right: -4, bottom: -4 },
+                ].map((position, index) => (
+                  <div
+                    key={index}
+                    className="absolute"
+                    style={{
+                      ...position,
+                      width: 7,
+                      height: 7,
+                      borderRadius: 1,
+                      backgroundColor: "#fff",
+                      border: "1.5px solid #6965db",
+                    }}
+                  />
+                ))
+              : null}
+            {rotateHandleVisible ? (
+              <>
                 <div
-                  key={index}
                   className="absolute"
                   style={{
-                    ...position,
-                    width: 7,
-                    height: 7,
-                    borderRadius: 1,
+                    left: rotateHandleCenterX - 1,
+                    top: rotateHandleConnectorTop,
+                    width: 2,
+                    height: rotateHandleConnectorHeight,
+                    backgroundColor: "#6965db",
+                  }}
+                />
+                <div
+                  className="absolute"
+                  style={{
+                    left: rotateHandleCenterX - 6,
+                    top: rotateHandleCenterY - 6,
+                    width: 12,
+                    height: 12,
+                    borderRadius: 999,
                     backgroundColor: "#fff",
                     border: "1.5px solid #6965db",
                   }}
+                  title={`Rotation: ${rotationLabel}`}
                 />
-              ))
-            : null}
-          {rotateHandleVisible ? (
-            <>
-              <div
-                className="absolute"
-                style={{
-                  left: rotateHandleCenterX - 1,
-                  top: rotateHandleConnectorTop,
-                  width: 2,
-                  height: rotateHandleConnectorHeight,
-                  backgroundColor: "#6965db",
-                }}
-              />
-              <div
-                className="absolute"
-                style={{
-                  left: rotateHandleCenterX - 6,
-                  top: rotateHandleCenterY - 6,
-                  width: 12,
-                  height: 12,
-                  borderRadius: 999,
-                  backgroundColor: "#fff",
-                  border: "1.5px solid #6965db",
-                }}
-                title={`Rotation: ${rotationLabel}`}
-              />
-            </>
-          ) : null}
-        </div>
-      ) : null}
-      {editingElement && editorStyle ? (
-        <>
-          {/* Subtle dashed outline around editing element */}
-          {(() => {
-            const b = getBoundsForElement(editingElement);
-            return (
-              <div
-                className="absolute pointer-events-none"
-                style={{
-                  left: b.x - 4,
-                  top: b.y - 4,
-                  width: Math.max(1, b.width) + 8,
-                  height: Math.max(1, Math.max(b.height, editingElement.fontSize * 1.4)) + 8,
-                  border: "1px dashed rgba(105, 101, 219, 0.5)",
-                  borderRadius: 4,
-                  zIndex: 99,
-                }}
-              />
-            );
-          })()}
-          <textarea
-            ref={textEditorRef}
-            value={editingText}
-            onChange={(event) => setEditingText(event.target.value)}
-            onWheel={(event) => event.stopPropagation()}
-            onBlur={() => commitEditing()}
-            onKeyDown={(event) => {
-              if (event.key === "Escape") {
-                event.preventDefault();
-                commitEditing();
-                return;
-              }
-              if (
-                editingElement.type === "text" &&
-                event.key === "Enter" &&
-                !event.shiftKey
-              ) {
-                event.preventDefault();
-                commitEditing();
-              }
-              if (
-                editingElement.type === "sticky" &&
-                event.key === "Enter" &&
-                (event.metaKey || event.ctrlKey)
-              ) {
-                event.preventDefault();
-                commitEditing();
-              }
-            }}
-            spellCheck={false}
-            style={editorStyle}
-          />
-        </>
-      ) : null}
+              </>
+            ) : null}
+          </div>
+        ) : null}
+        {editingElement && editorStyle ? (
+          <>
+            {/* Subtle dashed outline around editing element */}
+            {(() => {
+              const b = getBoundsForElement(editingElement);
+              return (
+                <div
+                  className="absolute pointer-events-none"
+                  style={{
+                    left: b.x - 4,
+                    top: b.y - 4,
+                    width: Math.max(1, b.width) + 8,
+                    height: Math.max(1, Math.max(b.height, editingElement.fontSize * 1.4)) + 8,
+                    border: "1px dashed rgba(105, 101, 219, 0.5)",
+                    borderRadius: 4,
+                    zIndex: 99,
+                  }}
+                />
+              );
+            })()}
+            <textarea
+              ref={textEditorRef}
+              value={editingText}
+              onChange={(event) => setEditingText(event.target.value)}
+              onWheel={(event) => event.stopPropagation()}
+              onBlur={() => commitEditing()}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  event.preventDefault();
+                  commitEditing();
+                  return;
+                }
+                if (
+                  editingElement.type === "text" &&
+                  event.key === "Enter" &&
+                  !event.shiftKey
+                ) {
+                  event.preventDefault();
+                  commitEditing();
+                }
+                if (
+                  editingElement.type === "sticky" &&
+                  event.key === "Enter" &&
+                  (event.metaKey || event.ctrlKey)
+                ) {
+                  event.preventDefault();
+                  commitEditing();
+                }
+              }}
+              spellCheck={false}
+              style={{ ...editorStyle, position: "absolute", pointerEvents: "auto" }}
+            />
+          </>
+        ) : null}
+      </div>
     </div>
   );
 }
