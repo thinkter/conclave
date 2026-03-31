@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   LayoutAnimation,
@@ -23,7 +29,13 @@ import { useDeviceLayout, type DeviceLayout } from "../hooks/use-device-layout";
 import { ControlsBar } from "./controls-bar";
 import { ParticipantTile } from "./participant-tile";
 import { FlatList, Text, Pressable } from "@/tw";
-import { Lock, Settings, Users, MicOff, VenetianMask } from "lucide-react-native";
+import {
+  Lock,
+  Settings,
+  Users,
+  MicOff,
+  VenetianMask,
+} from "lucide-react-native";
 import { GlassPill } from "./glass-pill";
 import { useApps } from "@conclave/apps-sdk";
 import { WhiteboardNativeApp } from "@conclave/apps-sdk/whiteboard/native";
@@ -58,6 +70,16 @@ const getMaxGridColumns = (layout: DeviceLayout, participantCount: number) => {
     return 3;
   }
   return 2;
+};
+
+const getMaxTileAspectRatio = (
+  layout: DeviceLayout,
+  participantCount: number,
+) => {
+  if (layout === "compact") return Number.POSITIVE_INFINITY;
+  if (participantCount <= 2) return 2.6;
+  if (participantCount <= 4) return 2.3;
+  return 2.05;
 };
 
 interface CallScreenProps {
@@ -129,12 +151,18 @@ const clamp = (value: number, min: number, max: number) =>
 const getObserverPipCornerPosition = (
   corner: PipCorner,
   stageWidth: number,
-  stageHeight: number
+  stageHeight: number,
 ) => {
   const minX = OBSERVER_PIP_MARGIN;
   const minY = OBSERVER_PIP_MARGIN;
-  const maxX = Math.max(minX, stageWidth - OBSERVER_PIP_WIDTH - OBSERVER_PIP_MARGIN);
-  const maxY = Math.max(minY, stageHeight - OBSERVER_PIP_HEIGHT - OBSERVER_PIP_MARGIN);
+  const maxX = Math.max(
+    minX,
+    stageWidth - OBSERVER_PIP_WIDTH - OBSERVER_PIP_MARGIN,
+  );
+  const maxY = Math.max(
+    minY,
+    stageHeight - OBSERVER_PIP_HEIGHT - OBSERVER_PIP_MARGIN,
+  );
 
   switch (corner) {
     case "top-left":
@@ -153,10 +181,12 @@ const resolveObserverPipCorner = (
   x: number,
   y: number,
   stageWidth: number,
-  stageHeight: number
+  stageHeight: number,
 ): PipCorner => {
-  const horizontal = x + OBSERVER_PIP_WIDTH / 2 <= stageWidth / 2 ? "left" : "right";
-  const vertical = y + OBSERVER_PIP_HEIGHT / 2 <= stageHeight / 2 ? "top" : "bottom";
+  const horizontal =
+    x + OBSERVER_PIP_WIDTH / 2 <= stageWidth / 2 ? "left" : "right";
+  const vertical =
+    y + OBSERVER_PIP_HEIGHT / 2 <= stageHeight / 2 ? "top" : "bottom";
   return `${vertical}-${horizontal}` as PipCorner;
 };
 
@@ -212,17 +242,27 @@ export function CallScreen({
   presentationStream = null,
   presenterName = "",
 }: CallScreenProps) {
-  const { state: appsState, openApp, closeApp, setLocked, refreshState } = useApps();
+  const {
+    state: appsState,
+    openApp,
+    closeApp,
+    setLocked,
+    refreshState,
+  } = useApps();
   const isWhiteboardActive = appsState.activeAppId === "whiteboard";
-  const handleOpenWhiteboard = useCallback(() => openApp("whiteboard"), [openApp]);
+  const handleOpenWhiteboard = useCallback(
+    () => openApp("whiteboard"),
+    [openApp],
+  );
   const handleCloseWhiteboard = useCallback(() => closeApp(), [closeApp]);
   const handleToggleAppsLock = useCallback(
     () => setLocked(!appsState.locked),
-    [appsState.locked, setLocked]
+    [appsState.locked, setLocked],
   );
   const handleToggleWhiteboard = useCallback(
-    () => (isWhiteboardActive ? handleCloseWhiteboard() : handleOpenWhiteboard()),
-    [isWhiteboardActive, handleCloseWhiteboard, handleOpenWhiteboard]
+    () =>
+      isWhiteboardActive ? handleCloseWhiteboard() : handleOpenWhiteboard(),
+    [isWhiteboardActive, handleCloseWhiteboard, handleOpenWhiteboard],
   );
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
@@ -236,7 +276,7 @@ export function CallScreen({
       roomId
         ? `${MEETING_LINK_BASE}/${isObserverMode ? `w/${roomId}` : roomId}`
         : "",
-    [isObserverMode, roomId]
+    [isObserverMode, roomId],
   );
 
   const meetingCopyText = useMemo(() => {
@@ -247,7 +287,7 @@ export function CallScreen({
   const handleCopyMeeting = useCallback(async () => {
     if (!meetingCopyText) return;
     await Clipboard.setStringAsync(meetingCopyText);
-    Haptics.selectionAsync().catch(() => { });
+    Haptics.selectionAsync().catch(() => {});
     setCopied(true);
     if (copyResetRef.current) {
       clearTimeout(copyResetRef.current);
@@ -284,9 +324,11 @@ export function CallScreen({
 
   const baseParticipantList = useMemo(() => {
     const list = Array.from(participants.values()).filter(
-      (participant) => !isSystemUserId(participant.userId)
+      (participant) => !isSystemUserId(participant.userId),
     );
-    const hasLocal = list.some((participant) => participant.userId === localParticipant.userId);
+    const hasLocal = list.some(
+      (participant) => participant.userId === localParticipant.userId,
+    );
     return hasLocal ? list : [localParticipant, ...list];
   }, [participants, localParticipant]);
 
@@ -294,20 +336,23 @@ export function CallScreen({
   const resolvedLocalParticipant = useMemo(
     () =>
       baseParticipantList.find(
-        (participant) => participant.userId === localParticipant.userId
+        (participant) => participant.userId === localParticipant.userId,
       ) ?? localParticipant,
-    [baseParticipantList, localParticipant]
+    [baseParticipantList, localParticipant],
   );
   const remoteParticipants = useMemo(
     () =>
       baseParticipantList.filter(
-        (participant) => participant.userId !== resolvedLocalParticipant.userId
+        (participant) => participant.userId !== resolvedLocalParticipant.userId,
       ),
-    [baseParticipantList, resolvedLocalParticipant.userId]
+    [baseParticipantList, resolvedLocalParticipant.userId],
   );
   const stableRemoteParticipants = useMemo(() => {
     const participantMap = new Map(
-      remoteParticipants.map((participant) => [participant.userId, participant])
+      remoteParticipants.map((participant) => [
+        participant.userId,
+        participant,
+      ]),
     );
     const nextOrder: string[] = [];
     const seen = new Set<string>();
@@ -328,26 +373,29 @@ export function CallScreen({
 
     return nextOrder
       .map((userId) => participantMap.get(userId))
-      .filter((participant): participant is Participant => Boolean(participant));
+      .filter((participant): participant is Participant =>
+        Boolean(participant),
+      );
   }, [remoteParticipants]);
 
   useEffect(() => {
     stableOrderRef.current = stableRemoteParticipants.map(
-      (participant) => participant.userId
+      (participant) => participant.userId,
     );
   }, [stableRemoteParticipants]);
 
   const participantList = useMemo(
     () => [resolvedLocalParticipant, ...stableRemoteParticipants],
-    [resolvedLocalParticipant, stableRemoteParticipants]
+    [resolvedLocalParticipant, stableRemoteParticipants],
   );
   const participantOrderKey = useMemo(
     () => participantList.map((participant) => participant.userId).join("|"),
-    [participantList]
+    [participantList],
   );
 
   const maxRemoteWithoutOverflow = Math.max(0, MAX_GRID_TILES - 1);
-  const hasOverflow = stableRemoteParticipants.length > maxRemoteWithoutOverflow;
+  const hasOverflow =
+    stableRemoteParticipants.length > maxRemoteWithoutOverflow;
   const maxVisibleRemoteParticipants = hasOverflow
     ? Math.max(0, MAX_GRID_TILES - 2)
     : maxRemoteWithoutOverflow;
@@ -360,18 +408,26 @@ export function CallScreen({
       return stableRemoteParticipants;
     }
 
-    const baseVisible = stableRemoteParticipants.slice(0, maxVisibleRemoteParticipants);
+    const baseVisible = stableRemoteParticipants.slice(
+      0,
+      maxVisibleRemoteParticipants,
+    );
 
-    if (!activeSpeakerId || activeSpeakerId === resolvedLocalParticipant.userId) {
+    if (
+      !activeSpeakerId ||
+      activeSpeakerId === resolvedLocalParticipant.userId
+    ) {
       return baseVisible;
     }
 
-    if (baseVisible.some((participant) => participant.userId === activeSpeakerId)) {
+    if (
+      baseVisible.some((participant) => participant.userId === activeSpeakerId)
+    ) {
       return baseVisible;
     }
 
     const activeParticipant = stableRemoteParticipants.find(
-      (participant) => participant.userId === activeSpeakerId
+      (participant) => participant.userId === activeSpeakerId,
     );
     if (!activeParticipant) {
       return baseVisible;
@@ -388,11 +444,14 @@ export function CallScreen({
   ]);
   const hiddenRemoteCount = Math.max(
     0,
-    stableRemoteParticipants.length - visibleRemoteParticipants.length
+    stableRemoteParticipants.length - visibleRemoteParticipants.length,
   );
   const showOverflowTile = hiddenRemoteCount > 0;
   const gridItems = useMemo<GridItem[]>(() => {
-    const items: GridItem[] = [resolvedLocalParticipant, ...visibleRemoteParticipants];
+    const items: GridItem[] = [
+      resolvedLocalParticipant,
+      ...visibleRemoteParticipants,
+    ];
     if (showOverflowTile) {
       items.push({
         itemType: "overflow",
@@ -401,27 +460,32 @@ export function CallScreen({
       });
     }
     return items;
-  }, [resolvedLocalParticipant, visibleRemoteParticipants, showOverflowTile, hiddenRemoteCount]);
+  }, [
+    resolvedLocalParticipant,
+    visibleRemoteParticipants,
+    showOverflowTile,
+    hiddenRemoteCount,
+  ]);
   const gridOrderKey = useMemo(
     () =>
       gridItems
         .map((item) => (isOverflowItem(item) ? item.id : item.userId))
         .join("|"),
-    [gridItems]
+    [gridItems],
   );
   const webinarParticipants = useMemo(
     () =>
       Array.from(participants.values()).filter(
-        (participant) => !isSystemUserId(participant.userId)
+        (participant) => !isSystemUserId(participant.userId),
       ),
-    [participants]
+    [participants],
   );
   const screenShareAudioParticipants = useMemo(
     () =>
       Array.from(participants.values()).filter(
-        (participant) => participant.screenShareAudioStream
+        (participant) => participant.screenShareAudioStream,
       ),
-    [participants]
+    [participants],
   );
   const webinarStage = useMemo(() => {
     if (!webinarParticipants.length) {
@@ -430,13 +494,13 @@ export function CallScreen({
 
     const byPresentedScreen = presentationStream
       ? webinarParticipants.find(
-        (participant) =>
-          participant.screenShareStream?.id === presentationStream.id &&
-          getLiveVideoStream(participant.screenShareStream)
-      )
+          (participant) =>
+            participant.screenShareStream?.id === presentationStream.id &&
+            getLiveVideoStream(participant.screenShareStream),
+        )
       : null;
-    const byAnyScreenShare = webinarParticipants.find(
-      (participant) => getLiveVideoStream(participant.screenShareStream)
+    const byAnyScreenShare = webinarParticipants.find((participant) =>
+      getLiveVideoStream(participant.screenShareStream),
     );
     const fallbackAudioStream =
       webinarParticipants.find((participant) => participant.audioStream)
@@ -454,7 +518,9 @@ export function CallScreen({
             screenShareParticipant.audioStream ?? fallbackAudioStream,
           displayName:
             presenterName || resolveDisplayName(screenShareParticipant.userId),
-          pipVideoStream: getLiveVideoStream(screenShareParticipant.videoStream),
+          pipVideoStream: getLiveVideoStream(
+            screenShareParticipant.videoStream,
+          ),
           pipDisplayName: resolveDisplayName(screenShareParticipant.userId),
           isScreenShare: true,
         };
@@ -469,12 +535,14 @@ export function CallScreen({
     });
     const preferredParticipant = preferredIds
       .map((userId) =>
-        webinarParticipants.find((participant) => participant.userId === userId)
+        webinarParticipants.find(
+          (participant) => participant.userId === userId,
+        ),
       )
       .find((participant) => participant !== undefined);
     const preferredVideoParticipant =
       preferredParticipant &&
-        getLiveVideoStream(preferredParticipant.videoStream)
+      getLiveVideoStream(preferredParticipant.videoStream)
         ? preferredParticipant
         : null;
     const preferredAudioParticipant =
@@ -487,10 +555,10 @@ export function CallScreen({
       webinarParticipants.find(
         (participant) =>
           !participant.isCameraOff &&
-          getLiveVideoStream(participant.videoStream)
+          getLiveVideoStream(participant.videoStream),
       ) ??
       webinarParticipants.find((participant) =>
-        getLiveVideoStream(participant.videoStream)
+        getLiveVideoStream(participant.videoStream),
       ) ??
       preferredAudioParticipant ??
       webinarParticipants.find((participant) => participant.audioStream) ??
@@ -500,7 +568,8 @@ export function CallScreen({
     return {
       mainVideoStream: cameraStream,
       mainAudioStream: cameraParticipant.audioStream ?? fallbackAudioStream,
-      displayName: presenterName || resolveDisplayName(cameraParticipant.userId),
+      displayName:
+        presenterName || resolveDisplayName(cameraParticipant.userId),
       pipVideoStream: null,
       pipDisplayName: "",
       isScreenShare: false,
@@ -513,7 +582,8 @@ export function CallScreen({
     webinarParticipants,
     webinarSpeakerUserId,
   ]);
-  const [observerPipCorner, setObserverPipCorner] = useState<PipCorner>("bottom-right");
+  const [observerPipCorner, setObserverPipCorner] =
+    useState<PipCorner>("bottom-right");
   const [observerPipDragPosition, setObserverPipDragPosition] = useState<{
     x: number;
     y: number;
@@ -540,7 +610,7 @@ export function CallScreen({
           const origin = getObserverPipCornerPosition(
             observerPipCorner,
             observerStageSize.width,
-            observerStageSize.height
+            observerStageSize.height,
           );
           observerPipDragOriginRef.current = {
             x: origin.x,
@@ -557,11 +627,11 @@ export function CallScreen({
           const minY = OBSERVER_PIP_MARGIN;
           const maxX = Math.max(
             minX,
-            origin.stageWidth - OBSERVER_PIP_WIDTH - OBSERVER_PIP_MARGIN
+            origin.stageWidth - OBSERVER_PIP_WIDTH - OBSERVER_PIP_MARGIN,
           );
           const maxY = Math.max(
             minY,
-            origin.stageHeight - OBSERVER_PIP_HEIGHT - OBSERVER_PIP_MARGIN
+            origin.stageHeight - OBSERVER_PIP_HEIGHT - OBSERVER_PIP_MARGIN,
           );
           const nextX = clamp(origin.x + gestureState.dx, minX, maxX);
           const nextY = clamp(origin.y + gestureState.dy, minY, maxY);
@@ -575,11 +645,11 @@ export function CallScreen({
           const minY = OBSERVER_PIP_MARGIN;
           const maxX = Math.max(
             minX,
-            origin.stageWidth - OBSERVER_PIP_WIDTH - OBSERVER_PIP_MARGIN
+            origin.stageWidth - OBSERVER_PIP_WIDTH - OBSERVER_PIP_MARGIN,
           );
           const maxY = Math.max(
             minY,
-            origin.stageHeight - OBSERVER_PIP_HEIGHT - OBSERVER_PIP_MARGIN
+            origin.stageHeight - OBSERVER_PIP_HEIGHT - OBSERVER_PIP_MARGIN,
           );
           const fallbackX = clamp(origin.x + gestureState.dx, minX, maxX);
           const fallbackY = clamp(origin.y + gestureState.dy, minY, maxY);
@@ -590,8 +660,8 @@ export function CallScreen({
               resolvedX,
               resolvedY,
               origin.stageWidth,
-              origin.stageHeight
-            )
+              origin.stageHeight,
+            ),
           );
           setObserverPipDragPosition(null);
           observerPipDragOriginRef.current = null;
@@ -601,7 +671,7 @@ export function CallScreen({
           observerPipDragOriginRef.current = null;
         },
       }),
-    [observerPipCorner, observerPipDragPosition, observerStageSize]
+    [observerPipCorner, observerPipDragPosition, observerStageSize],
   );
   const observerPipPositionStyle = useMemo(() => {
     if (observerPipDragPosition) {
@@ -615,7 +685,7 @@ export function CallScreen({
     const position = getObserverPipCornerPosition(
       observerPipCorner,
       observerStageSize.width,
-      observerStageSize.height
+      observerStageSize.height,
     );
     return {
       left: position.x,
@@ -626,8 +696,8 @@ export function CallScreen({
   }, [observerPipCorner, observerPipDragPosition, observerStageSize]);
 
   const displayParticipantCount = isObserverMode
-    ? webinarConfig?.attendeeCount ?? 0
-    : participantCount ?? participantList.length;
+    ? (webinarConfig?.attendeeCount ?? 0)
+    : (participantCount ?? participantList.length);
   const isWebinarSession = isObserverMode || Boolean(webinarConfig?.enabled);
   const webinarTextStyle = isWebinarSession ? styles.webinarRegularText : null;
 
@@ -647,25 +717,32 @@ export function CallScreen({
     layout === "compact" && participantCountForLayout === 2 ? 16 : 8;
   const estimatedGridHeight = Math.max(
     0,
-    height - insets.top - (isTablet ? 108 : 96)
+    height - insets.top - (isTablet ? 108 : 96),
   );
   const measuredGridHeight =
     gridViewportHeight > 0 ? gridViewportHeight : estimatedGridHeight;
   const usableGridHeight = Math.max(
     0,
-    measuredGridHeight - controlsReservedHeight - gridTopPadding
+    measuredGridHeight - controlsReservedHeight - gridTopPadding,
   );
-  const gridWidthForTiles = Math.max(0, availableWidth - GRID_HORIZONTAL_PADDING);
+  const gridWidthForTiles = Math.max(
+    0,
+    availableWidth - GRID_HORIZONTAL_PADDING,
+  );
 
   const optimalGrid = useMemo(() => {
     const maxColumns = Math.max(
       1,
       Math.min(
         participantCountForLayout,
-        getMaxGridColumns(layout, participantCountForLayout)
-      )
+        getMaxGridColumns(layout, participantCountForLayout),
+      ),
     );
     const targetAspect = layout === "compact" ? 1.1 : 0.9;
+    const maxTileAspectRatio = getMaxTileAspectRatio(
+      layout,
+      participantCountForLayout,
+    );
 
     let best = {
       columns: 1,
@@ -673,18 +750,29 @@ export function CallScreen({
       tileWidth: Math.floor(gridWidthForTiles),
       tileHeight: Math.max(
         1,
-        Math.floor(usableGridHeight / participantCountForLayout)
+        Math.floor(usableGridHeight / participantCountForLayout),
       ),
       score: Number.NEGATIVE_INFINITY,
     };
+    let bestWithinAspect = {
+      ...best,
+      score: Number.NEGATIVE_INFINITY,
+    };
 
-    for (let candidateColumns = 1; candidateColumns <= maxColumns; candidateColumns += 1) {
-      const candidateRows = Math.ceil(participantCountForLayout / candidateColumns);
+    for (
+      let candidateColumns = 1;
+      candidateColumns <= maxColumns;
+      candidateColumns += 1
+    ) {
+      const candidateRows = Math.ceil(
+        participantCountForLayout / candidateColumns,
+      );
       const candidateWidth = Math.floor(
-        (gridWidthForTiles - (candidateColumns - 1) * gridGap) / candidateColumns
+        (gridWidthForTiles - (candidateColumns - 1) * gridGap) /
+          candidateColumns,
       );
       const candidateHeight = Math.floor(
-        (usableGridHeight - (candidateRows - 1) * gridGap) / candidateRows
+        (usableGridHeight - (candidateRows - 1) * gridGap) / candidateRows,
       );
 
       if (candidateWidth <= 0 || candidateHeight <= 0) continue;
@@ -693,14 +781,20 @@ export function CallScreen({
       const emptySlots = capacity - participantCountForLayout;
       const fillRatio = participantCountForLayout / capacity;
       const area = candidateWidth * candidateHeight;
-      const aspectPenalty = Math.abs(candidateHeight / candidateWidth - targetAspect);
+      const aspectPenalty = Math.abs(
+        candidateHeight / candidateWidth - targetAspect,
+      );
 
       let score = area;
       score += area * fillRatio * 0.25;
       score -= emptySlots * area * 0.08;
       score -= aspectPenalty * area * 0.18;
 
-      if (layout === "compact" && participantCountForLayout <= 2 && candidateColumns === 1) {
+      if (
+        layout === "compact" &&
+        participantCountForLayout <= 2 &&
+        candidateColumns === 1
+      ) {
         score += area * 0.15;
       }
 
@@ -713,9 +807,24 @@ export function CallScreen({
           score,
         };
       }
+
+      if (
+        candidateWidth / candidateHeight <= maxTileAspectRatio &&
+        score > bestWithinAspect.score
+      ) {
+        bestWithinAspect = {
+          columns: candidateColumns,
+          rows: candidateRows,
+          tileWidth: candidateWidth,
+          tileHeight: candidateHeight,
+          score,
+        };
+      }
     }
 
-    return best;
+    return bestWithinAspect.score === Number.NEGATIVE_INFINITY
+      ? best
+      : bestWithinAspect;
   }, [
     participantCountForLayout,
     layout,
@@ -728,36 +837,36 @@ export function CallScreen({
   const isTwoUp =
     layout === "compact" && participantCountForLayout === 2 && columns === 1;
 
-  const tileStyle = useMemo(
-    () => {
-      let tileHeight = optimalGrid.tileHeight;
-      if (participantCountForLayout === 1) {
-        const maxHeight = Math.floor(optimalGrid.tileWidth * (4 / 3));
-        tileHeight = Math.min(tileHeight, maxHeight);
-      }
-      return {
-        width: optimalGrid.tileWidth,
-        height: tileHeight,
-      };
-    },
-    [optimalGrid.tileWidth, optimalGrid.tileHeight, participantCountForLayout]
-  );
+  const tileStyle = useMemo(() => {
+    let tileHeight = optimalGrid.tileHeight;
+    if (participantCountForLayout === 1) {
+      const maxHeight = Math.floor(optimalGrid.tileWidth * (4 / 3));
+      tileHeight = Math.min(tileHeight, maxHeight);
+    }
+    return {
+      width: optimalGrid.tileWidth,
+      height: tileHeight,
+    };
+  }, [
+    optimalGrid.tileWidth,
+    optimalGrid.tileHeight,
+    participantCountForLayout,
+  ]);
 
   const hasTerminalConnectionState =
     connectionState === "disconnected" || connectionState === "error";
   const showServerRestartNotice =
     Boolean(serverRestartNotice) && !hasTerminalConnectionState;
 
-  const connectionLabel =
-    showServerRestartNotice
-      ? "Server restarting, reconnecting"
-      : connectionState === "reconnecting"
-        ? "Reconnecting"
-        : connectionState === "connecting"
-          ? "Connecting"
-          : connectionState === "waiting"
-            ? "Waiting"
-            : null;
+  const connectionLabel = showServerRestartNotice
+    ? "Server restarting, reconnecting"
+    : connectionState === "reconnecting"
+      ? "Reconnecting"
+      : connectionState === "connecting"
+        ? "Connecting"
+        : connectionState === "waiting"
+          ? "Waiting"
+          : null;
 
   const isPresenting = Boolean(presentationStream);
   const isScreenShareAvailable =
@@ -804,7 +913,7 @@ export function CallScreen({
             mirror={false}
             objectFit="contain"
           />
-        ) : null
+        ) : null,
       )}
       <RNView
         style={[
@@ -820,7 +929,10 @@ export function CallScreen({
           {isObserverMode ? (
             <GlassPill style={styles.pillGlass}>
               <RNView style={styles.roomPill}>
-                <Text style={[styles.roomId, webinarTextStyle]} numberOfLines={1}>
+                <Text
+                  style={[styles.roomId, webinarTextStyle]}
+                  numberOfLines={1}
+                >
                   WEBINAR
                 </Text>
               </RNView>
@@ -834,7 +946,9 @@ export function CallScreen({
               accessibilityHint="Tap to share. Long press to copy."
               style={({ pressed }) => [pressed && styles.roomPressed]}
             >
-              <GlassPill style={[styles.pillGlass, copied && styles.pillCopied]}>
+              <GlassPill
+                style={[styles.pillGlass, copied && styles.pillCopied]}
+              >
                 <RNView style={styles.roomPill}>
                   {isRoomLocked ? (
                     <Lock size={12} color={COLORS.primaryOrange} />
@@ -860,42 +974,49 @@ export function CallScreen({
                 {connectionLabel}
               </Text>
             </RNView>
-          ) : (
-            isObserverMode ? null : !isTablet ? (
-              isWebinarSession ? (
-                <GlassPill style={styles.pillGlass}>
-                  <Pressable onPress={onOpenSettings} style={styles.headerPillIconButtonOnly}>
-                    <Settings size={14} color={COLORS.cream} />
-                  </Pressable>
-                </GlassPill>
-              ) : (
-                <GlassPill style={[styles.pillGlass, styles.headerPill]}>
-                  <Pressable onPress={onOpenSettings} style={styles.headerPillIconButton}>
-                    <Settings size={14} color={COLORS.cream} />
-                  </Pressable>
-                  <RNView style={styles.headerPillDivider} />
-                  <Pressable onPress={onToggleParticipants} style={styles.headerPillButton}>
-                    <RNView style={styles.participantsPill}>
-                      <Users size={12} color={COLORS.cream} />
-                      <Text style={[styles.participantsCount, webinarTextStyle]}>
-                        {displayParticipantCount}
-                      </Text>
-                    </RNView>
-                  </Pressable>
-                </GlassPill>
-              )
-            ) : isWebinarSession ? null : (
-              <Pressable onPress={onToggleParticipants}>
-                <GlassPill style={styles.pillGlass}>
+          ) : isObserverMode ? null : !isTablet ? (
+            isWebinarSession ? (
+              <GlassPill style={styles.pillGlass}>
+                <Pressable
+                  onPress={onOpenSettings}
+                  style={styles.headerPillIconButtonOnly}
+                >
+                  <Settings size={14} color={COLORS.cream} />
+                </Pressable>
+              </GlassPill>
+            ) : (
+              <GlassPill style={[styles.pillGlass, styles.headerPill]}>
+                <Pressable
+                  onPress={onOpenSettings}
+                  style={styles.headerPillIconButton}
+                >
+                  <Settings size={14} color={COLORS.cream} />
+                </Pressable>
+                <RNView style={styles.headerPillDivider} />
+                <Pressable
+                  onPress={onToggleParticipants}
+                  style={styles.headerPillButton}
+                >
                   <RNView style={styles.participantsPill}>
                     <Users size={12} color={COLORS.cream} />
                     <Text style={[styles.participantsCount, webinarTextStyle]}>
                       {displayParticipantCount}
                     </Text>
                   </RNView>
-                </GlassPill>
-              </Pressable>
+                </Pressable>
+              </GlassPill>
             )
+          ) : isWebinarSession ? null : (
+            <Pressable onPress={onToggleParticipants}>
+              <GlassPill style={styles.pillGlass}>
+                <RNView style={styles.participantsPill}>
+                  <Users size={12} color={COLORS.cream} />
+                  <Text style={[styles.participantsCount, webinarTextStyle]}>
+                    {displayParticipantCount}
+                  </Text>
+                </RNView>
+              </GlassPill>
+            </Pressable>
           )}
         </RNView>
 
@@ -936,8 +1057,9 @@ export function CallScreen({
                 <RNView style={styles.observerFallback}>
                   <Text style={[styles.presenterText, webinarTextStyle]}>
                     {webinarStage?.mainAudioStream
-                      ? `Listening to ${webinarStage.displayName?.trim() || "the speaker"
-                      }. Video is currently off.`
+                      ? `Listening to ${
+                          webinarStage.displayName?.trim() || "the speaker"
+                        }. Video is currently off.`
                       : "Waiting for the host to start speaking..."}
                   </Text>
                 </RNView>
@@ -978,7 +1100,12 @@ export function CallScreen({
             </RNView>
           </RNView>
         ) : isWhiteboardActive ? (
-          <RNView style={[styles.whiteboardContainer, { paddingBottom: 140 + insets.bottom }]}>
+          <RNView
+            style={[
+              styles.whiteboardContainer,
+              { paddingBottom: 140 + insets.bottom },
+            ]}
+          >
             <WhiteboardNativeApp />
           </RNView>
         ) : isPresenting && presentationStream ? (
@@ -1017,10 +1144,17 @@ export function CallScreen({
                     item.userId === localParticipant.userId
                       ? "You"
                       : resolveDisplayName(item.userId);
-                  const initials =
-                    label?.trim()?.[0]?.toUpperCase() || "?";
+                  const initials = label?.trim()?.[0]?.toUpperCase() || "?";
                   return (
-                    <RNView style={[styles.stripTile, { width: presentationStripTileSize, height: presentationStripTileSize }]}>
+                    <RNView
+                      style={[
+                        styles.stripTile,
+                        {
+                          width: presentationStripTileSize,
+                          height: presentationStripTileSize,
+                        },
+                      ]}
+                    >
                       {item.videoStream && !item.isCameraOff ? (
                         <RTCView
                           streamURL={item.videoStream.toURL()}
@@ -1040,7 +1174,10 @@ export function CallScreen({
 
                       {item.isGhost && (
                         <RNView style={styles.stripGhost}>
-                          <VenetianMask size={16} color={COLORS.primaryOrange} />
+                          <VenetianMask
+                            size={16}
+                            color={COLORS.primaryOrange}
+                          />
                         </RNView>
                       )}
 
@@ -1085,8 +1222,17 @@ export function CallScreen({
                 styles.gridContent,
                 { paddingBottom: controlsReservedHeight },
                 isTwoUp ? styles.gridContentTwoUp : styles.gridContentCentered,
+                !isTwoUp && optimalGrid.rows > 1
+                  ? styles.gridContentTopAligned
+                  : null,
               ]}
-              columnWrapperStyle={columns > 1 ? (isTablet ? columnWrapperStyleTablet : columnWrapperStyle) : undefined}
+              columnWrapperStyle={
+                columns > 1
+                  ? isTablet
+                    ? columnWrapperStyleTablet
+                    : columnWrapperStyle
+                  : undefined
+              }
               renderItem={({ item }) => {
                 if (isOverflowItem(item)) {
                   return (
@@ -1110,7 +1256,11 @@ export function CallScreen({
                       participant={item}
                       displayName={resolveDisplayName(item.userId)}
                       isLocal={item.userId === localParticipant.userId}
-                      mirror={item.userId === localParticipant.userId ? isMirrorCamera : false}
+                      mirror={
+                        item.userId === localParticipant.userId
+                          ? isMirrorCamera
+                          : false
+                      }
                       isActiveSpeaker={activeSpeakerId === item.userId}
                     />
                   </RNView>
@@ -1280,6 +1430,9 @@ const styles = StyleSheet.create({
   gridContentCentered: {
     flexGrow: 1,
     justifyContent: "center",
+  },
+  gridContentTopAligned: {
+    justifyContent: "flex-start",
   },
   overflowTile: {
     flex: 1,
