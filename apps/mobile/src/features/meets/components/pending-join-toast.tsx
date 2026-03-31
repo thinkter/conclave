@@ -2,6 +2,7 @@ import React from "react";
 import { StyleSheet, View as RNView } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Pressable, Text } from "@/tw";
+import { Check, X } from "lucide-react-native";
 import { GlassPill } from "./glass-pill";
 
 interface PendingJoinToastProps {
@@ -46,7 +47,7 @@ export function PendingJoinToast({
           accessibilityRole="button"
           accessibilityLabel="Reject"
         >
-          <Text style={styles.rejectIcon}>✕</Text>
+          <X size={16} color="rgba(248, 113, 113, 0.95)" strokeWidth={2.5} />
         </Pressable>
         <Pressable
           onPress={onAdmit}
@@ -58,7 +59,7 @@ export function PendingJoinToast({
           accessibilityRole="button"
           accessibilityLabel="Admit"
         >
-          <Text style={styles.admitIcon}>✓</Text>
+          <Check size={16} color="#16a34a" strokeWidth={2.5} />
         </Pressable>
       </GlassPill>
     </RNView>
@@ -100,9 +101,9 @@ const styles = StyleSheet.create({
     color: "rgba(254, 252, 217, 0.5)",
   },
   iconButton: {
-    width: 24,
-    height: 24,
-    borderRadius: 8,
+    width: 40,
+    height: 40,
+    borderRadius: 12,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
@@ -114,16 +115,6 @@ const styles = StyleSheet.create({
   admitButton: {
     borderColor: "rgba(249, 95, 74, 0.6)",
     backgroundColor: "rgba(249, 95, 74, 0.85)",
-  },
-  rejectIcon: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "rgba(248, 113, 113, 0.95)",
-  },
-  admitIcon: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#16a34a",
   },
   buttonPressed: {
     opacity: 0.7,

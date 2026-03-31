@@ -660,7 +660,7 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
   },
   messageName: {
-    fontSize: 10,
+    fontSize: 11,
     color: SHEET_COLORS.textMuted,
     textTransform: "uppercase",
     letterSpacing: 0.6,
@@ -693,7 +693,7 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
   },
   messageTimestamp: {
-    fontSize: 9,
+    fontSize: 11,
     color: SHEET_COLORS.textFaint,
   },
   actionText: {

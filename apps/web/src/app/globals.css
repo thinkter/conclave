@@ -1034,7 +1034,7 @@ select:focus {
 
 .mobile-tile {
   position: relative;
-  background: var(--mobile-surface);
+  background: #000;
   border: 1px solid rgba(254, 252, 217, 0.1);
   border-radius: 16px;
   overflow: hidden;

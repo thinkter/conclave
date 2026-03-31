@@ -133,7 +133,7 @@ function MobileGridLayout({
             className={`w-full h-full object-contain ${isCameraOff ? "hidden" : ""} ${isMirrorCamera ? "scale-x-[-1]" : ""}`}
           />
           {isCameraOff && (
-            <div className="absolute inset-0 flex items-center justify-center bg-[#0d0e0d]">
+            <div className="absolute inset-0 flex items-center justify-center bg-black">
               <div className="absolute inset-0 bg-gradient-to-br from-[#F95F4A]/15 to-[#FF007A]/10" />
               <div
                 className={`relative rounded-full mobile-avatar flex items-center justify-center text-[#FEFCD9] font-bold ${totalCount <= 2 ? "w-20 h-20 text-3xl" : totalCount <= 4 ? "w-14 h-14 text-xl" : "w-10 h-10 text-lg"}`}
@@ -282,7 +282,7 @@ const ParticipantTile = memo(function ParticipantTile({
         className={`w-full h-full object-contain ${showPlaceholder ? "hidden" : ""}`}
       />
       {showPlaceholder && (
-        <div className="absolute inset-0 flex items-center justify-center bg-[#0d0e0d]">
+        <div className="absolute inset-0 flex items-center justify-center bg-black">
           <div className="absolute inset-0 bg-gradient-to-br from-[#F95F4A]/15 to-[#FF007A]/10" />
           <div
             className={`relative rounded-full mobile-avatar flex items-center justify-center text-[#FEFCD9] font-bold ${totalCount <= 2 ? "w-20 h-20 text-3xl" : totalCount <= 4 ? "w-14 h-14 text-xl" : "w-10 h-10 text-lg"}`}
