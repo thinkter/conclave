@@ -58,6 +58,7 @@ type JoinInfo = {
 const DEFAULT_SERVER_RESTART_NOTICE =
   "Meeting server is restarting. You will be reconnected automatically.";
 const VIDEO_STALL_KEYFRAME_REQUEST_DELAY_MS = 2500;
+const STALE_CONSUMER_RECOVERY_DELAY_MS = 9000;
 const TURN_URL_PATTERN = /^turns?:/i;
 
 const buildIceServerWithUrls = (
@@ -286,13 +287,23 @@ export function useMeetSocket({
 }: UseMeetSocketOptions) {
   const participantIdsRef = useRef<Set<string>>(new Set([userId]));
   const serverRoomIdRef = useRef<string | null>(null);
+  const foregroundRecoveryTimeoutRef = useRef<number | null>(null);
   const runtimeStunIceServersRef = useRef<RTCIceServer[] | null>(null);
   const runtimeTurnIceServersRef = useRef<RTCIceServer[] | null>(null);
   const useTurnFallbackRef = useRef(false);
   const consumeRetryAttemptsRef = useRef<Map<string, number>>(new Map());
   const videoStallRecoveryTimeoutsRef = useRef<Map<string, number>>(new Map());
+  const staleConsumerRecoveryTimeoutsRef = useRef<Map<string, number>>(
+    new Map(),
+  );
+  const mutedConsumerSinceRef = useRef<Map<string, number>>(new Map());
+  const producerPausedStateRef = useRef<Map<string, boolean>>(new Map());
+  const consumerRecoveryInFlightRef = useRef<Set<string>>(new Set());
   const consumeProducerRef = useRef<
     (producerInfo: ProducerInfo) => Promise<void>
+  >(async () => {});
+  const recoverStaleConsumerRef = useRef<
+    (producerInfo: ProducerInfo, reason: string) => Promise<void>
   >(async () => {});
 
   const {
@@ -400,6 +411,13 @@ export function useMeetSocket({
         window.clearTimeout(timeoutId);
       }
       videoStallRecoveryTimeoutsRef.current.clear();
+      for (const timeoutId of staleConsumerRecoveryTimeoutsRef.current.values()) {
+        window.clearTimeout(timeoutId);
+      }
+      staleConsumerRecoveryTimeoutsRef.current.clear();
+      mutedConsumerSinceRef.current.clear();
+      producerPausedStateRef.current.clear();
+      consumerRecoveryInFlightRef.current.clear();
       producerMapRef.current.clear();
       pendingProducersRef.current.clear();
       consumeRetryAttemptsRef.current.clear();
@@ -499,6 +517,10 @@ export function useMeetSocket({
       producerSyncIntervalRef,
       consumeRetryAttemptsRef,
       videoStallRecoveryTimeoutsRef,
+      staleConsumerRecoveryTimeoutsRef,
+      mutedConsumerSinceRef,
+      producerPausedStateRef,
+      consumerRecoveryInFlightRef,
     ],
   );
 
@@ -572,6 +594,44 @@ export function useMeetSocket({
     [currentRoomIdRef, serverRoomIdRef],
   );
 
+  const clearStaleConsumerRecoveryTimeout = useCallback((producerId: string) => {
+    const timeoutId = staleConsumerRecoveryTimeoutsRef.current.get(producerId);
+    if (timeoutId == null) return;
+    window.clearTimeout(timeoutId);
+    staleConsumerRecoveryTimeoutsRef.current.delete(producerId);
+  }, []);
+
+  const setProducerPausedState = useCallback(
+    (producerId: string, paused: boolean) => {
+      producerPausedStateRef.current.set(producerId, paused);
+      if (!paused) return;
+
+      mutedConsumerSinceRef.current.delete(producerId);
+      clearStaleConsumerRecoveryTimeout(producerId);
+    },
+    [clearStaleConsumerRecoveryTimeout],
+  );
+
+  const setProducerPausedByUser = useCallback(
+    (
+      targetUserId: string,
+      kind: "audio" | "video",
+      paused: boolean,
+      type: ProducerType = "webcam",
+    ) => {
+      for (const [producerId, info] of producerMapRef.current.entries()) {
+        if (
+          info.userId === targetUserId &&
+          info.kind === kind &&
+          info.type === type
+        ) {
+          setProducerPausedState(producerId, paused);
+        }
+      }
+    },
+    [producerMapRef, setProducerPausedState],
+  );
+
   const handleProducerClosed = useCallback(
     (producerId: string) => {
       pendingProducersRef.current.delete(producerId);
@@ -582,9 +642,15 @@ export function useMeetSocket({
         window.clearTimeout(scheduledRecoveryTimeout);
         videoStallRecoveryTimeoutsRef.current.delete(producerId);
       }
+      clearStaleConsumerRecoveryTimeout(producerId);
+      mutedConsumerSinceRef.current.delete(producerId);
+      producerPausedStateRef.current.delete(producerId);
+      consumerRecoveryInFlightRef.current.delete(producerId);
       const consumer = consumersRef.current.get(producerId);
       if (consumer) {
         try {
+          consumer.track.onmute = null;
+          consumer.track.onunmute = null;
           if (consumer.track) {
             consumer.track.stop();
           }
@@ -631,6 +697,10 @@ export function useMeetSocket({
       pendingProducersRef,
       consumeRetryAttemptsRef,
       videoStallRecoveryTimeoutsRef,
+      clearStaleConsumerRecoveryTimeout,
+      mutedConsumerSinceRef,
+      producerPausedStateRef,
+      consumerRecoveryInFlightRef,
       producerMapRef,
       setActiveScreenShareId,
     ],
@@ -1174,6 +1244,10 @@ export function useMeetSocket({
                 kind: response.kind,
                 type: producerInfo.type,
               });
+              setProducerPausedState(
+                producerInfo.producerId,
+                Boolean(producerInfo.paused),
+              );
 
               const updateMutedState = (muted: boolean) => {
                 dispatchParticipants({
@@ -1197,11 +1271,54 @@ export function useMeetSocket({
               const isWebcamVideo =
                 response.kind === "video" && producerInfo.type === "webcam";
 
+              const scheduleStaleConsumerRecovery = () => {
+                clearStaleConsumerRecoveryTimeout(producerInfo.producerId);
+                const timeoutId = window.setTimeout(() => {
+                  staleConsumerRecoveryTimeoutsRef.current.delete(
+                    producerInfo.producerId,
+                  );
+                  const activeConsumer = consumersRef.current.get(
+                    producerInfo.producerId,
+                  );
+                  if (
+                    !activeConsumer ||
+                    activeConsumer.closed ||
+                    activeConsumer.id !== consumer.id
+                  ) {
+                    return;
+                  }
+                  const track = activeConsumer.track;
+                  if (!track || track.readyState !== "live" || !track.muted) {
+                    return;
+                  }
+                  if (producerPausedStateRef.current.get(producerInfo.producerId)) {
+                    return;
+                  }
+                  void recoverStaleConsumerRef.current(
+                    producerInfo,
+                    `${response.kind} consumer stayed muted`,
+                  );
+                }, STALE_CONSUMER_RECOVERY_DELAY_MS);
+                staleConsumerRecoveryTimeoutsRef.current.set(
+                  producerInfo.producerId,
+                  timeoutId,
+                );
+              };
+
               const handleTrackMuted = () => {
+                if (!mutedConsumerSinceRef.current.has(producerInfo.producerId)) {
+                  mutedConsumerSinceRef.current.set(
+                    producerInfo.producerId,
+                    Date.now(),
+                  );
+                }
                 if (isWebcamAudio) {
                   updateMutedState(true);
                 } else if (isWebcamVideo) {
                   updateCameraState(true);
+                }
+                if (!producerPausedStateRef.current.get(producerInfo.producerId)) {
+                  scheduleStaleConsumerRecovery();
                 }
                 if (response.kind === "video") {
                   const existingTimeout = videoStallRecoveryTimeoutsRef.current.get(
@@ -1242,11 +1359,14 @@ export function useMeetSocket({
               };
 
               const handleTrackUnmuted = () => {
+                mutedConsumerSinceRef.current.delete(producerInfo.producerId);
+                setProducerPausedState(producerInfo.producerId, false);
                 if (isWebcamAudio) {
                   updateMutedState(false);
                 } else if (isWebcamVideo) {
                   updateCameraState(false);
                 }
+                clearStaleConsumerRecoveryTimeout(producerInfo.producerId);
                 const existingTimeout = videoStallRecoveryTimeoutsRef.current.get(
                   producerInfo.producerId,
                 );
@@ -1259,6 +1379,8 @@ export function useMeetSocket({
               };
 
               consumer.on("trackended", () => {
+                clearStaleConsumerRecoveryTimeout(producerInfo.producerId);
+                mutedConsumerSinceRef.current.delete(producerInfo.producerId);
                 const existingTimeout = videoStallRecoveryTimeoutsRef.current.get(
                   producerInfo.producerId,
                 );
@@ -1326,10 +1448,60 @@ export function useMeetSocket({
       queueProducerConsumeRetry,
       setActiveScreenShareId,
       videoStallRecoveryTimeoutsRef,
+      staleConsumerRecoveryTimeoutsRef,
+      clearStaleConsumerRecoveryTimeout,
+      mutedConsumerSinceRef,
+      producerPausedStateRef,
+      setProducerPausedState,
       userId,
     ],
   );
   consumeProducerRef.current = consumeProducer;
+
+  const recoverStaleConsumer = useCallback(
+    async (producerInfo: ProducerInfo, reason: string) => {
+      if (consumerRecoveryInFlightRef.current.has(producerInfo.producerId)) {
+        return;
+      }
+
+      const socket = socketRef.current;
+      const transport = consumerTransportRef.current;
+      if (!socket?.connected || !transport || transport.closed) {
+        console.warn(
+          `[Meets] Could not recover stale consumer ${producerInfo.producerId}; reconnecting instead.`,
+        );
+        handleReconnectRef.current?.();
+        return;
+      }
+
+      consumerRecoveryInFlightRef.current.add(producerInfo.producerId);
+
+      try {
+        console.warn(
+          `[Meets] Recovering stale ${producerInfo.kind} consumer ${producerInfo.producerId}: ${reason}`,
+        );
+        handleProducerClosed(producerInfo.producerId);
+        await consumeProducer(producerInfo);
+      } catch (error) {
+        console.error(
+          `[Meets] Failed to recover stale consumer ${producerInfo.producerId}:`,
+          error,
+        );
+        handleReconnectRef.current?.();
+      } finally {
+        consumerRecoveryInFlightRef.current.delete(producerInfo.producerId);
+      }
+    },
+    [
+      consumerRecoveryInFlightRef,
+      socketRef,
+      consumerTransportRef,
+      handleReconnectRef,
+      handleProducerClosed,
+      consumeProducer,
+    ],
+  );
+  recoverStaleConsumerRef.current = recoverStaleConsumer;
 
   const syncProducers = useCallback(async () => {
     const socket = socketRef.current;
@@ -1367,6 +1539,10 @@ export function useMeetSocket({
       }
 
       for (const producerInfo of producers) {
+        setProducerPausedState(
+          producerInfo.producerId,
+          Boolean(producerInfo.paused),
+        );
         if (producerInfo.type !== "webcam") continue;
         if (producerInfo.kind === "audio") {
           dispatchParticipants({
@@ -1392,6 +1568,38 @@ export function useMeetSocket({
       for (const producerInfo of producers) {
         const consumer = consumersRef.current.get(producerInfo.producerId);
         if (consumer) {
+          const track = consumer.track;
+          const trackIsStuckMuted =
+            track?.readyState === "live" &&
+            track.muted &&
+            !producerInfo.paused;
+
+          if (trackIsStuckMuted) {
+            const mutedSince =
+              mutedConsumerSinceRef.current.get(producerInfo.producerId) ??
+              Date.now();
+            mutedConsumerSinceRef.current.set(producerInfo.producerId, mutedSince);
+            socket.emit(
+              "resumeConsumer",
+              {
+                consumerId: consumer.id,
+                requestKeyFrame: consumer.kind === "video",
+              },
+              () => {},
+            );
+            if (
+              Date.now() - mutedSince >= STALE_CONSUMER_RECOVERY_DELAY_MS
+            ) {
+              void recoverStaleConsumerRef.current(
+                producerInfo,
+                "producer sync observed muted live track",
+              );
+            }
+            continue;
+          }
+
+          mutedConsumerSinceRef.current.delete(producerInfo.producerId);
+          clearStaleConsumerRecoveryTimeout(producerInfo.producerId);
           if (!producerInfo.paused) {
             const shouldRequestKeyFrame =
               consumer.kind === "video" &&
@@ -1433,6 +1641,9 @@ export function useMeetSocket({
     dispatchParticipants,
     consumeProducer,
     handleProducerClosed,
+    setProducerPausedState,
+    mutedConsumerSinceRef,
+    clearStaleConsumerRecoveryTimeout,
   ]);
 
   const applyWebinarFeedProducers = useCallback(
@@ -1467,6 +1678,46 @@ export function useMeetSocket({
       pending.map((producerInfo) => consumeProducer(producerInfo)),
     );
   }, [pendingProducersRef, consumeProducer]);
+
+  const recoverActiveMeeting = useCallback(
+    (reason: "online" | "foreground") => {
+      if (intentionalDisconnectRef.current) return;
+      if (!currentRoomIdRef.current) return;
+
+      const socket = socketRef.current;
+      const hasBrokenTransport = [
+        producerTransportRef.current?.connectionState,
+        consumerTransportRef.current?.connectionState,
+      ].some(
+        (state) =>
+          state === "closed" ||
+          state === "disconnected" ||
+          state === "failed",
+      );
+
+      if (!socket?.connected || hasBrokenTransport) {
+        console.log(`[Meets] ${reason} recovery triggered reconnect.`);
+        handleReconnectRef.current?.();
+        return;
+      }
+
+      void syncProducers()
+        .then(() => flushPendingProducers())
+        .catch((error) => {
+          console.warn(`[Meets] ${reason} producer sync failed:`, error);
+        });
+    },
+    [
+      consumerTransportRef,
+      currentRoomIdRef,
+      flushPendingProducers,
+      handleReconnectRef,
+      intentionalDisconnectRef,
+      producerTransportRef,
+      socketRef,
+      syncProducers,
+    ],
+  );
 
   const joinRoomInternal = useCallback(
     async (
@@ -1835,6 +2086,7 @@ export function useMeetSocket({
 
             socket.on("newProducer", async (data: ProducerInfo) => {
               console.log("[Meets] New producer:", data);
+              setProducerPausedState(data.producerId, Boolean(data.paused));
               if (data.producerUserId === userId) {
                 return;
               }
@@ -2086,6 +2338,7 @@ export function useMeetSocket({
                   userId: mutedUserId,
                   muted,
                 });
+                setProducerPausedByUser(mutedUserId, "audio", muted);
               },
             );
 
@@ -2106,6 +2359,7 @@ export function useMeetSocket({
                   userId: camUserId,
                   cameraOff,
                 });
+                setProducerPausedByUser(camUserId, "video", cameraOff);
               },
             );
 
@@ -2680,6 +2934,8 @@ export function useMeetSocket({
       stopLocalTrack,
       requestMediaPermissions,
       syncProducers,
+      setProducerPausedState,
+      setProducerPausedByUser,
       updateVideoQualityRef,
       user,
       userId,
@@ -2766,16 +3022,7 @@ export function useMeetSocket({
     if (typeof window === "undefined") return;
 
     const handleOnline = () => {
-      if (intentionalDisconnectRef.current) return;
-      if (!currentRoomIdRef.current) return;
-
-      const socket = socketRef.current;
-      if (socket?.connected) {
-        void syncProducers();
-        return;
-      }
-
-      handleReconnectRef.current?.();
+      recoverActiveMeeting("online");
     };
 
     window.addEventListener("online", handleOnline);
@@ -2783,12 +3030,50 @@ export function useMeetSocket({
       window.removeEventListener("online", handleOnline);
     };
   }, [
-    currentRoomIdRef,
-    handleReconnectRef,
-    intentionalDisconnectRef,
-    socketRef,
-    syncProducers,
+    recoverActiveMeeting,
   ]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const scheduleForegroundRecovery = () => {
+      if (foregroundRecoveryTimeoutRef.current) {
+        window.clearTimeout(foregroundRecoveryTimeoutRef.current);
+      }
+
+      foregroundRecoveryTimeoutRef.current = window.setTimeout(() => {
+        foregroundRecoveryTimeoutRef.current = null;
+        recoverActiveMeeting("foreground");
+      }, 150);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== "visible") return;
+      scheduleForegroundRecovery();
+    };
+
+    const handlePageShow = () => {
+      scheduleForegroundRecovery();
+    };
+
+    const handleFocus = () => {
+      scheduleForegroundRecovery();
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("pageshow", handlePageShow);
+    window.addEventListener("focus", handleFocus);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("pageshow", handlePageShow);
+      window.removeEventListener("focus", handleFocus);
+      if (foregroundRecoveryTimeoutRef.current) {
+        window.clearTimeout(foregroundRecoveryTimeoutRef.current);
+        foregroundRecoveryTimeoutRef.current = null;
+      }
+    };
+  }, [recoverActiveMeeting]);
 
   const handleRedirectCallback = useCallback(
     async (newRoomId: string) => {

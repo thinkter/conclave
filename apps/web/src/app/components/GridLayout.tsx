@@ -381,7 +381,7 @@ function GridLayout({
 
       {showOverflowTile ? (
         <div
-          className={`overflow-hidden transition-all duration-300 ${
+          className={`overflow-hidden transition-[max-height,opacity] duration-200 ease-out ${
             isOverflowOpen
               ? "max-h-64 opacity-100 mt-3 pointer-events-auto"
               : "max-h-0 opacity-0 mt-0 pointer-events-none"
@@ -422,17 +422,20 @@ function GridLayout({
                 </button>
               </div>
             </div>
-            <div className="relative grid grid-flow-col auto-cols-[11rem] gap-3 overflow-x-auto px-4 pb-4 pt-4 snap-x snap-mandatory">
-              {hiddenParticipants.map((participant) => (
-                <OverflowGalleryTile
-                  key={participant.userId}
-                  participant={participant}
-                  displayName={getDisplayName(participant.userId)}
-                  isActiveSpeaker={activeSpeakerId === participant.userId}
-                  isAdmin={isAdmin}
-                  onParticipantClick={onParticipantClick}
-                />
-              ))}
+            <div className="relative">
+              <div className="pointer-events-none absolute inset-y-0 right-0 w-12 bg-gradient-to-l from-[#0d0e0d] to-transparent z-10 rounded-br-xl" />
+              <div className="grid grid-flow-col auto-cols-[11rem] gap-3 overflow-x-scroll no-scrollbar scroll-smooth px-4 pb-4 pt-4 snap-x snap-mandatory">
+                {hiddenParticipants.map((participant) => (
+                  <OverflowGalleryTile
+                    key={participant.userId}
+                    participant={participant}
+                    displayName={getDisplayName(participant.userId)}
+                    isActiveSpeaker={activeSpeakerId === participant.userId}
+                    isAdmin={isAdmin}
+                    onParticipantClick={onParticipantClick}
+                  />
+                ))}
+              </div>
             </div>
           </div>
         </div>

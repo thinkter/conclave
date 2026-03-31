@@ -194,7 +194,7 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: 16,
     overflow: "hidden",
-    backgroundColor: "#0d0e0d",
+    backgroundColor: "#000",
     borderWidth: 1,
     borderColor: "rgba(254, 252, 217, 0.1)",
   },

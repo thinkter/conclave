@@ -1,6 +1,7 @@
 "use client";
 
 import { memo, useCallback, useEffect, useRef } from "react";
+import { createPlaybackRecoveryScheduler } from "../lib/playback-recovery";
 import type { Participant } from "../lib/types";
 
 interface ParticipantAudioProps {
@@ -74,17 +75,13 @@ function ParticipantAudio({
     }
 
     let cancelled = false;
-    const replayTimeouts: number[] = [];
-
-    const scheduleReplay = () => {
-      if (cancelled) return;
-      attemptAudioPlayback();
-      if (typeof window !== "undefined") {
-        for (const delay of [80, 220, 480, 900, 1500]) {
-          replayTimeouts.push(window.setTimeout(attemptAudioPlayback, delay));
-        }
-      }
-    };
+    const playbackRecovery = createPlaybackRecoveryScheduler({
+      attemptPlayback: () => {
+        if (cancelled) return;
+        attemptAudioPlayback();
+      },
+    });
+    const scheduleReplay = playbackRecovery.schedule;
 
     scheduleReplay();
 
@@ -134,9 +131,7 @@ function ParticipantAudio({
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("pointerdown", handleUserGesture, true);
       window.removeEventListener("keydown", handleUserGesture, true);
-      for (const timeoutId of replayTimeouts) {
-        window.clearTimeout(timeoutId);
-      }
+      playbackRecovery.clear();
     };
   }, [
     participant.audioStream,
