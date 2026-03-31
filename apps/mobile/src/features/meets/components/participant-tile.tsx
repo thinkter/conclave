@@ -70,6 +70,7 @@ function ParticipantTileComponent({
           <RTCView
             streamURL={videoStream.toURL()}
             style={styles.video}
+            objectFit="contain"
             mirror={mirror}
           />
         ) : (

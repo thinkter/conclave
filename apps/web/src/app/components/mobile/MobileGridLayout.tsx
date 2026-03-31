@@ -130,7 +130,7 @@ function MobileGridLayout({
             autoPlay
             muted
             playsInline
-            className={`w-full h-full object-cover ${isCameraOff ? "hidden" : ""} ${isMirrorCamera ? "scale-x-[-1]" : ""}`}
+            className={`w-full h-full object-contain ${isCameraOff ? "hidden" : ""} ${isMirrorCamera ? "scale-x-[-1]" : ""}`}
           />
           {isCameraOff && (
             <div className="absolute inset-0 flex items-center justify-center bg-[#0d0e0d]">
@@ -279,7 +279,7 @@ const ParticipantTile = memo(function ParticipantTile({
         ref={videoRef}
         autoPlay
         playsInline
-        className={`w-full h-full object-cover ${showPlaceholder ? "hidden" : ""}`}
+        className={`w-full h-full object-contain ${showPlaceholder ? "hidden" : ""}`}
       />
       {showPlaceholder && (
         <div className="absolute inset-0 flex items-center justify-center bg-[#0d0e0d]">
