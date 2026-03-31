@@ -181,8 +181,8 @@ function MobileBrowserLayout({
         </div>
       </div>
 
-      <div className="h-24 shrink-0 flex gap-3 overflow-x-auto no-scrollbar touch-pan-x">
-        <div className="relative w-24 h-24 shrink-0 mobile-tile">
+      <div className="h-24 shrink-0 flex gap-3 overflow-x-scroll no-scrollbar snap-x snap-mandatory scroll-smooth pr-3">
+        <div className="relative w-24 h-24 shrink-0 mobile-tile snap-start">
           <video
             ref={localVideoRef}
             autoPlay
@@ -228,7 +228,7 @@ function MobileBrowserLayout({
         {participantArray.map((participant) => (
           <div
             key={participant.userId}
-            className={`relative w-24 h-24 shrink-0 mobile-tile ${
+            className={`relative w-24 h-24 shrink-0 mobile-tile snap-start ${
               participant.userId === activeSpeakerId
                 ? "mobile-tile-active"
                 : ""

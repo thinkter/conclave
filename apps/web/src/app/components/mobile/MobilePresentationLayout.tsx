@@ -168,9 +168,11 @@ function MobilePresentationLayout({
       </div>
 
       {/* Participant thumbnails - fixed height strip */}
-      <div className="h-24 shrink-0 flex gap-3 overflow-x-auto no-scrollbar touch-pan-x">
+      <div className="relative h-24 shrink-0">
+        <div className="absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-[#060606] to-transparent z-10 pointer-events-none rounded-r-2xl" />
+        <div className="h-full flex gap-3 overflow-x-scroll no-scrollbar snap-x snap-mandatory scroll-smooth pr-3">
         {/* Local video thumbnail */}
-        <div className="relative w-24 h-24 shrink-0 mobile-tile">
+        <div className="relative w-24 h-24 shrink-0 mobile-tile snap-start">
           <video
             ref={localVideoRef}
             autoPlay
@@ -217,7 +219,7 @@ function MobilePresentationLayout({
         {participantArray.map((participant) => (
           <div 
             key={participant.userId} 
-            className={`relative w-24 h-24 shrink-0 mobile-tile ${
+            className={`relative w-24 h-24 shrink-0 mobile-tile snap-start ${
               participant.userId === activeSpeakerId
                 ? "mobile-tile-active"
                 : ""
@@ -267,6 +269,7 @@ function MobilePresentationLayout({
             )}
           </div>
         ))}
+        </div>
       </div>
     </div>
   );
