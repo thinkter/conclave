@@ -1,4 +1,11 @@
-import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Animated,
   Easing,
@@ -18,7 +25,11 @@ import { getActionText, getCommandSuggestions } from "../chat-commands";
 
 type CommandSuggestion = ReturnType<typeof getCommandSuggestions>[number];
 
-const ChatHeader = memo(function ChatHeader({ onClose }: { onClose: () => void }) {
+const ChatHeader = memo(function ChatHeader({
+  onClose,
+}: {
+  onClose: () => void;
+}) {
   return (
     <View style={styles.headerRow}>
       <Text style={styles.headerText}>Chat</Text>
@@ -77,8 +88,6 @@ const MessageRow = memo(function MessageRow({
     ]).start();
   }, [isNew, opacity, scale, translateY]);
 
-
-  
   const displayContent = item.content;
 
   return (
@@ -139,6 +148,7 @@ const ChatFooter = memo(function ChatFooter({
   mentionSuggestions,
   onPickMention,
   isDmEnabled,
+  onLayoutHeightChange,
 }: {
   inputValue: string;
   onInputChange: (value: string) => void;
@@ -152,15 +162,23 @@ const ChatFooter = memo(function ChatFooter({
   activeCommandIndex: number;
   onPickCommand: (text: string) => void;
   showMentionSuggestions: boolean;
-  mentionSuggestions: { userId: string; displayName: string; mentionToken: string }[];
+  mentionSuggestions: {
+    userId: string;
+    displayName: string;
+    mentionToken: string;
+  }[];
   onPickMention: (mentionToken: string) => void;
   isDmEnabled: boolean;
+  onLayoutHeightChange: (height: number) => void;
 }) {
   const isChatDisabled = isGhostMode || (isChatLocked && !isAdmin);
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       style={[styles.inputDock, { paddingBottom: inputDockPaddingBottom }]}
+      onLayout={(event) => {
+        onLayoutHeightChange(Math.round(event.nativeEvent.layout.height));
+      }}
     >
       <View style={styles.inputShell}>
         {showCommandSuggestions ? (
@@ -196,7 +214,9 @@ const ChatFooter = memo(function ChatFooter({
         {showMentionSuggestions && isDmEnabled ? (
           <View style={[styles.commandContainer, styles.commandOverlay]}>
             <View style={styles.mentionHeader}>
-              <Text style={styles.mentionHeaderText}>💬 Private message to...</Text>
+              <Text style={styles.mentionHeaderText}>
+                💬 Private message to...
+              </Text>
             </View>
             <RNFlatList
               data={mentionSuggestions}
@@ -266,9 +286,15 @@ interface ChatPanelProps {
 // Mirrors the server's normalizeLookupToken so the mention token we insert
 // is always resolvable server-side.
 const normalizeMentionToken = (displayName: string): string =>
-  displayName.trim().toLowerCase().replace(/[^a-z0-9._-]/g, "");
+  displayName
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]/g, "");
 
-const getMentionTokenForUser = (userId: string, displayName: string): string => {
+const getMentionTokenForUser = (
+  userId: string,
+  displayName: string,
+): string => {
   const displayNameToken = normalizeMentionToken(displayName);
   if (displayNameToken) {
     return displayNameToken;
@@ -306,7 +332,9 @@ export function ChatPanel({
   const listRef = useRef<RNFlatList<ChatMessage> | null>(null);
   const hasPresented = useRef(false);
   const [activeCommandIndex, setActiveCommandIndex] = useState(0);
+  const [footerHeight, setFooterHeight] = useState(0);
   const hasInitializedRef = useRef(false);
+  const hasAppliedFooterInsetRef = useRef(false);
   const prevMessageIdsRef = useRef<Set<string>>(new Set());
   const wasVisibleRef = useRef(visible);
   const isChatDisabled = isGhostMode || (isChatLocked && !isAdmin);
@@ -336,10 +364,12 @@ export function ChatPanel({
 
   const commandSuggestions = useMemo(
     () => getCommandSuggestions(localValue),
-    [localValue]
+    [localValue],
   );
   const showCommandSuggestions =
-    !isChatDisabled && localValue.startsWith("/") && commandSuggestions.length > 0;
+    !isChatDisabled &&
+    localValue.startsWith("/") &&
+    commandSuggestions.length > 0;
   const isPickingCommand =
     showCommandSuggestions && !localValue.slice(1).includes(" ");
 
@@ -384,11 +414,12 @@ export function ChatPanel({
         mentionQuery === ""
           ? true
           : p.displayName.toLowerCase().includes(mentionQuery) ||
-            p.mentionToken.toLowerCase().includes(normalizedMentionQuery)
+            p.mentionToken.toLowerCase().includes(normalizedMentionQuery),
       );
   }, [mentionQuery, participants, currentUserId, resolveDisplayName]);
 
-  const showMentionSuggestions = mentionQuery !== null && mentionSuggestions.length > 0;
+  const showMentionSuggestions =
+    mentionQuery !== null && mentionSuggestions.length > 0;
 
   useEffect(() => {
     setActiveCommandIndex(0);
@@ -406,6 +437,24 @@ export function ChatPanel({
       listRef.current?.scrollToEnd({ animated: wasVisible });
     });
   }, [messages.length, visible]);
+
+  useEffect(() => {
+    if (!visible) {
+      hasAppliedFooterInsetRef.current = false;
+      return;
+    }
+    if (
+      !messages.length ||
+      footerHeight <= 0 ||
+      hasAppliedFooterInsetRef.current
+    ) {
+      return;
+    }
+    hasAppliedFooterInsetRef.current = true;
+    requestAnimationFrame(() => {
+      listRef.current?.scrollToEnd({ animated: false });
+    });
+  }, [footerHeight, messages.length, visible]);
 
   useEffect(() => {
     hasInitializedRef.current = true;
@@ -472,11 +521,11 @@ export function ChatPanel({
           showMentionSuggestions={showMentionSuggestions}
           mentionSuggestions={mentionSuggestions}
           onPickMention={(token) => {
-            const next =
-              mentionMode === "dm" ? `/dm ${token} ` : `@${token} `;
+            const next = mentionMode === "dm" ? `/dm ${token} ` : `@${token} `;
             setLocalValue(next);
             onInputChange(next);
           }}
+          onLayoutHeightChange={setFooterHeight}
         />
       }
       footerStyle={styles.footerContainer}
@@ -489,7 +538,11 @@ export function ChatPanel({
             ref={listRef}
             data={messages}
             keyExtractor={(item: ChatMessage) => item.id}
-            contentContainerStyle={styles.listContent}
+            contentContainerStyle={[
+              styles.listContent,
+              { paddingBottom: Math.max(footerHeight, 0) + 12 },
+            ]}
+            scrollIndicatorInsets={{ bottom: footerHeight }}
             renderItem={({ item }: ListRenderItemInfo<ChatMessage>) => {
               const isOwn = item.userId === currentUserId;
               const actionText = getActionText(item.content);
@@ -498,16 +551,18 @@ export function ChatPanel({
                 : resolveDisplayName(item.userId) || item.displayName;
               const directMessageLabel = item.isDirect
                 ? isOwn
-                  ? `Sent privately to ${item.dmTargetDisplayName ||
-                  resolveDisplayName(item.dmTargetUserId || item.userId)
-                  }`
+                  ? `Sent privately to ${
+                      item.dmTargetDisplayName ||
+                      resolveDisplayName(item.dmTargetUserId || item.userId)
+                    }`
                   : "Sent privately"
                 : null;
               const timestamp = new Date(item.timestamp).toLocaleTimeString(
                 [],
-                { hour: "2-digit", minute: "2-digit" }
+                { hour: "2-digit", minute: "2-digit" },
               );
-              const isNew = hasInitializedRef.current && newMessageIds.has(item.id);
+              const isNew =
+                hasInitializedRef.current && newMessageIds.has(item.id);
 
               return (
                 <MessageRow
@@ -576,6 +631,7 @@ const styles = StyleSheet.create({
   },
   listWrapper: {
     flex: 1,
+    minHeight: 0,
   },
   listContent: {
     gap: 12,
