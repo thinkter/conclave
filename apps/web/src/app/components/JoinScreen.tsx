@@ -12,16 +12,19 @@ import {
   Plus,
   ArrowRight,
   RefreshCw,
+  ScanFace,
   Trash2,
 } from "lucide-react";
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { signIn, signOut, useSession } from "@/lib/auth-client";
 import type { RoomInfo } from "@/lib/sfu-types";
-import type { ConnectionState, MeetError } from "../lib/types";
 import {
-  DEFAULT_AUDIO_CONSTRAINTS,
-  STANDARD_QUALITY_CONSTRAINTS,
-} from "../lib/constants";
+  createManagedCameraTrack,
+  type BackgroundEffect,
+  type ManagedCameraTrack,
+} from "../lib/background-blur";
+import type { ConnectionState, MeetError } from "../lib/types";
+import { DEFAULT_AUDIO_CONSTRAINTS } from "../lib/constants";
 import {
   generateRoomCode,
   ROOM_CODE_MAX_LENGTH,
@@ -93,6 +96,8 @@ interface JoinScreenProps {
   onDismissMeetError?: () => void;
   onRetryMedia?: () => void;
   onTestSpeaker?: () => void;
+  backgroundEffect: BackgroundEffect;
+  onBackgroundEffectChange: (effect: BackgroundEffect) => void;
 }
 
 function JoinScreen({
@@ -121,6 +126,8 @@ function JoinScreen({
   onDismissMeetError,
   onRetryMedia,
   onTestSpeaker,
+  backgroundEffect,
+  onBackgroundEffectChange,
 }: JoinScreenProps) {
   const normalizedRoomId =
     roomId === "undefined" || roomId === "null" ? "" : roomId;
@@ -172,6 +179,7 @@ function JoinScreen({
   const canSignOut = Boolean(session?.user || user?.id || user?.email);
   const isSignedInUser = Boolean((session?.user || user) && !user?.id?.startsWith("guest-"));
   const lastAppliedSessionUserIdRef = useRef<string | null>(null);
+  const managedCameraTrackRef = useRef<ManagedCameraTrack | null>(null);
 
   useEffect(() => {
     if (!session?.user) {
@@ -228,6 +236,8 @@ function JoinScreen({
     // Only capture media when in join phase
     if (phase !== "join") {
       // Stop any existing stream when leaving join phase
+      managedCameraTrackRef.current?.stop();
+      managedCameraTrackRef.current = null;
       if (localStream) {
         localStream.getTracks().forEach((t) => t.stop());
         setLocalStream(null);
@@ -237,6 +247,8 @@ function JoinScreen({
 
     // Don't auto-capture - let user explicitly turn on camera/mic
     return () => {
+      managedCameraTrackRef.current?.stop();
+      managedCameraTrackRef.current = null;
       if (localStream) {
         localStream.getTracks().forEach((t) => t.stop());
       }
@@ -247,42 +259,50 @@ function JoinScreen({
     if (videoRef.current && localStream) videoRef.current.srcObject = localStream;
   }, [localStream]);
 
+  const enableCameraPreview = useCallback(async () => {
+    managedCameraTrackRef.current?.stop();
+    const managedTrack = await createManagedCameraTrack({
+      effect: backgroundEffect,
+      quality: "standard",
+    });
+    managedCameraTrackRef.current = managedTrack;
+    const videoTrack = managedTrack.track;
+    if ("contentHint" in videoTrack) {
+      videoTrack.contentHint = "motion";
+    }
+
+    setLocalStream((prev) => {
+      const audioTracks = prev?.getAudioTracks() ?? [];
+      return new MediaStream([...audioTracks, videoTrack]);
+    });
+    setIsCameraOn(true);
+  }, [backgroundEffect]);
+
   const toggleCamera = async () => {
     if (isCameraOn && localStream) {
-      // Turn off camera - stop the video track
-      const track = localStream.getVideoTracks()[0];
-      if (track) {
-        track.stop();
-        // Remove video track from stream
-        localStream.removeTrack(track);
-      }
+      managedCameraTrackRef.current?.stop();
+      managedCameraTrackRef.current = null;
+      localStream.getVideoTracks().forEach((track) => track.stop());
+      setLocalStream((prev) => {
+        const audioTracks = prev?.getAudioTracks() ?? [];
+        return audioTracks.length > 0 ? new MediaStream(audioTracks) : null;
+      });
       setIsCameraOn(false);
     } else {
-      // Turn on camera - acquire new video track
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: STANDARD_QUALITY_CONSTRAINTS,
-        });
-        const videoTrack = stream.getVideoTracks()[0];
-        if (videoTrack) {
-          if ("contentHint" in videoTrack) {
-            videoTrack.contentHint = "motion";
-          }
-          if (localStream) {
-            localStream.addTrack(videoTrack);
-          } else {
-            setLocalStream(stream);
-          }
-          if (videoRef.current) {
-            videoRef.current.srcObject = localStream || stream;
-          }
-          setIsCameraOn(true);
-        }
-      } catch (err) {
+        await enableCameraPreview();
+      } catch {
         console.log("[JoinScreen] Camera access denied");
       }
     }
   };
+
+  useEffect(() => {
+    if (!isCameraOn) return;
+    void enableCameraPreview().catch(() => {
+      console.log("[JoinScreen] Camera refresh for blur effect failed");
+    });
+  }, [backgroundEffect, enableCameraPreview, isCameraOn]);
 
   const toggleMic = async () => {
     if (isMicOn && localStream) {
@@ -644,6 +664,24 @@ function JoinScreen({
                     <button onClick={toggleCamera} className={`w-9 h-9 rounded-full flex items-center justify-center transition-all ${isCameraOn ? "text-[#FEFCD9] hover:bg-white/10" : "bg-red-500 text-white"}`}>
                       {isCameraOn ? <Video className="w-4 h-4" /> : <VideoOff className="w-4 h-4" />}
                     </button>
+                    <button
+                      onClick={() =>
+                        onBackgroundEffectChange(
+                          backgroundEffect === "blur" ? "none" : "blur",
+                        )
+                      }
+                      className={`h-9 px-3 rounded-full flex items-center justify-center gap-1.5 transition-all ${
+                        backgroundEffect === "blur"
+                          ? "bg-[#F95F4A] text-white"
+                          : "text-[#FEFCD9]/80 hover:bg-white/10"
+                      }`}
+                      style={{ fontFamily: "'PolySans Mono', monospace" }}
+                    >
+                      <ScanFace className="w-3.5 h-3.5" />
+                      <span className="text-[10px] uppercase tracking-[0.18em]">
+                        Blur
+                      </span>
+                    </button>
                   </div>
 
                   <div className="absolute top-3 left-3 right-3 flex items-start justify-between gap-3">
@@ -698,6 +736,16 @@ function JoinScreen({
                       }`}
                     />
                     Camera {isCameraOn ? "On" : "Off"}
+                  </div>
+                  <div className="flex items-center gap-2 bg-black/40 border border-[#FEFCD9]/10 rounded-full px-3 py-1 text-[#FEFCD9]/70">
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full ${
+                        backgroundEffect === "blur"
+                          ? "bg-emerald-400"
+                          : "bg-[#FEFCD9]/35"
+                      }`}
+                    />
+                    Blur {backgroundEffect === "blur" ? "On" : "Off"}
                   </div>
                   {onTestSpeaker && (
                     <div className="ml-auto flex items-center gap-2">

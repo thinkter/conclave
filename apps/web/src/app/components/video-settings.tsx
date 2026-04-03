@@ -5,11 +5,13 @@ import {
   Settings,
   FlipHorizontal,
   Mic,
+  ScanFace,
   Volume2,
   ChevronDown,
   Check,
   UserCheck,
 } from "lucide-react";
+import type { BackgroundEffect } from "../lib/background-blur";
 
 interface MediaDeviceOption {
   deviceId: string;
@@ -21,6 +23,8 @@ interface VideoSettingsProps {
   isOpen: boolean;
   onToggleOpen: () => void;
   onToggleMirror: () => void;
+  backgroundEffect: BackgroundEffect;
+  onBackgroundEffectChange: (effect: BackgroundEffect) => void;
   isCameraOff: boolean;
   isAdmin?: boolean;
   displayNameInput?: string;
@@ -120,6 +124,8 @@ export default function VideoSettings({
   isOpen,
   onToggleOpen,
   onToggleMirror,
+  backgroundEffect,
+  onBackgroundEffectChange,
   isCameraOff,
   isAdmin,
   displayNameInput,
@@ -227,6 +233,34 @@ export default function VideoSettings({
                 <div
                   className={`absolute top-0.5 w-4 h-4 rounded-full bg-[#FEFCD9] transition-all ${
                     isMirrorCamera ? "left-3.5" : "left-0.5"
+                  }`}
+                />
+              </div>
+            </div>
+          </button>
+
+          <button
+            onClick={() =>
+              onBackgroundEffectChange(
+                backgroundEffect === "blur" ? "none" : "blur",
+              )
+            }
+            disabled={isCameraOff}
+            className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[#FEFCD9]/5 rounded-lg text-xs transition-colors text-[#FEFCD9] disabled:opacity-50"
+          >
+            <ScanFace className="w-3.5 h-3.5" />
+            <span>Background blur</span>
+            <div className="ml-auto">
+              <div
+                className={`w-8 h-5 rounded-full transition-all relative ${
+                  backgroundEffect === "blur"
+                    ? "bg-[#F95F4A]"
+                    : "bg-[#FEFCD9]/20"
+                }`}
+              >
+                <div
+                  className={`absolute top-0.5 w-4 h-4 rounded-full bg-[#FEFCD9] transition-all ${
+                    backgroundEffect === "blur" ? "left-3.5" : "left-0.5"
                   }`}
                 />
               </div>
