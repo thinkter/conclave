@@ -8,8 +8,9 @@ import {
   OPUS_MAX_AVERAGE_BITRATE,
 } from "../lib/constants";
 import {
-  createManagedCameraTrack,
+  createManagedCameraTrackWithEffects,
   type BackgroundEffect,
+  type FaceFilterType,
   type ManagedCameraTrack,
 } from "../lib/background-blur";
 import type {
@@ -47,6 +48,7 @@ interface UseMeetMediaOptions {
   selectedAudioOutputDeviceId?: string;
   setSelectedAudioOutputDeviceId: (value: string) => void;
   backgroundEffect: BackgroundEffect;
+  faceFilter: FaceFilterType;
   videoQualityRef: React.MutableRefObject<VideoQuality>;
   socketRef: React.MutableRefObject<Socket | null>;
   deviceRef: React.MutableRefObject<Device | null>;
@@ -83,6 +85,7 @@ export function useMeetMedia({
   selectedAudioOutputDeviceId,
   setSelectedAudioOutputDeviceId,
   backgroundEffect,
+  faceFilter,
   videoQualityRef,
   socketRef,
   deviceRef,
@@ -109,6 +112,7 @@ export function useMeetMedia({
   const toggleMuteInFlightRef = useRef(false);
   const managedCameraTrackRef = useRef<ManagedCameraTrack | null>(null);
   const lastAppliedBackgroundEffectRef = useRef<BackgroundEffect>(backgroundEffect);
+  const lastAppliedFaceFilterRef = useRef<FaceFilterType>(faceFilter);
   const buildAudioConstraints = useCallback(
     (deviceId?: string): MediaTrackConstraints => ({
       ...DEFAULT_AUDIO_CONSTRAINTS,
@@ -273,11 +277,12 @@ export function useMeetMedia({
   );
 
   const createManagedCameraTrackForCurrentSettings = useCallback(async () => {
-    return createManagedCameraTrack({
-      effect: backgroundEffect,
+    return createManagedCameraTrackWithEffects({
+      backgroundEffect,
+      faceFilter,
       quality: videoQualityRef.current,
     });
-  }, [backgroundEffect, videoQualityRef]);
+  }, [backgroundEffect, faceFilter, videoQualityRef]);
 
   const consumeIntentionalStop = useCallback(
     (track?: MediaStreamTrack | null) => {
@@ -1422,12 +1427,14 @@ export function useMeetMedia({
 
   useEffect(() => {
     const effectChanged =
-      lastAppliedBackgroundEffectRef.current !== backgroundEffect;
+      lastAppliedBackgroundEffectRef.current !== backgroundEffect ||
+      lastAppliedFaceFilterRef.current !== faceFilter;
     lastAppliedBackgroundEffectRef.current = backgroundEffect;
+    lastAppliedFaceFilterRef.current = faceFilter;
     if (!effectChanged) return;
     if (connectionState !== "joined" || isCameraOff) return;
     void updateVideoQualityRef.current(videoQualityRef.current);
-  }, [backgroundEffect, connectionState, isCameraOff, videoQualityRef]);
+  }, [backgroundEffect, faceFilter, connectionState, isCameraOff, videoQualityRef]);
 
   useEffect(() => {
     return () => {

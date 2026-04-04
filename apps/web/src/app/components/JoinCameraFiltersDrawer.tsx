@@ -1,19 +1,22 @@
 "use client";
 
-import { Check, ScanFace, X } from "lucide-react";
+import { Check, Glasses, ScanFace, Sparkles, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import {
   BACKGROUND_EFFECT_OPTIONS,
   type BackgroundEffect,
-  createManagedCameraTrack,
-  createManagedCameraTrackFromTrack,
+  type FaceFilterType,
+  FACE_FILTER_OPTIONS,
+  createManagedCameraTrackWithEffects,
+  createManagedCameraTrackFromTrackWithEffects,
   type ManagedCameraTrack,
 } from "../lib/background-blur";
 
 interface JoinCameraFiltersDrawerProps {
   isOpen: boolean;
   backgroundEffect: BackgroundEffect;
-  onSelect: (effect: BackgroundEffect) => void;
+  faceFilter?: FaceFilterType;
+  onSelect: (backgroundEffect: BackgroundEffect, faceFilter?: FaceFilterType) => void;
   onClose: () => void;
   localStream?: MediaStream | null;
   isCameraOff?: boolean;
@@ -23,6 +26,7 @@ interface JoinCameraFiltersDrawerProps {
 export default function JoinCameraFiltersDrawer({
   isOpen,
   backgroundEffect,
+  faceFilter = "none",
   onSelect,
   onClose,
   localStream,
@@ -32,16 +36,17 @@ export default function JoinCameraFiltersDrawer({
   const videoRef = useRef<HTMLVideoElement>(null);
   const trackRef = useRef<ManagedCameraTrack | null>(null);
   const previewRequestIdRef = useRef(0);
-  const [previewEffect, setPreviewEffect] =
-    useState<BackgroundEffect>(backgroundEffect);
+  const [previewBackgroundEffect, setPreviewBackgroundEffect] = useState<BackgroundEffect>(backgroundEffect);
+  const [previewFaceFilter, setPreviewFaceFilter] = useState<FaceFilterType>(faceFilter);
   const [previewStream, setPreviewStream] = useState<MediaStream | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
-      setPreviewEffect(backgroundEffect);
+      setPreviewBackgroundEffect(backgroundEffect);
+      setPreviewFaceFilter(faceFilter);
     }
-  }, [backgroundEffect, isOpen]);
+  }, [backgroundEffect, faceFilter, isOpen]);
 
   useEffect(() => {
     const requestId = ++previewRequestIdRef.current;
@@ -64,29 +69,29 @@ export default function JoinCameraFiltersDrawer({
       const liveLocalVideoTrack = localStream?.getVideoTracks()[0];
       const canUseLiveLocalTrack =
         !isCameraOff && liveLocalVideoTrack?.readyState === "live";
-      const canCloneLocalTrackForPreview =
-        canUseLiveLocalTrack && backgroundEffect === "none";
+      const noEffectsSelected = previewBackgroundEffect === "none" && previewFaceFilter === "none";
+      const currentEffectsMatch = previewBackgroundEffect === backgroundEffect && previewFaceFilter === faceFilter;
 
-      if (canUseLiveLocalTrack && previewEffect === backgroundEffect) {
+      if (canUseLiveLocalTrack && currentEffectsMatch) {
         releaseManagedPreview();
         setPreviewStream(localStream ?? null);
         setIsLoading(false);
         return;
       }
 
-
-
       setIsLoading(true);
       releaseManagedPreview();
 
       try {
-        const managedTrack = canCloneLocalTrackForPreview
-          ? await createManagedCameraTrackFromTrack({
-              effect: previewEffect,
+        const managedTrack = canUseLiveLocalTrack && noEffectsSelected
+          ? await createManagedCameraTrackFromTrackWithEffects({
+              backgroundEffect: previewBackgroundEffect,
+              faceFilter: previewFaceFilter,
               sourceTrack: liveLocalVideoTrack,
             })
-          : await createManagedCameraTrack({
-              effect: previewEffect,
+          : await createManagedCameraTrackWithEffects({
+              backgroundEffect: previewBackgroundEffect,
+              faceFilter: previewFaceFilter,
               quality: "standard",
             });
 
@@ -116,7 +121,7 @@ export default function JoinCameraFiltersDrawer({
       }
       releaseManagedPreview();
     };
-  }, [backgroundEffect, isCameraOff, isOpen, localStream, previewEffect]);
+  }, [backgroundEffect, faceFilter, isCameraOff, isOpen, localStream, previewBackgroundEffect, previewFaceFilter]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -142,9 +147,39 @@ export default function JoinCameraFiltersDrawer({
   }, [isOpen, onClose]);
 
   const handleApply = () => {
-    onSelect(previewEffect);
+    onSelect(previewBackgroundEffect, previewFaceFilter);
     onClose();
   };
+
+  // Get current effect label for the preview badge
+  const getPreviewLabel = () => {
+    const labels: string[] = [];
+    if (previewBackgroundEffect !== "none") {
+      const bgOption = BACKGROUND_EFFECT_OPTIONS.find((o) => o.id === previewBackgroundEffect);
+      if (bgOption) labels.push(bgOption.label);
+    }
+    if (previewFaceFilter !== "none") {
+      const faceOption = FACE_FILTER_OPTIONS.find((o) => o.id === previewFaceFilter);
+      if (faceOption) labels.push(faceOption.label);
+    }
+    return labels.length > 0 ? labels.join(" + ") : "Original";
+  };
+
+  // Get icon for filter type
+  const getFilterIcon = (category: string, isSelected: boolean) => {
+    const className = `h-5 w-5 ${isSelected ? "text-[#F95F4A]" : "text-[#FEFCD9]/50"}`;
+    switch (category) {
+      case "glasses":
+        return <Glasses className={className} />;
+      case "fun":
+        return <Sparkles className={className} />;
+      default:
+        return <ScanFace className={className} />;
+    }
+  };
+
+  // Filter face filters to only show glasses category for now
+  const glassesFilters = FACE_FILTER_OPTIONS.filter((f) => f.category === "glasses");
 
   return (
     <div
@@ -221,9 +256,7 @@ export default function JoinCameraFiltersDrawer({
             <div className="absolute bottom-3 left-0 right-0 flex justify-center pointer-events-none">
               <div className="rounded-full border border-[#FEFCD9]/10 bg-black/60 px-4 py-1.5 backdrop-blur-md">
                 <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-[#FEFCD9]/90">
-                  {BACKGROUND_EFFECT_OPTIONS.find(
-                    (option) => option.id === previewEffect,
-                  )?.label ?? "Original"}
+                  {getPreviewLabel()}
                 </span>
               </div>
             </div>
@@ -232,28 +265,29 @@ export default function JoinCameraFiltersDrawer({
 
         {/* Filter Options */}
         <div className="flex-1 overflow-y-auto border-t border-[#FEFCD9]/10 px-4 py-3">
+          {/* Background Effects Section */}
           <div
             className="mb-3 px-1 text-[10px] uppercase tracking-[0.16em] text-[#FEFCD9]/40"
             style={{ fontFamily: "'PolySans Mono', monospace" }}
           >
-            Choose a filter
+            Background
           </div>
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2 mb-4">
             {BACKGROUND_EFFECT_OPTIONS.map((option) => {
-              const isSelected = option.id === previewEffect;
+              const isSelected = option.id === previewBackgroundEffect;
               return (
                 <button
                   key={option.id}
                   type="button"
-                  onClick={() => setPreviewEffect(option.id)}
-                  className={`group relative flex items-center gap-3 rounded-2xl border px-3 py-3 text-left transition-all ${
+                  onClick={() => setPreviewBackgroundEffect(option.id)}
+                  className={`group relative flex items-center gap-3 rounded-2xl border px-3 py-2.5 text-left transition-all ${
                     isSelected
                       ? "border-[#F95F4A]/50 bg-[linear-gradient(135deg,rgba(249,95,74,0.18),rgba(255,0,122,0.08))] text-[#FEFCD9]"
                       : "border-[#FEFCD9]/10 bg-[#111111]/80 text-[#FEFCD9]/70 hover:border-[#FEFCD9]/20 hover:bg-[#171717]"
                   }`}
                 >
                   <div
-                    className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border transition-colors ${
+                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border transition-colors ${
                       isSelected
                         ? "border-[#F95F4A]/40 bg-[#F95F4A]/15"
                         : "border-[#FEFCD9]/10 bg-[#FEFCD9]/5 group-hover:border-[#FEFCD9]/20 group-hover:bg-[#FEFCD9]/10"
@@ -266,15 +300,8 @@ export default function JoinCameraFiltersDrawer({
                     />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="text-sm font-medium flex items-center gap-2">
-                      {option.label}
-                      {option.experimental ? (
-                        <span className="rounded-full bg-[#F95F4A]/20 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider text-[#F95F4A]">
-                          Experimental
-                        </span>
-                      ) : null}
-                    </div>
-                    <div className="mt-0.5 text-[11px] text-[#FEFCD9]/45">
+                    <div className="text-sm font-medium">{option.label}</div>
+                    <div className="text-[11px] text-[#FEFCD9]/45">
                       {option.description}
                     </div>
                   </div>
@@ -285,6 +312,93 @@ export default function JoinCameraFiltersDrawer({
               );
             })}
           </div>
+
+          {/* Face Filters Section - Glasses */}
+          {glassesFilters.length > 0 && (
+            <>
+              <div
+                className="mb-3 px-1 text-[10px] uppercase tracking-[0.16em] text-[#FEFCD9]/40"
+                style={{ fontFamily: "'PolySans Mono', monospace" }}
+              >
+                Face Filters
+              </div>
+              <div className="flex flex-col gap-2">
+                {/* None option for face filters */}
+                <button
+                  type="button"
+                  onClick={() => setPreviewFaceFilter("none")}
+                  className={`group relative flex items-center gap-3 rounded-2xl border px-3 py-2.5 text-left transition-all ${
+                    previewFaceFilter === "none"
+                      ? "border-[#F95F4A]/50 bg-[linear-gradient(135deg,rgba(249,95,74,0.18),rgba(255,0,122,0.08))] text-[#FEFCD9]"
+                      : "border-[#FEFCD9]/10 bg-[#111111]/80 text-[#FEFCD9]/70 hover:border-[#FEFCD9]/20 hover:bg-[#171717]"
+                  }`}
+                >
+                  <div
+                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border transition-colors ${
+                      previewFaceFilter === "none"
+                        ? "border-[#F95F4A]/40 bg-[#F95F4A]/15"
+                        : "border-[#FEFCD9]/10 bg-[#FEFCD9]/5 group-hover:border-[#FEFCD9]/20 group-hover:bg-[#FEFCD9]/10"
+                    }`}
+                  >
+                    <ScanFace
+                      className={`h-5 w-5 ${
+                        previewFaceFilter === "none" ? "text-[#F95F4A]" : "text-[#FEFCD9]/50"
+                      }`}
+                    />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-medium">None</div>
+                    <div className="text-[11px] text-[#FEFCD9]/45">
+                      No face filter
+                    </div>
+                  </div>
+                  {previewFaceFilter === "none" ? (
+                    <Check className="h-4 w-4 shrink-0 text-[#F95F4A]" />
+                  ) : null}
+                </button>
+
+                {glassesFilters.map((option) => {
+                  const isSelected = option.id === previewFaceFilter;
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() => setPreviewFaceFilter(option.id)}
+                      className={`group relative flex items-center gap-3 rounded-2xl border px-3 py-2.5 text-left transition-all ${
+                        isSelected
+                          ? "border-[#F95F4A]/50 bg-[linear-gradient(135deg,rgba(249,95,74,0.18),rgba(255,0,122,0.08))] text-[#FEFCD9]"
+                          : "border-[#FEFCD9]/10 bg-[#111111]/80 text-[#FEFCD9]/70 hover:border-[#FEFCD9]/20 hover:bg-[#171717]"
+                      }`}
+                    >
+                      <div
+                        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border transition-colors ${
+                          isSelected
+                            ? "border-[#F95F4A]/40 bg-[#F95F4A]/15"
+                            : "border-[#FEFCD9]/10 bg-[#FEFCD9]/5 group-hover:border-[#FEFCD9]/20 group-hover:bg-[#FEFCD9]/10"
+                        }`}
+                      >
+                        {getFilterIcon(option.category, isSelected)}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-medium flex items-center gap-2">
+                          {option.label}
+                          <span className="rounded-full bg-[#10b981]/20 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider text-[#10b981]">
+                            New
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-[#FEFCD9]/45">
+                          {option.description}
+                        </div>
+                      </div>
+                      {isSelected ? (
+                        <Check className="h-4 w-4 shrink-0 text-[#F95F4A]" />
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
         </div>
 
         {/* Apply Button */}

@@ -38,7 +38,7 @@ import DevPlaygroundLayout from "../DevPlaygroundLayout";
 import DevMeetToolsPanel from "../DevMeetToolsPanel";
 import ParticipantVideo from "../ParticipantVideo";
 import { useStableSpeakerId } from "../../hooks/useStableSpeakerId";
-import type { BackgroundEffect } from "../../lib/background-blur";
+import type { BackgroundEffect, FaceFilterType } from "../../lib/background-blur";
 
 interface MobileMeetsMainContentProps {
   isJoined: boolean;
@@ -73,11 +73,12 @@ interface MobileMeetsMainContentProps {
   participants: Map<string, Participant>;
   isMirrorCamera: boolean;
   backgroundEffect: BackgroundEffect;
+  faceFilter?: FaceFilterType;
   activeSpeakerId: string | null;
   currentUserId: string;
   selectedAudioInputDeviceId?: string;
   audioOutputDeviceId?: string;
-  onBackgroundEffectChange: (effect: BackgroundEffect) => void;
+  onBackgroundEffectChange: (effect: BackgroundEffect, faceFilter?: FaceFilterType) => void;
   onAudioInputDeviceChange: (deviceId: string) => void;
   onAudioOutputDeviceChange: (deviceId: string) => void;
   activeScreenShareId: string | null;
@@ -251,6 +252,7 @@ function MobileMeetsMainContent({
   participants,
   isMirrorCamera,
   backgroundEffect,
+  faceFilter,
   activeSpeakerId,
   currentUserId,
   selectedAudioInputDeviceId,

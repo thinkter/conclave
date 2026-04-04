@@ -21,6 +21,7 @@ import type { RoomInfo } from "@/lib/sfu-types";
 import {
   createManagedCameraTrack,
   type BackgroundEffect,
+  type FaceFilterType,
   getBackgroundEffectOption,
   type ManagedCameraTrack,
 } from "../lib/background-blur";
@@ -99,7 +100,7 @@ interface JoinScreenProps {
   onRetryMedia?: () => void;
   onTestSpeaker?: () => void;
   backgroundEffect: BackgroundEffect;
-  onBackgroundEffectChange: (effect: BackgroundEffect) => void;
+  onBackgroundEffectChange: (effect: BackgroundEffect, faceFilter?: FaceFilterType) => void;
 }
 
 function JoinScreen({
@@ -655,8 +656,8 @@ function JoinScreen({
                 <JoinCameraFiltersDrawer
                     isOpen={isFilterMenuOpen}
                     backgroundEffect={backgroundEffect}
-                    onSelect={(effect: BackgroundEffect) => {
-                      onBackgroundEffectChange(effect);
+                    onSelect={(effect: BackgroundEffect, faceFilter?: FaceFilterType) => {
+                      onBackgroundEffectChange(effect, faceFilter);
                       setIsFilterMenuOpen(false);
                     }}
                     onClose={() => setIsFilterMenuOpen(false)}

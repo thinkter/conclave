@@ -23,7 +23,7 @@ import SystemAudioPlayers from "./SystemAudioPlayers";
 import WhiteboardLayout from "./WhiteboardLayout";
 import ParticipantVideo from "./ParticipantVideo";
 import type { BrowserState } from "../hooks/useSharedBrowser";
-import type { BackgroundEffect } from "../lib/background-blur";
+import type { BackgroundEffect, FaceFilterType } from "../lib/background-blur";
 
 import type {
   ChatMessage,
@@ -82,10 +82,11 @@ interface MeetsMainContentProps {
   participants: Map<string, Participant>;
   isMirrorCamera: boolean;
   backgroundEffect: BackgroundEffect;
+  faceFilter?: FaceFilterType;
   activeSpeakerId: string | null;
   currentUserId: string;
   audioOutputDeviceId?: string;
-  onBackgroundEffectChange: (effect: BackgroundEffect) => void;
+  onBackgroundEffectChange: (effect: BackgroundEffect, faceFilter?: FaceFilterType) => void;
   activeScreenShareId: string | null;
   isScreenSharing: boolean;
   isChatOpen: boolean;
@@ -265,6 +266,7 @@ export default function MeetsMainContent({
   participants,
   isMirrorCamera,
   backgroundEffect,
+  faceFilter,
   activeSpeakerId,
   currentUserId,
   audioOutputDeviceId,
@@ -1070,6 +1072,7 @@ export default function MeetsMainContent({
                 isMuted={isMuted}
                 isCameraOff={isCameraOff}
                 backgroundEffect={backgroundEffect}
+                faceFilter={faceFilter}
                 localStream={localStream}
                 isMirrorCamera={isMirrorCamera}
                 isScreenSharing={isScreenSharing}

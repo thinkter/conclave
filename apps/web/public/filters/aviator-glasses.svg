@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 150" width="400" height="150">
+  <defs>
+    <!-- Gradient for lens tint -->
+    <linearGradient id="lensTint" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#4a3728;stop-opacity:0.85"/>
+      <stop offset="50%" style="stop-color:#2d1f14;stop-opacity:0.9"/>
+      <stop offset="100%" style="stop-color:#1a120b;stop-opacity:0.95"/>
+    </linearGradient>
+    <!-- Reflection gradient -->
+    <linearGradient id="reflection" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#ffffff;stop-opacity:0.3"/>
+      <stop offset="50%" style="stop-color:#ffffff;stop-opacity:0.05"/>
+      <stop offset="100%" style="stop-color:#ffffff;stop-opacity:0"/>
+    </linearGradient>
+    <!-- Gold frame gradient -->
+    <linearGradient id="goldFrame" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#d4a54a"/>
+      <stop offset="30%" style="stop-color:#f5d17a"/>
+      <stop offset="50%" style="stop-color:#d4a54a"/>
+      <stop offset="70%" style="stop-color:#a67c2e"/>
+      <stop offset="100%" style="stop-color:#8b6914"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- Bridge (nose piece) -->
+  <path d="M185 55 Q200 70 215 55" stroke="url(#goldFrame)" stroke-width="4" fill="none"/>
+  
+  <!-- Left lens shape (teardrop aviator) -->
+  <path d="M45 45 
+           Q45 25, 90 20 
+           Q150 18, 175 40 
+           Q185 55, 180 80 
+           Q170 115, 120 120 
+           Q55 120, 45 80 
+           Q40 60, 45 45 Z" 
+        fill="url(#lensTint)" stroke="url(#goldFrame)" stroke-width="3.5"/>
+  
+  <!-- Left lens reflection -->
+  <path d="M55 40 
+           Q55 30, 90 28 
+           Q130 26, 150 38 
+           Q140 50, 100 52 
+           Q65 52, 55 40 Z" 
+        fill="url(#reflection)"/>
+  
+  <!-- Right lens shape (teardrop aviator) -->
+  <path d="M355 45 
+           Q355 25, 310 20 
+           Q250 18, 225 40 
+           Q215 55, 220 80 
+           Q230 115, 280 120 
+           Q345 120, 355 80 
+           Q360 60, 355 45 Z" 
+        fill="url(#lensTint)" stroke="url(#goldFrame)" stroke-width="3.5"/>
+  
+  <!-- Right lens reflection -->
+  <path d="M345 40 
+           Q345 30, 310 28 
+           Q270 26, 250 38 
+           Q260 50, 300 52 
+           Q335 52, 345 40 Z" 
+        fill="url(#reflection)"/>
+  
+  <!-- Left temple arm (goes to ear) -->
+  <path d="M42 40 L10 35 Q5 35, 5 40 L5 45 Q5 50, 10 50 L42 48" 
+        fill="url(#goldFrame)" stroke="url(#goldFrame)" stroke-width="1"/>
+  
+  <!-- Right temple arm (goes to ear) -->
+  <path d="M358 40 L390 35 Q395 35, 395 40 L395 45 Q395 50, 390 50 L358 48" 
+        fill="url(#goldFrame)" stroke="url(#goldFrame)" stroke-width="1"/>
+  
+  <!-- Nose pads -->
+  <ellipse cx="178" cy="72" rx="6" ry="10" fill="url(#goldFrame)" opacity="0.9"/>
+  <ellipse cx="222" cy="72" rx="6" ry="10" fill="url(#goldFrame)" opacity="0.9"/>
+  
+  <!-- Small screws/details -->
+  <circle cx="50" cy="45" r="2" fill="#f5d17a"/>
+  <circle cx="350" cy="45" r="2" fill="#f5d17a"/>
+</svg>

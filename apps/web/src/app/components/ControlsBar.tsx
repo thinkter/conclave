@@ -32,6 +32,7 @@ import { memo, useCallback, useEffect, useRef, useState, type FormEvent } from "
 import {
   BACKGROUND_EFFECT_OPTIONS,
   type BackgroundEffect,
+  type FaceFilterType,
 } from "../lib/background-blur";
 import type {
   MeetingConfigSnapshot,
@@ -51,6 +52,7 @@ interface ControlsBarProps {
   isMuted: boolean;
   isCameraOff: boolean;
   backgroundEffect: BackgroundEffect;
+  faceFilter?: FaceFilterType;
   localStream?: MediaStream | null;
   isMirrorCamera?: boolean;
   isScreenSharing: boolean;
@@ -61,7 +63,7 @@ interface ControlsBarProps {
   reactionOptions: ReactionOption[];
   onToggleMute: () => void;
   onToggleCamera: () => void;
-  onBackgroundEffectChange: (effect: BackgroundEffect) => void;
+  onBackgroundEffectChange: (effect: BackgroundEffect, faceFilter?: FaceFilterType) => void;
   onToggleScreenShare: () => void;
   onToggleChat: () => void;
   onToggleHandRaised: () => void;
@@ -194,6 +196,7 @@ function ControlsBar({
   isMuted,
   isCameraOff,
   backgroundEffect,
+  faceFilter = "none",
   localStream,
   isMirrorCamera = true,
   isScreenSharing,
@@ -499,7 +502,7 @@ function ControlsBar({
           className={
             isGhostMode
               ? ghostDisabledClass
-              : isFilterMenuOpen || backgroundEffect !== "none"
+              : isFilterMenuOpen || backgroundEffect !== "none" || faceFilter !== "none"
                 ? activeButtonClass
                 : defaultButtonClass
           }
@@ -521,6 +524,7 @@ function ControlsBar({
           <CameraFiltersDrawer
             isOpen={isFilterMenuOpen && !isGhostMode}
             backgroundEffect={backgroundEffect}
+            faceFilter={faceFilter}
             onSelect={onBackgroundEffectChange}
             onClose={() => setIsFilterMenuOpen(false)}
             localStream={localStream}

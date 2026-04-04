@@ -43,6 +43,7 @@ import { usePrewarmSocket } from "./hooks/usePrewarmSocket";
 import { useSharedBrowser } from "./hooks/useSharedBrowser";
 import { useVoiceAgentParticipant } from "./hooks/useVoiceAgentParticipant";
 import type { JoinMode } from "./lib/types";
+import type { BackgroundEffect, FaceFilterType } from "./lib/background-blur";
 import {
   isSystemUserId,
   sanitizeInstitutionDisplayName,
@@ -324,6 +325,8 @@ export default function MeetsClient({
     setIsMirrorCamera,
     backgroundEffect,
     setBackgroundEffect,
+    faceFilter,
+    setFaceFilter,
     isVideoSettingsOpen,
     setIsVideoSettingsOpen,
     selectedAudioInputDeviceId,
@@ -331,6 +334,14 @@ export default function MeetsClient({
     selectedAudioOutputDeviceId,
     setSelectedAudioOutputDeviceId,
   } = useMeetMediaSettings({ videoQualityRef: refs.videoQualityRef });
+
+  // Combined handler for background effect and face filter changes
+  const handleEffectChange = useCallback((effect: BackgroundEffect, newFaceFilter?: FaceFilterType) => {
+    setBackgroundEffect(effect);
+    if (newFaceFilter !== undefined) {
+      setFaceFilter(newFaceFilter);
+    }
+  }, [setBackgroundEffect, setFaceFilter]);
 
   const isAdminFlag = Boolean(currentIsAdmin);
   const isWebinarAttendee =
@@ -493,6 +504,7 @@ export default function MeetsClient({
     selectedAudioOutputDeviceId,
     setSelectedAudioOutputDeviceId,
     backgroundEffect,
+    faceFilter,
     videoQualityRef: refs.videoQualityRef,
     socketRef: refs.socketRef,
     deviceRef: refs.deviceRef,
@@ -1278,13 +1290,14 @@ export default function MeetsClient({
           participants={participants}
           isMirrorCamera={isMirrorCamera}
           backgroundEffect={backgroundEffect}
+          faceFilter={faceFilter}
           activeSpeakerId={effectiveActiveSpeakerId}
           currentUserId={userId}
           selectedAudioInputDeviceId={selectedAudioInputDeviceId}
           audioOutputDeviceId={selectedAudioOutputDeviceId}
           onAudioInputDeviceChange={handleAudioInputDeviceChange}
           onAudioOutputDeviceChange={handleAudioOutputDeviceChange}
-          onBackgroundEffectChange={setBackgroundEffect}
+          onBackgroundEffectChange={handleEffectChange}
           activeScreenShareId={activeScreenShareId}
           isScreenSharing={isScreenSharing}
           isChatOpen={isChatOpen}
@@ -1447,10 +1460,11 @@ export default function MeetsClient({
         participants={participants}
         isMirrorCamera={isMirrorCamera}
         backgroundEffect={backgroundEffect}
+        faceFilter={faceFilter}
         activeSpeakerId={effectiveActiveSpeakerId}
         currentUserId={userId}
         audioOutputDeviceId={selectedAudioOutputDeviceId}
-        onBackgroundEffectChange={setBackgroundEffect}
+        onBackgroundEffectChange={handleEffectChange}
         activeScreenShareId={activeScreenShareId}
         isScreenSharing={isScreenSharing}
         isChatOpen={isChatOpen}
