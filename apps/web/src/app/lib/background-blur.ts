@@ -227,9 +227,8 @@ const createBlurredTrack = async (
     stopMediaStream(sourceStream);
   };
 
-  sourceTrack.onended = () => {
-    processedTrack.stop();
-  };
+  sourceTrack.onended = stop;
+  processedTrack.onended = stop;
 
   const renderFrame = () => {
     if (stopped) return;
