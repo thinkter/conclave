@@ -1,23 +1,11 @@
-"use client";
-
 import {
   LOW_QUALITY_CONSTRAINTS,
   STANDARD_QUALITY_CONSTRAINTS,
-} from "./constants";
-import type { VideoQuality } from "./types";
-
-export type BackgroundEffect = "none" | "blur";
-
-export interface ManagedCameraTrack {
-  stream: MediaStream;
-  track: MediaStreamTrack;
-  stop: () => void;
-}
-
-interface CreateManagedCameraTrackOptions {
-  effect: BackgroundEffect;
-  quality: VideoQuality;
-}
+} from "../constants";
+import type {
+  CreateManagedCameraTrackOptions,
+  ManagedCameraTrack,
+} from "./background-blur.types";
 
 const MEDIAPIPE_WASM_ROOT =
   "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.34/wasm";
@@ -34,12 +22,18 @@ let segmenterModulePromise: Promise<SegmenterModule> | null = null;
 let segmenterPromise: Promise<import("@mediapipe/tasks-vision").ImageSegmenter> | null =
   null;
 
-const getVideoConstraints = (
-  quality: VideoQuality,
-): MediaTrackConstraints => {
-  return quality === "low"
+const getVideoConstraints = (quality: CreateManagedCameraTrackOptions["quality"]) =>
+  quality === "low"
     ? { ...LOW_QUALITY_CONSTRAINTS }
     : { ...STANDARD_QUALITY_CONSTRAINTS };
+
+const stopMediaStream = (stream: MediaStream) => {
+  stream.getTracks().forEach((track) => {
+    track.onended = null;
+    try {
+      track.stop();
+    } catch {}
+  });
 };
 
 const loadSegmenterModule = async (): Promise<SegmenterModule> => {
@@ -76,8 +70,8 @@ const getImageSegmenter = async () => {
   return segmenterPromise;
 };
 
-const getImageSegmenterWithTimeout = async () => {
-  return Promise.race([
+const getImageSegmenterWithTimeout = async () =>
+  Promise.race([
     getImageSegmenter(),
     new Promise<never>((_, reject) => {
       window.setTimeout(() => {
@@ -85,16 +79,6 @@ const getImageSegmenterWithTimeout = async () => {
       }, BLUR_SETUP_TIMEOUT_MS);
     }),
   ]);
-};
-
-const stopMediaStream = (stream: MediaStream) => {
-  stream.getTracks().forEach((track) => {
-    track.onended = null;
-    try {
-      track.stop();
-    } catch {}
-  });
-};
 
 const waitForVideoReady = async (video: HTMLVideoElement): Promise<void> => {
   if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
@@ -318,8 +302,9 @@ const createBlurredTrack = async (
 export const createManagedCameraTrack = async ({
   effect,
   quality,
+  getUserMedia,
 }: CreateManagedCameraTrackOptions): Promise<ManagedCameraTrack> => {
-  const sourceStream = await navigator.mediaDevices.getUserMedia({
+  const sourceStream = await getUserMedia({
     video: getVideoConstraints(quality),
   });
   const sourceTrack = sourceStream.getVideoTracks()[0];
@@ -360,3 +345,5 @@ export const createManagedCameraTrack = async ({
     };
   }
 };
+
+export type { BackgroundEffect, ManagedCameraTrack } from "./background-blur.types";

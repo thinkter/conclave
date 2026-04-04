@@ -1069,6 +1069,7 @@ export default function MeetsMainContent({
               <ControlsBar
                 isMuted={isMuted}
                 isCameraOff={isCameraOff}
+                backgroundEffect={backgroundEffect}
                 isScreenSharing={isScreenSharing}
                 activeScreenShareId={activeScreenShareId}
                 isChatOpen={isChatOpen}
@@ -1077,6 +1078,7 @@ export default function MeetsMainContent({
                 reactionOptions={reactionOptions}
                 onToggleMute={toggleMute}
                 onToggleCamera={toggleCamera}
+                onBackgroundEffectChange={onBackgroundEffectChange}
                 onToggleScreenShare={toggleScreenShare}
                 onToggleChat={handleToggleChat}
                 onToggleHandRaised={toggleHandRaised}

@@ -260,6 +260,18 @@ export function useMeetMedia({
     managedTrack?.stop();
   }, []);
 
+  const stopManagedCameraTrack = useCallback(
+    (managedTrack?: ManagedCameraTrack | null) => {
+      if (!managedTrack) return;
+      intentionalTrackStopsRef.current.add(managedTrack.track);
+      if (managedCameraTrackRef.current?.track.id === managedTrack.track.id) {
+        managedCameraTrackRef.current = null;
+      }
+      managedTrack.stop();
+    },
+    [intentionalTrackStopsRef]
+  );
+
   const createManagedCameraTrackForCurrentSettings = useCallback(async () => {
     return createManagedCameraTrack({
       effect: backgroundEffect,
@@ -372,7 +384,7 @@ export function useMeetMedia({
             await createManagedCameraTrackForCurrentSettings();
           const previousManagedTrack = managedCameraTrackRef.current;
           managedCameraTrackRef.current = managedTrack;
-          previousManagedTrack?.stop();
+          stopManagedCameraTrack(previousManagedTrack);
           const videoTrack = managedTrack.track;
           hasVideoPermission = true;
           videoTrack.onended = () => {
@@ -590,6 +602,7 @@ export function useMeetMedia({
 
         videoProducerRef.current = nextProducer;
         managedCameraTrackRef.current = nextManagedTrack;
+        setIsCameraOff(false);
         const nextProducerId = nextProducer.id;
         nextProducer.on("transportclose", () => {
           if (videoProducerRef.current?.id === nextProducerId) {
@@ -611,7 +624,7 @@ export function useMeetMedia({
           } catch {}
         }
 
-        previousManagedTrack?.stop();
+        stopManagedCameraTrack(previousManagedTrack);
       } catch (err) {
         console.error("[Meets] Failed to update video quality:", err);
       }
@@ -621,7 +634,9 @@ export function useMeetMedia({
       createManagedCameraTrackForCurrentSettings,
       handleLocalTrackEnded,
       stopLocalTrack,
+      stopManagedCameraTrack,
       setLocalStream,
+      setIsCameraOff,
       socketRef,
       deviceRef,
       producerTransportRef,
@@ -1059,11 +1074,11 @@ export function useMeetMedia({
           }
         });
         managedCameraTrackRef.current = managedTrack;
-        previousManagedTrack?.stop();
+        stopManagedCameraTrack(previousManagedTrack);
         setIsCameraOff(false);
       } catch (err) {
         console.error("[Meets] Failed to restart video:", err);
-        createdManagedTrack?.stop();
+        stopManagedCameraTrack(createdManagedTrack);
         if (createdTrack) {
           stopLocalTrack(createdTrack);
           setLocalStream((prev) => {
@@ -1086,6 +1101,7 @@ export function useMeetMedia({
     handleLocalTrackEnded,
     releaseManagedCameraTrack,
     stopLocalTrack,
+    stopManagedCameraTrack,
     socketRef,
     deviceRef,
     videoProducerRef,
@@ -1167,8 +1183,9 @@ export function useMeetMedia({
         videoProducerRef.current = recoveredProducer;
         if (createdManagedTrack) {
           managedCameraTrackRef.current = createdManagedTrack;
-          previousManagedTrack?.stop();
+          stopManagedCameraTrack(previousManagedTrack);
         }
+        setIsCameraOff(false);
         recoveredProducer.on("transportclose", () => {
           if (videoProducerRef.current?.id === recoveredProducer.id) {
             videoProducerRef.current = null;
@@ -1176,7 +1193,7 @@ export function useMeetMedia({
         });
       } catch (err) {
         console.error("[Meets] Camera producer recovery failed:", err);
-        createdManagedTrack?.stop();
+        stopManagedCameraTrack(createdManagedTrack);
         if (!cancelled) {
           const existingVideoTracks = localStreamRef.current?.getVideoTracks() ?? [];
           existingVideoTracks.forEach((track) => {
@@ -1210,6 +1227,7 @@ export function useMeetMedia({
     createManagedCameraTrackForCurrentSettings,
     handleLocalTrackEnded,
     stopLocalTrack,
+    stopManagedCameraTrack,
     setLocalStream,
     setIsCameraOff,
     setMeetError,

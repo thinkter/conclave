@@ -21,12 +21,14 @@ import {
   Trello,
   Youtube,
   Smile,
+  ScanFace,
   Users,
   Video,
   VideoOff,
   X,
 } from "lucide-react";
 import { memo, useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import type { BackgroundEffect } from "../lib/background-blur";
 import type {
   MeetingConfigSnapshot,
   MeetingUpdateRequest,
@@ -43,6 +45,7 @@ import MeetSettingsPanel from "./MeetSettingsPanel";
 interface ControlsBarProps {
   isMuted: boolean;
   isCameraOff: boolean;
+  backgroundEffect: BackgroundEffect;
   isScreenSharing: boolean;
   activeScreenShareId: string | null;
   isChatOpen: boolean;
@@ -51,6 +54,7 @@ interface ControlsBarProps {
   reactionOptions: ReactionOption[];
   onToggleMute: () => void;
   onToggleCamera: () => void;
+  onBackgroundEffectChange: (effect: BackgroundEffect) => void;
   onToggleScreenShare: () => void;
   onToggleChat: () => void;
   onToggleHandRaised: () => void;
@@ -182,6 +186,7 @@ const BROWSER_APPS = [
 function ControlsBar({
   isMuted,
   isCameraOff,
+  backgroundEffect,
   isScreenSharing,
   activeScreenShareId,
   isChatOpen,
@@ -190,6 +195,7 @@ function ControlsBar({
   reactionOptions,
   onToggleMute,
   onToggleCamera,
+  onBackgroundEffectChange,
   onToggleScreenShare,
   onToggleChat,
   onToggleHandRaised,
@@ -458,6 +464,42 @@ function ControlsBar({
           )}
         </button>
       </HotkeyTooltip>
+
+      <button
+        onClick={() =>
+          onBackgroundEffectChange(
+            backgroundEffect === "blur" ? "none" : "blur"
+          )
+        }
+        disabled={isGhostMode || isCameraOff}
+        className={
+          isGhostMode || isCameraOff
+            ? ghostDisabledClass
+            : backgroundEffect === "blur"
+              ? activeButtonClass
+              : defaultButtonClass
+        }
+        title={
+          isGhostMode
+            ? "Ghost mode: blur locked"
+            : isCameraOff
+              ? "Turn on camera to use blur"
+              : backgroundEffect === "blur"
+                ? "Disable background blur"
+                : "Enable background blur"
+        }
+        aria-label={
+          isGhostMode
+            ? "Ghost mode: blur locked"
+            : isCameraOff
+              ? "Turn on camera to use blur"
+              : backgroundEffect === "blur"
+                ? "Disable background blur"
+                : "Enable background blur"
+        }
+      >
+        <ScanFace className="w-4 h-4" />
+      </button>
 
       <HotkeyTooltip label={HOTKEYS.toggleScreenShare.label} hotkey={HOTKEYS.toggleScreenShare.keys}>
         <button
