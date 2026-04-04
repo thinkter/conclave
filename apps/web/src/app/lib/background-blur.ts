@@ -183,6 +183,7 @@ const createBlurredTrack = async (
 
   let rafId = 0;
   let stopped = false;
+  let maskImageData: ImageData | null = null;
 
   const stop = () => {
     if (stopped) return;
@@ -255,7 +256,15 @@ const createBlurredTrack = async (
           maskCanvas.height = mask.height;
         }
 
-        const alphaData = new Uint8ClampedArray(maskData.length * 4);
+        if (
+          !maskImageData ||
+          maskImageData.width !== mask.width ||
+          maskImageData.height !== mask.height
+        ) {
+          maskImageData = new ImageData(mask.width, mask.height);
+        }
+        const alphaData = maskImageData.data;
+
         for (let index = 0; index < maskData.length; index += 1) {
           const offset = index * 4;
           const alpha =
@@ -277,11 +286,7 @@ const createBlurredTrack = async (
           alphaData[offset + 3] = alpha;
         }
 
-        maskContext.putImageData(
-          new ImageData(alphaData, mask.width, mask.height),
-          0,
-          0,
-        );
+        maskContext.putImageData(maskImageData, 0, 0);
 
         outputContext.clearRect(0, 0, width, height);
         outputContext.filter = `blur(${BACKGROUND_BLUR_RADIUS_PX}px)`;

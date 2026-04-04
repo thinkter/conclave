@@ -407,7 +407,9 @@ export function useMeetMedia({
         hasAudioPermission,
         hasVideoPermission,
       });
-      setIsMuted(!hasAudioPermission);
+      if (!hasAudioPermission) {
+        setIsMuted(true);
+      }
       setIsCameraOff(!hasVideoPermission);
 
       return new MediaStream(tracks);
@@ -563,33 +565,24 @@ export function useMeetMedia({
     async (quality: VideoQuality) => {
       if (isCameraOff) return;
 
+      const previousManagedTrack = managedCameraTrackRef.current;
+      const previousProducer = videoProducerRef.current;
+      const previousVideoTrack = localStreamRef.current?.getVideoTracks()[0] ?? null;
+      let nextManagedTrack: ManagedCameraTrack | null = null;
+
       try {
         console.log(`[Meets] Switching to ${quality} quality`);
-        const previousManagedTrack = managedCameraTrackRef.current;
-        const nextManagedTrack =
-          await createManagedCameraTrackForCurrentSettings();
+        nextManagedTrack = await createManagedCameraTrackForCurrentSettings();
         const nextVideoTrack = nextManagedTrack.track;
         nextVideoTrack.onended = () => {
           handleLocalTrackEnded("video", nextVideoTrack);
         };
 
         const transport = producerTransportRef.current;
-        const previousProducer = videoProducerRef.current;
 
         if (!transport || !nextVideoTrack) {
           return;
         }
-
-        setLocalStream((prev) => {
-          const remainingTracks =
-            prev?.getTracks().filter((track) => track.kind !== "video") ?? [];
-
-          prev?.getVideoTracks().forEach((track) => {
-            stopLocalTrack(track);
-          });
-
-          return new MediaStream([...remainingTracks, nextVideoTrack]);
-        });
 
         const preferredWebcamCodec = getPreferredWebcamCodec(deviceRef.current);
         const nextProducer = await produceWebcamTrack({
@@ -603,6 +596,12 @@ export function useMeetMedia({
         videoProducerRef.current = nextProducer;
         managedCameraTrackRef.current = nextManagedTrack;
         setIsCameraOff(false);
+        setLocalStream((prev) => {
+          const remainingTracks =
+            prev?.getTracks().filter((track) => track.kind !== "video") ?? [];
+
+          return new MediaStream([...remainingTracks, nextVideoTrack]);
+        });
         const nextProducerId = nextProducer.id;
         nextProducer.on("transportclose", () => {
           if (videoProducerRef.current?.id === nextProducerId) {
@@ -624,9 +623,22 @@ export function useMeetMedia({
           } catch {}
         }
 
+        if (previousVideoTrack) {
+          stopLocalTrack(previousVideoTrack);
+        }
         stopManagedCameraTrack(previousManagedTrack);
       } catch (err) {
         console.error("[Meets] Failed to update video quality:", err);
+        stopManagedCameraTrack(nextManagedTrack);
+        managedCameraTrackRef.current = previousManagedTrack;
+        videoProducerRef.current = previousProducer;
+        if (previousVideoTrack) {
+          setLocalStream((prev) => {
+            const remainingTracks =
+              prev?.getTracks().filter((track) => track.kind !== "video") ?? [];
+            return new MediaStream([...remainingTracks, previousVideoTrack]);
+          });
+        }
       }
     },
     [
