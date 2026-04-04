@@ -7,7 +7,6 @@ import {
   Mic,
   MicOff,
   Plus,
-  ScanFace,
   Trash2,
   Video,
   VideoOff,
@@ -677,24 +676,7 @@ function MobileJoinScreen({
                 <VideoOff className="w-[18px] h-[18px]" />
               )}
             </button>
-            <button
-              onClick={() =>
-                onBackgroundEffectChange(
-                  backgroundEffect === "blur" ? "none" : "blur",
-                )
-              }
-              className={`h-9 px-3 rounded-full flex items-center justify-center gap-1.5 ${
-                backgroundEffect === "blur"
-                  ? "bg-[#F95F4A] text-white"
-                  : "text-[#FEFCD9]/80"
-              }`}
-              style={{ fontFamily: "'PolySans Mono', monospace" }}
-            >
-              <ScanFace className="w-3.5 h-3.5" />
-              <span className="text-[10px] uppercase tracking-[0.16em]">
-                Blur
-              </span>
-            </button>
+
           </div>
 
           {/* User email */}

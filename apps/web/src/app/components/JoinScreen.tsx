@@ -684,7 +684,7 @@ function JoinScreen({
                     </button>
                     <button
                       onClick={() => setIsFilterMenuOpen((prev) => !prev)}
-                      className={`h-9 px-3 rounded-full flex items-center justify-center gap-1.5 transition-all ${
+                      className={`h-9 px-3 rounded-full hidden md:flex items-center justify-center gap-1.5 transition-all ${
                         isFilterMenuOpen || backgroundEffect !== "none"
                           ? "bg-[#F95F4A] text-white"
                           : "text-[#FEFCD9]/80 hover:bg-white/10"
@@ -707,7 +707,7 @@ function JoinScreen({
                     >
                       {userEmail}
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="hidden md:flex items-center gap-2">
                       {isSignedInUser && (
                         <button
                           type="button"
@@ -737,7 +737,7 @@ function JoinScreen({
                   style={{ fontFamily: "'PolySans Mono', monospace" }}
                 >
                   <span className="text-[#FEFCD9]/40">Preflight</span>
-                  <div className="flex items-center gap-2 bg-black/40 border border-[#FEFCD9]/10 rounded-full px-3 py-1 text-[#FEFCD9]/70">
+                  <div className="hidden md:flex items-center gap-2 bg-black/40 border border-[#FEFCD9]/10 rounded-full px-3 py-1 text-[#FEFCD9]/70">
                     <span
                       className={`w-1.5 h-1.5 rounded-full ${
                         isMicOn ? "bg-emerald-400" : "bg-[#F95F4A]"
@@ -745,7 +745,7 @@ function JoinScreen({
                     />
                     Mic {isMicOn ? "On" : "Off"}
                   </div>
-                  <div className="flex items-center gap-2 bg-black/40 border border-[#FEFCD9]/10 rounded-full px-3 py-1 text-[#FEFCD9]/70">
+                  <div className="hidden md:flex items-center gap-2 bg-black/40 border border-[#FEFCD9]/10 rounded-full px-3 py-1 text-[#FEFCD9]/70">
                     <span
                       className={`w-1.5 h-1.5 rounded-full ${
                         isCameraOn ? "bg-emerald-400" : "bg-[#F95F4A]"
@@ -753,7 +753,7 @@ function JoinScreen({
                     />
                     Camera {isCameraOn ? "On" : "Off"}
                   </div>
-                  <div className="flex items-center gap-2 bg-black/40 border border-[#FEFCD9]/10 rounded-full px-3 py-1 text-[#FEFCD9]/70">
+                  <div className="hidden md:flex items-center gap-2 bg-black/40 border border-[#FEFCD9]/10 rounded-full px-3 py-1 text-[#FEFCD9]/70">
                     <span
                       className={`w-1.5 h-1.5 rounded-full ${
                         backgroundEffect !== "none"
