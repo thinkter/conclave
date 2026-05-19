@@ -198,49 +198,58 @@ export default function CameraFiltersDrawer({
         >
           Choose a filter
         </div>
-        <div className="flex max-h-full flex-col gap-2 overflow-y-auto px-2 pb-3">
-          {BACKGROUND_EFFECT_OPTIONS.map((option) => {
-            const isSelected = option.id === previewEffect;
-            return (
-              <button
-                key={option.id}
-                onClick={() => setPreviewEffect(option.id)}
-                className={`flex items-center gap-3 rounded-2xl border px-3 py-3 text-left transition-all ${
-                  isSelected
-                    ? "border-[#F95F4A]/45 bg-[linear-gradient(135deg,rgba(249,95,74,0.18),rgba(255,0,122,0.08))] text-[#FEFCD9]"
-                    : "border-[#FEFCD9]/10 bg-[#111111]/80 text-[#FEFCD9]/75 hover:border-[#FEFCD9]/20 hover:bg-[#171717]"
-                }`}
-              >
-                <div
-                  className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border ${
-                    isSelected
-                      ? "border-[#F95F4A]/35 bg-[#F95F4A]/12"
-                      : "border-[#FEFCD9]/10 bg-[#FEFCD9]/5"
-                  }`}
-                >
-                  <ScanFace
-                    className={`h-5 w-5 ${
-                      isSelected ? "text-[#F95F4A]" : "text-[#FEFCD9]/55"
+        <div className="flex max-h-full flex-col gap-3 overflow-y-auto px-2 pb-3">
+          {(["background", "face"] as const).map((category) => (
+            <div key={category} className="space-y-2">
+              <div className="px-1 text-[9px] uppercase tracking-[0.16em] text-[#FEFCD9]/30">
+                {category === "background" ? "Background" : "Face"}
+              </div>
+              {BACKGROUND_EFFECT_OPTIONS.filter(
+                (option) => option.category === category,
+              ).map((option) => {
+                const isSelected = option.id === previewEffect;
+                return (
+                  <button
+                    key={option.id}
+                    onClick={() => setPreviewEffect(option.id)}
+                    className={`flex items-center gap-3 rounded-2xl border px-3 py-3 text-left transition-all ${
+                      isSelected
+                        ? "border-[#F95F4A]/45 bg-[linear-gradient(135deg,rgba(249,95,74,0.18),rgba(255,0,122,0.08))] text-[#FEFCD9]"
+                        : "border-[#FEFCD9]/10 bg-[#111111]/80 text-[#FEFCD9]/75 hover:border-[#FEFCD9]/20 hover:bg-[#171717]"
                     }`}
-                  />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm flex items-center gap-2">
-                    {option.label}
-                    {option.experimental && (
-                      <span className="rounded-full bg-[#F95F4A]/20 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider text-[#F95F4A]">
-                        Experimental
-                      </span>
-                    )}
-                  </div>
-                  <div className="mt-1 text-[11px] text-[#FEFCD9]/45">
-                    {option.description}
-                  </div>
-                </div>
-                {isSelected ? <Check className="h-4 w-4 shrink-0 text-[#F95F4A]" /> : null}
-              </button>
-            );
-          })}
+                  >
+                    <div
+                      className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border ${
+                        isSelected
+                          ? "border-[#F95F4A]/35 bg-[#F95F4A]/12"
+                          : "border-[#FEFCD9]/10 bg-[#FEFCD9]/5"
+                      }`}
+                    >
+                      <ScanFace
+                        className={`h-5 w-5 ${
+                          isSelected ? "text-[#F95F4A]" : "text-[#FEFCD9]/55"
+                        }`}
+                      />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm flex items-center gap-2">
+                        {option.label}
+                        {option.experimental && (
+                          <span className="rounded-full bg-[#F95F4A]/20 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider text-[#F95F4A]">
+                            Experimental
+                          </span>
+                        )}
+                      </div>
+                      <div className="mt-1 text-[11px] text-[#FEFCD9]/45">
+                        {option.description}
+                      </div>
+                    </div>
+                    {isSelected ? <Check className="h-4 w-4 shrink-0 text-[#F95F4A]" /> : null}
+                  </button>
+                );
+              })}
+            </div>
+          ))}
         </div>
       </div>
       

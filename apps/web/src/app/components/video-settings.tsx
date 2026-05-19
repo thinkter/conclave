@@ -247,31 +247,40 @@ export default function VideoSettings({
               <ScanFace className="w-3 h-3" />
               <span>Camera filters</span>
             </div>
-            <div className="space-y-1.5">
-              {BACKGROUND_EFFECT_OPTIONS.map((option) => {
-                const isSelected = backgroundEffect === option.id;
-                return (
-                  <button
-                    key={option.id}
-                    onClick={() => onBackgroundEffectChange(option.id)}
-                    className={`w-full flex items-center gap-2 rounded-lg border px-2.5 py-2 text-left transition-colors ${
-                      isSelected
-                        ? "border-[#F95F4A]/50 bg-[#F95F4A]/10 text-[#FEFCD9]"
-                        : "border-[#FEFCD9]/10 text-[#FEFCD9]/75 hover:border-[#FEFCD9]/20 hover:bg-[#FEFCD9]/5"
-                    }`}
-                  >
-                    <div className="flex-1">
-                      <div className="text-xs">{option.label}</div>
-                      <div className="text-[10px] text-[#FEFCD9]/45">
-                        {option.description}
-                      </div>
-                    </div>
-                    {isSelected ? (
-                      <Check className="h-3.5 w-3.5 shrink-0 text-[#F95F4A]" />
-                    ) : null}
-                  </button>
-                );
-              })}
+            <div className="space-y-2">
+              {(["background", "face"] as const).map((category) => (
+                <div key={category} className="space-y-1.5">
+                  <div className="px-1 text-[9px] uppercase tracking-[0.16em] text-[#FEFCD9]/30">
+                    {category === "background" ? "Background" : "Face"}
+                  </div>
+                  {BACKGROUND_EFFECT_OPTIONS.filter(
+                    (option) => option.category === category,
+                  ).map((option) => {
+                    const isSelected = backgroundEffect === option.id;
+                    return (
+                      <button
+                        key={option.id}
+                        onClick={() => onBackgroundEffectChange(option.id)}
+                        className={`w-full flex items-center gap-2 rounded-lg border px-2.5 py-2 text-left transition-colors ${
+                          isSelected
+                            ? "border-[#F95F4A]/50 bg-[#F95F4A]/10 text-[#FEFCD9]"
+                            : "border-[#FEFCD9]/10 text-[#FEFCD9]/75 hover:border-[#FEFCD9]/20 hover:bg-[#FEFCD9]/5"
+                        }`}
+                      >
+                        <div className="flex-1">
+                          <div className="text-xs">{option.label}</div>
+                          <div className="text-[10px] text-[#FEFCD9]/45">
+                            {option.description}
+                          </div>
+                        </div>
+                        {isSelected ? (
+                          <Check className="h-3.5 w-3.5 shrink-0 text-[#F95F4A]" />
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              ))}
             </div>
           </div>
 
