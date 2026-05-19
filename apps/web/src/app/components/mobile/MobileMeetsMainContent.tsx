@@ -38,7 +38,7 @@ import DevPlaygroundLayout from "../DevPlaygroundLayout";
 import DevMeetToolsPanel from "../DevMeetToolsPanel";
 import ParticipantVideo from "../ParticipantVideo";
 import { useStableSpeakerId } from "../../hooks/useStableSpeakerId";
-import type { BackgroundEffect } from "../../lib/background-blur";
+import type { BackgroundEffect } from "../../lib/camera-effects";
 
 interface MobileMeetsMainContentProps {
   isJoined: boolean;

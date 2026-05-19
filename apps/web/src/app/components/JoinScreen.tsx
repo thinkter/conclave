@@ -23,7 +23,7 @@ import {
   type BackgroundEffect,
   getBackgroundEffectOption,
   type ManagedCameraTrack,
-} from "../lib/background-blur";
+} from "../lib/camera-effects";
 import type { ConnectionState, MeetError } from "../lib/types";
 import { DEFAULT_AUDIO_CONSTRAINTS } from "../lib/constants";
 import {

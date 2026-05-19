@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { BackgroundEffect } from "../lib/background-blur";
+import type { BackgroundEffect } from "../lib/camera-effects";
 import type { VideoQuality } from "../lib/types";
 
 interface UseMeetMediaSettingsOptions {

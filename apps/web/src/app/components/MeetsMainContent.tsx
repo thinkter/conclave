@@ -23,7 +23,7 @@ import SystemAudioPlayers from "./SystemAudioPlayers";
 import WhiteboardLayout from "./WhiteboardLayout";
 import ParticipantVideo from "./ParticipantVideo";
 import type { BrowserState } from "../hooks/useSharedBrowser";
-import type { BackgroundEffect } from "../lib/background-blur";
+import type { BackgroundEffect } from "../lib/camera-effects";
 
 import type {
   ChatMessage,

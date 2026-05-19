@@ -14,7 +14,7 @@ import {
 import {
   BACKGROUND_EFFECT_OPTIONS,
   type BackgroundEffect,
-} from "../lib/background-blur";
+} from "../lib/camera-effects";
 
 interface MediaDeviceOption {
   deviceId: string;

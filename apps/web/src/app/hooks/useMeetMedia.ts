@@ -11,7 +11,7 @@ import {
   createManagedCameraTrack,
   type BackgroundEffect,
   type ManagedCameraTrack,
-} from "../lib/background-blur";
+} from "../lib/camera-effects";
 import type {
   MediaState,
   MeetError,

@@ -3,7 +3,7 @@
 import { Copy } from "lucide-react";
 import Image from "next/image";
 import { memo, useEffect, useState } from "react";
-import type { BackgroundEffect } from "../lib/background-blur";
+import type { BackgroundEffect } from "../lib/camera-effects";
 import VideoSettings from "./video-settings";
 
 interface MeetsHeaderProps {

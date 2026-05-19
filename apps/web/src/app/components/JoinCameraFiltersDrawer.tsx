@@ -8,7 +8,7 @@ import {
   createManagedCameraTrack,
   createManagedCameraTrackFromTrack,
   type ManagedCameraTrack,
-} from "../lib/background-blur";
+} from "../lib/camera-effects";
 
 interface JoinCameraFiltersDrawerProps {
   isOpen: boolean;
