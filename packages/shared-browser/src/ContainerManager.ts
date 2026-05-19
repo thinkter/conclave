@@ -184,6 +184,8 @@ export class ContainerManager {
                     },
                     AutoRemove: true,
                     ExtraHosts: ["host.docker.internal:host-gateway"],
+                    CapAdd: ["SYS_ADMIN"],
+                    SecurityOpt: ["seccomp=unconfined"],
                 },
                 ExposedPorts: {
                     "6080/tcp": {},
