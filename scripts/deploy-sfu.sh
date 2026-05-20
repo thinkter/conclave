@@ -111,8 +111,9 @@ echo "Using SFU B: ${SFU_B_URL}"
 echo "Pulling latest code..."
 git -C "$ROOT_DIR" pull
 
-echo "Installing SFU dependencies..."
-npm -C "${ROOT_DIR}/packages/sfu" install
+# SFU dependencies are installed inside the Docker image; the host does not need them.
+# (Previously this step tried `npm -C packages/sfu install` on the host, which fails on
+#  hosts without Node and is unnecessary because the build context COPYs the source in.)
 
 if [[ "$HAS_UPSTASH" == "true" ]]; then
   echo "Using Upstash Redis; skipping local Redis container."
