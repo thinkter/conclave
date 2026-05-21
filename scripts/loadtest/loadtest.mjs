@@ -17,6 +17,7 @@ import { io } from "socket.io-client";
 const NEXT_API =
   process.env.NEXT_API || "https://conclave.acmvit.in/api/sfu/join";
 const ROOM_ID = process.env.ROOM_ID || "acmvit-cybersec";
+const CLIENT_ID = process.env.CLIENT_ID || "default";
 const NUM = Number(process.env.NUM || 200);
 const STAGGER_MS = Number(process.env.STAGGER_MS || 50);
 const STATS_MS = Number(process.env.STATS_MS || 15000);
@@ -55,11 +56,15 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function getToken({ name, sessionId, isHost }) {
   const resp = await fetch(NEXT_API, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      "x-sfu-client": CLIENT_ID,
+    },
     body: JSON.stringify({
       roomId: ROOM_ID,
       sessionId,
       user: { name },
+      clientId: CLIENT_ID,
       isHost: Boolean(isHost),
       allowRoomCreation: Boolean(isHost),
     }),
@@ -167,7 +172,7 @@ async function spawnParticipant(i, isHost) {
 
 async function main() {
   console.log(
-    `[boot] participants=${NUM} room=${ROOM_ID} api=${NEXT_API} stagger=${STAGGER_MS}ms`,
+    `[boot] participants=${NUM} room=${ROOM_ID} clientId=${CLIENT_ID} api=${NEXT_API} stagger=${STAGGER_MS}ms`,
   );
   const handles = [];
   for (let i = 0; i < NUM; i++) {
