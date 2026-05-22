@@ -28,6 +28,13 @@ export const isFfmpegAvailable = async (): Promise<boolean> => {
   return result;
 };
 
+/**
+ * Cached, synchronous read of the boot-time ffmpeg probe. Returns null if the
+ * probe hasn't run yet — callers should treat null as "still initialising".
+ */
+export const getCachedFfmpegAvailability = (): boolean | null =>
+  ffmpegAvailability.checked ? ffmpegAvailability.available : null;
+
 export type FfmpegProcessOptions = {
   label: string;
   sdpPath: string;

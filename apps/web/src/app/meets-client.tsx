@@ -1423,6 +1423,7 @@ export default function MeetsClient({
           recordingBusy={recording.isWorking}
           recordingStartedAt={recording.state.startedAt}
           recordingTrackCount={recording.state.trackCount}
+          recordingAvailable={recording.state.available}
           onStartRecording={handleStartRecording}
           onStopRecording={handleStopRecording}
           onPauseRecording={handlePauseRecording}
@@ -1606,6 +1607,7 @@ export default function MeetsClient({
         recordingBusy={recording.isWorking}
         recordingStartedAt={recording.state.startedAt}
         recordingTrackCount={recording.state.trackCount}
+        recordingAvailable={recording.state.available}
         onStartRecording={handleStartRecording}
         onStopRecording={handleStopRecording}
         onPauseRecording={handlePauseRecording}

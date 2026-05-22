@@ -162,6 +162,7 @@ interface MobileMeetsMainContentProps {
   recordingBusy?: boolean;
   recordingStartedAt?: number | null;
   recordingTrackCount?: number;
+  recordingAvailable?: boolean;
   onStartRecording?: () => void;
   onStopRecording?: () => void;
   onPauseRecording?: () => void;

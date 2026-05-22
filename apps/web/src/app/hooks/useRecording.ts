@@ -33,6 +33,10 @@ const idleState: RecordingPublicState = {
   startedAt: null,
   startedBy: null,
   trackCount: 0,
+  // Default to true so the button is visible until the SFU's first state
+  // payload either confirms or denies availability; deployments that disable
+  // recording will flip this within the first joinRoom round-trip.
+  available: true,
 };
 
 export function useRecording(
@@ -53,6 +57,9 @@ export function useRecording(
       startedAt: next?.startedAt ?? null,
       startedBy: next?.startedBy ?? null,
       trackCount: next?.trackCount ?? 0,
+      // When the SFU omits `available` (older build) keep the button visible
+      // so we don't regress on existing deployments.
+      available: next?.available !== undefined ? Boolean(next.available) : true,
     });
   }, []);
 

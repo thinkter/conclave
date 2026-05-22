@@ -73,6 +73,7 @@ export interface JoinRoomResponse {
     active: boolean;
     paused: boolean;
     startedAt: number | null;
+    available: boolean;
   };
 }
 
@@ -231,6 +232,12 @@ export interface RecordingPublicState {
   startedAt: number | null;
   startedBy: string | null;
   trackCount: number;
+  /**
+   * Whether the SFU has the recording stack online (ffmpeg present and not
+   * disabled via SFU_RECORDING_DISABLED). When false, the web client hides
+   * the record button so hosts don't trigger something that can't run.
+   */
+  available: boolean;
 }
 
 export interface StartRecordingRequest {

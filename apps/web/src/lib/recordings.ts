@@ -70,6 +70,13 @@ export interface RecordingPublicState {
   startedAt: number | null;
   startedBy: string | null;
   trackCount: number;
+  /**
+   * Whether the SFU has the recording stack available (ffmpeg present and not
+   * explicitly disabled via SFU_RECORDING_DISABLED). The web client uses this
+   * to hide the record button on deployments where recording is intentionally
+   * off or the binaries are missing.
+   */
+  available: boolean;
 }
 
 export const formatBytes = (bytes: number): string => {

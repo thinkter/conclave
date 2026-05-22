@@ -16,7 +16,10 @@ import {
   type RecordingSession,
 } from "./recordingSession.js";
 import { getRecordingsRoot } from "./recordingPaths.js";
-import { isFfmpegAvailable } from "./ffmpegBridge.js";
+import {
+  getCachedFfmpegAvailability,
+  isFfmpegAvailable,
+} from "./ffmpegBridge.js";
 import { resolveRecordingProfile } from "./qualityProfile.js";
 import { getScheduledWebinarById } from "../scheduledWebinars.js";
 import { ensureWebinarLinkSlug } from "../webinar.js";
@@ -87,7 +90,29 @@ const IDLE_PUBLIC_STATE: RecordingPublicState = {
   startedAt: null,
   startedBy: null,
   trackCount: 0,
+  available: false,
 };
+
+const isRecordingDisabledByEnv = (): boolean => {
+  const raw = (process.env.SFU_RECORDING_DISABLED ?? "").trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
+};
+
+const computeRecordingAvailable = (): boolean => {
+  if (isRecordingDisabledByEnv()) return false;
+  // Boot-time probe hasn't completed yet -> err on the side of "available" so
+  // the UI doesn't briefly hide controls during startup. Once the probe
+  // finishes (within a few hundred ms of boot) subsequent reads return the
+  // real value.
+  const cached = getCachedFfmpegAvailability();
+  if (cached === null) return true;
+  return cached;
+};
+
+const withCapability = (state: RecordingPublicState): RecordingPublicState => ({
+  ...state,
+  available: computeRecordingAvailable(),
+});
 
 const safeReadJson = <T>(path: string): T | null => {
   try {
@@ -117,7 +142,7 @@ export const createRecordingManager = (options: {
     try {
       io.to(room.channelId).emit("recordingStateChanged", {
         roomId: room.id,
-        ...next,
+        ...withCapability(next),
       });
     } catch (error) {
       Logger.warn("[recording] emit state failed", error);
@@ -240,8 +265,8 @@ export const createRecordingManager = (options: {
 
   const publicState: RecordingManager["publicState"] = (roomChannelId) => {
     const session = state.recordingSessions.get(roomChannelId);
-    if (!session) return IDLE_PUBLIC_STATE;
-    return session.publicState();
+    if (!session) return withCapability(IDLE_PUBLIC_STATE);
+    return withCapability(session.publicState());
   };
 
   const onProducerCreated: RecordingManager["onProducerCreated"] = async (

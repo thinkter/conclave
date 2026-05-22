@@ -173,6 +173,7 @@ interface MeetsMainContentProps {
   recordingBusy?: boolean;
   recordingStartedAt?: number | null;
   recordingTrackCount?: number;
+  recordingAvailable?: boolean;
   onStartRecording?: () => void;
   onStopRecording?: () => void;
   onPauseRecording?: () => void;
@@ -361,6 +362,7 @@ export default function MeetsMainContent({
   recordingBusy = false,
   recordingStartedAt = null,
   recordingTrackCount = 0,
+  recordingAvailable = true,
   onStartRecording,
   onStopRecording,
   onPauseRecording,
@@ -1267,6 +1269,7 @@ export default function MeetsMainContent({
                 recordingPaused={recordingPaused}
                 recordingBusy={recordingBusy}
                 recordingTrackCount={recordingTrackCount}
+                recordingAvailable={recordingAvailable}
                 onStartRecording={onStartRecording}
                 onStopRecording={onStopRecording}
                 onPauseRecording={onPauseRecording}

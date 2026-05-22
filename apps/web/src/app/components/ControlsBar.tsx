@@ -120,6 +120,7 @@ interface ControlsBarProps {
   recordingPaused?: boolean;
   recordingBusy?: boolean;
   recordingTrackCount?: number;
+  recordingAvailable?: boolean;
   onStartRecording?: () => void;
   onStopRecording?: () => void;
   onPauseRecording?: () => void;
@@ -261,6 +262,7 @@ function ControlsBar({
   recordingPaused = false,
   recordingBusy = false,
   recordingTrackCount = 0,
+  recordingAvailable = true,
   onStartRecording,
   onStopRecording,
   onPauseRecording,
@@ -500,7 +502,7 @@ function ControlsBar({
           <Monitor className="w-4 h-4" />
         </button>
       </HotkeyTooltip>
-      {isAdmin && (onStartRecording || onStopRecording) && (
+      {isAdmin && recordingAvailable && (onStartRecording || onStopRecording) && (
         <div className="flex items-center gap-1">
           {recordingActive ? (
             <>

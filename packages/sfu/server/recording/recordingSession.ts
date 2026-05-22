@@ -196,6 +196,10 @@ export const createRecordingSession = (
     startedAt,
     startedBy: options.startedBy,
     trackCount: viewArtifact ? 1 : 0,
+    // Capability flag is filled in by the recording manager wrapper before the
+    // state is emitted; we ship a conservative default here so the type is
+    // satisfied if a caller ever reads this raw.
+    available: false,
   });
 
   const writeManifest = (): void => {

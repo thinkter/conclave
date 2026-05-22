@@ -752,6 +752,7 @@ export const registerJoinRoomHandler = (context: ConnectionContext): void => {
             active: recordingState.active,
             paused: recordingState.paused,
             startedAt: recordingState.startedAt,
+            available: recordingState.available,
           },
         });
       } catch (error) {
