@@ -55,9 +55,8 @@ const loadThreeModule = async (): Promise<ThreeModule> => {
 
 const loadThreeModel = async (assetPath: string) => {
   if (!threeModelPromises.has(assetPath)) {
-    threeModelPromises.set(
-      assetPath,
-      loadThreeModule().then(
+    const modelPromise = loadThreeModule()
+      .then(
         ({ GLTFLoader, MeshoptDecoder }) =>
           new Promise<ThreeNamespace.Object3D>((resolve, reject) => {
             const loader = new GLTFLoader();
@@ -69,8 +68,13 @@ const loadThreeModel = async (assetPath: string) => {
               reject,
             );
           }),
-      ),
-    );
+      )
+      .catch((error) => {
+        threeModelPromises.delete(assetPath);
+        throw error;
+      });
+
+    threeModelPromises.set(assetPath, modelPromise);
   }
 
   return threeModelPromises.get(assetPath)!;
