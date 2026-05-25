@@ -249,8 +249,8 @@ function GridLayout({
             } ${isMirrorCamera ? "scale-x-[-1]" : ""}`}
           />
           {isCameraOff && (
-            <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-[#1a1a1a] to-[#0d0e0d]">
-              <div className="w-20 h-20 rounded-full bg-gradient-to-br from-[#F95F4A]/20 to-[#FF007A]/20 border border-[#FEFCD9]/20 flex items-center justify-center text-3xl text-[#FEFCD9] font-bold">
+            <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-[#1a1b1f] to-[#0d0e10]">
+              <div className="w-20 h-20 rounded-full bg-gradient-to-br from-[#5B7CFA]/20 to-[#4DA8FF]/20 border border-[#FEFCD9]/20 flex items-center justify-center text-3xl text-[#FEFCD9] font-bold">
                 {userEmail[0]?.toUpperCase() || "?"}
               </div>
             </div>
@@ -258,9 +258,9 @@ function GridLayout({
           {isGhost && (
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none bg-black/40">
               <div className="flex flex-col items-center gap-2">
-                <Ghost className="w-16 h-16 text-[#FF007A] drop-shadow-[0_0_22px_rgba(255,0,122,0.5)]" />
+                <Ghost className="w-16 h-16 text-[#4DA8FF] drop-shadow-[0_0_22px_rgba(77, 168, 255,0.5)]" />
                 <span
-                  className="text-[11px] text-[#FF007A] bg-black/60 border border-[#FF007A]/30 px-3 py-1 rounded-full uppercase tracking-[0.1em]"
+                  className="text-[11px] text-[#4DA8FF] bg-black/60 border border-[#4DA8FF]/30 px-3 py-1 rounded-full uppercase tracking-[0.1em]"
                   style={{ fontFamily: "'PolySans Mono', monospace" }}
                 >
                   Ghost
@@ -284,11 +284,11 @@ function GridLayout({
               <span className="font-medium text-[#FEFCD9] uppercase tracking-wide">
                 {localDisplayName}
               </span>
-              <span className="text-[9px] text-[#F95F4A]/60 uppercase tracking-[0.15em]">
+              <span className="text-[9px] text-[#5B7CFA]/60 uppercase tracking-[0.15em]">
                 You
               </span>
             </div>
-            {isMuted && <MicOff className="w-3 h-3 text-[#F95F4A]" />}
+            {isMuted && <MicOff className="w-3 h-3 text-[#5B7CFA]" />}
           </div>
           {isSolo ? (
             <div className="absolute top-3 left-3 w-[304px] rounded-xl border border-[#FEFCD9]/10 bg-black/60 px-4 py-3 text-[#FEFCD9] shadow-[0_10px_28px_rgba(0,0,0,0.35)] backdrop-blur-sm">
@@ -343,8 +343,8 @@ function GridLayout({
             aria-expanded={isOverflowOpen}
             aria-label={`View ${hiddenParticipantsCount} more participants`}
             title={isOverflowOpen ? "Hide overflow" : "Peek at hidden participants"}
-            className={`acm-video-tile group relative flex flex-col items-center justify-center border-dashed border-[#FEFCD9]/20 bg-[#0d0e0d] text-[#FEFCD9] shadow-[inset_0_0_0_1px_rgba(254,252,217,0.04)] transition-all duration-300 hover:border-[#F95F4A]/50 ${
-              isOverflowOpen ? "ring-2 ring-[#F95F4A]/30" : ""
+            className={`acm-video-tile group relative flex flex-col items-center justify-center border-dashed border-[#FEFCD9]/20 bg-[#0d0e10] text-[#FEFCD9] shadow-[inset_0_0_0_1px_rgba(254, 252, 217,0.04)] transition-all duration-300 hover:border-[#5B7CFA]/50 ${
+              isOverflowOpen ? "ring-2 ring-[#5B7CFA]/30" : ""
             }`}
             style={{ fontFamily: "'PolySans Trial', sans-serif" }}
           >
@@ -370,8 +370,8 @@ function GridLayout({
                   More
                 </span>
               </div>
-              <div className="h-[1px] w-12 bg-[#F95F4A]/50" />
-              <div className="rounded-full border border-[#FEFCD9]/15 bg-black/60 px-3 py-1 text-[9px] uppercase tracking-[0.25em] text-[#FEFCD9]/70 transition-colors duration-200 group-hover:border-[#F95F4A]/50 group-hover:text-[#FEFCD9]">
+              <div className="h-[1px] w-12 bg-[#5B7CFA]/50" />
+              <div className="rounded-full border border-[#FEFCD9]/15 bg-black/60 px-3 py-1 text-[9px] uppercase tracking-[0.25em] text-[#FEFCD9]/70 transition-colors duration-200 group-hover:border-[#5B7CFA]/50 group-hover:text-[#FEFCD9]">
                 {isOverflowOpen ? "Hide panel" : "Show panel"}
               </div>
             </div>
@@ -388,7 +388,7 @@ function GridLayout({
           }`}
         >
           <div
-            className="relative w-full overflow-hidden rounded-xl border border-[#FEFCD9]/10 bg-[#0d0e0d]/95 shadow-2xl backdrop-blur-md"
+            className="relative w-full overflow-hidden rounded-xl border border-[#FEFCD9]/10 bg-[#0d0e10]/95 shadow-2xl backdrop-blur-md"
           >
             <div className="relative flex items-center justify-between border-b border-[#FEFCD9]/10 px-4 py-3">
               <div>
@@ -397,7 +397,7 @@ function GridLayout({
                   style={{ fontFamily: "'PolySans Mono', monospace" }}
                 >
                   More participants
-                  <span className="text-[#F95F4A]">({hiddenParticipantsCount})</span>
+                  <span className="text-[#5B7CFA]">({hiddenParticipantsCount})</span>
                 </span>
               </div>
               <div className="flex items-center gap-2">
@@ -408,7 +408,7 @@ function GridLayout({
                       setIsOverflowOpen(false);
                       onOpenParticipantsPanel();
                     }}
-                    className="rounded-full border border-[#FEFCD9]/15 bg-black/50 px-3 py-1 text-[10px] uppercase tracking-[0.2em] text-[#FEFCD9]/70 transition-colors duration-200 hover:border-[#F95F4A]/50 hover:text-[#FEFCD9]"
+                    className="rounded-full border border-[#FEFCD9]/15 bg-black/50 px-3 py-1 text-[10px] uppercase tracking-[0.2em] text-[#FEFCD9]/70 transition-colors duration-200 hover:border-[#5B7CFA]/50 hover:text-[#FEFCD9]"
                   >
                     Full list
                   </button>
@@ -416,14 +416,14 @@ function GridLayout({
                 <button
                   type="button"
                   onClick={() => setIsOverflowOpen(false)}
-                  className="rounded-full border border-[#FEFCD9]/15 bg-black/60 px-3 py-1 text-[10px] uppercase tracking-[0.2em] text-[#FEFCD9]/70 transition-colors duration-200 hover:border-[#F95F4A]/50 hover:text-[#FEFCD9]"
+                  className="rounded-full border border-[#FEFCD9]/15 bg-black/60 px-3 py-1 text-[10px] uppercase tracking-[0.2em] text-[#FEFCD9]/70 transition-colors duration-200 hover:border-[#5B7CFA]/50 hover:text-[#FEFCD9]"
                 >
                   Close
                 </button>
               </div>
             </div>
             <div className="relative">
-              <div className="pointer-events-none absolute inset-y-0 right-0 w-12 bg-gradient-to-l from-[#0d0e0d] to-transparent z-10 rounded-br-xl" />
+              <div className="pointer-events-none absolute inset-y-0 right-0 w-12 bg-gradient-to-l from-[#0d0e10] to-transparent z-10 rounded-br-xl" />
               <div className="grid grid-flow-col auto-cols-[11rem] gap-3 overflow-x-scroll no-scrollbar scroll-smooth px-4 pb-4 pt-4 snap-x snap-mandatory">
                 {hiddenParticipants.map((participant) => (
                   <OverflowGalleryTile
@@ -486,7 +486,7 @@ const OverflowPreviewTile = memo(function OverflowPreviewTile({
   const showPlaceholder = !participant.videoStream || participant.isCameraOff;
 
   return (
-    <div className="relative h-full w-full overflow-hidden rounded-lg border border-[#FEFCD9]/10 bg-[#0d0e0d]">
+    <div className="relative h-full w-full overflow-hidden rounded-lg border border-[#FEFCD9]/10 bg-[#0d0e10]">
       <video
         ref={videoRef}
         autoPlay
@@ -494,7 +494,7 @@ const OverflowPreviewTile = memo(function OverflowPreviewTile({
         className={`h-full w-full object-cover ${showPlaceholder ? "hidden" : ""}`}
       />
       {showPlaceholder && (
-        <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-[#1a1a1a] to-[#0d0e0d]">
+        <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-[#1a1b1f] to-[#0d0e10]">
           <span className="text-sm font-semibold text-[#FEFCD9]/70">
             {displayName[0]?.toUpperCase() || "?"}
           </span>
@@ -566,7 +566,7 @@ const OverflowGalleryTile = memo(function OverflowGalleryTile({
       title={displayName}
       className={`acm-video-tile group relative flex h-28 w-44 shrink-0 flex-col overflow-hidden text-left snap-start ${
         isActiveSpeaker ? "speaking" : ""
-      } ${isClickable ? "cursor-pointer hover:border-[#F95F4A]/40" : "cursor-default opacity-85"}`}
+      } ${isClickable ? "cursor-pointer hover:border-[#5B7CFA]/40" : "cursor-default opacity-85"}`}
     >
       <div className="relative h-full w-full">
         <video
@@ -576,7 +576,7 @@ const OverflowGalleryTile = memo(function OverflowGalleryTile({
           className={`h-full w-full object-cover ${showPlaceholder ? "hidden" : ""}`}
         />
         {showPlaceholder && (
-          <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-[#1a1a1a] to-[#0d0e0d]">
+          <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-[#1a1b1f] to-[#0d0e10]">
             <span className="text-xl font-semibold text-[#FEFCD9]">
               {tileLabel[0]?.toUpperCase() || "?"}
             </span>
@@ -584,7 +584,7 @@ const OverflowGalleryTile = memo(function OverflowGalleryTile({
         )}
         {participant.isGhost && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/35">
-            <Ghost className="h-8 w-8 text-[#FF007A] drop-shadow-[0_0_14px_rgba(255,0,122,0.5)]" />
+            <Ghost className="h-8 w-8 text-[#4DA8FF] drop-shadow-[0_0_14px_rgba(77, 168, 255,0.5)]" />
           </div>
         )}
         {participant.isHandRaised && (
@@ -597,7 +597,7 @@ const OverflowGalleryTile = memo(function OverflowGalleryTile({
           style={{ fontFamily: "'PolySans Mono', monospace" }}
         >
           <span className="truncate">{tileLabel}</span>
-          {participant.isMuted && <MicOff className="h-3 w-3 text-[#F95F4A]" />}
+          {participant.isMuted && <MicOff className="h-3 w-3 text-[#5B7CFA]" />}
         </div>
       </div>
     </button>

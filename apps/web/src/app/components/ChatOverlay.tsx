@@ -20,11 +20,11 @@ function ChatOverlay({ messages, onDismiss }: ChatOverlayProps) {
       {messages.slice(-3).map((message) => (
         <div
           key={message.id}
-          className="animate-in slide-in-from-left-full fade-in rounded-xl border border-[#FEFCD9]/10 bg-[#0d0e0d]/95 p-3 shadow-2xl backdrop-blur-md duration-300"
+          className="animate-in slide-in-from-left-full fade-in rounded-xl border border-[#FEFCD9]/10 bg-[#0d0e10]/95 p-3 shadow-2xl backdrop-blur-md duration-300"
         >
           <div className="flex items-start gap-2.5">
             <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center">
-              <MessageSquare className="h-3.5 w-3.5 text-[#F95F4A]/90" />
+              <MessageSquare className="h-3.5 w-3.5 text-[#5B7CFA]/90" />
             </div>
             <div className="flex-1 min-w-0">
               <p className="truncate text-[11px] text-[#FEFCD9]/55">

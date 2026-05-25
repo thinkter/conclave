@@ -53,9 +53,9 @@ export default function ConnectionBanner({
     >
       <div className="flex items-center gap-3 text-[#FEFCD9]/80">
         {isOffline || !isReconnecting ? (
-          <WifiOff className="w-3.5 h-3.5 text-[#F95F4A]" />
+          <WifiOff className="w-3.5 h-3.5 text-[#5B7CFA]" />
         ) : (
-          <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#F95F4A]" />
+          <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#5B7CFA]" />
         )}
         <span className={`${compact ? "text-[11px]" : "text-xs"}`}>
           {message}
@@ -63,7 +63,7 @@ export default function ConnectionBanner({
         {!isOffline && !isReconnecting && !showServerRestartNotice && (
           <button
             onClick={handleReload}
-            className="ml-1 text-[10px] uppercase tracking-widest text-[#F95F4A] hover:text-[#f97b6a] transition-colors"
+            className="ml-1 text-[10px] uppercase tracking-widest text-[#5B7CFA] hover:text-[#f97b6a] transition-colors"
             style={{ fontFamily: "'PolySans Mono', monospace" }}
           >
             Refresh

@@ -180,7 +180,7 @@ function MobileParticipantsPanel({
           {isAdmin && pendingArray.length > 0 && (
             <div className="mobile-sheet-card p-3">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-[10px] uppercase tracking-[0.25em] text-[#F95F4A]/80">
+                <span className="text-[10px] uppercase tracking-[0.25em] text-[#5B7CFA]/80">
                   Waiting ({pendingArray.length})
                 </span>
               </div>
@@ -203,7 +203,7 @@ function MobileParticipantsPanel({
                       </button>
                       <button
                         onClick={() => handleAdmit(userId)}
-                        className="h-7 w-7 rounded-lg border border-[#F95F4A]/40 bg-[#F95F4A]/90 text-white flex items-center justify-center active:scale-95"
+                        className="h-7 w-7 rounded-lg border border-[#5B7CFA]/40 bg-[#5B7CFA]/90 text-white flex items-center justify-center active:scale-95"
                         aria-label="Admit"
                       >
                         <Check className="w-3.5 h-3.5" />
@@ -224,7 +224,7 @@ function MobileParticipantsPanel({
                     <span className="text-sm text-[#FEFCD9] truncate">
                       {formatName(getDisplayName(currentUserId), 16)}
                     </span>
-                    <span className="text-[9px] uppercase tracking-[0.2em] text-[#F95F4A]/70">
+                    <span className="text-[9px] uppercase tracking-[0.2em] text-[#5B7CFA]/70">
                       YOU
                     </span>
                     {effectiveHostUserIds.has(currentUserId) && (

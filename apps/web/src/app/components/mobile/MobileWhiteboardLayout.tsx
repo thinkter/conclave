@@ -6,7 +6,7 @@ import { WhiteboardWebApp } from "@conclave/apps-sdk/whiteboard/web";
 function MobileWhiteboardLayout() {
   return (
     <div className="w-full h-full min-h-0 min-w-0 p-3">
-      <div className="w-full h-full min-h-0 min-w-0 mobile-tile bg-[#0b0b0b] overflow-hidden">
+      <div className="w-full h-full min-h-0 min-w-0 mobile-tile bg-[#0d0e10] overflow-hidden">
         <WhiteboardWebApp />
       </div>
     </div>

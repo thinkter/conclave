@@ -299,7 +299,7 @@ export default function MeetSettingsPanel({
 
   return (
     <div
-      className="absolute bottom-14 left-1/2 z-50 max-h-[70vh] w-[320px] max-w-[calc(100vw-1.5rem)] -translate-x-1/2 overflow-y-auto rounded-xl border border-[#FEFCD9]/10 bg-[#0d0e0d]/95 p-2.5 shadow-2xl backdrop-blur-md"
+      className="absolute bottom-14 left-1/2 z-50 max-h-[70vh] w-[320px] max-w-[calc(100vw-1.5rem)] -translate-x-1/2 overflow-y-auto rounded-xl border border-[#FEFCD9]/10 bg-[#0d0e10]/95 p-2.5 shadow-2xl backdrop-blur-md"
       style={{ fontFamily: "'PolySans Trial', sans-serif" }}
     >
       <div className="mb-2 flex items-center justify-between border-b border-[#FEFCD9]/10 px-1 pb-2">

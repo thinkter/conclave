@@ -322,7 +322,7 @@ function MobileChatPanel({
                             {directMessageLabel}
                           </p>
                         ) : null}
-                        <span className="text-[#F95F4A]/80">
+                        <span className="text-[#5B7CFA]/80">
                           {isOwn ? "You" : resolveDisplayName(message.userId)}
                         </span>{" "}
                         {actionText}
@@ -344,8 +344,8 @@ function MobileChatPanel({
                     <div
                       className={`max-w-[80%] rounded-[18px] px-3 py-2 ${
                         isOwn
-                          ? "bg-[#F95F4A] text-white rounded-br-md selection:bg-white/90 selection:text-[#0d0e0d]"
-                          : "bg-[#2a2a2a]/90 text-[#FEFCD9] rounded-bl-md selection:bg-[#F95F4A]/40 selection:text-white"
+                          ? "bg-[#5B7CFA] text-white rounded-br-md selection:bg-white/90 selection:text-[#0d0e10]"
+                          : "bg-[#2b2e36]/90 text-[#FEFCD9] rounded-bl-md selection:bg-[#5B7CFA]/40 selection:text-white"
                       } ${message.isDirect ? "ring-1 ring-amber-300/30" : ""}`}
                     >
                       <p className="text-sm break-words">
@@ -369,7 +369,7 @@ function MobileChatPanel({
 
           <form
             onSubmit={handleSubmit}
-            className="relative flex items-center gap-2 px-4 py-3 border-t border-[#FEFCD9]/10 bg-[#0b0b0b]/95"
+            className="relative flex items-center gap-2 px-4 py-3 border-t border-[#FEFCD9]/10 bg-[#0d0e10]/95"
           >
             {showMentionSuggestions && (
               <div className="absolute bottom-full mb-2 left-0 right-0 max-h-40 overflow-y-auto mobile-sheet-card shadow-xl overflow-hidden">
@@ -382,7 +382,7 @@ function MobileChatPanel({
                       onClick={() => applyMentionSuggestion(index)}
                       className={`w-full px-3 py-2 text-left text-sm transition-colors ${
                         isActive
-                          ? "bg-[#F95F4A]/20 text-[#FEFCD9]"
+                          ? "bg-[#5B7CFA]/20 text-[#FEFCD9]"
                           : "text-[#FEFCD9]/70 hover:bg-[#FEFCD9]/10"
                       }`}
                     >
@@ -408,7 +408,7 @@ function MobileChatPanel({
                       }}
                       className={`w-full px-3 py-2 text-left text-sm transition-colors ${
                         isActive
-                          ? "bg-[#F95F4A]/20 text-[#FEFCD9]"
+                          ? "bg-[#5B7CFA]/20 text-[#FEFCD9]"
                           : "text-[#FEFCD9]/70 hover:bg-[#FEFCD9]/10"
                       }`}
                     >
@@ -443,12 +443,12 @@ function MobileChatPanel({
                     : "Type a message or /..."
               }
               disabled={isChatDisabled}
-              className="flex-1 mobile-glass mobile-pill px-4 py-2.5 text-sm text-[#FEFCD9] placeholder:text-[#FEFCD9]/30 focus:outline-none focus:border-[#F95F4A]/50 disabled:opacity-50"
+              className="flex-1 mobile-glass mobile-pill px-4 py-2.5 text-sm text-[#FEFCD9] placeholder:text-[#FEFCD9]/30 focus:outline-none focus:border-[#5B7CFA]/50 disabled:opacity-50"
             />
             <button
               type="submit"
               disabled={!localValue.trim() || isChatDisabled}
-              className="w-10 h-10 rounded-full bg-[#F95F4A] text-white flex items-center justify-center disabled:opacity-30 active:scale-95 transition-transform"
+              className="w-10 h-10 rounded-full bg-[#5B7CFA] text-white flex items-center justify-center disabled:opacity-30 active:scale-95 transition-transform"
             >
               <Send className="w-4 h-4" />
             </button>

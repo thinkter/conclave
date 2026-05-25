@@ -27,12 +27,12 @@
       <feGaussianBlur stdDeviation="220" result="effect1_foregroundBlur"/>
     </filter>
     <linearGradient id="glowGradient" x1="200" y1="860" x2="920" y2="300" gradientUnits="userSpaceOnUse">
-      <stop offset="0.225" stop-color="#F95F4A"/>
+      <stop offset="0.225" stop-color="#5B7CFA"/>
       <stop offset="0.50966" stop-color="#F13636"/>
       <stop offset="0.754858" stop-color="#9A1DCB"/>
     </linearGradient>
   </defs>
-  <rect width="1024" height="1024" fill="#0d0e0d" />
+  <rect width="1024" height="1024" fill="#0d0e10" />
   <g filter="url(#glow)">
     <rect x="256" y="180" width="512" height="640" rx="256" fill="url(#glowGradient)" />
   </g>

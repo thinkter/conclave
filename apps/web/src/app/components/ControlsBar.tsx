@@ -276,8 +276,8 @@ function ControlsBar({
 
   const baseButtonClass = "w-11 h-11 rounded-full flex items-center justify-center transition-all text-[#FEFCD9]/80 hover:text-[#FEFCD9] hover:bg-[#FEFCD9]/10";
   const defaultButtonClass = baseButtonClass;
-  const activeButtonClass = `${baseButtonClass} !bg-[#F95F4A] !text-white`;
-  const mutedButtonClass = `${baseButtonClass} !text-[#F95F4A] !bg-[#F95F4A]/15`;
+  const activeButtonClass = `${baseButtonClass} !bg-[#5B7CFA] !text-white`;
+  const mutedButtonClass = `${baseButtonClass} !text-[#5B7CFA] !bg-[#5B7CFA]/15`;
   const ghostDisabledClass = `${baseButtonClass} !opacity-30 cursor-not-allowed`;
   const screenShareDisabled = isGhostMode || !canStartScreenShare;
   const canManageWhiteboard = Boolean(isAdmin && (onOpenWhiteboard || onCloseWhiteboard));
@@ -391,7 +391,7 @@ function ControlsBar({
         >
           <Users className="w-4 h-4" />
           {pendingUsersCount > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] px-1 text-[10px] font-bold bg-[#F95F4A] text-white rounded-full flex items-center justify-center">
+            <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] px-1 text-[10px] font-bold bg-[#5B7CFA] text-white rounded-full flex items-center justify-center">
               {pendingUsersCount > 9 ? "9+" : pendingUsersCount}
             </span>
           )}
@@ -570,7 +570,7 @@ function ControlsBar({
 
           {isBrowserMenuOpen && !isBrowserActive && (
             <div
-              className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-[#0d0e0d]/98 backdrop-blur-md border border-[#FEFCD9]/10 rounded-xl p-4 shadow-2xl z-50 min-w-[360px]"
+              className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-[#0d0e10]/98 backdrop-blur-md border border-[#FEFCD9]/10 rounded-xl p-4 shadow-2xl z-50 min-w-[360px]"
               style={{ fontFamily: "'PolySans Trial', sans-serif" }}
             >
               <div className="flex items-center justify-between mb-3">
@@ -664,14 +664,14 @@ function ControlsBar({
                   <button
                     type="submit"
                     disabled={!browserUrlInput.trim() || isBrowserLaunching}
-                    className="px-3 py-1.5 bg-[#F95F4A] text-white rounded-lg text-xs font-medium hover:bg-[#F95F4A]/90 disabled:opacity-40"
+                    className="px-3 py-1.5 bg-[#5B7CFA] text-white rounded-lg text-xs font-medium hover:bg-[#5B7CFA]/90 disabled:opacity-40"
                   >
                     Go
                   </button>
                 </form>
               </div>
               {browserUrlError && (
-                <p className="mt-2 text-[11px] text-[#F95F4A]">
+                <p className="mt-2 text-[11px] text-[#5B7CFA]">
                   {browserUrlError}
                 </p>
               )}
@@ -788,7 +788,7 @@ function ControlsBar({
           </HotkeyTooltip>
 
           {isAppsMenuOpen && (
-            <div className="absolute bottom-14 left-1/2 -translate-x-1/2 w-56 rounded-xl border border-white/10 bg-[#0f0f0f] p-3 shadow-xl">
+            <div className="absolute bottom-14 left-1/2 -translate-x-1/2 w-56 rounded-xl border border-white/10 bg-[#0d0e10] p-3 shadow-xl">
               {canManageWhiteboard && (
                 <button
                   type="button"
@@ -848,7 +848,7 @@ function ControlsBar({
         >
           <MessageSquare className="w-4 h-4" />
           {unreadCount > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] px-1 text-[10px] font-bold bg-[#F95F4A] text-white rounded-full flex items-center justify-center">
+            <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] px-1 text-[10px] font-bold bg-[#5B7CFA] text-white rounded-full flex items-center justify-center">
               {unreadCount > 9 ? "9+" : unreadCount}
             </span>
           )}

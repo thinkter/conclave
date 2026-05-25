@@ -63,7 +63,7 @@ const POPOUT_CSS = `
 
   body {
     font-family: 'PolySans Trial', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    background: #0d0e0d;
+    background: #0d0e10;
     color: #FEFCD9;
     overflow: hidden;
     user-select: none;
@@ -106,7 +106,7 @@ const POPOUT_CSS = `
     position: relative;
     border-radius: 16px;
     overflow: hidden;
-    background: #0d0e0d;
+    background: #0d0e10;
     border: 1px solid rgba(254, 252, 217, 0.08);
     transition: all 0.3s ease;
     min-width: 0;
@@ -118,8 +118,8 @@ const POPOUT_CSS = `
   }
 
   .video-tile.speaking {
-    border-color: #F95F4A;
-    box-shadow: 0 0 0 2px rgba(249, 95, 74, 0.3), 0 0 30px rgba(249, 95, 74, 0.2);
+    border-color: #5B7CFA;
+    box-shadow: 0 0 0 2px rgba(91, 124, 250, 0.3), 0 0 30px rgba(91, 124, 250, 0.2);
   }
 
   .video-tile video {
@@ -134,14 +134,14 @@ const POPOUT_CSS = `
     display: flex;
     align-items: center;
     justify-content: center;
-    background: linear-gradient(135deg, #1a1a1a, #0d0e0d);
+    background: linear-gradient(135deg, #1a1b1f, #0d0e10);
   }
 
   .video-tile .avatar-circle {
     width: 44px;
     height: 44px;
     border-radius: 50%;
-    background: linear-gradient(135deg, rgba(249, 95, 74, 0.2), rgba(255, 0, 122, 0.2));
+    background: linear-gradient(135deg, rgba(91, 124, 250, 0.2), rgba(77, 168, 255, 0.2));
     display: flex;
     align-items: center;
     justify-content: center;
@@ -181,7 +181,7 @@ const POPOUT_CSS = `
 
   .video-tile .label-muted {
     flex-shrink: 0;
-    color: #F95F4A;
+    color: #5B7CFA;
     display: flex;
     align-items: center;
   }
@@ -230,12 +230,12 @@ const POPOUT_CSS = `
   }
 
   .ctrl-btn.muted {
-    color: #F95F4A;
-    background: rgba(249, 95, 74, 0.15);
+    color: #5B7CFA;
+    background: rgba(91, 124, 250, 0.15);
   }
 
   .ctrl-btn.muted:hover {
-    background: rgba(249, 95, 74, 0.25);
+    background: rgba(91, 124, 250, 0.25);
   }
 
   .ctrl-btn svg {

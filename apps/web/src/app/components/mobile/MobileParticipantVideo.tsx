@@ -140,8 +140,8 @@ function MobileParticipantVideo({
         className={`w-full h-full object-cover ${showPlaceholder ? "hidden" : ""}`}
       />
       {showPlaceholder && (
-        <div className="absolute inset-0 flex items-center justify-center bg-[#0d0e0d]">
-          <div className="absolute inset-0 bg-gradient-to-br from-[#F95F4A]/15 to-[#FF007A]/10" />
+        <div className="absolute inset-0 flex items-center justify-center bg-[#0d0e10]">
+          <div className="absolute inset-0 bg-gradient-to-br from-[#5B7CFA]/15 to-[#4DA8FF]/10" />
           <div
             className={`relative rounded-full mobile-avatar flex items-center justify-center text-[#FEFCD9] font-bold ${avatarSizes[size]}`}
             style={{ fontFamily: "'PolySans Bulky Wide', sans-serif" }}
@@ -153,9 +153,9 @@ function MobileParticipantVideo({
       {participant.isGhost && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none mobile-ghost-overlay">
           <div className="flex flex-col items-center gap-2">
-            <VenetianMask className="w-10 h-10 text-[#FF007A]" />
+            <VenetianMask className="w-10 h-10 text-[#4DA8FF]" />
             <span
-              className="mobile-ghost-badge rounded-full px-3 py-1 text-[10px] tracking-[0.25em] text-[#FF007A]"
+              className="mobile-ghost-badge rounded-full px-3 py-1 text-[10px] tracking-[0.25em] text-[#4DA8FF]"
               style={{ fontFamily: "'PolySans Mono', monospace" }}
             >
               GHOST
@@ -182,7 +182,7 @@ function MobileParticipantVideo({
               {displayLabel}
             </span>
             {participant.isMuted && (
-              <MicOff className="w-2.5 h-2.5 text-[#F95F4A] shrink-0" />
+              <MicOff className="w-2.5 h-2.5 text-[#5B7CFA] shrink-0" />
             )}
           </div>
         </div>

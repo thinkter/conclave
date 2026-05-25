@@ -14,9 +14,9 @@ export default function GlobalError({
   }, [error]);
 
   return (
-    <div className="min-h-dvh bg-[#0d0e0d] text-white flex items-center justify-center px-6 relative overflow-hidden">
+    <div className="min-h-dvh bg-[#0d0e10] text-white flex items-center justify-center px-6 relative overflow-hidden">
       <div className="absolute inset-0 acm-bg-dot-grid pointer-events-none" />
-      <div className="relative z-10 max-w-md w-full bg-[#1a1a1a]/90 border border-[#FEFCD9]/10 rounded-2xl p-6 shadow-2xl text-center">
+      <div className="relative z-10 max-w-md w-full bg-[#1a1b1f]/90 border border-[#FEFCD9]/10 rounded-2xl p-6 shadow-2xl text-center">
         <div
           className="text-[11px] uppercase tracking-[0.3em] text-[#FEFCD9]/40"
           style={{ fontFamily: "'PolySans Mono', monospace" }}
@@ -39,7 +39,7 @@ export default function GlobalError({
         <div className="mt-6 flex items-center justify-center gap-3">
           <button
             onClick={reset}
-            className="px-4 py-2 rounded-lg bg-[#F95F4A] text-white text-sm font-medium hover:bg-[#e8553f] transition-colors"
+            className="px-4 py-2 rounded-lg bg-[#5B7CFA] text-white text-sm font-medium hover:bg-[#4f6fe8] transition-colors"
             style={{ fontFamily: "'PolySans Trial', sans-serif" }}
           >
             Try Again

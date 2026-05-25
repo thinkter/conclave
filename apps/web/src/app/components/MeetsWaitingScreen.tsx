@@ -16,7 +16,7 @@ export default function MeetsWaitingScreen({
   isAdmin,
 }: MeetsWaitingScreenProps) {
   return (
-    <div className="min-h-screen flex flex-col bg-[#060606] text-[#FEFCD9]">
+    <div className="min-h-screen flex flex-col bg-[#060607] text-[#FEFCD9]">
       <header className="flex items-center justify-between px-6 py-4">
         <a href="/" className="flex items-center">
           <Image
@@ -49,7 +49,7 @@ export default function MeetsWaitingScreen({
           <div className="mb-12">
             <div className="relative inline-block">
               <span 
-                className="absolute -left-8 top-1/2 -translate-y-1/2 text-[#F95F4A]/40 text-4xl"
+                className="absolute -left-8 top-1/2 -translate-y-1/2 text-[#5B7CFA]/40 text-4xl"
                 style={{ fontFamily: "'PolySans Mono', monospace" }}
               >
                 [
@@ -61,7 +61,7 @@ export default function MeetsWaitingScreen({
                 c0nclav3
               </h1>
               <span 
-                className="absolute -right-8 top-1/2 -translate-y-1/2 text-[#F95F4A]/40 text-4xl"
+                className="absolute -right-8 top-1/2 -translate-y-1/2 text-[#5B7CFA]/40 text-4xl"
                 style={{ fontFamily: "'PolySans Mono', monospace" }}
               >
                 ]
@@ -77,7 +77,7 @@ export default function MeetsWaitingScreen({
             className="flex items-center gap-2 mb-3"
             style={{ fontFamily: "'PolySans Mono', monospace" }}
           >
-            <span className="w-1.5 h-1.5 rounded-full bg-[#F95F4A]" />
+            <span className="w-1.5 h-1.5 rounded-full bg-[#5B7CFA]" />
             <span className="text-[11px] text-[#FEFCD9]/60 uppercase tracking-[0.2em]">
               {waitingTitle}
             </span>
@@ -96,7 +96,7 @@ export default function MeetsWaitingScreen({
               style={{ fontFamily: "'PolySans Mono', monospace" }}
             >
               <span className="text-[10px] text-[#FEFCD9]/30 uppercase tracking-wider">Room </span>
-              <span className="text-sm text-[#F95F4A]">{roomId}</span>
+              <span className="text-sm text-[#5B7CFA]">{roomId}</span>
             </div>
           )}
         </div>

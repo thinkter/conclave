@@ -2,7 +2,7 @@ import Link from "next/link";
 
 export default function NotFound() {
   return (
-    <div className="min-h-dvh bg-[#1a1a1a] text-white flex items-center justify-center px-6 relative overflow-hidden">
+    <div className="min-h-dvh bg-[#1a1b1f] text-white flex items-center justify-center px-6 relative overflow-hidden">
       <div className="absolute inset-0 acm-bg-dot-grid pointer-events-none" />
       <div className="relative z-10 flex flex-col items-center text-center animate-fade-in">
         <div
@@ -13,7 +13,7 @@ export default function NotFound() {
         </div>
         <div className="relative inline-flex items-center mt-6">
           <span
-            className="absolute -left-10 text-[#F95F4A]/40 text-4xl"
+            className="absolute -left-10 text-[#5B7CFA]/40 text-4xl"
             style={{ fontFamily: "'PolySans Mono', monospace" }}
           >
             [
@@ -25,7 +25,7 @@ export default function NotFound() {
             Lost in the void
           </h1>
           <span
-            className="absolute -right-10 text-[#F95F4A]/40 text-4xl"
+            className="absolute -right-10 text-[#5B7CFA]/40 text-4xl"
             style={{ fontFamily: "'PolySans Mono', monospace" }}
           >
             ]
@@ -40,7 +40,7 @@ export default function NotFound() {
         </p>
         <Link
           href="/"
-          className="group mt-10 flex items-center gap-3 px-8 py-3 bg-[#F95F4A] text-white text-xs uppercase tracking-widest rounded-lg hover:bg-[#e8553f] transition-all hover:gap-4"
+          className="group mt-10 flex items-center gap-3 px-8 py-3 bg-[#5B7CFA] text-white text-xs uppercase tracking-widest rounded-lg hover:bg-[#4f6fe8] transition-all hover:gap-4"
           style={{ fontFamily: "'PolySans Mono', monospace" }}
         >
           <span>Back to Lobby</span>

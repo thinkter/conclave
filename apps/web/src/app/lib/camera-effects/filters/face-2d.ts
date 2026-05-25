@@ -32,7 +32,7 @@ const drawPartyHat = (
     const width = faceWidth * 0.34;
     const height = faceWidth * 0.5;
 
-    context.fillStyle = "#F95F4A";
+    context.fillStyle = "#5B7CFA";
     context.strokeStyle = "rgba(255,255,255,0.85)";
     context.lineWidth = Math.max(3, faceWidth * 0.018);
 

@@ -802,7 +802,7 @@ export default function MeetsMainContent({
                 {isLoading ? "Joining..." : "Preparing..."}
               </p>
               {meetError ? (
-                <p className="mt-2 text-xs text-[#F95F4A]">{meetError.message}</p>
+                <p className="mt-2 text-xs text-[#5B7CFA]">{meetError.message}</p>
               ) : null}
             </div>
           </div>
@@ -896,7 +896,7 @@ export default function MeetsMainContent({
           )}
           {webinarAudioBlocked && (
             <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/65 p-4 backdrop-blur-sm">
-              <div className="w-full max-w-sm rounded-2xl border border-[#FEFCD9]/20 bg-[#0d0e0d]/95 p-6 text-center shadow-2xl">
+              <div className="w-full max-w-sm rounded-2xl border border-[#FEFCD9]/20 bg-[#0d0e10]/95 p-6 text-center shadow-2xl">
                 <p
                   className="text-sm uppercase tracking-[0.2em] text-[#FEFCD9]"
                   style={{ fontFamily: "'PolySans Mono', monospace" }}
@@ -909,7 +909,7 @@ export default function MeetsMainContent({
                 <button
                   type="button"
                   onClick={handlePlayWebinarAudio}
-                  className="mt-5 inline-flex items-center justify-center rounded-full border border-[#F95F4A]/60 bg-[#F95F4A]/15 px-5 py-2 text-xs uppercase tracking-[0.2em] text-[#FEFCD9] transition hover:bg-[#F95F4A]/25"
+                  className="mt-5 inline-flex items-center justify-center rounded-full border border-[#5B7CFA]/60 bg-[#5B7CFA]/15 px-5 py-2 text-xs uppercase tracking-[0.2em] text-[#FEFCD9] transition hover:bg-[#5B7CFA]/25"
                   style={{ fontFamily: "'PolySans Mono', monospace" }}
                 >
                   Play webinar
@@ -1008,9 +1008,9 @@ export default function MeetsMainContent({
       )}
 
       {isJoined && browserLaunchError && (
-        <div className="absolute top-4 right-4 max-w-[320px] rounded-lg border border-[#F95F4A]/30 bg-[#0d0e0d]/95 px-4 py-3 text-xs text-[#FEFCD9]/90 shadow-2xl">
+        <div className="absolute top-4 right-4 max-w-[320px] rounded-lg border border-[#5B7CFA]/30 bg-[#0d0e10]/95 px-4 py-3 text-xs text-[#FEFCD9]/90 shadow-2xl">
           <div className="flex items-start gap-3">
-            <span className="font-medium text-[#F95F4A]">Browser error</span>
+            <span className="font-medium text-[#5B7CFA]">Browser error</span>
             {onClearBrowserError && (
               <button
                 onClick={onClearBrowserError}
@@ -1027,9 +1027,9 @@ export default function MeetsMainContent({
         </div>
       )}
       {isJoined && voiceAgentError && (
-        <div className="absolute top-4 left-4 max-w-[340px] rounded-lg border border-[#F95F4A]/30 bg-[#0d0e0d]/95 px-4 py-3 text-xs text-[#FEFCD9]/90 shadow-2xl">
+        <div className="absolute top-4 left-4 max-w-[340px] rounded-lg border border-[#5B7CFA]/30 bg-[#0d0e10]/95 px-4 py-3 text-xs text-[#FEFCD9]/90 shadow-2xl">
           <div className="flex items-start gap-3">
-            <span className="font-medium text-[#F95F4A]">
+            <span className="font-medium text-[#5B7CFA]">
               Voice agent error
             </span>
             {onClearVoiceAgentError && (
@@ -1146,16 +1146,16 @@ export default function MeetsMainContent({
             <div className="flex items-center gap-4">
               {isScreenSharing && (
                 <div
-                  className="flex items-center gap-1.5 text-[#F95F4A] text-[10px] uppercase tracking-wider"
+                  className="flex items-center gap-1.5 text-[#5B7CFA] text-[10px] uppercase tracking-wider"
                   style={{ fontFamily: "'PolySans Mono', monospace" }}
                 >
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#F95F4A]"></span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#5B7CFA]"></span>
                   Sharing
                 </div>
               )}
               {ghostEnabled && (
                 <div
-                  className="flex items-center gap-1.5 text-[#FF007A] text-[10px] uppercase tracking-wider"
+                  className="flex items-center gap-1.5 text-[#4DA8FF] text-[10px] uppercase tracking-wider"
                   style={{ fontFamily: "'PolySans Mono', monospace" }}
                 >
                   <UserX className="w-3 h-3" />
@@ -1199,7 +1199,7 @@ export default function MeetsMainContent({
               </div>
             </div>
             {browserAudioNeedsGesture && (
-              <div className="w-full mt-2 text-center text-[11px] text-[#F95F4A]/70 uppercase tracking-[0.3em]">
+              <div className="w-full mt-2 text-center text-[11px] text-[#5B7CFA]/70 uppercase tracking-[0.3em]">
                 Click “Shared browser audio” to unlock the system sound.
               </div>
             )}

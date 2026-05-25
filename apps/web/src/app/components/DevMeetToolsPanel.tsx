@@ -341,7 +341,7 @@ export default function DevMeetToolsPanel({ roomId }: DevMeetToolsPanelProps) {
   );
 
   const panelClass =
-    "w-[320px] rounded-xl border border-[#FEFCD9]/15 bg-[#0d0e0d]/95 p-3 text-[11px] text-[#FEFCD9]/80 shadow-2xl backdrop-blur";
+    "w-[320px] rounded-xl border border-[#FEFCD9]/15 bg-[#0d0e10]/95 p-3 text-[11px] text-[#FEFCD9]/80 shadow-2xl backdrop-blur";
   const inputClass =
     "w-full rounded-md border border-[#FEFCD9]/10 bg-black/40 px-2.5 py-1.5 text-[11px] text-[#FEFCD9] outline-none focus:border-[#FEFCD9]/30";
   const labelClass =

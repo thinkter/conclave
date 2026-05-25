@@ -438,7 +438,7 @@ function MobileJoinScreen({
 
   if (phase === "welcome") {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center px-6 bg-[#060606] safe-area-pt relative overflow-hidden">
+      <div className="flex-1 flex flex-col items-center justify-center px-6 bg-[#060607] safe-area-pt relative overflow-hidden">
         <div className="absolute inset-0 acm-bg-radial pointer-events-none" />
         <div className="absolute inset-0 acm-bg-dot-grid pointer-events-none" />
         <div className="relative z-10 text-center mb-8">
@@ -450,7 +450,7 @@ function MobileJoinScreen({
           </div>
           <div className="relative inline-block">
             <span
-              className="absolute -left-8 top-1/2 -translate-y-1/2 text-[#F95F4A]/40 text-3xl"
+              className="absolute -left-8 top-1/2 -translate-y-1/2 text-[#5B7CFA]/40 text-3xl"
               style={{ fontFamily: "'PolySans Mono', monospace" }}
             >
               [
@@ -462,7 +462,7 @@ function MobileJoinScreen({
               c0nclav3
             </h1>
             <span
-              className="absolute -right-8 top-1/2 -translate-y-1/2 text-[#F95F4A]/40 text-3xl"
+              className="absolute -right-8 top-1/2 -translate-y-1/2 text-[#5B7CFA]/40 text-3xl"
               style={{ fontFamily: "'PolySans Mono', monospace" }}
             >
               ]
@@ -478,7 +478,7 @@ function MobileJoinScreen({
 
         <button
           onClick={() => setManualPhase("auth")}
-          className="relative z-10 group flex items-center gap-3 px-8 py-3 bg-[#F95F4A] text-white text-xs uppercase tracking-widest rounded-lg active:scale-95 transition-all hover:bg-[#e8553f] hover:gap-4"
+          className="relative z-10 group flex items-center gap-3 px-8 py-3 bg-[#5B7CFA] text-white text-xs uppercase tracking-widest rounded-lg active:scale-95 transition-all hover:bg-[#4f6fe8] hover:gap-4"
           style={{ fontFamily: "'PolySans Mono', monospace" }}
         >
           <span>LET'S GO</span>
@@ -491,7 +491,7 @@ function MobileJoinScreen({
   // Auth phase
   if (phase === "auth") {
     return (
-      <div className="flex-1 flex flex-col px-6 py-8 bg-[#060606] safe-area-pt relative overflow-hidden">
+      <div className="flex-1 flex flex-col px-6 py-8 bg-[#060607] safe-area-pt relative overflow-hidden">
         <div className="absolute inset-0 acm-bg-radial pointer-events-none" />
         <div className="absolute inset-0 acm-bg-dot-grid pointer-events-none" />
         <button
@@ -624,7 +624,7 @@ function MobileJoinScreen({
             value={guestName}
             onChange={(e) => setGuestName(e.target.value)}
             placeholder="Enter your name"
-            className="w-full px-4 py-2.5 mobile-glass mobile-pill text-sm text-[#FEFCD9] placeholder:text-[#FEFCD9]/25 focus:border-[#F95F4A]/50 focus:outline-none mb-3"
+            className="w-full px-4 py-2.5 mobile-glass mobile-pill text-sm text-[#FEFCD9] placeholder:text-[#FEFCD9]/25 focus:border-[#5B7CFA]/50 focus:outline-none mb-3"
             style={{ fontFamily: "'PolySans Trial', sans-serif" }}
             onKeyDown={(e) => {
               if (e.key === "Enter" && guestName.trim()) handleGuest();
@@ -633,7 +633,7 @@ function MobileJoinScreen({
           <button
             onClick={handleGuest}
             disabled={!guestName.trim()}
-            className="w-full px-4 py-3 bg-[#F95F4A] text-white text-sm rounded-full hover:bg-[#e8553f] transition-colors disabled:opacity-30"
+            className="w-full px-4 py-3 bg-[#5B7CFA] text-white text-sm rounded-full hover:bg-[#4f6fe8] transition-colors disabled:opacity-30"
             style={{ fontFamily: "'PolySans Trial', sans-serif" }}
           >
             Continue as Guest
@@ -645,12 +645,12 @@ function MobileJoinScreen({
 
   // Join phase
   return (
-    <div className="flex-1 flex flex-col bg-[#060606] safe-area-pt overflow-hidden relative">
+    <div className="flex-1 flex flex-col bg-[#060607] safe-area-pt overflow-hidden relative">
       <div className="absolute inset-0 acm-bg-radial pointer-events-none" />
       <div className="absolute inset-0 acm-bg-dot-grid pointer-events-none" />
       {/* Video preview */}
       <div className="relative flex-1 px-4 pt-3 pb-36 flex flex-col min-h-0">
-        <div className="relative flex-1 rounded-[28px] border border-[#FEFCD9]/10 bg-[#0d0e0d] overflow-hidden">
+        <div className="relative flex-1 rounded-[28px] border border-[#FEFCD9]/10 bg-[#0d0e10] overflow-hidden">
           {isCameraOn && localStream ? (
             <video
               ref={videoRef}
@@ -660,8 +660,8 @@ function MobileJoinScreen({
               className="w-full h-full object-cover scale-x-[-1]"
             />
           ) : (
-            <div className="absolute inset-0 flex items-center justify-center bg-[#0d0e0d]">
-              <div className="absolute inset-0 bg-gradient-to-br from-[#F95F4A]/15 to-[#FF007A]/10" />
+            <div className="absolute inset-0 flex items-center justify-center bg-[#0d0e10]">
+              <div className="absolute inset-0 bg-gradient-to-br from-[#5B7CFA]/15 to-[#4DA8FF]/10" />
               <div className="relative w-20 h-20 rounded-full mobile-avatar flex items-center justify-center">
                 <span
                   className="text-4xl text-[#FEFCD9] font-bold"
@@ -719,7 +719,7 @@ function MobileJoinScreen({
                 <button
                   type="button"
                   onClick={handleOpenDeleteAccount}
-                  className="shrink-0 h-8 w-8 flex items-center justify-center mobile-glass mobile-pill text-[#F95F4A]"
+                  className="shrink-0 h-8 w-8 flex items-center justify-center mobile-glass mobile-pill text-[#5B7CFA]"
                   aria-label="Delete account"
                 >
                   <Trash2 className="w-4 h-4" />
@@ -740,7 +740,7 @@ function MobileJoinScreen({
 
           {showPermissionHint && (
             <div className="absolute top-4 right-4 flex items-center gap-2 px-3 py-2 mobile-glass-soft rounded-full text-xs text-[#FEFCD9]/70">
-              <AlertCircle className="w-3.5 h-3.5 text-[#F95F4A]" />
+              <AlertCircle className="w-3.5 h-3.5 text-[#5B7CFA]" />
               Allow access
             </div>
           )}
@@ -761,7 +761,7 @@ function MobileJoinScreen({
               }}
               className={`flex-1 py-2.5 text-xs uppercase tracking-[0.25em] rounded-full transition-all ${
                 activeTab === "new"
-                  ? "bg-[#F95F4A] text-white"
+                  ? "bg-[#5B7CFA] text-white"
                   : "text-[#FEFCD9]/50"
               }`}
               style={{ fontFamily: "'PolySans Trial', sans-serif" }}
@@ -777,7 +777,7 @@ function MobileJoinScreen({
               }}
               className={`flex-1 py-2.5 text-xs uppercase tracking-[0.25em] rounded-full transition-all ${
                 activeTab === "join"
-                  ? "bg-[#F95F4A] text-white"
+                  ? "bg-[#5B7CFA] text-white"
                   : "text-[#FEFCD9]/50"
               } ${isRoutedRoom ? "opacity-60" : ""}`}
               style={{ fontFamily: "'PolySans Trial', sans-serif" }}
@@ -839,7 +839,7 @@ function MobileJoinScreen({
                 <button
                   onClick={handleJoin}
                   disabled={!canJoin || isLoading}
-                  className="w-9 h-9 rounded-full bg-[#F95F4A] text-white flex items-center justify-center disabled:opacity-40 transition-colors"
+                  className="w-9 h-9 rounded-full bg-[#5B7CFA] text-white flex items-center justify-center disabled:opacity-40 transition-colors"
                 >
                   {isLoading ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
@@ -852,7 +852,7 @@ function MobileJoinScreen({
               <button
                 onClick={handleCreateRoom}
                 disabled={isLoading}
-                className="w-full h-full flex items-center justify-center gap-2 px-4 bg-[#F95F4A] text-white rounded-full hover:bg-[#e8553f] transition-colors disabled:opacity-50"
+                className="w-full h-full flex items-center justify-center gap-2 px-4 bg-[#5B7CFA] text-white rounded-full hover:bg-[#4f6fe8] transition-colors disabled:opacity-50"
               >
                 {isLoading ? (
                   <Loader2 className="w-5 h-5 animate-spin" />
@@ -894,9 +894,9 @@ function MobileJoinScreen({
       </div>
 
       {isLoading && (
-        <div className="absolute inset-0 bg-[#0d0e0d]/80 flex items-center justify-center z-50">
+        <div className="absolute inset-0 bg-[#0d0e10]/80 flex items-center justify-center z-50">
           <div className="flex flex-col items-center gap-3">
-            <Loader2 className="w-8 h-8 text-[#F95F4A] animate-spin" />
+            <Loader2 className="w-8 h-8 text-[#5B7CFA] animate-spin" />
             <span className="text-sm text-[#FEFCD9]/60">
               {connectionState === "reconnecting" ? "Reconnecting..." : "Joining..."}
             </span>

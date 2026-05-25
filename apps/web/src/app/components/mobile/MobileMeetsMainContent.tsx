@@ -723,7 +723,7 @@ function MobileMeetsMainContent({
               {isLoading ? "Joining webinar..." : "Preparing webinar..."}
             </p>
             {meetError ? (
-              <p className="mt-2 text-xs text-[#F95F4A]">{meetError.message}</p>
+              <p className="mt-2 text-xs text-[#5B7CFA]">{meetError.message}</p>
             ) : null}
           </div>
         </div>
@@ -760,7 +760,7 @@ function MobileMeetsMainContent({
   }
 
   return (
-    <div className="flex-1 flex flex-col bg-[#060606] overflow-hidden relative h-full">
+    <div className="flex-1 flex flex-col bg-[#060607] overflow-hidden relative h-full">
       {isJoined && (
         <ConnectionBanner
           state={connectionState}
@@ -780,7 +780,7 @@ function MobileMeetsMainContent({
         audioOutputDeviceId={audioOutputDeviceId}
       />
       {/* Status bar area */}
-      <div className="safe-area-pt bg-[#060606]" />
+      <div className="safe-area-pt bg-[#060607]" />
 
       {/* Header with room info */}
       <div className="flex items-center justify-between px-4 py-3">
@@ -814,13 +814,13 @@ function MobileMeetsMainContent({
             </button>
           )}
           {isScreenSharing && (
-            <div className="mobile-glass-soft mobile-pill px-2.5 py-1 flex items-center gap-1 text-[#F95F4A] text-[9px] uppercase tracking-[0.2em] font-medium">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#F95F4A]" />
+            <div className="mobile-glass-soft mobile-pill px-2.5 py-1 flex items-center gap-1 text-[#5B7CFA] text-[9px] uppercase tracking-[0.2em] font-medium">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#5B7CFA]" />
               Sharing
             </div>
           )}
           {ghostEnabled && (
-            <div className="mobile-glass-soft mobile-pill px-2.5 py-1 flex items-center gap-1 text-[#FF007A] text-[9px] uppercase tracking-[0.2em] font-medium">
+            <div className="mobile-glass-soft mobile-pill px-2.5 py-1 flex items-center gap-1 text-[#4DA8FF] text-[9px] uppercase tracking-[0.2em] font-medium">
               <Ghost className="w-3 h-3" />
             </div>
           )}
@@ -996,9 +996,9 @@ function MobileMeetsMainContent({
       )}
 
       {isJoined && !isWebinarAttendee && browserLaunchError && (
-        <div className="absolute top-16 left-4 right-4 z-40 mobile-sheet-card border border-[#F95F4A]/30 px-3 py-2 text-xs text-[#FEFCD9]/90 shadow-2xl">
+        <div className="absolute top-16 left-4 right-4 z-40 mobile-sheet-card border border-[#5B7CFA]/30 px-3 py-2 text-xs text-[#FEFCD9]/90 shadow-2xl">
           <div className="flex items-start gap-2">
-            <span className="font-medium text-[#F95F4A]">Browser error</span>
+            <span className="font-medium text-[#5B7CFA]">Browser error</span>
             {onClearBrowserError && (
               <button
                 onClick={onClearBrowserError}
@@ -1015,9 +1015,9 @@ function MobileMeetsMainContent({
         </div>
       )}
       {isJoined && !isWebinarAttendee && voiceAgentError && (
-        <div className="absolute top-16 left-4 right-4 z-40 mobile-sheet-card border border-[#F95F4A]/30 px-3 py-2 text-xs text-[#FEFCD9]/90 shadow-2xl">
+        <div className="absolute top-16 left-4 right-4 z-40 mobile-sheet-card border border-[#5B7CFA]/30 px-3 py-2 text-xs text-[#FEFCD9]/90 shadow-2xl">
           <div className="flex items-start gap-2">
-            <span className="font-medium text-[#F95F4A]">Voice agent error</span>
+            <span className="font-medium text-[#5B7CFA]">Voice agent error</span>
             {onClearVoiceAgentError && (
               <button
                 onClick={onClearVoiceAgentError}
@@ -1034,7 +1034,7 @@ function MobileMeetsMainContent({
 
       {/* Controls bar */}
       {!isWebinarAttendee && browserAudioNeedsGesture && (
-        <div className="px-4 mt-2 text-[11px] text-[#F95F4A]/70 text-center uppercase tracking-[0.4em]">
+        <div className="px-4 mt-2 text-[11px] text-[#5B7CFA]/70 text-center uppercase tracking-[0.4em]">
           Tap "Shared browser audio" to unlock the system sound.
         </div>
       )}

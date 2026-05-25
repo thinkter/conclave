@@ -134,7 +134,7 @@ function MobileGridLayout({
           />
           {isCameraOff && (
             <div className="absolute inset-0 flex items-center justify-center bg-black">
-              <div className="absolute inset-0 bg-gradient-to-br from-[#F95F4A]/15 to-[#FF007A]/10" />
+              <div className="absolute inset-0 bg-gradient-to-br from-[#5B7CFA]/15 to-[#4DA8FF]/10" />
               <div
                 className={`relative rounded-full mobile-avatar flex items-center justify-center text-[#FEFCD9] font-bold ${totalCount <= 2 ? "w-20 h-20 text-3xl" : totalCount <= 4 ? "w-14 h-14 text-xl" : "w-10 h-10 text-lg"}`}
                 style={{ fontFamily: "'PolySans Bulky Wide', sans-serif" }}
@@ -147,10 +147,10 @@ function MobileGridLayout({
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none mobile-ghost-overlay">
               <div className="flex flex-col items-center gap-2">
                 <VenetianMask
-                  className={`text-[#FF007A] ${totalCount <= 2 ? "w-10 h-10" : "w-8 h-8"}`}
+                  className={`text-[#4DA8FF] ${totalCount <= 2 ? "w-10 h-10" : "w-8 h-8"}`}
                 />
                 <span
-                  className="mobile-ghost-badge rounded-full px-3 py-1 text-[10px] tracking-[0.25em] text-[#FF007A]"
+                  className="mobile-ghost-badge rounded-full px-3 py-1 text-[10px] tracking-[0.25em] text-[#4DA8FF]"
                   style={{ fontFamily: "'PolySans Mono', monospace" }}
                 >
                   GHOST
@@ -172,10 +172,10 @@ function MobileGridLayout({
               <span className={`text-[#FEFCD9] font-medium uppercase tracking-[0.18em] truncate ${totalCount <= 4 ? "text-xs" : "text-[10px]"}`}>
                 {localDisplayName}
               </span>
-              <span className="text-[9px] uppercase tracking-[0.25em] text-[#F95F4A]/70">
+              <span className="text-[9px] uppercase tracking-[0.25em] text-[#5B7CFA]/70">
                 YOU
               </span>
-              {isMuted && <MicOff className="w-3 h-3 text-[#F95F4A] shrink-0" />}
+              {isMuted && <MicOff className="w-3 h-3 text-[#5B7CFA] shrink-0" />}
             </div>
           </div>
         </div>
@@ -200,7 +200,7 @@ function MobileGridLayout({
             onClick={onOpenParticipantsPanel}
             disabled={!onOpenParticipantsPanel}
             aria-label={`View ${hiddenParticipantsCount} more participants`}
-            className={`mobile-tile flex flex-col items-center justify-center border-dashed border-[#FEFCD9]/20 bg-[#0d0e0d]/85 text-[#FEFCD9] ${
+            className={`mobile-tile flex flex-col items-center justify-center border-dashed border-[#FEFCD9]/20 bg-[#0d0e10]/85 text-[#FEFCD9] ${
               onOpenParticipantsPanel ? "cursor-pointer" : "opacity-70"
             }`}
             style={{ fontFamily: "'PolySans Trial', sans-serif" }}
@@ -283,7 +283,7 @@ const ParticipantTile = memo(function ParticipantTile({
       />
       {showPlaceholder && (
         <div className="absolute inset-0 flex items-center justify-center bg-black">
-          <div className="absolute inset-0 bg-gradient-to-br from-[#F95F4A]/15 to-[#FF007A]/10" />
+          <div className="absolute inset-0 bg-gradient-to-br from-[#5B7CFA]/15 to-[#4DA8FF]/10" />
           <div
             className={`relative rounded-full mobile-avatar flex items-center justify-center text-[#FEFCD9] font-bold ${totalCount <= 2 ? "w-20 h-20 text-3xl" : totalCount <= 4 ? "w-14 h-14 text-xl" : "w-10 h-10 text-lg"}`}
             style={{ fontFamily: "'PolySans Bulky Wide', sans-serif" }}
@@ -296,10 +296,10 @@ const ParticipantTile = memo(function ParticipantTile({
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none mobile-ghost-overlay">
           <div className="flex flex-col items-center gap-2">
             <VenetianMask
-              className={`text-[#FF007A] ${totalCount <= 2 ? "w-10 h-10" : "w-8 h-8"}`}
+              className={`text-[#4DA8FF] ${totalCount <= 2 ? "w-10 h-10" : "w-8 h-8"}`}
             />
             <span
-              className="mobile-ghost-badge rounded-full px-3 py-1 text-[10px] tracking-[0.25em] text-[#FF007A]"
+              className="mobile-ghost-badge rounded-full px-3 py-1 text-[10px] tracking-[0.25em] text-[#4DA8FF]"
               style={{ fontFamily: "'PolySans Mono', monospace" }}
             >
               GHOST
@@ -321,7 +321,7 @@ const ParticipantTile = memo(function ParticipantTile({
           <span className={`text-[#FEFCD9] font-medium uppercase tracking-[0.18em] truncate ${totalCount <= 4 ? "text-xs" : "text-[10px]"}`}>
             {displayName}
           </span>
-          {participant.isMuted && <MicOff className="w-3 h-3 text-[#F95F4A] shrink-0" />}
+          {participant.isMuted && <MicOff className="w-3 h-3 text-[#5B7CFA] shrink-0" />}
         </div>
       </div>
     </div>

@@ -97,7 +97,7 @@ function MeetsHeader({
                 style={{ fontFamily: "'PolySans Mono', monospace" }}
               >
                 <span className="text-[#FEFCD9]/30">room</span>{" "}
-                <span className="text-[#F95F4A]">{roomId}</span>
+                <span className="text-[#5B7CFA]">{roomId}</span>
               </span>
             )}
             <VideoSettings
@@ -128,7 +128,7 @@ function MeetsHeader({
                 <span className="text-[#FEFCD9]/50">Share link</span>
                 <button
                   onClick={handleCopyLink}
-                  className="flex items-center gap-1 text-[#F95F4A] hover:text-[#ff7a66] transition-colors"
+                  className="flex items-center gap-1 text-[#5B7CFA] hover:text-[#ff7a66] transition-colors"
                   title={displayShareUrl}
                 >
                   <Copy className="w-3 h-3" />
@@ -162,7 +162,7 @@ function MeetsHeader({
                 style={{ fontFamily: "'PolySans Mono', monospace" }}
               >
                 <span className="text-[#FEFCD9]/30">room</span>{" "}
-                <span className="text-[#F95F4A]">{roomId}</span>
+                <span className="text-[#5B7CFA]">{roomId}</span>
               </span>
             )}
             <VideoSettings
@@ -194,7 +194,7 @@ function MeetsHeader({
               <button
                 onClick={onSignOut}
                 disabled={isSigningOut}
-                className="px-2.5 py-1 rounded-full bg-[#1a1a1a]/80 border border-[#FEFCD9]/10 text-[10px] uppercase tracking-widest text-[#FEFCD9]/70 hover:text-[#FEFCD9] hover:border-[#FEFCD9]/30 transition-colors disabled:opacity-50"
+                className="px-2.5 py-1 rounded-full bg-[#1a1b1f]/80 border border-[#FEFCD9]/10 text-[10px] uppercase tracking-widest text-[#FEFCD9]/70 hover:text-[#FEFCD9] hover:border-[#FEFCD9]/30 transition-colors disabled:opacity-50"
                 style={{ fontFamily: "'PolySans Mono', monospace" }}
               >
                 {isSigningOut ? "Signing out..." : "Sign out"}

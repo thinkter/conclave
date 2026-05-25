@@ -391,7 +391,7 @@ function ChatPanel({
 
   return (
     <div
-      className="fixed right-4 top-16 bottom-20 w-72 bg-[#0d0e0d]/95 backdrop-blur-md border border-[#FEFCD9]/10 rounded-xl flex flex-col z-40 shadow-2xl"
+      className="fixed right-4 top-16 bottom-20 w-72 bg-[#0d0e10]/95 backdrop-blur-md border border-[#FEFCD9]/10 rounded-xl flex flex-col z-40 shadow-2xl"
       style={{ fontFamily: "'PolySans Trial', sans-serif" }}
     >
       <div className="shrink-0 flex items-center justify-between px-3 py-2.5 border-b border-[#FEFCD9]/10">
@@ -471,7 +471,7 @@ function ChatPanel({
                         {directMessageLabel}
                       </p>
                     ) : null}
-                    <span className="text-[#F95F4A]/80">
+                    <span className="text-[#5B7CFA]/80">
                       {isOwn ? "You" : displayName}
                     </span>{" "}
                     {actionText}
@@ -494,8 +494,8 @@ function ChatPanel({
                   <div
                     className={`max-w-[85%] rounded-2xl px-2.5 py-1.5 ${
                       isOwn
-                        ? "bg-[#F95F4A] text-white selection:bg-white/90 selection:text-[#0d0e0d]"
-                        : "bg-[#1a1a1a] text-[#FEFCD9]/90 selection:bg-[#F95F4A]/40 selection:text-white"
+                        ? "bg-[#5B7CFA] text-white selection:bg-white/90 selection:text-[#0d0e10]"
+                        : "bg-[#1a1b1f] text-[#FEFCD9]/90 selection:bg-[#5B7CFA]/40 selection:text-white"
                     } ${
                       isOwn
                         ? groupedWithPrevious
@@ -507,7 +507,7 @@ function ChatPanel({
                     } ${msg.isDirect ? "ring-1 ring-amber-300/30" : ""}`}
                   >
                     {!isOwn && !groupedWithPrevious && (
-                      <p className="text-[9px] text-[#F95F4A]/80 mb-0.5">{displayName}</p>
+                      <p className="text-[9px] text-[#5B7CFA]/80 mb-0.5">{displayName}</p>
                     )}
                     {directMessageLabel ? (
                       <p className="mb-0.5 text-[9px] uppercase tracking-[0.14em] text-amber-300/80">
@@ -538,7 +538,7 @@ function ChatPanel({
           <button
             type="button"
             onClick={scrollToLatest}
-            className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full border border-[#FEFCD9]/20 bg-[#0d0e0d]/95 px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-[#FEFCD9]/80 backdrop-blur-md shadow-lg hover:bg-[#151615] transition-colors"
+            className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full border border-[#FEFCD9]/20 bg-[#0d0e10]/95 px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-[#FEFCD9]/80 backdrop-blur-md shadow-lg hover:bg-[#151615] transition-colors"
             style={{ fontFamily: "'PolySans Mono', monospace" }}
           >
             {unseenCount} new {unseenCount === 1 ? "message" : "messages"}
@@ -553,7 +553,7 @@ function ChatPanel({
       >
         <div className="relative">
           {showMentionSuggestions && (
-            <div className="absolute bottom-full mb-1.5 left-0 right-0 z-10 max-h-40 overflow-y-auto rounded-md border border-[#FEFCD9]/10 bg-[#0d0e0d]/95">
+            <div className="absolute bottom-full mb-1.5 left-0 right-0 z-10 max-h-40 overflow-y-auto rounded-md border border-[#FEFCD9]/10 bg-[#0d0e10]/95">
               {mentionSuggestions.map((participant, index) => {
                 const isActive = index === activeMentionIndex;
                 return (
@@ -563,7 +563,7 @@ function ChatPanel({
                     onClick={() => applyMentionSuggestion(index)}
                     className={`w-full px-2.5 py-1.5 text-left text-xs transition-colors ${
                       isActive
-                        ? "bg-[#F95F4A]/20 text-[#FEFCD9]"
+                        ? "bg-[#5B7CFA]/20 text-[#FEFCD9]"
                         : "text-[#FEFCD9]/70 hover:bg-[#FEFCD9]/10"
                     }`}
                   >
@@ -576,7 +576,7 @@ function ChatPanel({
             </div>
           )}
           {showCommandSuggestions && (
-            <div className="absolute bottom-full mb-1.5 left-0 right-0 z-10 max-h-40 overflow-y-auto rounded-md border border-[#FEFCD9]/10 bg-[#0d0e0d]/95">
+            <div className="absolute bottom-full mb-1.5 left-0 right-0 z-10 max-h-40 overflow-y-auto rounded-md border border-[#FEFCD9]/10 bg-[#0d0e10]/95">
               {commandSuggestions.map((command, index) => {
                 const isActive = index === activeCommandIndex;
                 return (
@@ -586,7 +586,7 @@ function ChatPanel({
                     onClick={() => onInputChange(command.insertText)}
                     className={`w-full px-2.5 py-1.5 text-left text-xs transition-colors ${
                       isActive
-                        ? "bg-[#F95F4A]/20 text-[#FEFCD9]"
+                        ? "bg-[#5B7CFA]/20 text-[#FEFCD9]"
                         : "text-[#FEFCD9]/70 hover:bg-[#FEFCD9]/10"
                     }`}
                   >
@@ -633,7 +633,7 @@ function ChatPanel({
           </div>
         </div>
         {isGhostMode && (
-          <div className="mt-1.5 text-[9px] text-[#FF007A]/60 text-center">
+          <div className="mt-1.5 text-[9px] text-[#4DA8FF]/60 text-center">
             Ghost mode
           </div>
         )}

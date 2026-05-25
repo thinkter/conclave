@@ -517,12 +517,12 @@ function MobileControlsBar({
             }}
             className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-[#FEFCD9] hover:bg-[#FEFCD9]/5 active:bg-[#FEFCD9]/10 transition-transform duration-150 touch-feedback"
           >
-            <div className="h-9 w-9 rounded-xl bg-[#2b2b2b] border border-white/5 flex items-center justify-center">
+            <div className="h-9 w-9 rounded-xl bg-[#2b2e36] border border-white/5 flex items-center justify-center">
               <Users className="w-4.5 h-4.5" />
             </div>
             <span className="text-sm font-medium">Participants</span>
             {pendingUsersCount > 0 && (
-              <span className="ml-auto text-xs bg-[#F95F4A] text-white px-2 py-0.5 rounded-full font-bold">
+              <span className="ml-auto text-xs bg-[#5B7CFA] text-white px-2 py-0.5 rounded-full font-bold">
                 {pendingUsersCount}
               </span>
             )}
@@ -535,7 +535,7 @@ function MobileControlsBar({
             }}
             className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-[#FEFCD9] hover:bg-[#FEFCD9]/5 active:bg-[#FEFCD9]/10 transition-transform duration-150 touch-feedback"
           >
-            <div className="h-9 w-9 rounded-xl bg-[#2b2b2b] border border-white/5 flex items-center justify-center">
+            <div className="h-9 w-9 rounded-xl bg-[#2b2e36] border border-white/5 flex items-center justify-center">
               <Settings className="w-4.5 h-4.5" />
             </div>
             <span className="text-sm font-medium">Settings</span>
@@ -555,7 +555,7 @@ function MobileControlsBar({
             >
               <div
                 className={`h-9 w-9 rounded-xl border border-white/5 flex items-center justify-center ${
-                  isHandRaised ? "bg-amber-500/15" : "bg-[#2b2b2b]"
+                  isHandRaised ? "bg-amber-500/15" : "bg-[#2b2e36]"
                 }`}
               >
                 <Hand className="w-4.5 h-4.5" />
@@ -571,13 +571,13 @@ function MobileControlsBar({
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-transform duration-150 touch-feedback ${isGhostMode || !canStartScreenShare
                   ? "opacity-30"
                   : isScreenSharing
-                    ? "text-[#F95F4A]"
+                    ? "text-[#5B7CFA]"
                     : "text-[#FEFCD9]"
                 } hover:bg-[#FEFCD9]/5 active:bg-[#FEFCD9]/10`}
             >
               <div
                 className={`h-9 w-9 rounded-xl border border-white/5 flex items-center justify-center ${
-                  isScreenSharing ? "bg-[#F95F4A]/20" : "bg-[#2b2b2b]"
+                  isScreenSharing ? "bg-[#5B7CFA]/20" : "bg-[#2b2e36]"
                 }`}
               >
                 <Monitor className="w-4.5 h-4.5" />
@@ -594,7 +594,7 @@ function MobileControlsBar({
                 }}
                 className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-[#FEFCD9] hover:bg-[#FEFCD9]/5 active:bg-[#FEFCD9]/10 transition-transform duration-150 touch-feedback"
               >
-                <div className="h-9 w-9 rounded-xl bg-[#2b2b2b] border border-white/5 flex items-center justify-center">
+                <div className="h-9 w-9 rounded-xl bg-[#2b2e36] border border-white/5 flex items-center justify-center">
                   <Globe className="w-4.5 h-4.5" />
                 </div>
                 <span className="text-sm font-medium">Shared browser</span>
@@ -619,7 +619,7 @@ function MobileControlsBar({
                 }}
                 className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-[#FEFCD9] hover:bg-[#FEFCD9]/5 active:bg-[#FEFCD9]/10 transition-transform duration-150 touch-feedback"
               >
-                <div className="h-9 w-9 rounded-xl bg-[#2b2b2b] border border-white/5 flex items-center justify-center">
+                <div className="h-9 w-9 rounded-xl bg-[#2b2e36] border border-white/5 flex items-center justify-center">
                   <Globe className="w-4.5 h-4.5" />
                 </div>
                 <span className="text-sm font-medium">
@@ -649,7 +649,7 @@ function MobileControlsBar({
                 }}
                 className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-[#FEFCD9] hover:bg-[#FEFCD9]/5 active:bg-[#FEFCD9]/10 transition-transform duration-150 touch-feedback"
               >
-                <div className="h-9 w-9 rounded-xl bg-[#2b2b2b] border border-white/5 flex items-center justify-center">
+                <div className="h-9 w-9 rounded-xl bg-[#2b2e36] border border-white/5 flex items-center justify-center">
                   <Code2 className="w-4.5 h-4.5" />
                 </div>
                 <span className="text-sm font-medium">
@@ -677,12 +677,12 @@ function MobileControlsBar({
                   setIsMoreMenuOpen(false);
                 }}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-transform duration-150 touch-feedback ${
-                  isBrowserAudioMuted ? "text-[#F95F4A]" : "text-[#FEFCD9]"
+                  isBrowserAudioMuted ? "text-[#5B7CFA]" : "text-[#FEFCD9]"
                 } hover:bg-[#FEFCD9]/5 active:bg-[#FEFCD9]/10`}
               >
                 <div
                   className={`h-9 w-9 rounded-xl border border-white/5 flex items-center justify-center ${
-                    isBrowserAudioMuted ? "bg-[#F95F4A]/20" : "bg-[#2b2b2b]"
+                    isBrowserAudioMuted ? "bg-[#5B7CFA]/20" : "bg-[#2b2e36]"
                   }`}
                 >
                   {isBrowserAudioMuted ? (
@@ -709,7 +709,7 @@ function MobileControlsBar({
               >
                 <div
                   className={`h-9 w-9 rounded-xl border border-white/5 flex items-center justify-center ${
-                    isAppsLocked ? "bg-amber-500/20" : "bg-[#2b2b2b]"
+                    isAppsLocked ? "bg-amber-500/20" : "bg-[#2b2e36]"
                   }`}
                 >
                   {isAppsLocked ? <Lock className="w-4.5 h-4.5" /> : <LockOpen className="w-4.5 h-4.5" />}
@@ -732,7 +732,7 @@ function MobileControlsBar({
               >
                 <div
                   className={`h-9 w-9 rounded-xl border border-white/5 flex items-center justify-center ${
-                    isRoomLocked ? "bg-amber-500/20" : "bg-[#2b2b2b]"
+                    isRoomLocked ? "bg-amber-500/20" : "bg-[#2b2e36]"
                   }`}
                 >
                   {isRoomLocked ? (
@@ -756,7 +756,7 @@ function MobileControlsBar({
               >
                 <div
                   className={`h-9 w-9 rounded-xl border border-white/5 flex items-center justify-center ${
-                    isNoGuests ? "bg-amber-500/20" : "bg-[#2b2b2b]"
+                    isNoGuests ? "bg-amber-500/20" : "bg-[#2b2e36]"
                   }`}
                 >
                   <ShieldBan className="w-4.5 h-4.5" />
@@ -779,7 +779,7 @@ function MobileControlsBar({
               >
                 <div
                   className={`h-9 w-9 rounded-xl border border-white/5 flex items-center justify-center ${
-                    isChatLocked ? "bg-amber-500/20" : "bg-[#2b2b2b]"
+                    isChatLocked ? "bg-amber-500/20" : "bg-[#2b2e36]"
                   }`}
                 >
                   <MessageSquareLock className="w-4.5 h-4.5" />
@@ -799,7 +799,7 @@ function MobileControlsBar({
               >
                 <div
                   className={`h-9 w-9 rounded-xl border border-white/5 flex items-center justify-center ${
-                    isTtsDisabled ? "bg-amber-500/20" : "bg-[#2b2b2b]"
+                    isTtsDisabled ? "bg-amber-500/20" : "bg-[#2b2e36]"
                   }`}
                 >
                   <VolumeX className="w-4.5 h-4.5" />
@@ -821,7 +821,7 @@ function MobileControlsBar({
               >
                 <div
                   className={`h-9 w-9 rounded-xl border border-white/5 flex items-center justify-center ${
-                    isDmEnabled ? "bg-amber-500/20" : "bg-[#2b2b2b]"
+                    isDmEnabled ? "bg-amber-500/20" : "bg-[#2b2e36]"
                   }`}
                 >
                   <MessageSquare className="w-4.5 h-4.5" />
@@ -940,7 +940,7 @@ function MobileControlsBar({
                 )}
 
                 {audioDevicesError && (
-                  <p className="text-xs text-[#F95F4A]">{audioDevicesError}</p>
+                  <p className="text-xs text-[#5B7CFA]">{audioDevicesError}</p>
                 )}
 
                 {audioOutputDevices.length === 0 && !audioDevicesError && (
@@ -1002,7 +1002,7 @@ function MobileControlsBar({
                             !onUpdateMeetingConfig ||
                             !meetingInviteCodeInput.trim()
                           }
-                          className="flex-1 rounded-lg bg-[#F95F4A] px-3 py-2 text-sm font-medium text-white transition hover:bg-[#F95F4A]/90 disabled:cursor-not-allowed disabled:opacity-40"
+                          className="flex-1 rounded-lg bg-[#5B7CFA] px-3 py-2 text-sm font-medium text-white transition hover:bg-[#5B7CFA]/90 disabled:cursor-not-allowed disabled:opacity-40"
                         >
                           Save
                         </button>
@@ -1041,7 +1041,7 @@ function MobileControlsBar({
                       </p>
                     ) : null}
                     {meetingError ? (
-                      <p className="text-xs text-[#F95F4A]">{meetingError}</p>
+                      <p className="text-xs text-[#5B7CFA]">{meetingError}</p>
                     ) : null}
                   </section>
 
@@ -1247,7 +1247,7 @@ function MobileControlsBar({
                             !webinarConfig?.enabled ||
                             !webinarInviteCodeInput.trim()
                           }
-                          className="flex-1 rounded-lg bg-[#F95F4A] px-3 py-2 text-sm font-medium text-white transition hover:bg-[#F95F4A]/90 disabled:cursor-not-allowed disabled:opacity-40"
+                          className="flex-1 rounded-lg bg-[#5B7CFA] px-3 py-2 text-sm font-medium text-white transition hover:bg-[#5B7CFA]/90 disabled:cursor-not-allowed disabled:opacity-40"
                         >
                           Save
                         </button>
@@ -1358,7 +1358,7 @@ function MobileControlsBar({
                       </p>
                     ) : null}
                     {webinarError ? (
-                      <p className="text-xs text-[#F95F4A]">{webinarError}</p>
+                      <p className="text-xs text-[#5B7CFA]">{webinarError}</p>
                     ) : null}
                   </section>
                 </>
@@ -1401,7 +1401,7 @@ function MobileControlsBar({
                 </button>
               </div>
               <div className="flex items-center gap-3 text-[#FEFCD9] px-1">
-                <div className="h-10 w-10 rounded-2xl bg-[#2b2b2b] border border-white/5 flex items-center justify-center">
+                <div className="h-10 w-10 rounded-2xl bg-[#2b2e36] border border-white/5 flex items-center justify-center">
                   <Globe className="w-5 h-5" />
                 </div>
                 <div className="flex flex-col">
@@ -1446,7 +1446,7 @@ function MobileControlsBar({
                 <button
                   type="submit"
                   disabled={!browserUrlInput.trim() || isBrowserLaunching}
-                  className="flex-1 px-3 py-2 rounded-xl bg-[#F95F4A] text-white text-sm font-medium hover:bg-[#F95F4A]/90 disabled:opacity-40 disabled:hover:bg-[#F95F4A] transition-transform duration-150 touch-feedback"
+                  className="flex-1 px-3 py-2 rounded-xl bg-[#5B7CFA] text-white text-sm font-medium hover:bg-[#5B7CFA]/90 disabled:opacity-40 disabled:hover:bg-[#5B7CFA] transition-transform duration-150 touch-feedback"
                 >
                   {isBrowserActive ? "Navigate" : "Launch"}
                 </button>
@@ -1465,7 +1465,7 @@ function MobileControlsBar({
               </div>
             </form>
             {browserUrlError && (
-              <p className="mt-2 text-[11px] text-[#F95F4A]">
+              <p className="mt-2 text-[11px] text-[#5B7CFA]">
                 {browserUrlError}
               </p>
             )}

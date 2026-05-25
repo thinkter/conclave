@@ -146,14 +146,14 @@ const defaultPolicyDraft: PolicyDraft = {
 };
 
 const shellClass =
-  "rounded-2xl border border-[#E9E4C8]/12 bg-[#11130f] shadow-[0_12px_24px_rgba(0,0,0,0.18)]";
-const panelClass = "rounded-xl border border-[#E9E4C8]/12 bg-[#0B0D0A]";
+  "rounded-2xl border border-[#FEFCD9]/12 bg-[#1a1b1f] shadow-[0_12px_24px_rgba(0,0,0,0.18)]";
+const panelClass = "rounded-xl border border-[#FEFCD9]/12 bg-[#0d0e10]";
 const inputClass =
-  "w-full rounded-lg border border-[#E9E4C8]/18 bg-[#090A08] px-3 py-2 text-sm text-[#E9E4C8] outline-none transition focus:border-[#F95F4A]";
+  "w-full rounded-lg border border-[#FEFCD9]/18 bg-[#060607] px-3 py-2 text-sm text-[#FEFCD9] outline-none transition focus:border-[#5B7CFA]";
 const buttonClass =
-  "rounded-full border border-[#E9E4C8]/24 bg-[#121510] px-3 py-1.5 text-sm text-[#E9E4C8] transition hover:border-[#F95F4A] disabled:cursor-not-allowed disabled:opacity-45";
+  "rounded-full border border-[#FEFCD9]/24 bg-[#1a1b1f] px-3 py-1.5 text-sm text-[#FEFCD9] transition hover:border-[#5B7CFA] disabled:cursor-not-allowed disabled:opacity-45";
 const softButtonClass =
-  "rounded-full border border-[#E9E4C8]/12 px-3 py-1.5 text-sm text-[#E9E4C8]/72 transition hover:border-[#E9E4C8]/35 hover:text-[#E9E4C8]";
+  "rounded-full border border-[#FEFCD9]/12 px-3 py-1.5 text-sm text-[#FEFCD9]/72 transition hover:border-[#FEFCD9]/35 hover:text-[#FEFCD9]";
 
 const parseUserKeysInput = (value: string): string[] =>
   Array.from(
@@ -241,9 +241,9 @@ const fetchAdminAuth = async (): Promise<AdminUser> => {
 
 function Metric({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="rounded-lg border border-[#E9E4C8]/10 bg-black/20 px-3 py-2">
-      <p className="text-sm text-[#E9E4C8]/65">{label}</p>
-      <p className="mt-1 text-lg text-[#E9E4C8]">{value}</p>
+    <div className="rounded-lg border border-[#FEFCD9]/10 bg-black/20 px-3 py-2">
+      <p className="text-sm text-[#FEFCD9]/65">{label}</p>
+      <p className="mt-1 text-lg text-[#FEFCD9]">{value}</p>
     </div>
   );
 }
@@ -626,7 +626,7 @@ export default function SfuAdminDashboard() {
   ]);
 
   return (
-    <div className="min-h-screen bg-[#090A08] text-[#E9E4C8]">
+    <div className="min-h-screen bg-[#060607] text-[#FEFCD9]">
       <div className="mx-auto w-full max-w-[1380px] px-4 py-4 md:px-8 md:py-7">
         {errorMessage ? (
           <div className="rounded-xl border border-red-400/35 bg-red-900/25 px-4 py-3 text-sm text-red-100">
@@ -644,10 +644,10 @@ export default function SfuAdminDashboard() {
           <aside className="space-y-4">
             <section className={`${shellClass} p-4`}>
               <h2 className="text-base">Scope</h2>
-              <p className="mt-1 text-sm text-[#E9E4C8]/65">
+              <p className="mt-1 text-sm text-[#FEFCD9]/65">
                 {adminUser?.email || adminUser?.id || "not authenticated"}
               </p>
-              <p className="text-sm text-[#E9E4C8]/65">
+              <p className="text-sm text-[#FEFCD9]/65">
                 {clientId || "all clients"}
               </p>
 
@@ -695,8 +695,8 @@ export default function SfuAdminDashboard() {
                 <Metric label="Workers" value={`${overview?.workers.healthy ?? 0}/${overview?.workers.total ?? 0}`} />
               </div>
 
-              <div className="mt-4 space-y-2 rounded-lg border border-[#E9E4C8]/10 bg-black/20 p-3">
-                <label className="flex items-center justify-between text-xs text-[#E9E4C8]/72">
+              <div className="mt-4 space-y-2 rounded-lg border border-[#FEFCD9]/10 bg-black/20 p-3">
+                <label className="flex items-center justify-between text-xs text-[#FEFCD9]/72">
                   <span>Enable draining</span>
                   <input
                     type="checkbox"
@@ -704,7 +704,7 @@ export default function SfuAdminDashboard() {
                     onChange={(event) => setDrainEnabled(event.target.checked)}
                   />
                 </label>
-                <label className="flex items-center justify-between text-xs text-[#E9E4C8]/72">
+                <label className="flex items-center justify-between text-xs text-[#FEFCD9]/72">
                   <span>Force disconnect</span>
                   <input
                     type="checkbox"
@@ -772,12 +772,12 @@ export default function SfuAdminDashboard() {
                       }}
                       className={`w-full rounded-lg border px-3 py-2 text-left transition ${
                         selected
-                          ? "border-[#F95F4A] bg-[#181B15]"
-                          : "border-[#E9E4C8]/12 bg-black/20 hover:border-[#E9E4C8]/32"
+                          ? "border-[#5B7CFA] bg-[#25272d]"
+                          : "border-[#FEFCD9]/12 bg-black/20 hover:border-[#FEFCD9]/32"
                       }`}
                     >
-                      <p className="text-sm text-[#E9E4C8]">{room.id}</p>
-                      <p className="text-[11px] text-[#E9E4C8]/56">
+                      <p className="text-sm text-[#FEFCD9]">{room.id}</p>
+                      <p className="text-[11px] text-[#FEFCD9]/56">
                         {room.clientId} • {room.counts.participants} ppl • {room.counts.pendingUsers} pending
                       </p>
                     </button>
@@ -785,7 +785,7 @@ export default function SfuAdminDashboard() {
                 })}
 
                 {filteredRooms.length === 0 ? (
-                  <p className="py-4 text-sm text-[#E9E4C8]/46">No matching rooms.</p>
+                  <p className="py-4 text-sm text-[#FEFCD9]/46">No matching rooms.</p>
                 ) : null}
               </div>
             </section>
@@ -794,15 +794,15 @@ export default function SfuAdminDashboard() {
           <main className={`${shellClass} p-4 md:p-5`}>
 
             {!roomSnapshot ? (
-              <div className="rounded-lg border border-[#E9E4C8]/12 bg-black/20 px-4 py-8 text-center text-sm text-[#E9E4C8]/55">
+              <div className="rounded-lg border border-[#FEFCD9]/12 bg-black/20 px-4 py-8 text-center text-sm text-[#FEFCD9]/55">
                 Select a room from the left panel.
               </div>
             ) : (
               <>
                 <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                   <div>
-                    <h2 className="text-xl text-[#E9E4C8]">{roomSnapshot.id}</h2>
-                    <p className="text-sm text-[#E9E4C8]/65">
+                    <h2 className="text-xl text-[#FEFCD9]">{roomSnapshot.id}</h2>
+                    <p className="text-sm text-[#FEFCD9]/65">
                       {roomSnapshot.clientId} • {roomSnapshot.channelId} • {formatUptime(overview?.uptime ?? 0)}
                     </p>
                   </div>
@@ -829,14 +829,14 @@ export default function SfuAdminDashboard() {
                   />
                 </div>
 
-                <div className="mt-4 flex flex-wrap gap-2 border-b border-[#E9E4C8]/10 pb-3">
+                <div className="mt-4 flex flex-wrap gap-2 border-b border-[#FEFCD9]/10 pb-3">
                   {tabs.map((tab) => (
                     <button
                       key={tab.id}
                       type="button"
                       className={
                         activeTab === tab.id
-                          ? `${buttonClass} border-[#F95F4A]`
+                          ? `${buttonClass} border-[#5B7CFA]`
                           : softButtonClass
                       }
                       onClick={() => setActiveTab(tab.id)}
@@ -848,7 +848,7 @@ export default function SfuAdminDashboard() {
 
                 {activeTab === "overview" ? (
                   <div className="mt-4 grid gap-4 xl:grid-cols-2">
-                    <section className="space-y-2 rounded-lg border border-[#E9E4C8]/10 bg-black/20 p-3">
+                    <section className="space-y-2 rounded-lg border border-[#FEFCD9]/10 bg-black/20 p-3">
                       <h3 className="text-base">Waiting room</h3>
                       <div className="flex flex-wrap gap-2">
                         <button
@@ -899,10 +899,10 @@ export default function SfuAdminDashboard() {
                         {roomSnapshot.pendingUsers.map((pending) => (
                           <div
                             key={`${pending.userKey}-${pending.participantUserId}`}
-                            className="rounded-md border border-[#E9E4C8]/10 bg-black/20 px-3 py-2"
+                            className="rounded-md border border-[#FEFCD9]/10 bg-black/20 px-3 py-2"
                           >
                             <p className="text-sm">{pending.displayName}</p>
-                            <p className="text-[11px] text-[#E9E4C8]/55">{pending.userKey}</p>
+                            <p className="text-[11px] text-[#FEFCD9]/55">{pending.userKey}</p>
                             <div className="mt-2 flex gap-2">
                               <button
                                 type="button"
@@ -940,24 +940,24 @@ export default function SfuAdminDashboard() {
                           </div>
                         ))}
                         {roomSnapshot.pendingUsers.length === 0 ? (
-                          <p className="py-3 text-sm text-[#E9E4C8]/45">No pending users.</p>
+                          <p className="py-3 text-sm text-[#FEFCD9]/45">No pending users.</p>
                         ) : null}
                       </div>
                     </section>
 
-                    <section className="space-y-2 rounded-lg border border-[#E9E4C8]/10 bg-black/20 p-3">
+                    <section className="space-y-2 rounded-lg border border-[#FEFCD9]/10 bg-black/20 p-3">
                       <h3 className="text-base">Participants</h3>
                       <div className="max-h-[360px] space-y-2 overflow-auto pr-1">
                         {roomSnapshot.participants.map((participant) => (
                           <div
                             key={participant.userId}
-                            className="rounded-md border border-[#E9E4C8]/10 bg-black/20 px-3 py-2"
+                            className="rounded-md border border-[#FEFCD9]/10 bg-black/20 px-3 py-2"
                           >
                             <p className="text-sm">{participant.displayName}</p>
-                            <p className="text-[11px] text-[#E9E4C8]/55">
+                            <p className="text-[11px] text-[#FEFCD9]/55">
                               {participant.role} • {participant.userKey || "no-user-key"}
                             </p>
-                            <p className="text-[11px] text-[#E9E4C8]/45">
+                            <p className="text-[11px] text-[#FEFCD9]/45">
                               producers {participant.producers.length} • consumers {participant.consumerCount}
                             </p>
                           </div>
@@ -969,7 +969,7 @@ export default function SfuAdminDashboard() {
 
                 {activeTab === "moderation" ? (
                   <div className="mt-4 space-y-3">
-                    <div className="rounded-lg border border-[#E9E4C8]/10 bg-black/20 p-3">
+                    <div className="rounded-lg border border-[#FEFCD9]/10 bg-black/20 p-3">
                       <h3 className="text-base">Moderation reason</h3>
                       <input
                         className={`${inputClass} mt-2`}
@@ -979,10 +979,10 @@ export default function SfuAdminDashboard() {
                       />
                     </div>
 
-                    <div className="max-h-[560px] overflow-auto rounded-lg border border-[#E9E4C8]/10">
+                    <div className="max-h-[560px] overflow-auto rounded-lg border border-[#FEFCD9]/10">
                       <table className="w-full min-w-[860px] border-collapse text-left text-xs">
-                        <thead className="sticky top-0 bg-[#0F110D]">
-                          <tr className="border-b border-[#E9E4C8]/10 text-[#E9E4C8]/55">
+                        <thead className="sticky top-0 bg-[#0d0e10]">
+                          <tr className="border-b border-[#FEFCD9]/10 text-[#FEFCD9]/55">
                             <th className="px-3 py-2 font-medium">User</th>
                             <th className="px-3 py-2 font-medium">Role</th>
                             <th className="px-3 py-2 font-medium">Producers</th>
@@ -991,11 +991,11 @@ export default function SfuAdminDashboard() {
                         </thead>
                         <tbody>
                           {roomSnapshot.participants.map((participant) => (
-                            <tr key={participant.userId} className="border-b border-[#E9E4C8]/8">
+                            <tr key={participant.userId} className="border-b border-[#FEFCD9]/8">
                               <td className="px-3 py-2 align-top">
-                                <p className="text-[#E9E4C8]">{participant.displayName}</p>
-                                <p className="text-[10px] text-[#E9E4C8]/50">{participant.userId}</p>
-                                <p className="text-[10px] text-[#E9E4C8]/50">{participant.userKey || "-"}</p>
+                                <p className="text-[#FEFCD9]">{participant.displayName}</p>
+                                <p className="text-[10px] text-[#FEFCD9]/50">{participant.userId}</p>
+                                <p className="text-[10px] text-[#FEFCD9]/50">{participant.userKey || "-"}</p>
                               </td>
                               <td className="px-3 py-2 align-top">{participant.role}</td>
                               <td className="px-3 py-2 align-top">
@@ -1020,7 +1020,7 @@ export default function SfuAdminDashboard() {
                                     </button>
                                   ))}
                                   {participant.producers.length === 0 ? (
-                                    <span className="text-[#E9E4C8]/40">no producers</span>
+                                    <span className="text-[#FEFCD9]/40">no producers</span>
                                   ) : null}
                                 </div>
                               </td>
@@ -1122,7 +1122,7 @@ export default function SfuAdminDashboard() {
 
                 {activeTab === "access" ? (
                   <div className="mt-4 grid gap-4 xl:grid-cols-2">
-                    <section className="space-y-2 rounded-lg border border-[#E9E4C8]/10 bg-black/20 p-3">
+                    <section className="space-y-2 rounded-lg border border-[#FEFCD9]/10 bg-black/20 p-3">
                       <h3 className="text-base">Access actions</h3>
                       <textarea
                         className={`${inputClass} min-h-24`}
@@ -1137,7 +1137,7 @@ export default function SfuAdminDashboard() {
                         placeholder="Reason used by block"
                       />
 
-                      <label className="flex items-center justify-between text-xs text-[#E9E4C8]/72">
+                      <label className="flex items-center justify-between text-xs text-[#FEFCD9]/72">
                         <span>Allow when locked</span>
                         <input
                           type="checkbox"
@@ -1145,7 +1145,7 @@ export default function SfuAdminDashboard() {
                           onChange={(event) => setAllowWhenLocked(event.target.checked)}
                         />
                       </label>
-                      <label className="flex items-center justify-between text-xs text-[#E9E4C8]/72">
+                      <label className="flex items-center justify-between text-xs text-[#FEFCD9]/72">
                         <span>Revoke locked entries</span>
                         <input
                           type="checkbox"
@@ -1153,7 +1153,7 @@ export default function SfuAdminDashboard() {
                           onChange={(event) => setRevokeLocked(event.target.checked)}
                         />
                       </label>
-                      <label className="flex items-center justify-between text-xs text-[#E9E4C8]/72">
+                      <label className="flex items-center justify-between text-xs text-[#FEFCD9]/72">
                         <span>Kick connected users on block</span>
                         <input
                           type="checkbox"
@@ -1198,22 +1198,22 @@ export default function SfuAdminDashboard() {
                       </div>
                     </section>
 
-                    <section className="space-y-3 rounded-lg border border-[#E9E4C8]/10 bg-black/20 p-3 text-xs">
-                      <div className="rounded-md border border-[#E9E4C8]/10 bg-black/20 p-2">
-                        <p className="text-sm text-[#E9E4C8]/70">Allowed</p>
-                        <p className="mt-1 text-[#E9E4C8]/76">
+                    <section className="space-y-3 rounded-lg border border-[#FEFCD9]/10 bg-black/20 p-3 text-xs">
+                      <div className="rounded-md border border-[#FEFCD9]/10 bg-black/20 p-2">
+                        <p className="text-sm text-[#FEFCD9]/70">Allowed</p>
+                        <p className="mt-1 text-[#FEFCD9]/76">
                           {roomSnapshot.access.allowedUserKeys.join(", ") || "none"}
                         </p>
                       </div>
-                      <div className="rounded-md border border-[#E9E4C8]/10 bg-black/20 p-2">
-                        <p className="text-sm text-[#E9E4C8]/70">Locked allowed</p>
-                        <p className="mt-1 text-[#E9E4C8]/76">
+                      <div className="rounded-md border border-[#FEFCD9]/10 bg-black/20 p-2">
+                        <p className="text-sm text-[#FEFCD9]/70">Locked allowed</p>
+                        <p className="mt-1 text-[#FEFCD9]/76">
                           {roomSnapshot.access.lockedAllowedUserKeys.join(", ") || "none"}
                         </p>
                       </div>
-                      <div className="rounded-md border border-[#E9E4C8]/10 bg-black/20 p-2">
-                        <p className="text-sm text-[#E9E4C8]/70">Blocked</p>
-                        <p className="mt-1 text-[#E9E4C8]/76">
+                      <div className="rounded-md border border-[#FEFCD9]/10 bg-black/20 p-2">
+                        <p className="text-sm text-[#FEFCD9]/70">Blocked</p>
+                        <p className="mt-1 text-[#FEFCD9]/76">
                           {roomSnapshot.access.blockedUserKeys.join(", ") || "none"}
                         </p>
                       </div>
@@ -1223,7 +1223,7 @@ export default function SfuAdminDashboard() {
 
                 {activeTab === "lifecycle" ? (
                   <div className="mt-4 grid gap-4 xl:grid-cols-3">
-                    <section className="space-y-2 rounded-lg border border-[#E9E4C8]/10 bg-black/20 p-3">
+                    <section className="space-y-2 rounded-lg border border-[#FEFCD9]/10 bg-black/20 p-3">
                       <h3 className="text-base">Policies</h3>
                       <label className="flex items-center justify-between text-xs">
                         <span>Room locked</span>
@@ -1301,7 +1301,7 @@ export default function SfuAdminDashboard() {
                       </button>
                     </section>
 
-                    <section className="space-y-2 rounded-lg border border-[#E9E4C8]/10 bg-black/20 p-3">
+                    <section className="space-y-2 rounded-lg border border-[#FEFCD9]/10 bg-black/20 p-3">
                       <h3 className="text-base">Notice</h3>
                       <textarea
                         className={`${inputClass} min-h-24`}
@@ -1316,7 +1316,7 @@ export default function SfuAdminDashboard() {
                             type="button"
                             className={
                               noticeLevel === level
-                                ? `${buttonClass} border-[#F95F4A]`
+                                ? `${buttonClass} border-[#5B7CFA]`
                                 : softButtonClass
                             }
                             onClick={() => setNoticeLevel(level)}
@@ -1335,7 +1335,7 @@ export default function SfuAdminDashboard() {
                       </button>
                     </section>
 
-                    <section className="space-y-2 rounded-lg border border-[#E9E4C8]/10 bg-black/20 p-3">
+                    <section className="space-y-2 rounded-lg border border-[#FEFCD9]/10 bg-black/20 p-3">
                       <h3 className="text-base">Room lifecycle</h3>
                       <input
                         className={inputClass}
@@ -1462,7 +1462,7 @@ export default function SfuAdminDashboard() {
                         Clear
                       </button>
                     </div>
-                    <pre className="max-h-[320px] overflow-auto rounded-lg border border-[#E9E4C8]/10 bg-black/30 p-3 text-[11px] text-[#E9E4C8]/78">
+                    <pre className="max-h-[320px] overflow-auto rounded-lg border border-[#FEFCD9]/10 bg-black/30 p-3 text-[11px] text-[#FEFCD9]/78">
                       {advancedResult || "// Response output"}
                     </pre>
                   </div>

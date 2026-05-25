@@ -202,7 +202,7 @@ export default function JoinCameraFiltersDrawer({
                 }`}
               />
             ) : (
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-[radial-gradient(circle_at_top,_rgba(249,95,74,0.15),_transparent_60%),linear-gradient(180deg,_#151515,_#090909)]">
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-[radial-gradient(circle_at_top,_rgba(91, 124, 250,0.15),_transparent_60%),linear-gradient(180deg,_#151515,_#090909)]">
                 <div className="flex h-16 w-16 items-center justify-center rounded-full border border-[#FEFCD9]/15 bg-[#FEFCD9]/5">
                   <ScanFace
                     className={`h-7 w-7 text-[#FEFCD9]/50 ${
@@ -255,20 +255,20 @@ export default function JoinCameraFiltersDrawer({
                       onClick={() => setPreviewEffect(option.id)}
                       className={`group relative flex items-center gap-3 rounded-2xl border px-3 py-3 text-left transition-all ${
                         isSelected
-                          ? "border-[#F95F4A]/50 bg-[linear-gradient(135deg,rgba(249,95,74,0.18),rgba(255,0,122,0.08))] text-[#FEFCD9]"
-                          : "border-[#FEFCD9]/10 bg-[#111111]/80 text-[#FEFCD9]/70 hover:border-[#FEFCD9]/20 hover:bg-[#171717]"
+                          ? "border-[#5B7CFA]/50 bg-[linear-gradient(135deg,rgba(91, 124, 250,0.18),rgba(77, 168, 255,0.08))] text-[#FEFCD9]"
+                          : "border-[#FEFCD9]/10 bg-[#1a1b1f]/80 text-[#FEFCD9]/70 hover:border-[#FEFCD9]/20 hover:bg-[#171717]"
                       }`}
                     >
                       <div
                         className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border transition-colors ${
                           isSelected
-                            ? "border-[#F95F4A]/40 bg-[#F95F4A]/15"
+                            ? "border-[#5B7CFA]/40 bg-[#5B7CFA]/15"
                             : "border-[#FEFCD9]/10 bg-[#FEFCD9]/5 group-hover:border-[#FEFCD9]/20 group-hover:bg-[#FEFCD9]/10"
                         }`}
                       >
                         <ScanFace
                           className={`h-5 w-5 ${
-                            isSelected ? "text-[#F95F4A]" : "text-[#FEFCD9]/50"
+                            isSelected ? "text-[#5B7CFA]" : "text-[#FEFCD9]/50"
                           }`}
                         />
                       </div>
@@ -276,7 +276,7 @@ export default function JoinCameraFiltersDrawer({
                         <div className="text-sm font-medium flex items-center gap-2">
                           {option.label}
                           {option.experimental ? (
-                            <span className="rounded-full bg-[#F95F4A]/20 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider text-[#F95F4A]">
+                            <span className="rounded-full bg-[#5B7CFA]/20 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider text-[#5B7CFA]">
                               Experimental
                             </span>
                           ) : null}
@@ -286,7 +286,7 @@ export default function JoinCameraFiltersDrawer({
                         </div>
                       </div>
                       {isSelected ? (
-                        <Check className="h-4 w-4 shrink-0 text-[#F95F4A]" />
+                        <Check className="h-4 w-4 shrink-0 text-[#5B7CFA]" />
                       ) : null}
                     </button>
                   );

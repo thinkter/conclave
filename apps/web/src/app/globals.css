@@ -82,14 +82,14 @@
 }
 
 @theme {
-  --color-primary-orange: #F95F4A;
-  --color-primary-pink: #FF007A;
+  --color-primary-orange: #5B7CFA;
+  --color-primary-pink: #4DA8FF;
   --color-acm-cream: #FEFCD9;
-  --color-acm-dark: #060606;
-  --color-acm-dark-alt: #0d0e0d;
-  --color-acm-surface: #1a1a1a;
-  --color-acm-surface-light: #252525;
-  --color-acm-surface-hover: #2a2a2a;
+  --color-acm-dark: #060607;
+  --color-acm-dark-alt: #0d0e10;
+  --color-acm-surface: #1a1b1f;
+  --color-acm-surface-light: #25272d;
+  --color-acm-surface-hover: #2b2e36;
 }
 
 :root {
@@ -101,7 +101,7 @@
 
 
 ::selection {
-  background: #f95f4a;
+  background: #5B7CFA;
   color: white;
 }
 
@@ -116,7 +116,7 @@ body {
 
 body {
   margin: 0;
-  background-color: #060606;
+  background-color: #060607;
   font-family: "PolySans Trial", system-ui, -apple-system, sans-serif;
   color: #FEFCD9;
 }
@@ -124,7 +124,7 @@ body {
 input:focus,
 textarea:focus,
 select:focus {
-  border-color: #F95F4A !important;
+  border-color: #5B7CFA !important;
   outline: none;
 }
 
@@ -136,11 +136,11 @@ select:focus {
 }
 
 .acm-glow {
-  box-shadow: 0 0 20px rgba(249, 95, 74, 0.3);
+  box-shadow: 0 0 20px rgba(91, 124, 250, 0.3);
 }
 
 .acm-glow-pink {
-  box-shadow: 0 0 20px rgba(255, 0, 122, 0.3);
+  box-shadow: 0 0 20px rgba(77, 168, 255, 0.3);
 }
 
 @keyframes blink {
@@ -233,7 +233,7 @@ select:focus {
 
 /* ACM Primary Button */
 .acm-btn-primary {
-  background: #F95F4A;
+  background: #5B7CFA;
   color: white;
   font-family: "PolySans Trial", sans-serif;
   font-weight: 500;
@@ -247,9 +247,9 @@ select:focus {
 }
 
 .acm-btn-primary:hover {
-  background: #e8553f;
+  background: #4f6fe8;
   transform: translateY(-2px);
-  box-shadow: 0 4px 20px rgba(249, 95, 74, 0.4);
+  box-shadow: 0 4px 20px rgba(91, 124, 250, 0.4);
 }
 
 .acm-btn-primary:active {
@@ -278,16 +278,16 @@ select:focus {
 
 /* Glowing accent */
 .acm-glow {
-  box-shadow: 0 0 30px rgba(249, 95, 74, 0.4);
+  box-shadow: 0 0 30px rgba(91, 124, 250, 0.4);
 }
 
 .acm-glow-pink {
-  box-shadow: 0 0 30px rgba(255, 0, 122, 0.4);
+  box-shadow: 0 0 30px rgba(77, 168, 255, 0.4);
 }
 
 /* Gradient text for headers */
 .acm-gradient-text {
-  background: linear-gradient(135deg, #F95F4A 0%, #FF007A 100%);
+  background: linear-gradient(135deg, #5B7CFA 0%, #4DA8FF 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -298,11 +298,11 @@ select:focus {
 
   0%,
   100% {
-    box-shadow: 0 0 0 0 rgba(249, 95, 74, 0.6);
+    box-shadow: 0 0 0 0 rgba(91, 124, 250, 0.6);
   }
 
   50% {
-    box-shadow: 0 0 0 8px rgba(249, 95, 74, 0);
+    box-shadow: 0 0 0 8px rgba(91, 124, 250, 0);
   }
 }
 
@@ -352,16 +352,16 @@ select:focus {
 }
 
 .acm-control-btn:hover {
-  background: rgba(26, 26, 26, 0.9);
+  background: rgba(26, 27, 31, 0.9);
   border-color: rgba(254, 252, 217, 0.3);
   transform: scale(1.08);
 }
 
 .acm-control-btn.active {
-  background: #F95F4A;
-  border-color: #F95F4A;
+  background: #5B7CFA;
+  border-color: #5B7CFA;
   color: white;
-  box-shadow: 0 0 20px rgba(249, 95, 74, 0.4);
+  box-shadow: 0 0 20px rgba(91, 124, 250, 0.4);
 }
 
 .acm-control-btn.danger {
@@ -378,7 +378,7 @@ select:focus {
 }
 
 .acm-control-btn:disabled {
-  background: rgba(26, 26, 26, 0.3);
+  background: rgba(26, 27, 31, 0.3);
   border-color: rgba(254, 252, 217, 0.05);
   color: rgba(254, 252, 217, 0.2);
   cursor: not-allowed;
@@ -390,7 +390,7 @@ select:focus {
    ============================================================ */
 .acm-card {
   position: relative;
-  background: #0d0e0d;
+  background: #0d0e10;
   border-radius: 16px;
   overflow: hidden;
 }
@@ -403,8 +403,8 @@ select:focus {
   padding: 1px;
   background: linear-gradient(135deg,
       rgba(254, 252, 217, 0.2) 0%,
-      rgba(249, 95, 74, 0.3) 50%,
-      rgba(255, 0, 122, 0.2) 100%);
+      rgba(91, 124, 250, 0.3) 50%,
+      rgba(77, 168, 255, 0.2) 100%);
   -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
@@ -414,7 +414,7 @@ select:focus {
 /* Rotating border animation for featured cards */
 .acm-card-featured {
   position: relative;
-  background: #0d0e0d;
+  background: #0d0e10;
   border-radius: 16px;
   overflow: hidden;
 }
@@ -425,10 +425,10 @@ select:focus {
   inset: -2px;
   border-radius: 18px;
   background: conic-gradient(from var(--rotation, 0deg),
-      #F95F4A,
-      #FF007A,
+      #5B7CFA,
+      #4DA8FF,
       #FEFCD9,
-      #F95F4A);
+      #5B7CFA);
   animation: acm-rotate-border 4s linear infinite;
   z-index: -1;
 }
@@ -438,7 +438,7 @@ select:focus {
   position: absolute;
   inset: 2px;
   border-radius: 14px;
-  background: #0d0e0d;
+  background: #0d0e10;
   z-index: -1;
 }
 
@@ -526,8 +526,8 @@ select:focus {
 
 .acm-input:focus {
   outline: none;
-  border-color: #F95F4A;
-  box-shadow: 0 0 0 3px rgba(249, 95, 74, 0.15);
+  border-color: #5B7CFA;
+  box-shadow: 0 0 0 3px rgba(91, 124, 250, 0.15);
 }
 
 .acm-heading-display {
@@ -576,10 +576,10 @@ select:focus {
 
 .acm-bg-radial {
   background: radial-gradient(ellipse at 30% 20%,
-      rgba(249, 95, 74, 0.12) 0%,
+      rgba(91, 124, 250, 0.12) 0%,
       transparent 50%),
     radial-gradient(ellipse at 70% 80%,
-      rgba(255, 0, 122, 0.09) 0%,
+      rgba(77, 168, 255, 0.09) 0%,
       transparent 50%);
 }
 
@@ -587,19 +587,19 @@ select:focus {
   position: absolute;
   width: 300px;
   height: 300px;
-  background: radial-gradient(circle, rgba(249, 95, 74, 0.3) 0%, transparent 70%);
+  background: radial-gradient(circle, rgba(91, 124, 250, 0.3) 0%, transparent 70%);
   border-radius: 50%;
   filter: blur(60px);
   pointer-events: none;
 }
 
 .acm-glow-ball-pink {
-  background: radial-gradient(circle, rgba(255, 0, 122, 0.25) 0%, transparent 70%);
+  background: radial-gradient(circle, rgba(77, 168, 255, 0.25) 0%, transparent 70%);
 }
 
 .acm-video-tile {
   position: relative;
-  background: #0d0e0d;
+  background: #0d0e10;
   border-radius: 16px;
   overflow: hidden;
   border: 1px solid rgba(254, 252, 217, 0.08);
@@ -611,8 +611,8 @@ select:focus {
 }
 
 .acm-video-tile.speaking {
-  border-color: #F95F4A;
-  box-shadow: 0 0 0 2px rgba(249, 95, 74, 0.3), 0 0 30px rgba(249, 95, 74, 0.2);
+  border-color: #5B7CFA;
+  box-shadow: 0 0 0 2px rgba(91, 124, 250, 0.3), 0 0 30px rgba(91, 124, 250, 0.2);
 }
 
 ::-webkit-scrollbar {
@@ -634,7 +634,7 @@ select:focus {
 }
 
 :where(button, [role="button"], a, input, textarea, select):focus-visible {
-  outline: 2px solid rgba(249, 95, 74, 0.75);
+  outline: 2px solid rgba(91, 124, 250, 0.75);
   outline-offset: 2px;
 }
 
@@ -877,30 +877,30 @@ select:focus {
 }
 
 :root {
-  --mobile-bg: #060606;
-  --mobile-surface: #0d0e0d;
-  --mobile-surface-2: #1a1a1a;
-  --mobile-surface-3: #252525;
+  --mobile-bg: #060607;
+  --mobile-surface: #0d0e10;
+  --mobile-surface-2: #1a1b1f;
+  --mobile-surface-3: #25272d;
   --mobile-cream: #FEFCD9;
   --mobile-cream-muted: rgba(254, 252, 217, 0.6);
   --mobile-cream-faint: rgba(254, 252, 217, 0.1);
   --mobile-cream-ghost: rgba(254, 252, 217, 0.15);
-  --mobile-orange: #F95F4A;
-  --mobile-pink: #FF007A;
+  --mobile-orange: #5B7CFA;
+  --mobile-pink: #4DA8FF;
   --mobile-amber: #fbbf24;
-  --mobile-sheet-bg: #0b0b0b;
-  --mobile-sheet-surface: rgba(20, 20, 20, 0.9);
+  --mobile-sheet-bg: #0d0e10;
+  --mobile-sheet-surface: rgba(26, 27, 31, 0.9);
   --mobile-sheet-border: rgba(254, 252, 217, 0.08);
 }
 
 .mobile-glass {
-  background: rgba(12, 12, 12, 0.45);
+  background: rgba(13, 14, 16, 0.45);
   border: 1px solid rgba(254, 252, 217, 0.12);
   backdrop-filter: blur(16px);
 }
 
 .mobile-glass-soft {
-  background: rgba(20, 20, 20, 0.6);
+  background: rgba(26, 27, 31, 0.6);
   border: 1px solid rgba(254, 252, 217, 0.08);
   backdrop-filter: blur(14px);
 }
@@ -992,12 +992,12 @@ select:focus {
 .mobile-control-btn.is-active {
   background: var(--mobile-orange);
   border-color: transparent;
-  color: #ffffff;
-  box-shadow: 0 0 16px rgba(249, 95, 74, 0.35);
+  color: #FEFCD9;
+  box-shadow: 0 0 16px rgba(91, 124, 250, 0.35);
 }
 
 .mobile-control-btn.is-muted {
-  background: rgba(249, 95, 74, 0.15);
+  background: rgba(91, 124, 250, 0.15);
   border-color: transparent;
   color: var(--mobile-orange);
 }
@@ -1005,7 +1005,7 @@ select:focus {
 .mobile-control-btn.is-warning {
   background: var(--mobile-amber);
   border-color: transparent;
-  color: #ffffff;
+  color: #FEFCD9;
 }
 
 .mobile-control-btn.is-danger {
@@ -1024,7 +1024,7 @@ select:focus {
   padding: 0 4px;
   border-radius: 999px;
   background: var(--mobile-orange);
-  color: #ffffff;
+  color: #FEFCD9;
   font-size: 10px;
   font-weight: 700;
   display: inline-flex;
@@ -1042,12 +1042,12 @@ select:focus {
 
 .mobile-tile-active {
   border-color: var(--mobile-orange);
-  box-shadow: 0 0 0 2px rgba(249, 95, 74, 0.22),
-    0 0 18px rgba(249, 95, 74, 0.25);
+  box-shadow: 0 0 0 2px rgba(91, 124, 250, 0.22),
+    0 0 18px rgba(91, 124, 250, 0.25);
 }
 
 .mobile-avatar {
-  background: rgba(249, 95, 74, 0.15);
+  background: rgba(91, 124, 250, 0.15);
   border: 1px solid rgba(254, 252, 217, 0.2);
 }
 
@@ -1069,7 +1069,7 @@ select:focus {
 
 .mobile-ghost-badge {
   background: rgba(0, 0, 0, 0.6);
-  border: 1px solid rgba(255, 0, 122, 0.3);
+  border: 1px solid rgba(77, 168, 255, 0.3);
 }
 
 #noVNC_status_bar {

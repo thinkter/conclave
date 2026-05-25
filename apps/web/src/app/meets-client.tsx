@@ -1094,7 +1094,7 @@ export default function MeetsClient({
       : "Enter the invite code to join this webinar.";
   const inviteCodePrompt = isInviteCodePromptOpen ? (
     <div className="fixed inset-0 z-[140] flex items-center justify-center bg-black/75 px-4">
-      <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#111111] p-5 shadow-2xl">
+      <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#1a1b1f] p-5 shadow-2xl">
         <h2 className="text-sm font-semibold text-[#FEFCD9]">
           {inviteCodePromptTitle}
         </h2>
@@ -1127,7 +1127,7 @@ export default function MeetsClient({
           }}
         />
         {inviteCodePromptError ? (
-          <p className="mt-2 text-xs text-[#F95F4A]">{inviteCodePromptError}</p>
+          <p className="mt-2 text-xs text-[#5B7CFA]">{inviteCodePromptError}</p>
         ) : null}
         <div className="mt-4 flex items-center justify-end gap-2">
           <button
@@ -1140,7 +1140,7 @@ export default function MeetsClient({
           <button
             type="button"
             onClick={handleSubmitInviteCodePrompt}
-            className="rounded-xl bg-[#F95F4A] px-3 py-2 text-[11px] uppercase tracking-[0.14em] text-white transition-opacity hover:opacity-90"
+            className="rounded-xl bg-[#5B7CFA] px-3 py-2 text-[11px] uppercase tracking-[0.14em] text-white transition-opacity hover:opacity-90"
           >
             Continue
           </button>
@@ -1150,7 +1150,7 @@ export default function MeetsClient({
   ) : null;
   const voiceAgentKeyPrompt = isVoiceAgentKeyPromptOpen ? (
     <div className="fixed inset-0 z-[145] flex items-center justify-center bg-black/75 px-4">
-      <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#111111] p-5 shadow-2xl">
+      <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#1a1b1f] p-5 shadow-2xl">
         <h2 className="text-sm font-semibold text-[#FEFCD9]">
           Voice Agent API Key
         </h2>
@@ -1186,7 +1186,7 @@ export default function MeetsClient({
           }}
         />
         {voiceAgentKeyPromptError ? (
-          <p className="mt-2 text-xs text-[#F95F4A]">{voiceAgentKeyPromptError}</p>
+          <p className="mt-2 text-xs text-[#5B7CFA]">{voiceAgentKeyPromptError}</p>
         ) : null}
         <div className="mt-4 flex items-center justify-end gap-2">
           <button
@@ -1199,7 +1199,7 @@ export default function MeetsClient({
           <button
             type="button"
             onClick={handleSubmitVoiceAgentKeyPrompt}
-            className="rounded-xl bg-[#F95F4A] px-3 py-2 text-[11px] uppercase tracking-[0.14em] text-white transition-opacity hover:opacity-90"
+            className="rounded-xl bg-[#5B7CFA] px-3 py-2 text-[11px] uppercase tracking-[0.14em] text-white transition-opacity hover:opacity-90"
           >
             Save & Start
           </button>
@@ -1229,7 +1229,7 @@ export default function MeetsClient({
   if (isMobile) {
     return renderWithApps(
       <div
-        className={`flex flex-col h-dvh w-full bg-[#0d0e0d] text-white ${fontClassName ?? ""}`}
+        className={`flex flex-col h-dvh w-full bg-[#0d0e10] text-white ${fontClassName ?? ""}`}
       >
         {isJoined && meetError && (
           <MeetsErrorBanner
@@ -1369,7 +1369,7 @@ export default function MeetsClient({
   // Desktop layout
   return renderWithApps(
     <div
-      className={`flex flex-col h-full w-full bg-[#1a1a1a] text-white ${fontClassName ?? ""}`}
+      className={`flex flex-col h-full w-full bg-[#1a1b1f] text-white ${fontClassName ?? ""}`}
     >
       <MeetsHeader
         isJoined={isJoined}

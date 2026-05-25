@@ -164,7 +164,7 @@ function ParticipantVideo({
       } ${speakerHighlight} ${
         handRaisedHighlight
       } ${
-        isAdmin && onAdminClick ? "cursor-pointer hover:border-[#F95F4A]/40" : ""
+        isAdmin && onAdminClick ? "cursor-pointer hover:border-[#5B7CFA]/40" : ""
       }`}
       style={{ fontFamily: "'PolySans Trial', sans-serif" }}
     >
@@ -180,9 +180,9 @@ function ParticipantVideo({
         }`}
       />
       {showPlaceholder && (
-        <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-[#1a1a1a] to-[#0d0e0d]">
+        <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-[#1a1b1f] to-[#0d0e10]">
           <div
-            className={`rounded-full bg-gradient-to-br from-[#F95F4A]/20 to-[#FF007A]/20 border border-[#FEFCD9]/20 flex items-center justify-center text-[#FEFCD9] font-bold ${
+            className={`rounded-full bg-gradient-to-br from-[#5B7CFA]/20 to-[#4DA8FF]/20 border border-[#FEFCD9]/20 flex items-center justify-center text-[#FEFCD9] font-bold ${
               compact ? "w-12 h-12 text-lg" : "w-20 h-20 text-3xl"
             }`}
           >
@@ -200,12 +200,12 @@ function ParticipantVideo({
             <Ghost
               className={`${
                 compact ? "w-10 h-10" : "w-16 h-16"
-              } text-[#FF007A] drop-shadow-[0_0_20px_rgba(255,0,122,0.5)]`}
+              } text-[#4DA8FF] drop-shadow-[0_0_20px_rgba(77, 168, 255,0.5)]`}
             />
             <span
               className={`${
                 compact ? "text-[9px]" : "text-xs"
-              } text-[#FF007A] bg-black/60 border border-[#FF007A]/30 px-3 py-1 rounded-full uppercase tracking-wider font-medium`}
+              } text-[#4DA8FF] bg-black/60 border border-[#4DA8FF]/30 px-3 py-1 rounded-full uppercase tracking-wider font-medium`}
             >
               Ghost
             </span>
@@ -243,10 +243,10 @@ function ParticipantVideo({
         >
           {displayLabel}
         </span>
-        {participant.isMuted && <MicOff className="w-3 h-3 text-[#F95F4A] shrink-0" />}
+        {participant.isMuted && <MicOff className="w-3 h-3 text-[#5B7CFA] shrink-0" />}
       </div>
       {isAdmin && onAdminClick && (
-        <div className="absolute top-3 right-3 p-2 bg-black/60 backdrop-blur-sm rounded-full border border-[#FEFCD9]/10 transition-all hover:border-[#F95F4A]/40">
+        <div className="absolute top-3 right-3 p-2 bg-black/60 backdrop-blur-sm rounded-full border border-[#FEFCD9]/10 transition-all hover:border-[#5B7CFA]/40">
           <Info className="w-4 h-4 text-[#FEFCD9]/70" />
         </div>
       )}

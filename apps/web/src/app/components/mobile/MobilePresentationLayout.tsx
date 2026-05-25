@@ -149,7 +149,7 @@ function MobilePresentationLayout({
   return (
     <div className="flex flex-col w-full h-full p-3 gap-3">
       {/* Presentation video - takes most space */}
-      <div className="flex-1 relative mobile-tile min-h-0 bg-[#0b0b0b]">
+      <div className="flex-1 relative mobile-tile min-h-0 bg-[#0d0e10]">
         <video
           ref={presentationVideoRef}
           autoPlay
@@ -169,7 +169,7 @@ function MobilePresentationLayout({
 
       {/* Participant thumbnails - fixed height strip */}
       <div className="relative h-24 shrink-0">
-        <div className="absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-[#060606] to-transparent z-10 pointer-events-none rounded-r-2xl" />
+        <div className="absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-[#060607] to-transparent z-10 pointer-events-none rounded-r-2xl" />
         <div className="h-full flex gap-3 overflow-x-scroll no-scrollbar snap-x snap-mandatory scroll-smooth pr-3">
         {/* Local video thumbnail */}
         <div className="relative w-24 h-24 shrink-0 mobile-tile snap-start">
@@ -181,8 +181,8 @@ function MobilePresentationLayout({
             className={`w-full h-full object-cover ${isCameraOff ? "hidden" : ""} ${isMirrorCamera ? "scale-x-[-1]" : ""}`}
           />
           {isCameraOff && (
-            <div className="absolute inset-0 flex items-center justify-center bg-[#0d0e0d]">
-              <div className="absolute inset-0 bg-gradient-to-br from-[#F95F4A]/15 to-[#FF007A]/10" />
+            <div className="absolute inset-0 flex items-center justify-center bg-[#0d0e10]">
+              <div className="absolute inset-0 bg-gradient-to-br from-[#5B7CFA]/15 to-[#4DA8FF]/10" />
               <div
                 className="relative w-10 h-10 rounded-full mobile-avatar flex items-center justify-center text-lg text-[#FEFCD9] font-bold"
                 style={{ fontFamily: "'PolySans Bulky Wide', sans-serif" }}
@@ -194,9 +194,9 @@ function MobilePresentationLayout({
           {isGhost && (
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none mobile-ghost-overlay">
               <div className="flex flex-col items-center gap-1">
-                <VenetianMask className="w-6 h-6 text-[#FF007A]" />
+                <VenetianMask className="w-6 h-6 text-[#4DA8FF]" />
                 <span
-                  className="mobile-ghost-badge rounded-full px-2 py-0.5 text-[8px] tracking-[0.2em] text-[#FF007A]"
+                  className="mobile-ghost-badge rounded-full px-2 py-0.5 text-[8px] tracking-[0.2em] text-[#4DA8FF]"
                   style={{ fontFamily: "'PolySans Mono', monospace" }}
                 >
                   GHOST
@@ -210,7 +210,7 @@ function MobilePresentationLayout({
           >
             <span className="mobile-name-pill px-1.5 py-0.5 text-[10px] text-[#FEFCD9] font-medium uppercase tracking-[0.18em] flex items-center gap-1 backdrop-blur-md">
               YOU
-              {isMuted && <MicOff className="w-2.5 h-2.5 text-[#F95F4A]" />}
+              {isMuted && <MicOff className="w-2.5 h-2.5 text-[#5B7CFA]" />}
             </span>
           </div>
         </div>
@@ -231,8 +231,8 @@ function MobilePresentationLayout({
                 isCameraOff={participant.isCameraOff}
               />
             ) : (
-              <div className="absolute inset-0 flex items-center justify-center bg-[#0d0e0d]">
-                <div className="absolute inset-0 bg-gradient-to-br from-[#F95F4A]/15 to-[#FF007A]/10" />
+              <div className="absolute inset-0 flex items-center justify-center bg-[#0d0e10]">
+                <div className="absolute inset-0 bg-gradient-to-br from-[#5B7CFA]/15 to-[#4DA8FF]/10" />
                 <div
                   className="relative w-10 h-10 rounded-full mobile-avatar flex items-center justify-center text-lg text-[#FEFCD9] font-bold"
                   style={{ fontFamily: "'PolySans Bulky Wide', sans-serif" }}
@@ -244,9 +244,9 @@ function MobilePresentationLayout({
             {participant.isGhost && (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none mobile-ghost-overlay">
                 <div className="flex flex-col items-center gap-1">
-                  <VenetianMask className="w-6 h-6 text-[#FF007A]" />
+                  <VenetianMask className="w-6 h-6 text-[#4DA8FF]" />
                   <span
-                    className="mobile-ghost-badge rounded-full px-2 py-0.5 text-[8px] tracking-[0.2em] text-[#FF007A]"
+                    className="mobile-ghost-badge rounded-full px-2 py-0.5 text-[8px] tracking-[0.2em] text-[#4DA8FF]"
                     style={{ fontFamily: "'PolySans Mono', monospace" }}
                   >
                     GHOST
@@ -260,7 +260,7 @@ function MobilePresentationLayout({
             >
               <span className="mobile-name-pill px-1.5 py-0.5 text-[10px] text-[#FEFCD9] font-medium uppercase tracking-[0.18em] truncate max-w-full flex items-center gap-1 backdrop-blur-md">
                 {truncateDisplayName(getDisplayName(participant.userId), 10)}
-                {participant.isMuted && <MicOff className="w-2.5 h-2.5 text-[#F95F4A]" />}
+                {participant.isMuted && <MicOff className="w-2.5 h-2.5 text-[#5B7CFA]" />}
               </span>
             </div>
             {/* Audio element for participant */}

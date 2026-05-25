@@ -28,7 +28,7 @@ export default function HostPromotionDialog({
         aria-modal="true"
         aria-label="Host promotion confirmation"
       >
-        <div className="relative overflow-hidden rounded-2xl border border-[#FEFCD9]/12 bg-[#0d0e0d]/95 p-5 shadow-2xl">
+        <div className="relative overflow-hidden rounded-2xl border border-[#FEFCD9]/12 bg-[#0d0e10]/95 p-5 shadow-2xl">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
               <p className="text-[10px] uppercase tracking-[0.28em] text-[#FEFCD9]/40">
@@ -66,7 +66,7 @@ export default function HostPromotionDialog({
               type="button"
               onClick={onConfirm}
               disabled={isSubmitting}
-              className="rounded-full border border-[#F95F4A]/45 bg-[#F95F4A]/20 px-4 py-2 text-xs uppercase tracking-[0.18em] text-[#FEFCD9] transition-all hover:border-[#F95F4A]/70 hover:bg-[#F95F4A]/35 disabled:cursor-not-allowed disabled:opacity-40"
+              className="rounded-full border border-[#5B7CFA]/45 bg-[#5B7CFA]/20 px-4 py-2 text-xs uppercase tracking-[0.18em] text-[#FEFCD9] transition-all hover:border-[#5B7CFA]/70 hover:bg-[#5B7CFA]/35 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {isSubmitting ? "Promoting..." : "Add Host"}
             </button>

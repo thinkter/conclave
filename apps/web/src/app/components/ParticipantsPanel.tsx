@@ -101,7 +101,7 @@ function ParticipantsPanel({
   const canManageHost = Boolean(isAdmin);
 
   const hostBulkButtonClass =
-    "flex-1 rounded-lg border border-[#FEFCD9]/15 bg-[#FEFCD9]/5 px-3 py-2 text-[13px] font-normal text-[#FEFCD9]/75 transition-all hover:border-[#F95F4A]/45 hover:bg-[#F95F4A]/10 hover:text-[#FEFCD9]";
+    "flex-1 rounded-lg border border-[#FEFCD9]/15 bg-[#FEFCD9]/5 px-3 py-2 text-[13px] font-normal text-[#FEFCD9]/75 transition-all hover:border-[#5B7CFA]/45 hover:bg-[#5B7CFA]/10 hover:text-[#FEFCD9]";
   const hostUserActionButtonClass =
     "inline-flex h-6 w-6 items-center justify-center rounded-md border border-[#FEFCD9]/15 bg-[#FEFCD9]/5 text-[#FEFCD9]/60 transition-colors";
 
@@ -204,14 +204,14 @@ function ParticipantsPanel({
 
   return (
     <div
-      className="fixed right-4 top-16 bottom-20 z-40 flex w-72 flex-col overflow-hidden rounded-xl border border-[#FEFCD9]/10 bg-[#0d0e0d]/95 shadow-2xl backdrop-blur-md"
+      className="fixed right-4 top-16 bottom-20 z-40 flex w-72 flex-col overflow-hidden rounded-xl border border-[#FEFCD9]/10 bg-[#0d0e10]/95 shadow-2xl backdrop-blur-md"
       style={{ fontFamily: "'PolySans Trial', sans-serif" }}
     >
       <div className="flex items-center justify-between border-b border-[#FEFCD9]/10 px-3 py-2.5">
         <div className="flex items-center gap-2 text-sm font-semibold text-[#FEFCD9]">
           <Users className="h-4 w-4 text-[#FEFCD9]/70" />
           <span>Participants</span>
-          <span className="text-[#F95F4A]">({displayParticipants.length})</span>
+          <span className="text-[#5B7CFA]">({displayParticipants.length})</span>
         </div>
         <button
           onClick={onClose}
@@ -267,17 +267,17 @@ function ParticipantsPanel({
           <button
             type="button"
             onClick={() => setIsPendingExpanded((prev) => !prev)}
-            className="flex w-full items-center justify-between px-3 py-2 transition-colors hover:bg-[#F95F4A]/5"
+            className="flex w-full items-center justify-between px-3 py-2 transition-colors hover:bg-[#5B7CFA]/5"
             aria-expanded={isPendingExpanded}
           >
-            <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-[#F95F4A]">
+            <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-[#5B7CFA]">
               Pending
-              <span className="rounded bg-[#F95F4A]/20 px-1.5 py-0.5 text-[9px] tabular-nums">
+              <span className="rounded bg-[#5B7CFA]/20 px-1.5 py-0.5 text-[9px] tabular-nums">
                 {pendingList.length}
               </span>
             </span>
             <ChevronDown
-              className={`h-3 w-3 text-[#F95F4A] transition-transform ${
+              className={`h-3 w-3 text-[#5B7CFA] transition-transform ${
                 isPendingExpanded ? "rotate-180" : ""
               }`}
             />
@@ -365,7 +365,7 @@ function ParticipantsPanel({
             <div key={participant.userId} className="space-y-1">
               <div
                 className={`flex items-center justify-between rounded-md px-2 py-1.5 transition-all cursor-pointer ${
-                  isMe ? "bg-[#F95F4A]/5" : "hover:bg-[#FEFCD9]/5"
+                  isMe ? "bg-[#5B7CFA]/5" : "hover:bg-[#FEFCD9]/5"
                 } ${isExpanded ? "bg-[#FEFCD9]/5" : ""}`}
                 role="button"
                 tabIndex={0}
@@ -381,7 +381,7 @@ function ParticipantsPanel({
               >
                 <div className="flex min-w-0 flex-1 items-center gap-1.5">
                   <span className="truncate text-sm text-[#FEFCD9]/85" title={userEmail}>
-                    {displayName} {isMe && <span className="text-[#F95F4A]/60">(you)</span>}
+                    {displayName} {isMe && <span className="text-[#5B7CFA]/60">(you)</span>}
                   </span>
                   {isHost && (
                     <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-amber-300/30 bg-amber-400/10 px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-amber-200">
@@ -524,7 +524,7 @@ function ParticipantsPanel({
                           <button
                             type="button"
                             onClick={() => handleCloseProducer(producerId)}
-                            className="rounded-md border border-[#FEFCD9]/15 bg-[#FEFCD9]/5 px-2 py-1 text-[#FEFCD9]/75 transition hover:border-[#F95F4A]/40 hover:text-[#FEFCD9]"
+                            className="rounded-md border border-[#FEFCD9]/15 bg-[#FEFCD9]/5 px-2 py-1 text-[#FEFCD9]/75 transition hover:border-[#5B7CFA]/40 hover:text-[#FEFCD9]"
                           >
                             Stop mic
                           </button>
@@ -536,7 +536,7 @@ function ParticipantsPanel({
                           <button
                             type="button"
                             onClick={() => handleCloseProducer(producerId)}
-                            className="rounded-md border border-[#FEFCD9]/15 bg-[#FEFCD9]/5 px-2 py-1 text-[#FEFCD9]/75 transition hover:border-[#F95F4A]/40 hover:text-[#FEFCD9]"
+                            className="rounded-md border border-[#FEFCD9]/15 bg-[#FEFCD9]/5 px-2 py-1 text-[#FEFCD9]/75 transition hover:border-[#5B7CFA]/40 hover:text-[#FEFCD9]"
                           >
                             Stop video
                           </button>
@@ -548,7 +548,7 @@ function ParticipantsPanel({
                           <button
                             type="button"
                             onClick={() => handleCloseProducer(producerId)}
-                            className="rounded-md border border-[#FEFCD9]/15 bg-[#FEFCD9]/5 px-2 py-1 text-[#FEFCD9]/75 transition hover:border-[#F95F4A]/40 hover:text-[#FEFCD9]"
+                            className="rounded-md border border-[#FEFCD9]/15 bg-[#FEFCD9]/5 px-2 py-1 text-[#FEFCD9]/75 transition hover:border-[#5B7CFA]/40 hover:text-[#FEFCD9]"
                           >
                             Stop share
                           </button>
@@ -560,7 +560,7 @@ function ParticipantsPanel({
                           <button
                             type="button"
                             onClick={() => handleCloseProducer(producerId)}
-                            className="rounded-md border border-[#FEFCD9]/15 bg-[#FEFCD9]/5 px-2 py-1 text-[#FEFCD9]/75 transition hover:border-[#F95F4A]/40 hover:text-[#FEFCD9]"
+                            className="rounded-md border border-[#FEFCD9]/15 bg-[#FEFCD9]/5 px-2 py-1 text-[#FEFCD9]/75 transition hover:border-[#5B7CFA]/40 hover:text-[#FEFCD9]"
                           >
                             Stop share audio
                           </button>

@@ -470,7 +470,7 @@ function JoinScreen({
   }, [normalizedRoomId, onRoomIdChange, roomId]);
 
   return (
-    <div className="flex-1 flex flex-col relative overflow-hidden bg-gradient-to-b from-[#101010] via-[#0d0e0d] to-[#0b0c0c]">
+    <div className="flex-1 flex flex-col relative overflow-hidden bg-gradient-to-b from-[#101010] via-[#0d0e10] to-[#0b0c0c]">
       <div className="absolute inset-0 acm-bg-radial pointer-events-none" />
       <div className="absolute inset-0 acm-bg-dot-grid pointer-events-none" />
 
@@ -487,7 +487,7 @@ function JoinScreen({
 
               <div className="relative inline-block">
                 <span
-                  className="absolute -left-8 top-1/2 -translate-y-1/2 text-[#F95F4A]/40 text-4xl"
+                  className="absolute -left-8 top-1/2 -translate-y-1/2 text-[#5B7CFA]/40 text-4xl"
                   style={{ fontFamily: "'PolySans Mono', monospace" }}
                 >
                   [
@@ -499,7 +499,7 @@ function JoinScreen({
                   c0nclav3
                 </h1>
                 <span
-                  className="absolute -right-8 top-1/2 -translate-y-1/2 text-[#F95F4A]/40 text-4xl"
+                  className="absolute -right-8 top-1/2 -translate-y-1/2 text-[#5B7CFA]/40 text-4xl"
                   style={{ fontFamily: "'PolySans Mono', monospace" }}
                 >
                   ]
@@ -516,7 +516,7 @@ function JoinScreen({
 
             <button
               onClick={() => setPhase("auth")}
-                className="group flex items-center gap-3 px-8 py-3 bg-[#F95F4A] text-white text-xs uppercase tracking-widest rounded-lg hover:bg-[#e8553f] transition-all hover:gap-4"
+                className="group flex items-center gap-3 px-8 py-3 bg-[#5B7CFA] text-white text-xs uppercase tracking-widest rounded-lg hover:bg-[#4f6fe8] transition-all hover:gap-4"
                 style={{ fontFamily: "'PolySans Mono', monospace" }}
               >
                 <span>LET'S GO</span>
@@ -554,7 +554,7 @@ function JoinScreen({
                 <button
                   onClick={() => handleSocialSignIn("google")}
                   disabled={isSigningIn}
-                  className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-[#1a1a1a] border border-[#FEFCD9]/10 text-[#FEFCD9] rounded-lg hover:border-[#FEFCD9]/25 hover:bg-[#1a1a1a]/80 transition-all disabled:opacity-50"
+                  className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-[#1a1b1f] border border-[#FEFCD9]/10 text-[#FEFCD9] rounded-lg hover:border-[#FEFCD9]/25 hover:bg-[#1a1b1f]/80 transition-all disabled:opacity-50"
                 >
                   {signInProvider === "google" ? (
                     <Loader2 className="w-5 h-5 animate-spin text-[#FEFCD9]" />
@@ -573,7 +573,7 @@ function JoinScreen({
                 <button
                   onClick={() => handleSocialSignIn("apple")}
                   disabled={isSigningIn}
-                  className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-[#1a1a1a] border border-[#FEFCD9]/10 text-[#FEFCD9] rounded-lg hover:border-[#FEFCD9]/25 hover:bg-[#1a1a1a]/80 transition-all disabled:opacity-50"
+                  className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-[#1a1b1f] border border-[#FEFCD9]/10 text-[#FEFCD9] rounded-lg hover:border-[#FEFCD9]/25 hover:bg-[#1a1b1f]/80 transition-all disabled:opacity-50"
                 >
                   {signInProvider === "apple" ? (
                     <Loader2 className="w-5 h-5 animate-spin text-[#FEFCD9]" />
@@ -592,7 +592,7 @@ function JoinScreen({
                 <button
                   onClick={() => handleSocialSignIn("roblox")}
                   disabled={isSigningIn}
-                  className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-[#1a1a1a] border border-[#FEFCD9]/10 text-[#FEFCD9] rounded-lg hover:border-[#FEFCD9]/25 hover:bg-[#1a1a1a]/80 transition-all disabled:opacity-50"
+                  className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-[#1a1b1f] border border-[#FEFCD9]/10 text-[#FEFCD9] rounded-lg hover:border-[#FEFCD9]/25 hover:bg-[#1a1b1f]/80 transition-all disabled:opacity-50"
                 >
                   {signInProvider === "roblox" ? (
                     <Loader2 className="w-5 h-5 animate-spin text-[#FEFCD9]" />
@@ -611,7 +611,7 @@ function JoinScreen({
                 <button
                   onClick={() => handleSocialSignIn("vercel")}
                   disabled={isSigningIn}
-                  className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-[#1a1a1a] border border-[#FEFCD9]/10 text-[#FEFCD9] rounded-lg hover:border-[#FEFCD9]/25 hover:bg-[#1a1a1a]/80 transition-all disabled:opacity-50"
+                  className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-[#1a1b1f] border border-[#FEFCD9]/10 text-[#FEFCD9] rounded-lg hover:border-[#FEFCD9]/25 hover:bg-[#1a1b1f]/80 transition-all disabled:opacity-50"
                 >
                   {signInProvider === "vercel" ? (
                     <Loader2 className="w-5 h-5 animate-spin text-[#FEFCD9]" />
@@ -648,14 +648,14 @@ function JoinScreen({
                   value={guestName}
                   onChange={(e) => setGuestName(e.target.value)}
                   placeholder="Enter your name"
-                  className="w-full px-3 py-2.5 bg-[#1a1a1a] border border-[#FEFCD9]/10 rounded-lg text-sm text-[#FEFCD9] placeholder:text-[#FEFCD9]/25 focus:border-[#F95F4A]/50 focus:outline-none mb-3"
+                  className="w-full px-3 py-2.5 bg-[#1a1b1f] border border-[#FEFCD9]/10 rounded-lg text-sm text-[#FEFCD9] placeholder:text-[#FEFCD9]/25 focus:border-[#5B7CFA]/50 focus:outline-none mb-3"
                   style={{ fontFamily: "'PolySans Trial', sans-serif" }}
                   onKeyDown={(e) => { if (e.key === "Enter" && guestName.trim()) handleGuest(); }}
                 />
                 <button
                   onClick={handleGuest}
                   disabled={!guestName.trim()}
-                  className="w-full px-4 py-2.5 bg-[#F95F4A] text-white text-sm rounded-lg hover:bg-[#e8553f] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                  className="w-full px-4 py-2.5 bg-[#5B7CFA] text-white text-sm rounded-lg hover:bg-[#4f6fe8] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                   style={{ fontFamily: "'PolySans Trial', sans-serif" }}
                 >
                   Continue as Guest
@@ -688,12 +688,12 @@ function JoinScreen({
                     isCameraOff={!isCameraOn}
                     isMirrorCamera
                   />
-                <div className="relative aspect-video lg:aspect-[16/10] bg-[#0d0e0d] rounded-2xl overflow-hidden border border-[#FEFCD9]/10 shadow-2xl">
+                <div className="relative aspect-video lg:aspect-[16/10] bg-[#0d0e10] rounded-2xl overflow-hidden border border-[#FEFCD9]/10 shadow-2xl">
                   {isCameraOn && localStream ? (
                     <video ref={videoRef} autoPlay muted playsInline className="w-full h-full object-cover scale-x-[-1]" />
                   ) : (
-                    <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-[#1a1a1a] to-[#0d0e0d]">
-                      <div className="w-20 h-20 rounded-full bg-gradient-to-br from-[#F95F4A]/20 to-[#FF007A]/20 border border-[#FEFCD9]/20 flex items-center justify-center">
+                    <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-[#1a1b1f] to-[#0d0e10]">
+                      <div className="w-20 h-20 rounded-full bg-gradient-to-br from-[#5B7CFA]/20 to-[#4DA8FF]/20 border border-[#FEFCD9]/20 flex items-center justify-center">
                         <span className="text-3xl text-[#FEFCD9] font-bold">{userEmail[0]?.toUpperCase() || "?"}</span>
                       </div>
                     </div>
@@ -710,7 +710,7 @@ function JoinScreen({
                       onClick={() => setIsFilterMenuOpen((prev) => !prev)}
                       className={`h-9 px-3 rounded-full hidden md:flex items-center justify-center gap-1.5 transition-all ${
                         isFilterMenuOpen || backgroundEffect !== "none"
-                          ? "bg-[#F95F4A] text-white"
+                          ? "bg-[#5B7CFA] text-white"
                           : "text-[#FEFCD9]/80 hover:bg-white/10"
                       }`}
                       style={{ fontFamily: "'PolySans Mono', monospace" }}
@@ -736,7 +736,7 @@ function JoinScreen({
                         <button
                           type="button"
                           onClick={handleOpenDeleteAccount}
-                          className="shrink-0 h-8 w-8 flex items-center justify-center bg-black/50 backdrop-blur-sm rounded-full text-[#F95F4A] hover:bg-black/70"
+                          className="shrink-0 h-8 w-8 flex items-center justify-center bg-black/50 backdrop-blur-sm rounded-full text-[#5B7CFA] hover:bg-black/70"
                           aria-label="Delete account"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -764,7 +764,7 @@ function JoinScreen({
                   <div className="hidden md:flex items-center gap-2 bg-black/40 border border-[#FEFCD9]/10 rounded-full px-3 py-1 text-[#FEFCD9]/70">
                     <span
                       className={`w-1.5 h-1.5 rounded-full ${
-                        isMicOn ? "bg-emerald-400" : "bg-[#F95F4A]"
+                        isMicOn ? "bg-emerald-400" : "bg-[#5B7CFA]"
                       }`}
                     />
                     Mic {isMicOn ? "On" : "Off"}
@@ -772,7 +772,7 @@ function JoinScreen({
                   <div className="hidden md:flex items-center gap-2 bg-black/40 border border-[#FEFCD9]/10 rounded-full px-3 py-1 text-[#FEFCD9]/70">
                     <span
                       className={`w-1.5 h-1.5 rounded-full ${
-                        isCameraOn ? "bg-emerald-400" : "bg-[#F95F4A]"
+                        isCameraOn ? "bg-emerald-400" : "bg-[#5B7CFA]"
                       }`}
                     />
                     Camera {isCameraOn ? "On" : "Off"}
@@ -793,7 +793,7 @@ function JoinScreen({
                         <button
                           type="button"
                           onClick={onTestSpeaker}
-                          className="flex items-center gap-2 bg-[#1a1a1a] border border-[#FEFCD9]/10 rounded-full px-3 py-1 text-[#FEFCD9]/70 hover:text-[#FEFCD9] hover:border-[#FEFCD9]/30 transition-colors"
+                          className="flex items-center gap-2 bg-[#1a1b1f] border border-[#FEFCD9]/10 rounded-full px-3 py-1 text-[#FEFCD9]/70 hover:text-[#FEFCD9] hover:border-[#FEFCD9]/30 transition-colors"
                         >
                           Test speaker
                         </button>
@@ -807,13 +807,13 @@ function JoinScreen({
               <div className="w-full lg:w-auto">
                 <div className="flex flex-col rounded-2xl border border-[#FEFCD9]/12 bg-[#181818]/85 backdrop-blur-sm p-5 shadow-[0_20px_45px_rgba(0,0,0,0.35)]">
                 {!isRoutedRoom && (
-                  <div className="flex mb-6 bg-[#1a1a1a] rounded-lg p-1">
+                  <div className="flex mb-6 bg-[#1a1b1f] rounded-lg p-1">
                     <button
                       onClick={() => {
                         setActiveTab("new");
                         onIsAdminChange(true);
                       }}
-                      className={`flex-1 py-2.5 text-xs uppercase tracking-wider rounded-md transition-all ${activeTab === "new" ? "bg-[#F95F4A] text-white" : "text-[#FEFCD9]/50 hover:text-[#FEFCD9]"}`}
+                      className={`flex-1 py-2.5 text-xs uppercase tracking-wider rounded-md transition-all ${activeTab === "new" ? "bg-[#5B7CFA] text-white" : "text-[#FEFCD9]/50 hover:text-[#FEFCD9]"}`}
                       style={{ fontFamily: "'PolySans Mono', monospace" }}
                     >
                       New Meeting
@@ -823,7 +823,7 @@ function JoinScreen({
                         setActiveTab("join");
                         onIsAdminChange(false);
                       }}
-                      className={`flex-1 py-2.5 text-xs uppercase tracking-wider rounded-md transition-all ${activeTab === "join" ? "bg-[#F95F4A] text-white" : "text-[#FEFCD9]/50 hover:text-[#FEFCD9]"}`}
+                      className={`flex-1 py-2.5 text-xs uppercase tracking-wider rounded-md transition-all ${activeTab === "join" ? "bg-[#5B7CFA] text-white" : "text-[#FEFCD9]/50 hover:text-[#FEFCD9]"}`}
                       style={{ fontFamily: "'PolySans Mono', monospace" }}
                     >
                       Join
@@ -846,17 +846,17 @@ function JoinScreen({
                             placeholder="Your name"
                             maxLength={40}
                             disabled={isLoading}
-                            className="w-full px-3 py-2.5 bg-[#1a1a1a] border border-[#FEFCD9]/10 rounded-lg text-sm text-[#FEFCD9] placeholder:text-[#FEFCD9]/30 focus:border-[#F95F4A]/50 focus:outline-none"
+                            className="w-full px-3 py-2.5 bg-[#1a1b1f] border border-[#FEFCD9]/10 rounded-lg text-sm text-[#FEFCD9] placeholder:text-[#FEFCD9]/30 focus:border-[#5B7CFA]/50 focus:outline-none"
                           />
                         </div>
                         {/* <button
                       onClick={() => onGhostModeChange(!isGhostMode)}
                       disabled={isLoading}
-                      className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg transition-all text-sm ${isGhostMode ? "bg-[#FF007A]/15 border border-[#FF007A]/30" : "bg-[#1a1a1a] border border-[#FEFCD9]/10"}`}
+                      className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg transition-all text-sm ${isGhostMode ? "bg-[#4DA8FF]/15 border border-[#4DA8FF]/30" : "bg-[#1a1b1f] border border-[#FEFCD9]/10"}`}
                     >
-                      <Ghost className={`w-4 h-4 ${isGhostMode ? "text-[#FF007A]" : "text-[#FEFCD9]/40"}`} />
+                      <Ghost className={`w-4 h-4 ${isGhostMode ? "text-[#4DA8FF]" : "text-[#FEFCD9]/40"}`} />
                       <span className="flex-1 text-left text-[#FEFCD9]/70">Ghost Mode</span>
-                      <div className={`w-8 h-4.5 rounded-full relative ${isGhostMode ? "bg-[#FF007A]" : "bg-[#FEFCD9]/15"}`}>
+                      <div className={`w-8 h-4.5 rounded-full relative ${isGhostMode ? "bg-[#4DA8FF]" : "bg-[#FEFCD9]/15"}`}>
                         <div className={`absolute top-0.5 w-3.5 h-3.5 rounded-full bg-white transition-all ${isGhostMode ? "left-4" : "left-0.5"}`} />
                       </div>
                     </button> */}
@@ -865,7 +865,7 @@ function JoinScreen({
                     <button
                       onClick={handleCreateRoom}
                       disabled={isLoading}
-                      className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-[#F95F4A] text-white rounded-lg hover:bg-[#e8553f] transition-colors disabled:opacity-50"
+                      className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-[#5B7CFA] text-white rounded-lg hover:bg-[#4f6fe8] transition-colors disabled:opacity-50"
                     >
                       {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
                       <span className="text-sm" style={{ fontFamily: "'PolySans Trial', sans-serif" }}>Start Meeting</span>
@@ -895,7 +895,7 @@ function JoinScreen({
                           autoCapitalize="none"
                           autoCorrect="off"
                           spellCheck={false}
-                          className="relative w-full px-3 py-2.5 bg-[#1a1a1a] border border-[#FEFCD9]/10 rounded-lg text-sm text-white placeholder:text-[#FEFCD9]/30 focus:border-[#F95F4A]/50 focus:outline-none z-10"
+                          className="relative w-full px-3 py-2.5 bg-[#1a1b1f] border border-[#FEFCD9]/10 rounded-lg text-sm text-white placeholder:text-[#FEFCD9]/30 focus:border-[#5B7CFA]/50 focus:outline-none z-10"
                           onKeyDown={(e) => {
                             if (e.key === "Enter" && canJoin) handleJoin();
                             if (e.key === "Tab" && suggestionSuffix) {
@@ -936,14 +936,14 @@ function JoinScreen({
                           placeholder="Your name"
                           maxLength={40}
                           disabled={isLoading}
-                          className="w-full px-3 py-2.5 bg-[#1a1a1a] border border-[#FEFCD9]/10 rounded-lg text-sm text-[#FEFCD9] placeholder:text-[#FEFCD9]/30 focus:border-[#F95F4A]/50 focus:outline-none"
+                          className="w-full px-3 py-2.5 bg-[#1a1b1f] border border-[#FEFCD9]/10 rounded-lg text-sm text-[#FEFCD9] placeholder:text-[#FEFCD9]/30 focus:border-[#5B7CFA]/50 focus:outline-none"
                         />
                       </div>
                     )}
                     <button
                       onClick={handleJoin}
                       disabled={!canJoin || isLoading}
-                      className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-[#F95F4A] text-white rounded-lg hover:bg-[#e8553f] transition-colors disabled:opacity-30"
+                      className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-[#5B7CFA] text-white rounded-lg hover:bg-[#4f6fe8] transition-colors disabled:opacity-30"
                     >
                       {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
                       <span className="text-sm" style={{ fontFamily: "'PolySans Trial', sans-serif" }}>Join Meeting</span>
@@ -952,8 +952,8 @@ function JoinScreen({
                 )}
 
                 {showPermissionHint && (
-                  <div className="mt-4 flex items-center gap-2 px-3 py-2 rounded-lg bg-[#F95F4A]/10 border border-[#F95F4A]/20 text-xs text-[#FEFCD9]/70 animate-slide-up">
-                    <AlertCircle className="w-3.5 h-3.5 text-[#F95F4A]" />
+                  <div className="mt-4 flex items-center gap-2 px-3 py-2 rounded-lg bg-[#5B7CFA]/10 border border-[#5B7CFA]/20 text-xs text-[#FEFCD9]/70 animate-slide-up">
+                    <AlertCircle className="w-3.5 h-3.5 text-[#5B7CFA]" />
                     <span>Please allow camera and microphone access to join</span>
                   </div>
                 )}
@@ -985,7 +985,7 @@ function JoinScreen({
         </div>
 
       {/* {!isSessionLoading && phase === "join" && isAdmin && rooms.length > 0 && (
-        <div className="border-t border-[#FEFCD9]/5 bg-[#0d0e0d]/50 px-6 py-4 relative z-10">
+        <div className="border-t border-[#FEFCD9]/5 bg-[#0d0e10]/50 px-6 py-4 relative z-10">
           <div className="max-w-4xl mx-auto">
             <div className="flex items-center justify-between mb-3">
               <span className="text-[10px] uppercase tracking-wider text-[#FEFCD9]/40" style={{ fontFamily: "'PolySans Mono', monospace" }}>
@@ -1001,7 +1001,7 @@ function JoinScreen({
                   key={room.id}
                   onClick={() => onJoinRoom(room.id)}
                   disabled={isLoading}
-                  className="flex-shrink-0 flex items-center gap-3 px-4 py-2.5 bg-[#1a1a1a] hover:bg-[#1a1a1a]/80 border border-[#FEFCD9]/5 hover:border-[#F95F4A]/30 rounded-lg transition-all group disabled:opacity-50"
+                  className="flex-shrink-0 flex items-center gap-3 px-4 py-2.5 bg-[#1a1b1f] hover:bg-[#1a1b1f]/80 border border-[#FEFCD9]/5 hover:border-[#5B7CFA]/30 rounded-lg transition-all group disabled:opacity-50"
                 >
                   <div className="text-left">
                     <div className="text-sm text-[#FEFCD9] truncate max-w-[150px]">{room.id}</div>
@@ -1009,7 +1009,7 @@ function JoinScreen({
                       <Users className="w-3 h-3" /> {room.userCount}
                     </div>
                   </div>
-                  <ArrowRight className="w-4 h-4 text-[#FEFCD9]/20 group-hover:text-[#F95F4A] transition-colors" />
+                  <ArrowRight className="w-4 h-4 text-[#FEFCD9]/20 group-hover:text-[#5B7CFA] transition-colors" />
                 </button>
               ))}
             </div>
@@ -1018,9 +1018,9 @@ function JoinScreen({
       )} */}
 
       {isLoading && (
-        <div className="absolute inset-0 bg-[#0d0e0d]/80 flex items-center justify-center z-50">
+        <div className="absolute inset-0 bg-[#0d0e10]/80 flex items-center justify-center z-50">
           <div className="flex flex-col items-center gap-3">
-            <Loader2 className="w-8 h-8 text-[#F95F4A] animate-spin" />
+            <Loader2 className="w-8 h-8 text-[#5B7CFA] animate-spin" />
             <span className="text-sm text-[#FEFCD9]/60" style={{ fontFamily: "'PolySans Mono', monospace" }}>
               {connectionState === "reconnecting" ? "Reconnecting..." : "Joining..."}
             </span>

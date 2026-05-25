@@ -107,8 +107,8 @@ export default function DeleteAccountClient() {
   };
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#060606] px-4 py-10 text-[#fefcd9]">
-      <div className="w-full max-w-sm rounded-3xl border border-white/10 bg-[#111111] p-6 shadow-2xl shadow-black/40">
+    <main className="flex min-h-screen items-center justify-center bg-[#060607] px-4 py-10 text-[#FEFCD9]">
+      <div className="w-full max-w-sm rounded-3xl border border-white/10 bg-[#1a1b1f] p-6 shadow-2xl shadow-black/40">
         <h1 className="text-2xl font-semibold">Delete account</h1>
 
         {notice ? (
@@ -118,14 +118,14 @@ export default function DeleteAccountClient() {
         ) : null}
 
         {error ? (
-          <div className="mt-4 rounded-2xl border border-[#f95f4a]/30 bg-[#f95f4a]/10 px-4 py-3 text-sm text-[#ffd2cc]">
+          <div className="mt-4 rounded-2xl border border-[#5B7CFA]/30 bg-[#5B7CFA]/10 px-4 py-3 text-sm text-[#ffd2cc]">
             {error}
           </div>
         ) : null}
 
         {isSignedIn ? (
           <div className="mt-5 space-y-4">
-            <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-[#fefcd9]/80">
+            <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-[#FEFCD9]/80">
               {signedInEmail || "Current account"}
             </div>
 
@@ -133,7 +133,7 @@ export default function DeleteAccountClient() {
               type="button"
               onClick={handleDeleteAccount}
               disabled={isDeleting}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#f95f4a] px-5 py-3 text-sm font-medium text-white transition hover:bg-[#ff755e] disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#5B7CFA] px-5 py-3 text-sm font-medium text-white transition hover:bg-[#4f6fe8] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               {isDeleting ? "Deleting..." : "Delete account"}
@@ -145,7 +145,7 @@ export default function DeleteAccountClient() {
               type="button"
               onClick={() => handleSignIn("google")}
               disabled={activeProvider !== null}
-              className="inline-flex w-full items-center justify-center gap-3 rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm font-medium text-[#fefcd9] transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex w-full items-center justify-center gap-3 rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm font-medium text-[#FEFCD9] transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {activeProvider === "google" ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -159,7 +159,7 @@ export default function DeleteAccountClient() {
               type="button"
               onClick={() => handleSignIn("apple")}
               disabled={activeProvider !== null}
-              className="inline-flex w-full items-center justify-center gap-3 rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm font-medium text-[#fefcd9] transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex w-full items-center justify-center gap-3 rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm font-medium text-[#FEFCD9] transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {activeProvider === "apple" ? (
                 <Loader2 className="h-4 w-4 animate-spin" />

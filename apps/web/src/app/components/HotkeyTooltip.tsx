@@ -19,7 +19,7 @@ export default function HotkeyTooltip({
       {children}
       <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 z-50 mb-1.5 flex flex-col items-center opacity-0 transition-opacity duration-150 group-hover/tooltip:opacity-100">
         <div
-          className="flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-[#FEFCD9]/10 bg-[#0d0e0d]/95 px-2.5 py-1.5 shadow-xl backdrop-blur-sm"
+          className="flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-[#FEFCD9]/10 bg-[#0d0e10]/95 px-2.5 py-1.5 shadow-xl backdrop-blur-sm"
           style={{ fontFamily: "'PolySans Mono', monospace" }}
         >
           <span className="text-[11px] text-[#FEFCD9]/60">{label}</span>
@@ -31,7 +31,7 @@ export default function HotkeyTooltip({
         </div>
         {/* downward arrow */}
         <div className="relative h-[7px] w-[14px] overflow-hidden">
-          <div className="absolute left-1/2 top-0 h-[10px] w-[10px] -translate-x-1/2 rotate-45 border-b border-r border-[#FEFCD9]/10 bg-[#0d0e0d]/95" />
+          <div className="absolute left-1/2 top-0 h-[10px] w-[10px] -translate-x-1/2 rotate-45 border-b border-r border-[#FEFCD9]/10 bg-[#0d0e10]/95" />
         </div>
       </div>
     </div>

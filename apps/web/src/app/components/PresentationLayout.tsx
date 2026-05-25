@@ -136,7 +136,7 @@ function PresentationLayout({
 
   return (
     <div className="flex flex-1 gap-4 overflow-hidden mt-5">
-      <div className="flex-1 bg-[#252525] border border-white/5 rounded-lg overflow-hidden relative flex items-center justify-center">
+      <div className="flex-1 bg-[#25272d] border border-white/5 rounded-lg overflow-hidden relative flex items-center justify-center">
         <video
           ref={presentationVideoRef}
           autoPlay
@@ -154,7 +154,7 @@ function PresentationLayout({
 
       <div className="w-64 flex flex-col gap-3 overflow-y-auto overflow-x-visible px-1">
         <div
-          className={`relative bg-[#252525] border border-white/5 rounded-lg overflow-hidden h-36 shrink-0 transition-all duration-200 ${getSpeakerHighlightClasses(
+          className={`relative bg-[#25272d] border border-white/5 rounded-lg overflow-hidden h-36 shrink-0 transition-all duration-200 ${getSpeakerHighlightClasses(
             isLocalActiveSpeaker
           )}`}
         >
@@ -167,8 +167,8 @@ function PresentationLayout({
               } ${isMirrorCamera ? "scale-x-[-1]" : ""}`}
           />
           {isCameraOff && (
-            <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-[#1a1a1a] to-[#0d0e0d]">
-              <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#F95F4A]/20 to-[#FF007A]/20 border border-[#FEFCD9]/20 flex items-center justify-center text-lg text-[#FEFCD9] font-bold">
+            <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-[#1a1b1f] to-[#0d0e10]">
+              <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#5B7CFA]/20 to-[#4DA8FF]/20 border border-[#FEFCD9]/20 flex items-center justify-center text-lg text-[#FEFCD9] font-bold">
                 {userEmail[0]?.toUpperCase() || "?"}
               </div>
             </div>
@@ -176,7 +176,7 @@ function PresentationLayout({
           {isGhost && (
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
               <div className="flex flex-col items-center gap-1.5">
-                <Ghost className="w-12 h-12 text-blue-300 drop-shadow-[0_0_18px_rgba(59,130,246,0.45)]" />
+                <Ghost className="w-12 h-12 text-blue-300 drop-shadow-[0_0_18px_rgba(91, 124, 250,0.45)]" />
                 <span className="text-[10px] text-blue-200/90 bg-black/60 border border-blue-400/30 px-2 py-0.5 rounded-full">
                   Ghost
                 </span>
@@ -197,7 +197,7 @@ function PresentationLayout({
           >
             <span className="font-medium text-[#FEFCD9] uppercase tracking-wide">You</span>
             {isMuted ? (
-              <MicOff className="w-3 h-3 text-[#F95F4A]" />
+              <MicOff className="w-3 h-3 text-[#5B7CFA]" />
             ) : (
               <Mic className="w-3 h-3 text-emerald-300" />
             )}
