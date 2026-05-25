@@ -44,6 +44,11 @@ const loadRnnoiseWasm = () => {
   return rnnoiseWasmPromise;
 };
 
+const isNonTransientRnnoiseError = (error: unknown) =>
+  typeof DOMException !== "undefined" &&
+  error instanceof DOMException &&
+  (error.name === "NotSupportedError" || error.name === "InvalidStateError");
+
 const getAudioContextConstructor = (): AudioContextConstructor | null => {
   if (typeof window === "undefined") return null;
 
@@ -111,10 +116,12 @@ const createRnnoiseResources = async (
   const partialResources: Partial<RnnoiseResources> = { audioContext };
 
   try {
-    await audioContext.audioWorklet.addModule(RNNOISE_WORKLET_URL);
-    const [{ RnnoiseWorkletNode }, wasmBinary] = await Promise.all([
-      loadWebNoiseSuppressor(),
-      loadRnnoiseWasm(),
+    const [, [{ RnnoiseWorkletNode }, wasmBinary]] = await Promise.all([
+      audioContext.audioWorklet.addModule(RNNOISE_WORKLET_URL),
+      Promise.all([
+        loadWebNoiseSuppressor(),
+        loadRnnoiseWasm(),
+      ]),
     ]);
 
     const source = audioContext.createMediaStreamSource(
@@ -184,7 +191,11 @@ export const createPublishedAudioSession = async (
       },
     };
   } catch (error) {
-    rnnoiseUnavailable = true;
+    if (isNonTransientRnnoiseError(error)) {
+      rnnoiseUnavailable = true;
+    }
+    webNoiseSuppressorPromise = null;
+    rnnoiseWasmPromise = null;
     console.warn(
       "[Meets] RNNoise setup failed; falling back to browser audio processing:",
       error,
