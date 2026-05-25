@@ -23,6 +23,7 @@ import {
 } from "../admin/controlPlane.js";
 import { forceCloseRoom, markRoomEnded } from "../rooms.js";
 import type { SfuState } from "../state.js";
+import { renderPrometheusMetrics } from "./metrics.js";
 
 export type CreateSfuAppOptions = {
   state: SfuState;
@@ -443,6 +444,15 @@ export const createSfuApp = ({
       rooms: state.rooms.size,
       uptime: process.uptime(),
     });
+  });
+
+  app.get("/metrics", (req, res) => {
+    if (!hasValidSecret(req, config.sfuSecret)) {
+      return res.status(401).send("Unauthorized\n");
+    }
+
+    res.setHeader("content-type", "text/plain; version=0.0.4; charset=utf-8");
+    return res.send(renderPrometheusMetrics(state, config));
   });
 
   app.post("/drain", async (req, res) => {

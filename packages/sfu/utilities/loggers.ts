@@ -58,59 +58,75 @@ const resolveLogLevel = (): LogLevel => {
 };
 
 const activeLogLevel = resolveLogLevel();
+const logFormat = (process.env.SFU_LOG_FORMAT || "").toLowerCase();
+const useJsonLogs = logFormat === "json";
 
 const shouldLog = (level: LogLevel) => {
   return levelOrder[level] <= levelOrder[activeLogLevel];
 };
 
+const writeLog = (
+  writer: (...data: any[]) => void,
+  level: LogLevel | "success",
+  message: string,
+  args: any[],
+) => {
+  if (useJsonLogs) {
+    writer(
+      JSON.stringify({
+        timestamp: new Date().toISOString(),
+        service: "sfu",
+        instanceId: process.env.SFU_INSTANCE_ID || null,
+        version: process.env.SFU_VERSION || null,
+        level,
+        message,
+        ...(args.length > 0 ? { details: args } : {}),
+      }),
+    );
+    return;
+  }
+
+  const color =
+    level === "error"
+      ? colors.fg.red
+      : level === "warn"
+        ? colors.fg.yellow
+        : level === "success"
+          ? colors.fg.green
+          : level === "debug"
+            ? colors.fg.gray
+            : colors.fg.cyan;
+  const label = level === "success" ? "SUCCESS" : level.toUpperCase();
+
+  writer(
+    `${colors.dim}${getTimestamp()}${colors.reset} ${PREFIX} ${color}${label}${colors.reset}  ${message}`,
+    ...args,
+  );
+};
+
 export const Logger = {
   info: (message: string, ...args: any[]) => {
     if (!shouldLog("info")) return;
-    console.log(
-      `${colors.dim}${getTimestamp()}${colors.reset} ${PREFIX} ${
-        colors.fg.cyan
-      }INFO${colors.reset}  ${message}`,
-      ...args,
-    );
+    writeLog(console.log, "info", message, args);
   },
 
   success: (message: string, ...args: any[]) => {
     if (!shouldLog("info")) return;
-    console.log(
-      `${colors.dim}${getTimestamp()}${colors.reset} ${PREFIX} ${
-        colors.fg.green
-      }SUCCESS${colors.reset}  ${message}`,
-      ...args,
-    );
+    writeLog(console.log, "success", message, args);
   },
 
   warn: (message: string, ...args: any[]) => {
     if (!shouldLog("warn")) return;
-    console.warn(
-      `${colors.dim}${getTimestamp()}${colors.reset} ${PREFIX} ${
-        colors.fg.yellow
-      }WARN${colors.reset}  ${message}`,
-      ...args,
-    );
+    writeLog(console.warn, "warn", message, args);
   },
 
   error: (message: string, ...args: any[]) => {
     if (!shouldLog("error")) return;
-    console.error(
-      `${colors.dim}${getTimestamp()}${colors.reset} ${PREFIX} ${
-        colors.fg.red
-      }ERROR${colors.reset}  ${message}`,
-      ...args,
-    );
+    writeLog(console.error, "error", message, args);
   },
 
   debug: (message: string, ...args: any[]) => {
     if (!shouldLog("debug")) return;
-    console.log(
-      `${colors.dim}${getTimestamp()}${colors.reset} ${PREFIX} ${
-        colors.fg.gray
-      }DEBUG${colors.reset}  ${message}`,
-      ...args,
-    );
+    writeLog(console.log, "debug", message, args);
   },
 };

@@ -1,4 +1,4 @@
-import { createHmac } from "crypto";
+import { createHash, createHmac } from "crypto";
 import jwt from "jsonwebtoken";
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
@@ -26,11 +26,34 @@ type IceServer = {
   credential?: string;
 };
 
+type SfuPoolEntry = {
+  id: string;
+  publicUrl: string;
+  healthUrl: string;
+};
+
+type SfuStatus = {
+  instanceId?: string;
+  draining?: boolean;
+  rooms?: number;
+};
+
+type CachedSfuStatus = {
+  checkedAt: number;
+  healthy: boolean;
+  status: SfuStatus | null;
+};
+
 const DEFAULT_PUBLIC_STUN_URLS = [
   "stun:stun.l.google.com:19302",
   "stun:stun1.l.google.com:19302",
   "stun:stun2.l.google.com:19302",
 ];
+
+const SFU_STATUS_CACHE_TTL_MS = 5000;
+const SFU_STATUS_TIMEOUT_MS = 1500;
+
+const sfuStatusCache = new Map<string, CachedSfuStatus>();
 
 const resolveSfuUrl = () =>
   process.env.SFU_URL || process.env.NEXT_PUBLIC_SFU_URL || "http://localhost:3031";
@@ -47,6 +70,130 @@ const firstNonEmpty = (...values: Array<string | undefined>): string | undefined
     if (trimmed) return trimmed;
   }
   return undefined;
+};
+
+const trimTrailingSlash = (value: string): string => value.replace(/\/+$/, "");
+
+const parseSfuPoolEntries = (
+  publicPool: string | undefined,
+  healthPool: string | undefined,
+): SfuPoolEntry[] => {
+  const healthUrlsById = new Map<string, string>();
+  for (const entry of splitUrls(healthPool)) {
+    const separatorIndex = entry.indexOf("=");
+    if (separatorIndex <= 0) continue;
+    const id = entry.slice(0, separatorIndex).trim();
+    const url = entry.slice(separatorIndex + 1).trim();
+    if (id && url) {
+      healthUrlsById.set(id, trimTrailingSlash(url));
+    }
+  }
+
+  return splitUrls(publicPool)
+    .map((entry): SfuPoolEntry | null => {
+      const separatorIndex = entry.indexOf("=");
+      if (separatorIndex <= 0) return null;
+      const id = entry.slice(0, separatorIndex).trim();
+      const publicUrl = entry.slice(separatorIndex + 1).trim();
+      if (!id || !publicUrl) return null;
+      return {
+        id,
+        publicUrl: trimTrailingSlash(publicUrl),
+        healthUrl: healthUrlsById.get(id) ?? trimTrailingSlash(publicUrl),
+      };
+    })
+    .filter((entry): entry is SfuPoolEntry => Boolean(entry));
+};
+
+const hashScore = (key: string): bigint => {
+  const digest = createHash("sha256").update(key).digest("hex").slice(0, 16);
+  return BigInt(`0x${digest}`);
+};
+
+const chooseByRendezvousHash = (
+  entries: SfuPoolEntry[],
+  routingKey: string,
+): SfuPoolEntry => {
+  let selected = entries[0];
+  let bestScore = hashScore(`${routingKey}:${selected.id}`);
+
+  for (const entry of entries.slice(1)) {
+    const score = hashScore(`${routingKey}:${entry.id}`);
+    if (score > bestScore) {
+      selected = entry;
+      bestScore = score;
+    }
+  }
+
+  return selected;
+};
+
+const fetchSfuStatus = async (entry: SfuPoolEntry): Promise<CachedSfuStatus> => {
+  const cacheKey = entry.healthUrl;
+  const cached = sfuStatusCache.get(cacheKey);
+  const now = Date.now();
+  if (cached && now - cached.checkedAt < SFU_STATUS_CACHE_TTL_MS) {
+    return cached;
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), SFU_STATUS_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(`${entry.healthUrl}/status`, {
+      headers: {
+        "x-sfu-secret": process.env.SFU_SECRET || "development-secret",
+      },
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    const status = response.ok ? ((await response.json()) as SfuStatus) : null;
+    const result = {
+      checkedAt: now,
+      healthy: Boolean(response.ok && status && status.draining !== true),
+      status,
+    };
+    sfuStatusCache.set(cacheKey, result);
+    return result;
+  } catch (_error) {
+    const result = {
+      checkedAt: now,
+      healthy: false,
+      status: null,
+    };
+    sfuStatusCache.set(cacheKey, result);
+    return result;
+  } finally {
+    clearTimeout(timeout);
+  }
+};
+
+const resolveRoutedSfuUrl = async (clientId: string, roomId: string) => {
+  const pool = parseSfuPoolEntries(
+    process.env.SFU_POOL || process.env.NEXT_PUBLIC_SFU_POOL,
+    process.env.SFU_INTERNAL_POOL,
+  );
+
+  if (pool.length === 0) {
+    return { sfuUrl: resolveSfuUrl(), sfuInstanceId: undefined };
+  }
+
+  const statuses = await Promise.all(
+    pool.map(async (entry) => ({ entry, ...(await fetchSfuStatus(entry)) })),
+  );
+  const healthyEntries = statuses
+    .filter((entry) => entry.healthy)
+    .map((entry) => entry.entry);
+
+  if (healthyEntries.length === 0) {
+    return { error: "No healthy SFU instances are available" };
+  }
+
+  const selected = chooseByRendezvousHash(
+    healthyEntries,
+    `${clientId}:${roomId}`,
+  );
+  return { sfuUrl: selected.publicUrl, sfuInstanceId: selected.id };
 };
 
 const normalizeEmail = (
@@ -247,10 +394,16 @@ export async function POST(request: Request) {
   );
 
   const iceServers = resolveIceServers(`${baseUserId}:${sessionId}`);
+  const routedSfu = await resolveRoutedSfuUrl(clientId, roomId);
+
+  if ("error" in routedSfu) {
+    return NextResponse.json({ error: routedSfu.error }, { status: 503 });
+  }
 
   return NextResponse.json({
     token,
-    sfuUrl: resolveSfuUrl(),
+    sfuUrl: routedSfu.sfuUrl,
+    ...(routedSfu.sfuInstanceId ? { sfuInstanceId: routedSfu.sfuInstanceId } : {}),
     ...(iceServers.length > 0 ? { iceServers } : {}),
   });
 }
