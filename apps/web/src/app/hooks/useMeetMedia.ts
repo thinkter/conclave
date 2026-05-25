@@ -26,6 +26,11 @@ import {
   getPreferredWebcamCodec,
   produceWebcamTrack,
 } from "../lib/webcam-codec";
+import {
+  cleanupPublishedAudioSession,
+  createPublishedAudioSession,
+} from "../lib/rnnoise";
+import type { PublishedAudioSession } from "../lib/rnnoise";
 
 interface UseMeetMediaOptions {
   ghostEnabled: boolean;
@@ -52,6 +57,7 @@ interface UseMeetMediaOptions {
   deviceRef: React.MutableRefObject<Device | null>;
   producerTransportRef: React.MutableRefObject<Transport | null>;
   audioProducerRef: React.MutableRefObject<Producer | null>;
+  publishedAudioSessionRef: React.MutableRefObject<PublishedAudioSession | null>;
   videoProducerRef: React.MutableRefObject<Producer | null>;
   screenProducerRef: React.MutableRefObject<Producer | null>;
   screenAudioProducerRef: React.MutableRefObject<Producer | null>;
@@ -88,6 +94,7 @@ export function useMeetMedia({
   deviceRef,
   producerTransportRef,
   audioProducerRef,
+  publishedAudioSessionRef,
   videoProducerRef,
   screenProducerRef,
   screenAudioProducerRef,
@@ -241,8 +248,10 @@ export function useMeetMedia({
       if (audioProducerRef.current?.id === producer.id) {
         audioProducerRef.current = null;
       }
+      cleanupPublishedAudioSession(publishedAudioSessionRef.current);
+      publishedAudioSessionRef.current = null;
     },
-    [audioProducerRef]
+    [audioProducerRef, publishedAudioSessionRef]
   );
 
   const stopLocalTrack = useCallback(
@@ -310,6 +319,8 @@ export function useMeetMedia({
             producer.close();
           } catch {}
           audioProducerRef.current = null;
+          cleanupPublishedAudioSession(publishedAudioSessionRef.current);
+          publishedAudioSessionRef.current = null;
         }
       } else {
         setIsCameraOff(true);
@@ -340,6 +351,7 @@ export function useMeetMedia({
       setIsCameraOff,
       setLocalStream,
       audioProducerRef,
+      publishedAudioSessionRef,
       videoProducerRef,
       socketRef,
       releaseManagedCameraTrack,
@@ -477,6 +489,7 @@ export function useMeetMedia({
       setSelectedAudioInputDeviceId(deviceId);
 
       if (connectionState === "joined") {
+        let pendingAudioSession: PublishedAudioSession | null = null;
         try {
           const newStream = await navigator.mediaDevices.getUserMedia({
             audio: buildAudioConstraints(deviceId),
@@ -491,9 +504,13 @@ export function useMeetMedia({
             const oldAudioTrack = localStream?.getAudioTracks()[0];
 
             if (audioProducerRef.current) {
+              pendingAudioSession = await createPublishedAudioSession(newAudioTrack);
               await audioProducerRef.current.replaceTrack({
-                track: newAudioTrack,
+                track: pendingAudioSession.outputTrack,
               });
+              cleanupPublishedAudioSession(publishedAudioSessionRef.current);
+              publishedAudioSessionRef.current = pendingAudioSession;
+              pendingAudioSession = null;
             }
 
             setLocalStream((prev) => {
@@ -511,6 +528,7 @@ export function useMeetMedia({
             });
           }
         } catch (err) {
+          cleanupPublishedAudioSession(pendingAudioSession);
           console.error("[Meets] Failed to switch audio input device:", err);
         }
       }
@@ -523,6 +541,7 @@ export function useMeetMedia({
       stopLocalTrack,
       setSelectedAudioInputDeviceId,
       audioProducerRef,
+      publishedAudioSessionRef,
       setLocalStream,
       buildAudioConstraints,
     ]
@@ -683,6 +702,7 @@ export function useMeetMedia({
     const nextMuted = !previousMuted;
     let producer = audioProducerRef.current;
     let createdTrack: MediaStreamTrack | null = null;
+    let pendingAudioSession: PublishedAudioSession | null = null;
     try {
       if (
         producer &&
@@ -777,10 +797,28 @@ export function useMeetMedia({
       }
 
       audioTrack.enabled = true;
+      const getAudioSession = async () => {
+        const currentSession = publishedAudioSessionRef.current;
+        if (
+          currentSession?.inputTrack.id === audioTrack.id &&
+          currentSession.outputTrack.readyState === "live"
+        ) {
+          return currentSession;
+        }
+
+        pendingAudioSession = await createPublishedAudioSession(audioTrack);
+        return pendingAudioSession;
+      };
 
       if (producer) {
-        if (!producer.track || producer.track.id !== audioTrack.id) {
-          await producer.replaceTrack({ track: audioTrack });
+        const audioSession = await getAudioSession();
+        if (!producer.track || producer.track.id !== audioSession.outputTrack.id) {
+          await producer.replaceTrack({ track: audioSession.outputTrack });
+          if (pendingAudioSession) {
+            cleanupPublishedAudioSession(publishedAudioSessionRef.current);
+            publishedAudioSessionRef.current = pendingAudioSession;
+            pendingAudioSession = null;
+          }
         }
         try {
           producer.resume();
@@ -797,8 +835,9 @@ export function useMeetMedia({
       }
 
       if (!producer) {
+        const audioSession = await getAudioSession();
         const audioProducer = await transport.produce({
-          track: audioTrack,
+          track: audioSession.outputTrack,
           codecOptions: {
             opusStereo: true,
             opusFec: true,
@@ -808,16 +847,32 @@ export function useMeetMedia({
           appData: { type: "webcam" as ProducerType, paused: false },
         });
 
+        if (pendingAudioSession) {
+          cleanupPublishedAudioSession(publishedAudioSessionRef.current);
+          publishedAudioSessionRef.current = pendingAudioSession;
+          pendingAudioSession = null;
+        } else if (!publishedAudioSessionRef.current) {
+          publishedAudioSessionRef.current = audioSession;
+        }
         audioProducerRef.current = audioProducer;
         const audioProducerId = audioProducer.id;
+        const publishedTrackId = audioSession.outputTrack.id;
         audioProducer.on("transportclose", () => {
           if (audioProducerRef.current?.id === audioProducerId) {
             audioProducerRef.current = null;
+          }
+          if (
+            publishedAudioSessionRef.current?.outputTrack.id ===
+            publishedTrackId
+          ) {
+            cleanupPublishedAudioSession(publishedAudioSessionRef.current);
+            publishedAudioSessionRef.current = null;
           }
         });
       }
       setIsMuted(false);
     } catch (err) {
+      cleanupPublishedAudioSession(pendingAudioSession);
       console.error("[Meets] Failed to restart audio:", err);
       if (createdTrack) {
         stopLocalTrack(createdTrack);
@@ -845,6 +900,7 @@ export function useMeetMedia({
     socketRef,
     emitToggleMute,
     audioProducerRef,
+    publishedAudioSessionRef,
     localStreamRef,
     setLocalStream,
     producerTransportRef,
@@ -880,6 +936,7 @@ export function useMeetMedia({
 
     const recoverAudioProducer = async () => {
       let createdTrack: MediaStreamTrack | null = null;
+      let pendingAudioSession: PublishedAudioSession | null = null;
       try {
         let audioTrack = localStreamRef.current?.getAudioTracks()[0] ?? null;
 
@@ -914,8 +971,9 @@ export function useMeetMedia({
           });
         }
 
+        pendingAudioSession = await createPublishedAudioSession(audioTrack);
         const audioProducer = await transport.produce({
-          track: audioTrack,
+          track: pendingAudioSession.outputTrack,
           codecOptions: {
             opusStereo: true,
             opusFec: true,
@@ -929,16 +987,30 @@ export function useMeetMedia({
           try {
             audioProducer.close();
           } catch {}
+          cleanupPublishedAudioSession(pendingAudioSession);
           return;
         }
 
+        cleanupPublishedAudioSession(publishedAudioSessionRef.current);
+        publishedAudioSessionRef.current = pendingAudioSession;
+        pendingAudioSession = null;
         audioProducerRef.current = audioProducer;
+        const publishedTrackId =
+          publishedAudioSessionRef.current.outputTrack.id;
         audioProducer.on("transportclose", () => {
           if (audioProducerRef.current?.id === audioProducer.id) {
             audioProducerRef.current = null;
           }
+          if (
+            publishedAudioSessionRef.current?.outputTrack.id ===
+            publishedTrackId
+          ) {
+            cleanupPublishedAudioSession(publishedAudioSessionRef.current);
+            publishedAudioSessionRef.current = null;
+          }
         });
       } catch (err) {
+        cleanupPublishedAudioSession(pendingAudioSession);
         console.error("[Meets] Audio producer recovery failed:", err);
         if (!cancelled) {
           const existingAudioTracks = localStreamRef.current?.getAudioTracks() ?? [];
@@ -976,6 +1048,7 @@ export function useMeetMedia({
     buildAudioConstraints,
     producerTransportRef,
     audioProducerRef,
+    publishedAudioSessionRef,
     localStreamRef,
     setLocalStream,
     setIsMuted,

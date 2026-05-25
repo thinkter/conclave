@@ -498,6 +498,7 @@ export default function MeetsClient({
     deviceRef: refs.deviceRef,
     producerTransportRef: refs.producerTransportRef,
     audioProducerRef: refs.audioProducerRef,
+    publishedAudioSessionRef: refs.publishedAudioSessionRef,
     videoProducerRef: refs.videoProducerRef,
     screenProducerRef: refs.screenProducerRef,
     screenAudioProducerRef: refs.screenAudioProducerRef,
