@@ -89,6 +89,12 @@ function MeetsHeader({
     const displayShareUrl = shareUrl || `/${roomId}`;
     return (
       <header className="fixed top-0 left-0 right-0 z-[100] pointer-events-none">
+        <div
+          className="absolute right-4 top-3 text-[12px] text-[#FEFCD9]"
+          style={{ fontFamily: "'PolySans Mono', monospace" }}
+        >
+          XP3R1M3NT4L
+        </div>
         <div className="flex items-center justify-center px-4 pt-0 pointer-events-auto">
           <div className="flex items-center gap-3">
             {roomId.trim() && (

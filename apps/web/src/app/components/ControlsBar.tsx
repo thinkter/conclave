@@ -509,7 +509,7 @@ function ControlsBar({
           <ScanFace className="w-4 h-4" />
         </button>
 
-        <div className="pointer-events-none absolute bottom-full left-0 z-50 mb-3">
+        <div className="absolute bottom-full left-0 z-50 mb-3">
           <CameraFiltersDrawer
             isOpen={isFilterMenuOpen && !isGhostMode}
             backgroundEffect={backgroundEffect}

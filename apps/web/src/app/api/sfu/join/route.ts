@@ -1,3 +1,4 @@
+import { createHmac } from "crypto";
 import jwt from "jsonwebtoken";
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
@@ -75,7 +76,26 @@ const alwaysHostEmails = parseEmailList(
 let turnCredentialWarningLogged = false;
 let turnMissingCredentialWarningLogged = false;
 
-const resolveIceServers = (): IceServer[] => {
+const createTurnRestCredentials = (
+  identity: string,
+): { username: string; credential: string } | null => {
+  const secret = firstNonEmpty(
+    process.env.TURN_STATIC_AUTH_SECRET,
+    process.env.TURN_REST_AUTH_SECRET,
+  );
+  if (!secret) return null;
+
+  const ttlSeconds = Number(process.env.TURN_CREDENTIAL_TTL_SECONDS) || 3600;
+  const expiresAt = Math.floor(Date.now() / 1000) + ttlSeconds;
+  const username = `${expiresAt}:${identity}`;
+  const credential = createHmac("sha1", secret)
+    .update(username)
+    .digest("base64");
+
+  return { username, credential };
+};
+
+const resolveIceServers = (turnIdentity: string): IceServer[] => {
   const servers: IceServer[] = [];
 
   const configuredStunUrls = splitUrls(
@@ -105,16 +125,21 @@ const resolveIceServers = (): IceServer[] => {
   );
 
   if (turnUrls.length > 0) {
-    const turnUsername = firstNonEmpty(
-      process.env.TURN_USERNAME,
-      process.env.NEXT_PUBLIC_TURN_USERNAME,
-    );
-    const turnCredential = firstNonEmpty(
-      process.env.TURN_PASSWORD,
-      process.env.TURN_CREDENTIAL,
-      process.env.NEXT_PUBLIC_TURN_PASSWORD,
-      process.env.NEXT_PUBLIC_TURN_CREDENTIAL,
-    );
+    const restCredentials = createTurnRestCredentials(turnIdentity);
+    const turnUsername =
+      restCredentials?.username ??
+      firstNonEmpty(
+        process.env.TURN_USERNAME,
+        process.env.NEXT_PUBLIC_TURN_USERNAME,
+      );
+    const turnCredential =
+      restCredentials?.credential ??
+      firstNonEmpty(
+        process.env.TURN_PASSWORD,
+        process.env.TURN_CREDENTIAL,
+        process.env.NEXT_PUBLIC_TURN_PASSWORD,
+        process.env.NEXT_PUBLIC_TURN_CREDENTIAL,
+      );
 
     const turnServer: IceServer = {
       urls: turnUrls.length === 1 ? turnUrls[0] : turnUrls,
@@ -221,7 +246,7 @@ export async function POST(request: Request) {
     { expiresIn: "1h" }
   );
 
-  const iceServers = resolveIceServers();
+  const iceServers = resolveIceServers(`${baseUserId}:${sessionId}`);
 
   return NextResponse.json({
     token,
