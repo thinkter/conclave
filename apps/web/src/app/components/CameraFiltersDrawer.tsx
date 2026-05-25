@@ -132,7 +132,7 @@ export default function CameraFiltersDrawer({
 
   return (
     <div
-      className={`pointer-events-auto flex max-h-[calc(100svh-5rem)] w-[320px] sm:w-[360px] max-w-[100vw] flex-col overflow-hidden rounded-[28px] border border-[#FEFCD9]/12 bg-[#090909]/92 shadow-[0_24px_80px_rgba(0,0,0,0.45)] backdrop-blur-xl transition-all duration-300 ${
+      className={`flex max-h-[calc(100svh-5rem)] w-[320px] sm:w-[360px] max-w-[100vw] flex-col overflow-hidden rounded-[28px] border border-[#FEFCD9]/12 bg-[#090909]/92 shadow-[0_24px_80px_rgba(0,0,0,0.45)] backdrop-blur-xl transition-all duration-300 ${
         isOpen
           ? "translate-x-0 opacity-100"
           : "-translate-x-8 opacity-0 pointer-events-none"
