@@ -590,6 +590,11 @@ struct JoinView: View {
                 joinMeetingForm
             }
         }
+        // Reserve the taller (Join) form's height for BOTH tabs so switching
+        // New <-> Join never resizes the form — keeps the whole centered block
+        // pin-stable instead of shifting. Join = room-code + name + button; New =
+        // name + button (shorter), so it just gets extra space below.
+        .frame(minHeight: 250, alignment: .top)
     }
     
     private var joinMeetingForm: some View {

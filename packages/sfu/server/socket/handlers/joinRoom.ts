@@ -3,6 +3,7 @@ import { Client } from "../../../config/classes/Client.js";
 import { config } from "../../../config/config.js";
 import type {
   AppsAwarenessData,
+  ChatHistorySnapshot,
   HandRaisedSnapshot,
   JoinRoomData,
   JoinRoomResponse,

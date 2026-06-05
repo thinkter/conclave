@@ -15,6 +15,7 @@ import {
   PRODUCER_SYNC_INTERVAL_MS,
 } from "../lib/constants";
 import type {
+  ChatHistorySnapshot,
   ChatMessage,
   ConnectionState,
   ConsumeResponse,
@@ -2304,6 +2305,35 @@ export function useMeetSocket({
                     userId: raisedUserId,
                     raised,
                   });
+                });
+              },
+            );
+
+            socket.on(
+              "chatHistorySnapshot",
+              ({ messages, roomId: eventRoomId }: ChatHistorySnapshot) => {
+                if (!isRoomEvent(eventRoomId)) return;
+                if (!Array.isArray(messages) || messages.length === 0) return;
+                // Only seed messages this client is allowed to see. The server
+                // already excludes DMs from history, but mirror the live-path
+                // visibility rule defensively in case that ever changes.
+                const visible = messages.filter(
+                  (message) =>
+                    !message.isDirect ||
+                    message.userId === userId ||
+                    message.dmTargetUserId === userId,
+                );
+                if (visible.length === 0) return;
+                chat.setChatMessages((prev) => {
+                  const seen = new Set(prev.map((message) => message.id));
+                  const seeded = [...prev];
+                  for (const message of visible) {
+                    if (seen.has(message.id)) continue;
+                    seen.add(message.id);
+                    seeded.push(normalizeChatMessage(message).message);
+                  }
+                  seeded.sort((a, b) => a.timestamp - b.timestamp);
+                  return seeded;
                 });
               },
             );

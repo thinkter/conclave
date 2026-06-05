@@ -55,6 +55,11 @@ export interface HandRaisedSnapshot {
   roomId?: string;
 }
 
+export interface ChatHistorySnapshot {
+  messages: ChatMessage[];
+  roomId?: string;
+}
+
 export interface ReactionPayload {
   userId: string;
   kind: ReactionKind;
