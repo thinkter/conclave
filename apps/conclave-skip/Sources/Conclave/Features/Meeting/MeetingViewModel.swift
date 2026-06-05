@@ -1097,6 +1097,30 @@ final class MeetingViewModel {
         }
     }
 
+    func admitAllPending() {
+        guard state.isAdmin else { return }
+        Task {
+            do {
+                try await socketManager.admitAllPending()
+                state.pendingUsers.removeAll()
+            } catch {
+                state.errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    func rejectAllPending() {
+        guard state.isAdmin else { return }
+        Task {
+            do {
+                try await socketManager.rejectAllPending()
+                state.pendingUsers.removeAll()
+            } catch {
+                state.errorMessage = error.localizedDescription
+            }
+        }
+    }
+
     func makeHost(userId: String) {
         guard state.isAdmin else { return }
         Task {

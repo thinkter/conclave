@@ -84,6 +84,8 @@ final class SocketIOManager {
     func lockChat(_ locked: Bool) async throws { fatalError() }
     func admitUser(userId: String) async throws { fatalError() }
     func rejectUser(userId: String) async throws { fatalError() }
+    func admitAllPending() async throws { fatalError() }
+    func rejectAllPending() async throws { fatalError() }
     func kickUser(userId: String) async throws { fatalError() }
     func muteUser(userId: String) async throws { fatalError() }
     func muteAll() async throws { fatalError() }

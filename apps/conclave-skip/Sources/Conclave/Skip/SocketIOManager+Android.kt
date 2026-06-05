@@ -34,6 +34,8 @@ internal object SocketEvent {
     const val lockChat = "lockChat"
     const val admitUser = "admitUser"
     const val rejectUser = "rejectUser"
+    const val admitAllPending = "admin:admitAllPending"
+    const val rejectAllPending = "admin:rejectAllPending"
     const val kickUser = "kickUser"
     const val muteAll = "muteAll"
     const val promoteHost = "promoteHost"
@@ -378,6 +380,14 @@ internal class SocketIOManager {
 
     internal suspend fun rejectUser(userId: String) {
         emit(SocketEvent.rejectUser, mapOf("userId" to userId))
+    }
+
+    internal suspend fun admitAllPending() {
+        emitAckOnly(SocketEvent.admitAllPending)
+    }
+
+    internal suspend fun rejectAllPending() {
+        emitAckOnly(SocketEvent.rejectAllPending)
     }
 
     internal suspend fun kickUser(userId: String) {

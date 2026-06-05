@@ -163,6 +163,50 @@ struct ParticipantsSheetView: View {
         .frame(height: 56)
     }
 
+    private func pendingBulkActionRow() -> some View {
+        HStack(spacing: ACMSpacing.sm) {
+            Text("Requests to join")
+                .font(ACMFont.trial(13, weight: .medium))
+                .foregroundStyle(ACMColors.textMuted)
+                .lineLimit(1)
+
+            Spacer()
+
+            Button {
+                viewModel.admitAllPending()
+            } label: {
+                Text("Admit all")
+                    .font(ACMFont.trial(13, weight: .medium))
+                    .foregroundStyle(Color.white)
+                    .padding(.horizontal, ACMSpacing.sm)
+                    .frame(height: 32)
+                    .acmColorBackground(ACMColors.primaryOrange)
+                    .clipShape(RoundedRectangle(cornerRadius: ACMRadius.sm))
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                viewModel.rejectAllPending()
+            } label: {
+                Text("Deny all")
+                    .font(ACMFont.trial(13, weight: .medium))
+                    .foregroundStyle(ACMColors.error)
+                    .padding(.horizontal, ACMSpacing.sm)
+                    .frame(height: 32)
+                    .acmColorBackground(ACMColors.surfaceRaised)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: ACMRadius.sm)
+                            .strokeBorder(lineWidth: 1)
+                            .foregroundStyle(ACMColors.border)
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: ACMRadius.sm))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, ACMSpacing.sm)
+        .frame(height: 56)
+    }
+
     @ViewBuilder
     private func currentUserRow() -> some View {
         HStack(spacing: ACMSpacing.sm) {
@@ -316,6 +360,10 @@ struct ParticipantsSheetView: View {
                             acmListSectionHeader("Waiting to join")
 
                             MeetingSheetSectionCard {
+                                pendingBulkActionRow()
+
+                                MeetingSheetRowDivider(inset: ACMSpacing.sm)
+
                                 ForEach(pendingUsers, id: \.key) { userId, name in
                                     pendingUserRow(userId: userId, name: name)
 

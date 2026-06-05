@@ -34,6 +34,8 @@ enum SocketEvent {
     static let lockChat = "lockChat"
     static let admitUser = "admitUser"
     static let rejectUser = "rejectUser"
+    static let admitAllPending = "admin:admitAllPending"
+    static let rejectAllPending = "admin:rejectAllPending"
     static let kickUser = "kickUser"
     static let muteAll = "muteAll"
     static let promoteHost = "promoteHost"
@@ -378,6 +380,14 @@ final class SocketIOManager {
 
     func rejectUser(userId: String) async throws {
         _ = try await emit(event: SocketEvent.rejectUser, payload: ["userId": userId])
+    }
+
+    func admitAllPending() async throws {
+        _ = try await emit(event: SocketEvent.admitAllPending, payload: [String: String]())
+    }
+
+    func rejectAllPending() async throws {
+        _ = try await emit(event: SocketEvent.rejectAllPending, payload: [String: String]())
     }
 
     func kickUser(userId: String) async throws {
