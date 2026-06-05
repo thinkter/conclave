@@ -343,7 +343,19 @@ final class MeetingViewModel {
                 }
             }
         }
-        
+
+        socketManager.onChatHistorySnapshot = { [weak self] messages in
+            Task { @MainActor in
+                guard let self = self else { return }
+                var existingIds = Set(self.state.chatMessages.map { $0.id })
+                for message in messages where !existingIds.contains(message.id) {
+                    existingIds.insert(message.id)
+                    self.state.chatMessages.append(message)
+                }
+                self.state.chatMessages.sort { $0.timestamp < $1.timestamp }
+            }
+        }
+
         socketManager.onReaction = { [weak self] reaction in
             Task { @MainActor in
                 guard let self = self else { return }

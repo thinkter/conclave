@@ -51,6 +51,7 @@ internal object SocketEvent {
     const val newProducer = "newProducer"
     const val producerClosed = "producerClosed"
     const val chatMessage = "chatMessage"
+    const val chatHistorySnapshot = "chatHistorySnapshot"
     const val reaction = "reaction"
     const val handRaised = "handRaised"
     const val handRaisedSnapshot = "handRaisedSnapshot"
@@ -126,6 +127,7 @@ internal class SocketIOManager {
     internal var onProducerClosed: ((ProducerClosedNotification) -> Unit)? = null
 
     internal var onChatMessage: ((ChatMessage) -> Unit)? = null
+    internal var onChatHistorySnapshot: ((List<ChatMessage>) -> Unit)? = null
     internal var onReaction: ((Reaction) -> Unit)? = null
 
     internal var onHandRaised: ((String, Boolean) -> Unit)? = null
@@ -593,6 +595,23 @@ internal class SocketIOManager {
                 dmTargetDisplayName = notification.dmTargetDisplayName
             )
             onChatMessage?.invoke(message)
+        })
+
+        socket.on(SocketEvent.chatHistorySnapshot, Emitter.Listener { args ->
+            val notification = decode<ChatHistorySnapshotNotification>( args.firstOrNull()) ?: return@Listener
+            val messages = notification.messages.map { notification ->
+                ChatMessage(
+                    id = notification.id,
+                    userId = notification.userId,
+                    displayName = notification.displayName,
+                    content = notification.content,
+                    timestamp = Date(timeIntervalSince1970 = notification.timestamp / 1000.0),
+                    isDirect = notification.isDirect ?: false,
+                    dmTargetUserId = notification.dmTargetUserId,
+                    dmTargetDisplayName = notification.dmTargetDisplayName
+                )
+            }.toList()
+            onChatHistorySnapshot?.invoke(messages)
         })
 
         socket.on(SocketEvent.reaction, Emitter.Listener { args ->

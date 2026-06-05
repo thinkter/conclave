@@ -192,6 +192,11 @@ struct ChatMessageNotification: Codable {
     let dmTargetDisplayName: String?
 }
 
+struct ChatHistorySnapshotNotification: Codable {
+    let messages: [ChatMessageNotification]
+    let roomId: String?
+}
+
 struct ReactionNotification: Codable {
     let userId: String
     let kind: String

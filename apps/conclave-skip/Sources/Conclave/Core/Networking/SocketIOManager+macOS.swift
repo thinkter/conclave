@@ -32,6 +32,7 @@ final class SocketIOManager {
     var onProducerClosed: ((ProducerClosedNotification) -> Void)?
 
     var onChatMessage: ((ChatMessage) -> Void)?
+    var onChatHistorySnapshot: (([ChatMessage]) -> Void)?
     var onReaction: ((Reaction) -> Void)?
 
     var onHandRaised: ((String, Bool) -> Void)?

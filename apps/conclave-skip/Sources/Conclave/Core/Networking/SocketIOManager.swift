@@ -52,6 +52,7 @@ enum SocketEvent {
     static let newProducer = "newProducer"
     static let producerClosed = "producerClosed"
     static let chatMessage = "chatMessage"
+    static let chatHistorySnapshot = "chatHistorySnapshot"
     static let reaction = "reaction"
     static let handRaised = "handRaised"
     static let handRaisedSnapshot = "handRaisedSnapshot"
@@ -128,6 +129,7 @@ final class SocketIOManager {
 
     // Chat/Reactions
     var onChatMessage: ((ChatMessage) -> Void)?
+    var onChatHistorySnapshot: (([ChatMessage]) -> Void)?
     var onReaction: ((Reaction) -> Void)?
 
     // Hand raise
@@ -564,6 +566,25 @@ final class SocketIOManager {
                 dmTargetDisplayName: notification.dmTargetDisplayName
             )
             self.onChatMessage?(message)
+        }
+
+        socket.on(SocketEvent.chatHistorySnapshot) { [weak self] data, _ in
+            guard let self, let first = data.first,
+                  let notification = self.decode(ChatHistorySnapshotNotification.self, from: first) else { return }
+
+            let messages = notification.messages.map { notification in
+                ChatMessage(
+                    id: notification.id,
+                    userId: notification.userId,
+                    displayName: notification.displayName,
+                    content: notification.content,
+                    timestamp: Date(timeIntervalSince1970: notification.timestamp / 1000),
+                    isDirect: notification.isDirect ?? false,
+                    dmTargetUserId: notification.dmTargetUserId,
+                    dmTargetDisplayName: notification.dmTargetDisplayName
+                )
+            }
+            self.onChatHistorySnapshot?(messages)
         }
 
         socket.on(SocketEvent.reaction) { [weak self] data, _ in
