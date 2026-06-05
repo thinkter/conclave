@@ -1,5 +1,8 @@
 import SwiftUI
 import Observation
+#if canImport(UIKit) && !SKIP
+import UIKit
+#endif
 
 //
 //  ContentView.swift
@@ -157,17 +160,31 @@ struct WaitingRoomView: View {
                         .multilineTextAlignment(.center)
                 }
 
-                Text(viewModel.state.roomId)
-                    .font(ACMFont.trial(14, weight: .medium))
-                    .foregroundStyle(ACMColors.text)
-                    .padding(.horizontal, ACMSpacing.md)
-                    .padding(.vertical, 10)
-                    .acmColorBackground(ACMColors.surface)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: ACMRadius.sm)
-                            .strokeBorder(ACMColors.border, lineWidth: 1.0)
-                    }
-                    .clipShape(RoundedRectangle(cornerRadius: ACMRadius.sm))
+                // Tap the room code to copy it (cross-platform: UIPasteboard on
+                // iOS, the Android system clipboard via ClipboardHelper on Skip).
+                Button {
+                    #if !SKIP
+#if canImport(UIKit)
+                    UIPasteboard.general.string = viewModel.state.roomId
+#endif
+                    HapticManager.shared.trigger(.success)
+                    #else
+                    ClipboardHelper.copyToClipboard(text: viewModel.state.roomId, label: "Meeting code")
+                    #endif
+                } label: {
+                    Text(viewModel.state.roomId)
+                        .font(ACMFont.trial(14, weight: .medium))
+                        .foregroundStyle(ACMColors.text)
+                        .padding(.horizontal, ACMSpacing.md)
+                        .padding(.vertical, 10)
+                        .acmColorBackground(ACMColors.surface)
+                        .overlay {
+                            RoundedRectangle(cornerRadius: ACMRadius.sm)
+                                .strokeBorder(ACMColors.border, lineWidth: 1.0)
+                        }
+                        .clipShape(RoundedRectangle(cornerRadius: ACMRadius.sm))
+                }
+                .buttonStyle(.plain)
 
                 Button {
                     viewModel.leaveRoom()

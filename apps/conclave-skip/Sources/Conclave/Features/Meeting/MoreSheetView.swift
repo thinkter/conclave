@@ -83,6 +83,8 @@ struct MoreSheetView: View {
                                 UIPasteboard.general.string = viewModel.state.roomId
 #endif
                                 HapticManager.shared.trigger(.success)
+                                #else
+                                ClipboardHelper.copyToClipboard(text: viewModel.state.roomId, label: "Meeting code")
                                 #endif
                                 dismiss()
                             }
