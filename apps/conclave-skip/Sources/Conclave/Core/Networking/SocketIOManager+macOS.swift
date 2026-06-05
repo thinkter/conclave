@@ -85,7 +85,7 @@ final class SocketIOManager {
     func toggleCamera(producerId: String, paused: Bool) async throws { }
     func closeProducer(producerId: String) async throws { }
 
-    func sendChat(content: String) async throws { }
+    func sendChat(content: String, recipient: String? = nil) async throws { }
     func sendReaction(emoji: String?, kind: String?, value: String?, label: String?) async throws { }
     func setHandRaised(_ raised: Bool) async throws { }
     func updateDisplayName(_ name: String) async throws { }

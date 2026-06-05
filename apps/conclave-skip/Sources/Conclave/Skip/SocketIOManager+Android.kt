@@ -356,8 +356,8 @@ internal class SocketIOManager {
         emit(SocketEvent.closeProducer, mapOf("producerId" to producerId))
     }
 
-    internal suspend fun sendChat(content: String) {
-        val request = SendChatRequest(content = content)
+    internal suspend fun sendChat(content: String, recipient: String? = null) {
+        val request = SendChatRequest(content = content, recipient = recipient)
         emit(SocketEvent.sendChat, request)
     }
 
@@ -587,7 +587,10 @@ internal class SocketIOManager {
                 userId = notification.userId,
                 displayName = notification.displayName,
                 content = notification.content,
-                timestamp = Date(timeIntervalSince1970 = notification.timestamp / 1000.0)
+                timestamp = Date(timeIntervalSince1970 = notification.timestamp / 1000.0),
+                isDirect = notification.isDirect ?: false,
+                dmTargetUserId = notification.dmTargetUserId,
+                dmTargetDisplayName = notification.dmTargetDisplayName
             )
             onChatMessage?.invoke(message)
         })

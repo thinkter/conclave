@@ -1076,6 +1076,11 @@ final class MeetingViewModel {
         #if !SKIP
         HapticManager.shared.trigger(.light)
         #endif
+        // Detect a "/dm <name> <message>" or "@<name> <message>" so the local
+        // echo strips the prefix and shows a Private badge (web parity). The raw
+        // content is still sent verbatim — the server resolves the recipient.
+        let dmIntent = ChatCommandParser.parseDirectMessage(content)
+
         Task {
             do {
                 try await socketManager.sendChat(content: content)
@@ -1084,7 +1089,9 @@ final class MeetingViewModel {
                 let message = ChatMessage(
                     userId: state.userId,
                     displayName: state.displayName.isEmpty ? "You" : state.displayName,
-                    content: content
+                    content: dmIntent?.body ?? content,
+                    isDirect: dmIntent != nil,
+                    dmTargetDisplayName: dmIntent?.target
                 )
                 state.chatMessages.append(message)
 

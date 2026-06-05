@@ -78,7 +78,7 @@ final class SocketIOManager {
     func toggleCamera(producerId: String, paused: Bool) async throws { fatalError() }
     func closeProducer(producerId: String) async throws { fatalError() }
 
-    func sendChat(content: String) async throws { fatalError() }
+    func sendChat(content: String, recipient: String? = nil) async throws { fatalError() }
     func sendReaction(emoji: String?, kind: String?, value: String?, label: String?) async throws { fatalError() }
     func setHandRaised(_ raised: Bool) async throws { fatalError() }
     func updateDisplayName(_ name: String) async throws { fatalError() }

@@ -107,6 +107,46 @@ struct ChatCommandParser {
     static func isCommandPrefix(_ text: String) -> Bool {
         return text.hasPrefix("/") && text.count == 1
     }
+
+    /// Local DM-intent parse, mirroring the SFU `chatHandlers` parser: a leading
+    /// "/dm <name> <message>" or "@<name> <message>". Used only to drive the
+    /// optimistic local echo (strip the prefix + show the Private badge); the
+    /// raw content is still sent verbatim so the server resolves the recipient.
+    static func parseDirectMessage(_ text: String) -> (target: String, body: String)? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let isAt = trimmed.hasPrefix("@")
+        let isDm = trimmed.lowercased().hasPrefix("/dm ")
+        guard isAt || isDm else { return nil }
+
+        // Split into whitespace-delimited tokens. "@name msg..." has the target
+        // fused to the first token; "/dm name msg..." has it as the second.
+        let tokens = trimmed.split(separator: " ", omittingEmptySubsequences: true).map { String($0) }
+
+        var target: String
+        let bodyTokens: [String]
+        if isAt {
+            guard tokens.count >= 2 else { return nil }
+            target = tokens[0]
+            bodyTokens = Array(tokens.dropFirst())
+        } else {
+            // tokens[0] == "/dm"
+            guard tokens.count >= 3 else { return nil }
+            target = tokens[1]
+            bodyTokens = Array(tokens.dropFirst(2))
+        }
+
+        // Normalise the target the way the server does: drop a leading "@" and
+        // trailing mention punctuation.
+        while target.hasPrefix("@") { target = String(target.dropFirst()) }
+        let trailingPunctuation = [",", ":", ";", ".", "!", "?"]
+        while let last = target.last, trailingPunctuation.contains(String(last)) {
+            target = String(target.dropLast())
+        }
+
+        let body = bodyTokens.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !target.isEmpty, !body.isEmpty else { return nil }
+        return (target, body)
+    }
     
     static func matchesPartialCommand(_ text: String) -> [ChatCommand] {
         guard text.hasPrefix("/") else { return [] }

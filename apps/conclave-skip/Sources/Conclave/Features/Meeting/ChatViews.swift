@@ -153,6 +153,17 @@ struct ChatBubbleView: View {
     let message: ChatMessage
     let isFromCurrentUser: Bool
     
+    // Web parity: own DMs read "Private to <name>", received DMs read
+    // "Private message".
+    private var directMessageLabel: String? {
+        guard message.isDirect else { return nil }
+        if isFromCurrentUser {
+            let name = message.dmTargetDisplayName ?? message.dmTargetUserId ?? "user"
+            return "Private to \(name)"
+        }
+        return "Private message"
+    }
+
     var body: some View {
         VStack(alignment: isFromCurrentUser ? .trailing : .leading, spacing: 4) {
             // Metadata on a single quiet row (name is muted-neutral, not accent;
@@ -168,6 +179,14 @@ struct ChatBubbleView: View {
                     .foregroundStyle(ACMColors.textFaint)
             }
 
+            // Flat amber "Private" badge above the bubble, matching the web DM
+            // label (amber, quiet) — only present on direct messages.
+            if let directMessageLabel {
+                Text(directMessageLabel)
+                    .font(ACMFont.trial(11, weight: .medium))
+                    .foregroundStyle(ACMColors.handRaised)
+            }
+
             Text(message.content)
                 .font(ACMFont.trial(14))
                 .foregroundStyle(isFromCurrentUser ? Color.white : ACMColors.text)
@@ -177,6 +196,14 @@ struct ChatBubbleView: View {
                 // surface panel (was surface = invisible).
                 .acmColorBackground(isFromCurrentUser ? ACMColors.primaryOrange : ACMColors.surfaceRaised)
                 .clipShape(RoundedRectangle(cornerRadius: ACMRadius.md))
+                // DM bubbles get a thin amber ring (web parity).
+                .overlay {
+                    if message.isDirect {
+                        RoundedRectangle(cornerRadius: ACMRadius.md)
+                            .strokeBorder(lineWidth: 1)
+                            .foregroundStyle(ACMColors.handRaisedBorder)
+                    }
+                }
                 .frame(maxWidth: 260, alignment: isFromCurrentUser ? .trailing : .leading)
         }
         .frame(maxWidth: .infinity, alignment: isFromCurrentUser ? .trailing : .leading)

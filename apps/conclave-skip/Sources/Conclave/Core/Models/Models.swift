@@ -44,13 +44,20 @@ struct ChatMessage: Identifiable, Equatable {
     let displayName: String
     let content: String
     let timestamp: Date
-    
-    init(id: String = UUID().uuidString, userId: String, displayName: String, content: String, timestamp: Date = Date()) {
+    // Direct-message metadata (web chat parity). Set only on private messages.
+    let isDirect: Bool
+    let dmTargetUserId: String?
+    let dmTargetDisplayName: String?
+
+    init(id: String = UUID().uuidString, userId: String, displayName: String, content: String, timestamp: Date = Date(), isDirect: Bool = false, dmTargetUserId: String? = nil, dmTargetDisplayName: String? = nil) {
         self.id = id
         self.userId = userId
         self.displayName = displayName
         self.content = content
         self.timestamp = timestamp
+        self.isDirect = isDirect
+        self.dmTargetUserId = dmTargetUserId
+        self.dmTargetDisplayName = dmTargetDisplayName
     }
 }
 

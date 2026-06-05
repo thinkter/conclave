@@ -57,6 +57,14 @@ struct ToggleMediaRequest: Codable {
 
 struct SendChatRequest: Codable {
     let content: String
+    // Optional explicit DM recipient (web parity: the server also resolves DMs
+    // from a leading "/dm <name>" / "@<name>" in `content`). Encoded only when set.
+    let recipient: String?
+
+    init(content: String, recipient: String? = nil) {
+        self.content = content
+        self.recipient = recipient
+    }
 }
 
 struct SendReactionRequest: Codable {

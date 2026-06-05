@@ -348,8 +348,8 @@ final class SocketIOManager {
 
     // MARK: - Chat
 
-    func sendChat(content: String) async throws {
-        let request = SendChatRequest(content: content)
+    func sendChat(content: String, recipient: String? = nil) async throws {
+        let request = SendChatRequest(content: content, recipient: recipient)
         _ = try await emit(event: SocketEvent.sendChat, payload: request)
     }
 
@@ -558,7 +558,10 @@ final class SocketIOManager {
                 userId: notification.userId,
                 displayName: notification.displayName,
                 content: notification.content,
-                timestamp: Date(timeIntervalSince1970: notification.timestamp / 1000)
+                timestamp: Date(timeIntervalSince1970: notification.timestamp / 1000),
+                isDirect: notification.isDirect ?? false,
+                dmTargetUserId: notification.dmTargetUserId,
+                dmTargetDisplayName: notification.dmTargetDisplayName
             )
             self.onChatMessage?(message)
         }
