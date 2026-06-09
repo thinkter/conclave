@@ -7,6 +7,7 @@ import type {
 import { Logger } from "../../../utilities/loggers.js";
 import type { ConnectionContext } from "../context.js";
 import { respond } from "./ack.js";
+import { RATE_LIMITS, takeToken } from "../rateLimit.js";
 
 export const registerTransportHandlers = (context: ConnectionContext): void => {
   const { socket } = context;
@@ -24,6 +25,20 @@ export const registerTransportHandlers = (context: ConnectionContext): void => {
         if (context.currentClient.isObserver) {
           respond(callback, {
             error: "Watch-only attendees cannot create producer transports",
+          });
+          return;
+        }
+
+        // Throttle transport allocation (roughly once per kind, small retry burst).
+        if (
+          !takeToken(
+            socket,
+            "createProducerTransport",
+            RATE_LIMITS.transportCreate,
+          )
+        ) {
+          respond(callback, {
+            error: "Too many transport requests; please retry shortly",
           });
           return;
         }
@@ -61,13 +76,33 @@ export const registerTransportHandlers = (context: ConnectionContext): void => {
           return;
         }
 
-        const transport = await context.currentRoom.createWebRtcTransport();
-        const previousTransport = context.currentClient.consumerTransport;
-        if (previousTransport && previousTransport.id !== transport.id) {
-          try {
-            previousTransport.close();
-          } catch {}
+        // Reject a duplicate consumer-transport request from the same client: a
+        // client should allocate its consumer transport exactly once. Re-requesting
+        // would orphan/replace a working transport and waste server resources.
+        if (context.currentClient.consumerTransport) {
+          respond(callback, {
+            error: "Consumer transport already exists",
+          });
+          return;
         }
+
+        // Throttle transport allocation (roughly once per kind, small retry burst).
+        if (
+          !takeToken(
+            socket,
+            "createConsumerTransport",
+            RATE_LIMITS.transportCreate,
+          )
+        ) {
+          respond(callback, {
+            error: "Too many transport requests; please retry shortly",
+          });
+          return;
+        }
+
+        const transport = await context.currentRoom.createWebRtcTransport();
+        // The duplicate guard above already rejected when a consumer transport
+        // exists, so this is the client's single allocation.
         context.currentClient.consumerTransport = transport;
 
         respond(callback, {

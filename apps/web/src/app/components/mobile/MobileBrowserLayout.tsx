@@ -147,7 +147,7 @@ function MobileBrowserLayout({
               title="Shared Browser"
             />
           ) : (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-gradient-to-br from-[#18181b] to-[#131316]">
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-[#131316]">
               <div className="w-14 h-14 rounded-full bg-[#F95F4A]/10 flex items-center justify-center">
                 <Globe className="w-7 h-7 text-[#F95F4A] animate-pulse" />
               </div>
@@ -192,7 +192,7 @@ function MobileBrowserLayout({
           />
           {isCameraOff && (
             <div className="absolute inset-0 flex items-center justify-center bg-[#131316]">
-              <div className="absolute inset-0 bg-gradient-to-br from-[#F95F4A]/15 to-[#FF007A]/10" />
+              <div className="absolute inset-0 bg-[rgba(249,95,74,0.15)]" />
               <div
                 className="relative w-10 h-10 rounded-full mobile-avatar flex items-center justify-center text-lg text-[#fafafa] font-bold"
                 style={{ fontFamily: "'PolySans Bulky Wide', sans-serif" }}
@@ -241,7 +241,7 @@ function MobileBrowserLayout({
               />
             ) : (
               <div className="absolute inset-0 flex items-center justify-center bg-[#131316]">
-                <div className="absolute inset-0 bg-gradient-to-br from-[#F95F4A]/15 to-[#FF007A]/10" />
+                <div className="absolute inset-0 bg-[rgba(249,95,74,0.15)]" />
                 <div
                   className="relative w-10 h-10 rounded-full mobile-avatar flex items-center justify-center text-lg text-[#fafafa] font-bold"
                   style={{ fontFamily: "'PolySans Bulky Wide', sans-serif" }}

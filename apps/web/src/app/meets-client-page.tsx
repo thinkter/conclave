@@ -31,8 +31,6 @@ const normalizeClientId = (value: string | undefined): string | null => {
 type MeetsClientPageProps = {
   initialRoomId?: string;
   forceJoinOnly?: boolean;
-  bypassMediaPermissions?: boolean;
-  broadcastMode?: boolean;
   sfuClientId?: string;
   joinMode?: JoinMode;
   autoJoinOnMount?: boolean;
@@ -49,8 +47,6 @@ type MeetsClientPageProps = {
 export default function MeetsClientPage({
   initialRoomId,
   forceJoinOnly = false,
-  bypassMediaPermissions = false,
-  broadcastMode = false,
   sfuClientId,
   joinMode = "meeting",
   autoJoinOnMount = false,
@@ -126,8 +122,6 @@ export default function MeetsClientPage({
         enableRoomRouting={isPublicClient}
         forceJoinOnly={forceJoinOnly}
         allowGhostMode={!isPublicClient}
-        bypassMediaPermissions={bypassMediaPermissions}
-        broadcastMode={broadcastMode}
         joinMode={joinMode}
         autoJoinOnMount={autoJoinOnMount}
         hideJoinUI={hideJoinUI}

@@ -53,11 +53,6 @@ const POPOUT_CSS = `
     src: local('PolySans Trial');
     font-display: swap;
   }
-  @font-face {
-    font-family: 'PolySans Mono';
-    src: local('PolySans Mono');
-    font-display: swap;
-  }
 
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -118,8 +113,7 @@ const POPOUT_CSS = `
   }
 
   .video-tile.speaking {
-    border-color: #F95F4A;
-    box-shadow: 0 0 0 2px rgba(249, 95, 74, 0.3), 0 0 30px rgba(249, 95, 74, 0.2);
+    border: 2px solid #F95F4A;
   }
 
   .video-tile video {
@@ -134,14 +128,14 @@ const POPOUT_CSS = `
     display: flex;
     align-items: center;
     justify-content: center;
-    background: linear-gradient(135deg, #18181b, #131316);
+    background: #131316;
   }
 
   .video-tile .avatar-circle {
     width: 44px;
     height: 44px;
     border-radius: 50%;
-    background: linear-gradient(135deg, rgba(249, 95, 74, 0.2), rgba(255, 0, 122, 0.2));
+    background: rgba(249, 95, 74, 0.2);
     display: flex;
     align-items: center;
     justify-content: center;

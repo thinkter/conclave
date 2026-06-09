@@ -214,7 +214,7 @@ function ParticipantsPanel({
 
   return (
     <div
-      className="fixed right-0 top-0 bottom-0 z-40 flex w-[360px] flex-col overflow-hidden border-l border-white/10 bg-[#18181b] animate-[meet-panel-in_200ms_ease-out]"
+      className="fixed right-0 top-0 bottom-0 z-40 flex w-[360px] flex-col overflow-hidden border-l border-white/10 bg-[#18181b] animate-[meet-panel-in_280ms_cubic-bezier(0.22,1,0.36,1)]"
       style={{ fontFamily: "'PolySans Trial', sans-serif" }}
     >
       {/* Header */}

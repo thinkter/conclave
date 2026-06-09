@@ -20,6 +20,7 @@ final class SocketIOManager {
     var onJoinRejected: (() -> Void)?
     var onHostAssigned: (() -> Void)?
     var onKicked: ((String?) -> Void)?
+    var onRoomEnded: ((String?) -> Void)?
 
     var onUserJoined: ((UserJoinedNotification) -> Void)?
     var onUserLeft: ((String) -> Void)?
@@ -80,7 +81,8 @@ final class SocketIOManager {
     func consume(producerId: String, rtpCapabilities: RtpCapabilities) async throws -> ConsumeResponse {
         throw NSError(domain: "Conclave", code: -1, userInfo: [NSLocalizedDescriptionKey: "SocketIO not available on macOS"])
     }
-    func resumeConsumer(consumerId: String) async throws { }
+    func resumeConsumer(consumerId: String, requestKeyFrame: Bool = false) async throws { }
+    func getProducers() async throws -> GetProducersResponse { GetProducersResponse(producers: []) }
 
     func toggleMute(producerId: String, paused: Bool) async throws { }
     func toggleCamera(producerId: String, paused: Bool) async throws { }

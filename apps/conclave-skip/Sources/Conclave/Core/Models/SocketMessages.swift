@@ -48,6 +48,10 @@ struct ConsumeRequest: Codable {
 
 struct ResumeConsumerRequest: Codable {
     let consumerId: String
+    // When true, the SFU also sends an RTCP keyframe (PLI) request to the
+    // producer so the decoder gets a fresh IDR immediately — the only way to
+    // un-freeze a stalled video decoder (the server already branches on this).
+    let requestKeyFrame: Bool?
 }
 
 struct ToggleMediaRequest: Codable {
@@ -104,14 +108,6 @@ struct JoinRoomResponse: Codable {
     let webinarRequiresInviteCode: Bool?
     let webinarAttendeeCount: Int?
     let webinarMaxAttendees: Int?
-    let recording: JoinRoomRecordingState?
-}
-
-struct JoinRoomRecordingState: Codable {
-    let active: Bool
-    let paused: Bool
-    let startedAt: Double?
-    let available: Bool
 }
 
 struct TransportResponse: Codable {
@@ -138,6 +134,12 @@ struct ProducerInfo: Codable {
     let kind: String
     let type: String
     let paused: Bool?
+}
+
+/// Ack response for the `getProducers` RPC — the room's current producer list,
+/// used by the periodic producer-sync safety net.
+struct GetProducersResponse: Codable {
+    let producers: [ProducerInfo]
 }
 
 // MARK: - Notifications

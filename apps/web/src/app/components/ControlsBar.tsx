@@ -16,10 +16,10 @@ import {
 } from "react";
 import { ControlButton } from "@conclave/ui-tokens/web";
 import { color } from "@conclave/ui-tokens";
+import { DeviceCaretMenu } from "./DeviceCaretMenu";
 import type { ReactionOption } from "../lib/types";
 import { normalizeBrowserUrl } from "../lib/utils";
 import HotkeyTooltip from "./HotkeyTooltip";
-import MeetSettingsPanel from "./MeetSettingsPanel";
 import {
   BROWSER_APPS,
   buildControlsConfig,
@@ -129,7 +129,15 @@ function PanelButton({ d }: { d: ControlDescriptor }) {
   );
 }
 
-const popoverClass = "absolute bottom-full mb-3 z-50 rounded-2xl border p-1.5";
+// Popover positioning wrapper (no visual). Keeps the centering transform
+// (`-translate-x-1/2`) OFF the animated panel so the entrance scale/lift doesn't
+// fight it.
+const popoverWrapClass = "absolute bottom-full mb-3 z-50";
+// The visual popover panel: flat rounded surface + a premium scale/lift/fade
+// entrance from the anchor edge (origin-bottom, ~150ms eased).
+const popoverPanelClass =
+  "rounded-2xl border p-1.5 origin-bottom will-change-transform " +
+  "animate-[meet-popover-in_150ms_cubic-bezier(0.22,1,0.36,1)]";
 
 function useClickOutside(
   open: boolean,
@@ -157,24 +165,38 @@ function ControlsBar(props: ControlsBarProps) {
     isGhostMode = false,
     isBrowserLaunching = false,
     onLaunchBrowser,
+    isHostControlsOpen = false,
+    onToggleHostControls,
+    selectedAudioInputDeviceId,
+    selectedAudioOutputDeviceId,
+    selectedVideoInputDeviceId,
+    onAudioInputDeviceChange,
+    onAudioOutputDeviceChange,
+    onVideoInputDeviceChange,
+    isMirrorCamera,
+    onToggleMirror,
   } = props;
+  // Only surface a device caret when there's actually a way to switch devices.
+  const hasAudioDevicePicker = Boolean(
+    onAudioInputDeviceChange || onAudioOutputDeviceChange,
+  );
+  const hasVideoDevicePicker = Boolean(
+    onVideoInputDeviceChange || onToggleMirror,
+  );
 
   const [reactionsOpen, setReactionsOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [browserOpen, setBrowserOpen] = useState(false);
-  const [hostOpen, setHostOpen] = useState(false);
   const [browserUrl, setBrowserUrl] = useState("");
   const [browserError, setBrowserError] = useState<string | null>(null);
 
   const reactionRef = useRef<HTMLDivElement>(null);
   const moreRef = useRef<HTMLDivElement>(null);
   const browserRef = useRef<HTMLDivElement>(null);
-  const hostRef = useRef<HTMLDivElement>(null);
 
   useClickOutside(reactionsOpen, reactionRef, () => setReactionsOpen(false));
   useClickOutside(moreOpen, moreRef, () => setMoreOpen(false));
   useClickOutside(browserOpen, browserRef, () => setBrowserOpen(false));
-  useClickOutside(hostOpen, hostRef, () => setHostOpen(false));
 
   const lastReactionRef = useRef(0);
   const handleReaction = useCallback(
@@ -206,17 +228,52 @@ function ControlsBar(props: ControlsBarProps) {
   const showHost = Boolean(isAdmin);
 
   return (
-    <div className="relative flex w-full items-center px-4 py-3">
-      {/* LEFT — time + meeting code */}
-      <div className="flex min-w-0 items-center">
+    <div className="relative grid w-full grid-cols-[1fr_auto_1fr] items-center gap-2 px-4 py-3">
+      {/* LEFT — time + meeting code. Equal-weight (1fr) with the right zone so
+          the center column stays TRULY centered, but each zone now RESERVES its
+          space (the center used to be absolutely positioned and could overlap
+          the clock / panel icons at narrow widths). */}
+      <div className="flex min-w-0 items-center justify-self-start">
         <MeetingClock roomId={roomId} />
       </div>
 
-      {/* CENTER — core call controls (absolutely centered, Meet-style) */}
-      <div className="absolute left-1/2 flex -translate-x-1/2 items-center gap-2.5">
-        {config.center.map((d) => (
-          <BarButton key={d.id} d={d} />
-        ))}
+      {/* CENTER — core call controls (centered via the equal 1fr side columns) */}
+      <div className="flex items-center justify-self-center gap-2.5">
+        {config.center.map((d) => {
+          // Meet-style: the mic / camera buttons get a caret beside them that
+          // opens a device-picker popover.
+          if (d.id === "mic" && hasAudioDevicePicker) {
+            return (
+              <div key={d.id} className="flex items-center">
+                <DeviceCaretMenu
+                  kind="audio"
+                  disabled={isGhostMode}
+                  selectedAudioInputDeviceId={selectedAudioInputDeviceId}
+                  selectedAudioOutputDeviceId={selectedAudioOutputDeviceId}
+                  onAudioInputDeviceChange={onAudioInputDeviceChange}
+                  onAudioOutputDeviceChange={onAudioOutputDeviceChange}
+                />
+                <BarButton d={d} />
+              </div>
+            );
+          }
+          if (d.id === "camera" && hasVideoDevicePicker) {
+            return (
+              <div key={d.id} className="flex items-center">
+                <DeviceCaretMenu
+                  kind="video"
+                  disabled={isGhostMode}
+                  selectedVideoInputDeviceId={selectedVideoInputDeviceId}
+                  onVideoInputDeviceChange={onVideoInputDeviceChange}
+                  isMirrorCamera={isMirrorCamera}
+                  onToggleMirror={onToggleMirror}
+                />
+                <BarButton d={d} />
+              </div>
+            );
+          }
+          return <BarButton key={d.id} d={d} />;
+        })}
 
         {/* Reactions */}
         <div ref={reactionRef} className="relative">
@@ -232,8 +289,9 @@ function ControlsBar(props: ControlsBarProps) {
             />
           </HotkeyTooltip>
           {reactionsOpen && (
+            <div className={popoverWrapClass + " left-1/2 -translate-x-1/2"}>
             <div
-              className={popoverClass + " left-1/2 flex -translate-x-1/2 items-center gap-1"}
+              className={popoverPanelClass + " flex items-center gap-1"}
               style={{ backgroundColor: color.surfaceRaised, borderColor: color.border }}
             >
               {reactionOptions.map((reaction) => (
@@ -257,6 +315,7 @@ function ControlsBar(props: ControlsBarProps) {
                 </button>
               ))}
             </div>
+            </div>
           )}
         </div>
 
@@ -273,7 +332,10 @@ function ControlsBar(props: ControlsBarProps) {
           {moreOpen && (
             <div
               ref={browserRef}
-              className={popoverClass + " left-1/2 w-60 -translate-x-1/2"}
+              className={popoverWrapClass + " left-1/2 w-60 -translate-x-1/2"}
+            >
+            <div
+              className={popoverPanelClass + " w-full"}
               style={{ backgroundColor: color.surfaceRaised, borderColor: color.border }}
             >
               {config.overflow.map((row) => (
@@ -303,6 +365,7 @@ function ControlsBar(props: ControlsBarProps) {
                 />
               )}
             </div>
+            </div>
           )}
         </div>
 
@@ -313,8 +376,7 @@ function ControlsBar(props: ControlsBarProps) {
             onClick={onLeave}
             aria-label="Leave call"
             title="Leave call"
-            className="ml-1 inline-flex h-12 w-[68px] items-center justify-center rounded-full transition-[filter] duration-[120ms] hover:brightness-110 active:brightness-95"
-            style={{ backgroundColor: color.danger, color: "#ffffff" }}
+            className="ml-1 inline-flex h-12 w-[68px] items-center justify-center rounded-full bg-[#ea4335] text-white transition-colors duration-[120ms] hover:bg-[#e8533f] active:bg-[#d24a37]"
           >
             <PhoneOff size={ICON} strokeWidth={STROKE} />
           </button>
@@ -322,54 +384,27 @@ function ControlsBar(props: ControlsBarProps) {
       </div>
 
       {/* RIGHT — panels + session */}
-      <div className="ml-auto flex items-center gap-0.5">
+      <div className="flex min-w-0 items-center justify-self-end gap-0.5">
         {config.left.map((d) => (
           <PanelButton key={d.id} d={d} />
         ))}
 
-        {showHost && (
-          <div ref={hostRef} className="relative">
-            <button
-              type="button"
-              onClick={() => setHostOpen((v) => !v)}
-              aria-label="Host controls"
-              title="Host controls"
-              className={
-                "inline-flex h-10 w-10 items-center justify-center rounded-full " +
-                "transition-[background-color,color] duration-[120ms] hover:bg-white/[0.08] " +
-                (hostOpen ? "" : "hover:!text-[#fafafa]")
-              }
-              style={{ color: hostOpen ? color.accent : color.textMuted }}
-            >
-              <Shield size={ICON} strokeWidth={STROKE} />
-            </button>
-            {hostOpen && (
-              <MeetSettingsPanel
-                isRoomLocked={props.isRoomLocked ?? false}
-                onToggleLock={props.onToggleLock}
-                isNoGuests={props.isNoGuests ?? false}
-                onToggleNoGuests={props.onToggleNoGuests}
-                isChatLocked={props.isChatLocked ?? false}
-                onToggleChatLock={props.onToggleChatLock}
-                isTtsDisabled={props.isTtsDisabled ?? false}
-                onToggleTtsDisabled={props.onToggleTtsDisabled}
-                isDmEnabled={props.isDmEnabled ?? true}
-                onToggleDmEnabled={props.onToggleDmEnabled}
-                meetingRequiresInviteCode={props.meetingRequiresInviteCode ?? false}
-                onGetMeetingConfig={props.onGetMeetingConfig}
-                onUpdateMeetingConfig={props.onUpdateMeetingConfig}
-                webinarConfig={props.webinarConfig}
-                webinarRole={props.webinarRole}
-                webinarLink={props.webinarLink}
-                onSetWebinarLink={props.onSetWebinarLink}
-                onGetWebinarConfig={props.onGetWebinarConfig}
-                onUpdateWebinarConfig={props.onUpdateWebinarConfig}
-                onGenerateWebinarLink={props.onGenerateWebinarLink}
-                onRotateWebinarLink={props.onRotateWebinarLink}
-                onClose={() => setHostOpen(false)}
-              />
-            )}
-          </div>
+        {showHost && onToggleHostControls && (
+          <button
+            type="button"
+            onClick={onToggleHostControls}
+            aria-label="Host controls"
+            aria-pressed={isHostControlsOpen}
+            title="Host controls"
+            className={
+              "inline-flex h-10 w-10 items-center justify-center rounded-full " +
+              "transition-[background-color,color] duration-[120ms] hover:bg-white/[0.08] " +
+              (isHostControlsOpen ? "" : "hover:!text-[#fafafa]")
+            }
+            style={{ color: isHostControlsOpen ? color.accent : color.textMuted }}
+          >
+            <Shield size={ICON} strokeWidth={STROKE} />
+          </button>
         )}
       </div>
     </div>
@@ -450,8 +485,7 @@ function BrowserLauncher({
         <button
           type="submit"
           disabled={!url.trim() || busy}
-          className="rounded-lg px-4 py-2 text-[13px] font-medium text-white transition-[filter] duration-[120ms] hover:brightness-110 disabled:opacity-40"
-          style={{ backgroundColor: color.accent }}
+          className="rounded-lg bg-[#F95F4A] px-4 py-2 text-[13px] font-medium text-white transition-colors duration-[120ms] hover:bg-[#e8553f] active:bg-[#d34933] disabled:opacity-40"
         >
           Go
         </button>

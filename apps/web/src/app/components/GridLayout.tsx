@@ -35,15 +35,28 @@ interface GridLayoutProps {
   onParticipantClick?: (userId: string) => void;
   onOpenParticipantsPanel?: () => void;
   getDisplayName: (userId: string) => string;
+  /** px the stage reserves on the right for a docked side panel (0 when none).
+   *  Drives the one-shot reflow glide: when this changes, the grid re-measures
+   *  synchronously and FLIPs every tile to its new size/position. */
+  sidePanelReserve?: number;
 }
 
 const MAX_GRID_TILES = 16;
+// Keep this many just-past-the-cutoff participants' <video> mounted (hidden but
+// still decoding) as SIBLINGS of the visible grid tiles. When the active-speaker
+// sort promotes one of them across the overflow boundary, React reconciles it by
+// key within the same parent — the tile REPOSITIONS in place instead of
+// unmount+remounting, so the decoder isn't reset and the tile doesn't black-flash.
+const WARM_BUFFER_TILES = 4;
 // Spacing of the measured stage. GRID_PADDING mirrors `p-4`; GRID_GAP is the
 // inter-tile gap fed to the Meet packer so it reserves the same gutters we draw.
 const GRID_PADDING = 16;
 const GRID_GAP = 12;
 const GRID_MAX_COLS = 6;
 const FLIP_DURATION_MS = 220;
+// Discrete side-panel reflow glides over the SAME duration/easing as the panel
+// slide (meet-panel-in) so the stage and the panel move together.
+const REFLOW_DURATION_MS = 280;
 const FLIP_EASING = "cubic-bezier(0.22, 1, 0.36, 1)";
 const FONT_SANS = "'PolySans Trial', system-ui, sans-serif";
 
@@ -53,24 +66,39 @@ const prefersReducedMotion = () =>
   window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 /**
- * No-dependency FLIP: keeps every tile's `transform` animating smoothly when
- * the grid reflows from participant identity/order changes (join/leave,
- * active-speaker reorder) WITHOUT remounting the tiles. Pure container resizes
- * still refresh the rect snapshot, but they do not play transforms; this keeps
- * side-panel width changes from animating every tile through a FLIP transition.
+ * No-dependency FLIP. Keeps every tile gliding smoothly (position AND size)
+ * when the grid reflows — both from participant identity/order changes
+ * (join/leave, active-speaker reorder) AND from a discrete side-panel toggle —
+ * WITHOUT remounting the tiles or resizing the live <video> every frame.
+ *
+ * The whole point: a tile's LAYOUT box (width/height) is set to its FINAL value
+ * exactly once (so the <video> surface layout-resizes once, never per frame),
+ * and the visual delta is animated purely as a GPU-composited transform —
+ * `translate3d(dx,dy,0) scale(sx,sy)` easing to identity, transform-origin 0 0.
+ * Per codex/browser-engineering: transform-scaling a composited <video> is GPU
+ * RESAMPLING of the already-decoded texture, NOT a per-frame re-raster — it does
+ * not flicker. The flicker we saw earlier came from animating layout width/height
+ * (the padding transition driving computeGridLayout every frame), not from scale.
+ *
+ * `reflowNonce` is a value that changes ONLY on a discrete reflow we want to
+ * animate (a side-panel open/close). A continuous window-drag resize changes the
+ * layout but NOT the nonce, so it just snaps (no per-frame transform thrash).
  */
 function useFlip(
   flipKeys: string[],
   layoutSignature: string,
   enabled: boolean,
+  reflowNonce: number,
 ) {
   const nodeMap = useRef(new Map<string, HTMLElement>());
   const prevRects = useRef(new Map<string, DOMRect>());
   const prevIdentitySignature = useRef<string | null>(null);
+  const prevReflowNonce = useRef(reflowNonce);
+  // Steady-state "first" rects captured the instant a panel toggle is detected,
+  // held until the new layout settles (a frame later) so the glide starts from
+  // the pre-reflow geometry, never the half-resized intermediate.
+  const pendingReflowFirst = useRef<Map<string, DOMRect> | null>(null);
   const frameIds = useRef<number[]>([]);
-  // A value-equal signature of the visible tile identities/order. The layout
-  // effect also depends on `layoutSignature`, but only this identity signature
-  // is allowed to trigger FLIP playback.
   const signature = flipKeys.join("~");
 
   const register = useCallback((key: string, node: HTMLElement | null) => {
@@ -83,71 +111,109 @@ function useFlip(
       frameIds.current.forEach((frameId) => window.cancelAnimationFrame(frameId));
       frameIds.current = [];
     };
-
     cancelPendingFrames();
 
     if (!enabled) {
       prevRects.current = new Map();
       prevIdentitySignature.current = null;
+      pendingReflowFirst.current = null;
+      prevReflowNonce.current = reflowNonce;
       return;
     }
 
     const nodes = nodeMap.current;
-    const previous = prevRects.current;
-    const shouldAnimate =
-      prevIdentitySignature.current !== null &&
-      prevIdentitySignature.current !== signature &&
-      !prefersReducedMotion();
-    const next = new Map<string, DOMRect>();
+    const reduced = prefersReducedMotion();
 
-    // Read each tile's rect ONCE: reuse it for both the delta diff and the
-    // snapshot for the next reflow.
-    nodes.forEach((node, key) => {
-      const newRect = node.getBoundingClientRect();
-      next.set(key, newRect);
-      if (!shouldAnimate) {
+    // One rect read per node — reused for the delta diff and the next snapshot.
+    const next = new Map<string, DOMRect>();
+    nodes.forEach((node, key) => next.set(key, node.getBoundingClientRect()));
+
+    // --- discrete panel-toggle reflow: stash steady-state rects, defer play ---
+    if (prevReflowNonce.current !== reflowNonce) {
+      prevReflowNonce.current = reflowNonce;
+      // The final tile sizes land in the NEXT (synchronous, pre-paint) commit —
+      // capture the geometry from BEFORE the reflow now, and play once it lands.
+      pendingReflowFirst.current = prevRects.current;
+      prevRects.current = next;
+      // If no size/position actually changes (e.g. height-constrained grid), the
+      // settle commit never fires — drop the stale pending next frame.
+      const dropId = requestAnimationFrame(() => {
+        pendingReflowFirst.current = null;
+      });
+      frameIds.current.push(dropId);
+      return cancelPendingFrames;
+    }
+
+    const identityChanged =
+      prevIdentitySignature.current !== null &&
+      prevIdentitySignature.current !== signature;
+
+    // Pick the FLIP source: a settled panel reflow, or an identity/order change.
+    let firstRects: Map<string, DOMRect> | null = null;
+    let duration = FLIP_DURATION_MS;
+    if (pendingReflowFirst.current) {
+      // Prefer the steady-state pre-reflow rects even when identity ALSO changed
+      // this commit (a join mid-reflow) — `prevRects` currently holds the
+      // half-resized intermediate, which would make tiles glide from the wrong
+      // start. New tiles (no pending rect) simply skip and appear in place.
+      firstRects = pendingReflowFirst.current;
+      duration = REFLOW_DURATION_MS;
+    } else if (identityChanged) {
+      firstRects = prevRects.current;
+    }
+    pendingReflowFirst.current = null;
+
+    if (firstRects && !reduced) {
+      nodes.forEach((node, key) => {
+        const oldRect = firstRects.get(key);
+        const newRect = next.get(key);
+        if (!oldRect || !newRect || newRect.width === 0 || newRect.height === 0) {
+          node.style.transition = "none";
+          node.style.transform = "";
+          return;
+        }
+        const dx = oldRect.left - newRect.left;
+        const dy = oldRect.top - newRect.top;
+        const sx = oldRect.width / newRect.width;
+        const sy = oldRect.height / newRect.height;
+        // Skip imperceptible deltas (sub-pixel jitter).
+        if (
+          Math.abs(dx) < 1 &&
+          Math.abs(dy) < 1 &&
+          Math.abs(sx - 1) < 0.01 &&
+          Math.abs(sy - 1) < 0.01
+        ) {
+          node.style.transition = "none";
+          node.style.transform = "";
+          return;
+        }
+        // 1. Invert: place the tile at its OLD box via a GPU transform. Origin
+        //    0 0 (top-left) — FLIP math requires it. translate THEN scale.
+        node.style.transition = "none";
+        node.style.transformOrigin = "0 0";
+        node.style.transform = `translate3d(${dx}px, ${dy}px, 0) scale(${sx}, ${sy})`;
+        // 2. Play: next frame, ease the transform back to identity. Only the
+        //    composited transform animates — the <video> layout box does not.
+        const frameId = requestAnimationFrame(() => {
+          node.style.transition = `transform ${duration}ms ${FLIP_EASING}`;
+          node.style.transform = "translate3d(0, 0, 0) scale(1, 1)";
+        });
+        frameIds.current.push(frameId);
+      });
+    } else {
+      // First paint / pure window resize / reduced motion: snap, no animation.
+      nodes.forEach((node) => {
         node.style.transition = "none";
         node.style.transform = "";
         node.style.transformOrigin = "";
-        return;
-      }
-
-      const oldRect = previous.get(key);
-      if (!oldRect) return;
-
-      const dx = oldRect.left - newRect.left;
-      const dy = oldRect.top - newRect.top;
-      const dw = oldRect.width === 0 ? 1 : newRect.width / oldRect.width;
-      const dh = oldRect.height === 0 ? 1 : newRect.height / oldRect.height;
-
-      // Skip imperceptible deltas (sub-pixel jitter).
-      if (
-        Math.abs(dx) < 1 &&
-        Math.abs(dy) < 1 &&
-        Math.abs(dw - 1) < 0.01 &&
-        Math.abs(dh - 1) < 0.01
-      ) {
-        return;
-      }
-
-      // 1. Invert: jump the tile back to where it used to be, instantly.
-      node.style.transition = "none";
-      node.style.transformOrigin = "top left";
-      node.style.transform = `translate(${dx}px, ${dy}px) scale(${1 / dw}, ${1 / dh})`;
-
-      // 2. Play: on the next frame, ease the transform back to identity.
-      const frameId = requestAnimationFrame(() => {
-        node.style.transition = `transform ${FLIP_DURATION_MS}ms ${FLIP_EASING}`;
-        node.style.transform = "";
       });
-      frameIds.current.push(frameId);
-    });
+    }
 
     prevRects.current = next;
     prevIdentitySignature.current = signature;
     return cancelPendingFrames;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [signature, layoutSignature, enabled]);
+  }, [signature, layoutSignature, enabled, reflowNonce]);
 
   return register;
 }
@@ -169,6 +235,7 @@ function GridLayout({
   onParticipantClick,
   onOpenParticipantsPanel,
   getDisplayName,
+  sidePanelReserve = 0,
 }: GridLayoutProps) {
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const [isOverflowOpen, setIsOverflowOpen] = useState(false);
@@ -267,6 +334,27 @@ function GridLayout({
     );
   }, [orderedRemoteParticipants, visibleParticipants]);
   const hiddenParticipantsCount = hiddenParticipants.length;
+  // The few hidden participants just past the visible cutoff that we keep warm
+  // (mounted + decoding, but visually hidden) so they cross the boundary without
+  // a remount. Empty while the overflow gallery is open — it already renders
+  // every hidden participant, so warming them too would double-mount the tile.
+  const warmParticipants = useMemo(() => {
+    if (isOverflowOpen) return [];
+    const warm = hiddenParticipants.slice(0, WARM_BUFFER_TILES);
+    // Also warm the active speaker even if they're hidden BEYOND the buffer —
+    // useSmartParticipantOrder will promote them into the grid after the debounce
+    // and we don't want that to mount a cold <video>.
+    if (
+      activeSpeakerId &&
+      !warm.some((p) => p.userId === activeSpeakerId)
+    ) {
+      const speaker = hiddenParticipants.find(
+        (p) => p.userId === activeSpeakerId,
+      );
+      if (speaker) warm.push(speaker);
+    }
+    return warm;
+  }, [isOverflowOpen, hiddenParticipants, activeSpeakerId]);
   const showOverflowTile = hiddenParticipantsCount > 0;
   const showOverflowTileInGrid = showOverflowTile && !isOverflowOpen;
   const totalParticipants =
@@ -320,6 +408,25 @@ function GridLayout({
     return () => observer.disconnect();
   }, []);
 
+  // When a side panel toggles, the stage's reserved width changes INSTANTLY (the
+  // pane's padding snaps). Re-measure SYNCHRONOUSLY here — in the same commit,
+  // before the browser paints — so the tiles reach their final size this frame
+  // (no half-resized intermediate flash) and the FLIP's first/last capture is
+  // clean. The async ResizeObserver above would otherwise land a frame later.
+  const prevReserveRef = useRef(sidePanelReserve);
+  useLayoutEffect(() => {
+    if (prevReserveRef.current === sidePanelReserve) return;
+    prevReserveRef.current = sidePanelReserve;
+    const el = gridRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const width = Math.round(rect.width);
+    const height = Math.round(rect.height);
+    setGridSize((prev) =>
+      prev.width === width && prev.height === height ? prev : { width, height }
+    );
+  }, [sidePanelReserve]);
+
   // Optimal-packing grid (shared @conclave/meeting-core engine — same logic web,
   // RN, and the Swift port use). Tiles are sized exactly; flex-wrap + content-
   // center gives Meet's centered last row for free.
@@ -345,7 +452,11 @@ function GridLayout({
   const tileClass = layout.tileWidth > 0
     ? "relative shrink-0 will-change-transform"
     : "relative h-full w-full will-change-transform";
-  const layoutSignature = `${layout.cols}x${layout.rows}-${layout.tileWidth}x${layout.tileHeight}`;
+  // Include the measured stage size so a panel toggle that shifts tile POSITION
+  // (the centered group re-centers) WITHOUT changing tile SIZE still re-runs the
+  // FLIP effect on the settle commit — otherwise the pending reflow would be
+  // dropped and the tiles would snap instead of glide.
+  const layoutSignature = `${layout.cols}x${layout.rows}-${layout.tileWidth}x${layout.tileHeight}-${gridSize.width}x${gridSize.height}`;
   const hasMeasuredGrid = gridSize.width > 0 && gridSize.height > 0;
 
   const localSpeakerHighlight = isLocalActiveSpeaker ? "speaking" : "";
@@ -359,7 +470,31 @@ function GridLayout({
     if (showOverflowTileInGrid) keys.push("overflow");
     return keys;
   }, [visibleParticipants, showOverflowTileInGrid]);
-  const registerTile = useFlip(flipKeys, layoutSignature, hasMeasuredGrid);
+  const registerTile = useFlip(
+    flipKeys,
+    layoutSignature,
+    hasMeasuredGrid,
+    sidePanelReserve,
+  );
+
+  // Stable per-key ref callbacks. Inline `ref={(node) => registerTile(key, node)}`
+  // creates a NEW function every render, so React detaches+reattaches the ref
+  // (registerTile(null) then registerTile(node)) on every grid re-render — pure
+  // churn on the hot video-tile path. Caching one callback per key makes the ref
+  // identity stable so React leaves it alone unless the node actually changes.
+  const tileRefCbs = useRef(new Map<string, (node: HTMLElement | null) => void>());
+  const getTileRef = useCallback(
+    (key: string) => {
+      const cache = tileRefCbs.current;
+      let cb = cache.get(key);
+      if (!cb) {
+        cb = (node: HTMLElement | null) => registerTile(key, node);
+        cache.set(key, cb);
+      }
+      return cb;
+    },
+    [registerTile],
+  );
 
   const copyToClipboard = async (value: string) => {
     if (navigator.clipboard?.writeText) {
@@ -447,7 +582,7 @@ function GridLayout({
         {/* Local tile — wrapped in a stable FLIP node so the <video> never
             re-attaches when the grid reflows. */}
         <div
-          ref={(node) => registerTile("local", node)}
+          ref={getTileRef("local")}
           className={tileClass}
           style={tileStyle}
         >
@@ -501,7 +636,22 @@ function GridLayout({
                 <MicOff size={14} strokeWidth={1.75} className="shrink-0 text-[#F95F4A]" />
               )}
             </div>
-            {isSolo ? (
+            {isSolo && !isCameraOff ? (
+              // Camera is on — don't cover the live self-view with the full card;
+              // show a compact corner invite pill instead.
+              <button
+                type="button"
+                onClick={handleInvite}
+                className="absolute bottom-3 left-3 flex items-center gap-2 rounded-full border border-[#fafafa]/14 bg-[#18181b] px-3.5 py-2 text-[13px] font-medium text-[#fafafa] transition-colors hover:bg-[#232327] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F95F4A]/40"
+              >
+                <UserPlus size={16} strokeWidth={1.75} className="text-[#F95F4A]" />
+                {inviteStatus === "shared"
+                  ? "Invite sent"
+                  : inviteStatus === "copied"
+                  ? "Link copied"
+                  : "Invite people"}
+              </button>
+            ) : isSolo ? (
               <div className="absolute left-3 top-3 w-[19rem] max-w-[calc(100%-1.5rem)] rounded-xl border border-[#fafafa]/12 bg-[#18181b] p-4 text-[#fafafa]">
                 <div className="flex items-center gap-2.5">
                   <span className="flex h-9 w-9 items-center justify-center rounded-full bg-white/[0.06] text-[#fafafa]">
@@ -546,7 +696,7 @@ function GridLayout({
         {visibleParticipants.map((participant) => (
           <div
             key={participant.userId}
-            ref={(node) => registerTile(participant.userId, node)}
+            ref={getTileRef(participant.userId)}
             data-userid={participant.userId}
             className={tileClass}
             style={tileStyle}
@@ -568,7 +718,8 @@ function GridLayout({
 
         {showOverflowTileInGrid ? (
           <div
-            ref={(node) => registerTile("overflow", node)}
+            key="overflow"
+            ref={getTileRef("overflow")}
             className={tileClass}
             style={tileStyle}
           >
@@ -601,6 +752,40 @@ function GridLayout({
             </button>
           </div>
         ) : null}
+
+        {/* Warm buffer — mounted but hidden (off-screen, still decoding) as
+            SIBLINGS of the visible grid tiles. Stable key={userId} + same parent
+            means a participant promoted across the overflow boundary by the
+            active-speaker sort REPOSITIONS in place (React preserves the element
+            by key) instead of unmount+remounting — no decoder reset / black
+            flash. Skipped while the overflow gallery is open (it already renders
+            every hidden tile). */}
+        {warmParticipants.map((participant) => (
+          <div
+            key={participant.userId}
+            aria-hidden
+            className="pointer-events-none absolute overflow-hidden opacity-0"
+            // Keep the warm wrapper at the SAME size it'll be in the grid (not
+            // h-px w-px) — otherwise crossing the boundary forces a huge
+            // compositor/video-layer resize from 1px → full tile. Just park it
+            // far off-screen.
+            style={{ ...(tileStyle ?? {}), left: -99999, top: 0 }}
+          >
+            <ParticipantVideo
+              participant={participant}
+              displayName={getDisplayName(participant.userId)}
+              isActiveSpeaker={false}
+              audioOutputDeviceId={audioOutputDeviceId}
+              disableAudio
+              isAdmin={isAdmin}
+              isPinned={false}
+              // No interactive controls on a warm (off-screen, aria-hidden) tile
+              // — passing onTogglePin would render a focusable pin button that a
+              // keyboard / screen reader could still reach inside aria-hidden.
+              onTogglePin={undefined}
+            />
+          </div>
+        ))}
       </div>
 
       {pinnedParticipant && (
@@ -661,16 +846,23 @@ function GridLayout({
             </div>
             <div className="relative">
               <div className="grid auto-cols-[11rem] grid-flow-col gap-3 overflow-x-scroll scroll-smooth snap-x snap-mandatory px-4 pb-4 pt-4 no-scrollbar">
-                {hiddenParticipants.map((participant) => (
-                  <OverflowGalleryTile
-                    key={participant.userId}
-                    participant={participant}
-                    displayName={getDisplayName(participant.userId)}
-                    isActiveSpeaker={activeSpeakerId === participant.userId}
-                    isAdmin={isAdmin}
-                    onParticipantClick={onParticipantClick}
-                  />
-                ))}
+                {/* Only MOUNT the gallery <video>s while the tray is actually
+                    open. The wrapper above merely collapses them with max-h-0,
+                    so without this guard every hidden participant kept decoding
+                    video while the tray was closed — wasteful and a duplicate of
+                    the warm buffer. Cold-mounting on open is fine (explicit
+                    user action); the warm buffer covers the grid boundary. */}
+                {isOverflowOpen &&
+                  hiddenParticipants.map((participant) => (
+                    <OverflowGalleryTile
+                      key={participant.userId}
+                      participant={participant}
+                      displayName={getDisplayName(participant.userId)}
+                      isActiveSpeaker={activeSpeakerId === participant.userId}
+                      isAdmin={isAdmin}
+                      onParticipantClick={onParticipantClick}
+                    />
+                  ))}
               </div>
             </div>
           </div>
@@ -687,57 +879,16 @@ const OverflowPreviewTile = memo(function OverflowPreviewTile({
   participant: Participant;
   displayName: string;
 }) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const videoStream = participant.isCameraOff ? null : participant.videoStream;
-  const videoTrack = videoStream?.getVideoTracks()[0] ?? null;
-
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-
-    if (!videoStream) {
-      if (video.srcObject) {
-        video.srcObject = null;
-      }
-      return;
-    }
-
-    if (video.srcObject !== videoStream) {
-      video.srcObject = videoStream;
-    }
-
-    const playVideo = () => {
-      video.play().catch(() => {});
-    };
-
-    playVideo();
-
-    if (!videoTrack) return;
-    videoTrack.addEventListener("unmute", playVideo);
-
-    return () => {
-      videoTrack.removeEventListener("unmute", playVideo);
-    };
-  }, [videoStream, videoTrack]);
-
-  const showPlaceholder = !videoStream;
-
+  // AVATAR-ONLY. This is a tiny 4-up hint inside the "+N" button; rendering a
+  // live <video> here DUPLICATED the decode of the same hidden participants the
+  // warm buffer already keeps mounted (double media attach per stream). A solid
+  // avatar is all the preview needs.
   return (
-    <div className="relative h-full w-full overflow-hidden rounded-lg border border-[#fafafa]/10 bg-[#131316]">
-      <video
-        ref={videoRef}
-        autoPlay
-        playsInline
-        className={`h-full w-full object-cover ${showPlaceholder ? "hidden" : ""}`}
-      />
-      {showPlaceholder && (
-        <div
-          className="absolute inset-0 flex items-center justify-center text-[13px] font-semibold text-white"
-          style={{ backgroundColor: avatarColor(participant.userId) }}
-        >
-          {displayName[0]?.toUpperCase() || "?"}
-        </div>
-      )}
+    <div
+      className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-lg border border-[#fafafa]/10 text-[13px] font-semibold text-white"
+      style={{ backgroundColor: avatarColor(participant.userId) }}
+    >
+      {displayName[0]?.toUpperCase() || "?"}
     </div>
   );
 });

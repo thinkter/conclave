@@ -7,25 +7,38 @@ export interface ToastItem {
   id: string;
   label: string;
   message: string;
+  /** "danger" reads as an error: danger label + a slightly lighter surface. */
+  tone?: "accent" | "danger";
   onDismiss?: () => void;
 }
 
 /**
  * Single bottom-center transient toast region (one at a time). Replaces the two
  * fixed corner error boxes. Flat solid surface, no gradient/glow, manual close.
+ * A 4px solid left-border stripe (accent, or danger for errors) anchors it.
  */
 export default function ToastQueue({ toasts }: { toasts: (ToastItem | null | undefined)[] }) {
   const active = toasts.filter(Boolean) as ToastItem[];
   if (active.length === 0) return null;
   const toast = active[0];
+  const isDanger = toast.tone === "danger";
+  const stripeColor = isDanger ? color.danger : color.accent;
+  const labelColor = isDanger ? color.danger : color.accent;
+  // Errors get a slightly lighter surface so they stand apart from the stage.
+  const surfaceColor = isDanger ? color.surfaceRaised : color.surface;
   return (
     <div className="pointer-events-none absolute bottom-28 left-1/2 z-50 -translate-x-1/2 px-4">
       <div
-        className="pointer-events-auto flex max-w-[360px] items-start gap-3 rounded-xl border px-4 py-3"
-        style={{ backgroundColor: color.surface, borderColor: color.border }}
+        className="pointer-events-auto flex max-w-[360px] items-start gap-3 overflow-hidden rounded-xl border py-3 pr-4"
+        style={{
+          backgroundColor: surfaceColor,
+          borderColor: color.border,
+          borderLeft: `4px solid ${stripeColor}`,
+          paddingLeft: "calc(1rem - 3px)",
+        }}
       >
         <div className="min-w-0">
-          <p className="text-xs font-medium" style={{ color: color.accent }}>
+          <p className="text-xs font-medium" style={{ color: labelColor }}>
             {toast.label}
           </p>
           <p className="mt-1 text-[11px]" style={{ color: color.textMuted }}>

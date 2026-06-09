@@ -17,8 +17,7 @@ export type ProducerType = "webcam" | "screen";
 export type ClientMode =
   | "participant"
   | "ghost"
-  | "webinar_attendee"
-  | "recorder";
+  | "webinar_attendee";
 
 export type ProducerKey = `${MediaKind}-${ProducerType}`;
 
@@ -64,12 +63,8 @@ export class Client {
     return this.mode === "webinar_attendee";
   }
 
-  get isRecorder(): boolean {
-    return this.mode === "recorder";
-  }
-
   get isObserver(): boolean {
-    return this.isGhost || this.isWebinarAttendee || this.isRecorder;
+    return this.isGhost || this.isWebinarAttendee;
   }
 
   addProducer(producer: Producer): void {

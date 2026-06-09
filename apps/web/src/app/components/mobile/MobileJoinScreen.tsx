@@ -636,7 +636,7 @@ function MobileJoinScreen({
             />
           ) : (
             <div className="absolute inset-0 flex items-center justify-center bg-[#131316]">
-              <div className="absolute inset-0 bg-gradient-to-br from-[#F95F4A]/15 to-[#FF007A]/10" />
+              <div className="absolute inset-0 bg-[rgba(249,95,74,0.15)]" />
               <div className="relative w-20 h-20 rounded-full mobile-avatar flex items-center justify-center">
                 <span
                   className="text-4xl text-[#fafafa] font-bold"

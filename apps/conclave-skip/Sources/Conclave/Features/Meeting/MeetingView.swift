@@ -25,6 +25,10 @@ struct MeetingView: View {
         showMeetingSheet = true
     }
 
+    private func meetingSheetDetentHeight(for availableHeight: CGFloat) -> CGFloat {
+        availableHeight * MeetingSheetView.detentFraction
+    }
+
 #if !os(macOS) && !SKIP
     @Environment(\.horizontalSizeClass) var horizontalSizeClass
 #endif
@@ -112,15 +116,22 @@ struct MeetingView: View {
                 .padding(.trailing, max(6.0, geometry.safeAreaInsets.trailing))
             }
             .ignoresSafeArea(.container, edges: .bottom)
+            .sheet(isPresented: $showMeetingSheet) {
+                MeetingSheetView(
+                    viewModel: viewModel,
+                    page: $meetingSheetPage,
+                    androidDetentHeight: meetingSheetDetentHeight(for: geometry.size.height)
+                )
+            }
         }
         .preferredColorScheme(.dark)
-        .sheet(isPresented: $showMeetingSheet) {
-            MeetingSheetView(viewModel: viewModel, page: $meetingSheetPage)
-        }
-        .animation(.easeInOut(duration: 0.25), value: viewModel.state.isChatOpen)
-        .animation(.easeInOut(duration: 0.2), value: viewModel.state.pinnedUserId)
+        // ≤120ms opacity crossfades (design law). The spatial grid reflow in
+        // GridLayoutView keeps its slightly longer ease — abrupt tile
+        // repositioning reads worse than a fast crossfade (documented exception).
+        .animation(.easeInOut(duration: 0.12), value: viewModel.state.isChatOpen)
+        .animation(.easeInOut(duration: 0.12), value: viewModel.state.pinnedUserId)
         // Grid ↔ screen-share presentation crossfades like grid ↔ spotlight.
-        .animation(.easeInOut(duration: 0.25), value: viewModel.state.hasActiveScreenShare)
+        .animation(.easeInOut(duration: 0.12), value: viewModel.state.hasActiveScreenShare)
     }
 }
 

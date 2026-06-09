@@ -134,7 +134,7 @@ function MobileGridLayout({
           />
           {isCameraOff && (
             <div className="absolute inset-0 flex items-center justify-center bg-black">
-              <div className="absolute inset-0 bg-gradient-to-br from-[#F95F4A]/15 to-[#FF007A]/10" />
+              <div className="absolute inset-0 bg-[rgba(249,95,74,0.15)]" />
               <div
                 className={`relative rounded-full mobile-avatar flex items-center justify-center text-[#fafafa] font-bold ${totalCount <= 2 ? "w-20 h-20 text-3xl" : totalCount <= 4 ? "w-14 h-14 text-xl" : "w-10 h-10 text-lg"}`}
                 style={{ fontFamily: "'PolySans Bulky Wide', sans-serif" }}
@@ -283,7 +283,7 @@ const ParticipantTile = memo(function ParticipantTile({
       />
       {showPlaceholder && (
         <div className="absolute inset-0 flex items-center justify-center bg-black">
-          <div className="absolute inset-0 bg-gradient-to-br from-[#F95F4A]/15 to-[#FF007A]/10" />
+          <div className="absolute inset-0 bg-[rgba(249,95,74,0.15)]" />
           <div
             className={`relative rounded-full mobile-avatar flex items-center justify-center text-[#fafafa] font-bold ${totalCount <= 2 ? "w-20 h-20 text-3xl" : totalCount <= 4 ? "w-14 h-14 text-xl" : "w-10 h-10 text-lg"}`}
             style={{ fontFamily: "'PolySans Bulky Wide', sans-serif" }}

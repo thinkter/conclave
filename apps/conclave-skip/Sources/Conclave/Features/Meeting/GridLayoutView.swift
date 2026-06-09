@@ -128,19 +128,28 @@ struct GridLayoutView: View {
 
     @ViewBuilder
     func nonScrollingGrid(layout: TileLayout, count: Int) -> some View {
+        // Key tiles by STABLE userId (slot 0 = local), not by row/column index.
+        // Keying by index let a surviving view at slot N be rebound to a
+        // different participant's track on a join/leave reflow → the tile would
+        // momentarily show the wrong person's video. Iterating ForEach over the
+        // userIds (mirrors the web grid's key={participant.userId}) makes
+        // SwiftUI/Compose recreate the renderer when a slot's occupant changes
+        // and preserve it when the same participant merely moves position.
+        let ids = slotUserIds(count: count)
         VStack(spacing: spacing) {
             ForEach(0..<layout.rows, id: \.self) { row in
                 HStack(spacing: spacing) {
                     let startIndex = row * layout.columns
-                    let endIndex = min(startIndex + layout.columns, count)
-                    let tilesInRow = endIndex - startIndex
+                    let endIndex = min(startIndex + layout.columns, ids.count)
+                    let rowIds = startIndex < endIndex
+                        ? Array(ids[startIndex..<endIndex])
+                        : [String]()
 
-                    ForEach(0..<tilesInRow, id: \.self) { col in
-                        let index = startIndex + col
+                    ForEach(rowIds, id: \.self) { userId in
                         Button {
-                            viewModel.togglePin(userIdAt(index: index))
+                            viewModel.togglePin(userId)
                         } label: {
-                            tileAt(index: index)
+                            tileFor(userId: userId)
                                 .frame(width: layout.tileWidth, height: layout.tileHeight)
                         }
                         .buttonStyle(.plain)
@@ -149,6 +158,25 @@ struct GridLayoutView: View {
             }
         }
         .padding(padding)
+    }
+
+    // Ordered userIds for the non-scrolling grid slots: slot 0 = local user,
+    // the rest = sortedParticipants in order. Bounded to `count` tiles.
+    func slotUserIds(count: Int) -> [String] {
+        var ids = [viewModel.state.userId]
+        for participant in viewModel.state.sortedParticipants {
+            ids.append(participant.id)
+        }
+        return Array(ids.prefix(count))
+    }
+
+    @ViewBuilder
+    func tileFor(userId: String) -> some View {
+        if userId == viewModel.state.userId {
+            localTile()
+        } else if let participant = viewModel.state.participants[userId] {
+            remoteTile(participant: participant)
+        }
     }
 
     @ViewBuilder
@@ -178,28 +206,6 @@ struct GridLayoutView: View {
             }
             .padding(padding)
         }
-    }
-
-    @ViewBuilder
-    func tileAt(index: Int) -> some View {
-        if index == 0 {
-            localTile()
-        } else {
-            let participants = viewModel.state.sortedParticipants
-            if index - 1 < participants.count {
-                remoteTile(participant: participants[index - 1])
-            }
-        }
-    }
-
-    // Maps a grid slot to its participant id (slot 0 = local) for tap-to-pin.
-    func userIdAt(index: Int) -> String {
-        if index == 0 { return viewModel.state.userId }
-        let participants = viewModel.state.sortedParticipants
-        if index - 1 < participants.count {
-            return participants[index - 1].id
-        }
-        return viewModel.state.userId
     }
 
     func localTile(fill: Bool = false) -> some View {

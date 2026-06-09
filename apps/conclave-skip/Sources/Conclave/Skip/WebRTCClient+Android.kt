@@ -68,6 +68,9 @@ internal class WebRTCClient : SendTransport.Listener, RecvTransport.Listener, Pr
     private var localVideoTrackWrapper: VideoTrackWrapper? = null
 
     private var device: Device? = null
+    // True once configure() has set up the mediasoup Device and before cleanup()
+    // tears it down — lets the rejoin path detect a still-live prior session.
+    internal val isConfigured: Boolean get() = device != null
     private var sendTransport: SendTransport? = null
     private var receiveTransport: RecvTransport? = null
     private var sendTransportId: String? = null
@@ -89,10 +92,26 @@ internal class WebRTCClient : SendTransport.Listener, RecvTransport.Listener, Pr
 
     private val consumers: MutableMap<String, ConsumerInfo> = mutableMapOf()
     private var serverRtpCapabilities: RtpCapabilities? = null
+
+    /// The consumer id we hold for a remote producer (the consumers map is keyed
+    /// by consumer id, not producer id). Used by the producer-sync safety net.
+    internal fun consumerId(forProducer: String): String? {
+        for (entry in consumers) {
+            if (entry.value.producerId == forProducer) return entry.key
+        }
+        return null
+    }
     private var socketManager: SocketIOManager? = null
 
     private var peerConnectionFactory: PeerConnectionFactory? = null
-    private val eglBase: EglBase = EglBase.create()
+    // MUST share the SAME root EGL context as the SurfaceViewRenderer
+    // (VideoRendererShared.eglBase). The hardware decoder factory below renders
+    // remote frames into textures on this context; if the renderer were inited
+    // on a different EglBase.create(), those texture frames can't be drawn and
+    // remote video (incl. screen-share) shows black. One shared context across
+    // factory (encoder/decoder), capturers, and renderers. Process-global
+    // singleton — never released here.
+    private val eglBase: EglBase = VideoRendererShared.eglBase
     private var surfaceTextureHelper: SurfaceTextureHelper? = null
     private var videoSource: VideoSource? = null
     private var audioSource: AudioSource? = null
@@ -197,6 +216,13 @@ internal class WebRTCClient : SendTransport.Listener, RecvTransport.Listener, Pr
         }
 
         val capturer = videoCapturer ?: throw ErrorException("No camera capturer")
+        // Without the CAMERA runtime permission, WebRTC's Camera2Capturer throws a
+        // SecurityException on its async capture thread and CRASHES the process
+        // (a try/catch around startCapture can't catch that thread). Bail early
+        // with a catchable error so toggleCamera surfaces it instead of crashing.
+        if (androidx.core.content.ContextCompat.checkSelfPermission(ProcessInfo.processInfo.androidContext, android.Manifest.permission.CAMERA) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            throw ErrorException("Camera permission not granted")
+        }
         videoSource = peerConnectionFactory?.createVideoSource(false)
         val source = videoSource ?: throw ErrorException("Video source unavailable")
         capturer.initialize(surfaceTextureHelper, ProcessInfo.processInfo.androidContext, source.capturerObserver)
@@ -337,7 +363,9 @@ internal class WebRTCClient : SendTransport.Listener, RecvTransport.Listener, Pr
             trackKey = trackKey
         )
 
-        socket.resumeConsumer(response.id)
+        // Request a keyframe on the initial video consume so the decoder gets a
+        // fresh IDR immediately instead of a frozen/blank first frame.
+        socket.resumeConsumer(response.id, response.kind == "video")
 
         if (response.kind == "video") {
             val track = consumer.track as? VideoTrack
@@ -357,12 +385,14 @@ internal class WebRTCClient : SendTransport.Listener, RecvTransport.Listener, Pr
             ids.forEach { id ->
                 consumers[id]?.consumer?.close()
                 consumers.remove(id)
+                videoFreezeStats.remove(id)
             }
         } else {
             val entry = consumers.entries.firstOrNull { it.value.producerId == producerId }
             if (entry != null) {
                 entry.value.consumer.close()
                 consumers.remove(entry.key)
+                videoFreezeStats.remove(entry.key)
                 val key = if (entry.value.trackKey.isEmpty()) entry.value.userId else entry.value.trackKey
                 if (key.isNotEmpty()) {
                     remoteVideoTracks.removeValue(forKey = key)
@@ -408,9 +438,13 @@ internal class WebRTCClient : SendTransport.Listener, RecvTransport.Listener, Pr
         localVideoTrackWrapper?.isEnabled = enabled
 
         if (enabled) {
-            try {
-                videoCapturer?.startCapture(1280, 720, 30)
-            } catch (_: Throwable) {
+            // Pre-check permission: startCapture's SecurityException fires on the
+            // async capture thread, so the try/catch below can't stop the crash.
+            if (androidx.core.content.ContextCompat.checkSelfPermission(ProcessInfo.processInfo.androidContext, android.Manifest.permission.CAMERA) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                try {
+                    videoCapturer?.startCapture(1280, 720, 30)
+                } catch (_: Throwable) {
+                }
             }
         } else {
             try {
@@ -431,7 +465,7 @@ internal class WebRTCClient : SendTransport.Listener, RecvTransport.Listener, Pr
         }
     }
 
-    internal suspend fun cleanup() {
+    internal suspend fun cleanup(notifyLocalState: Boolean = true) {
         android.util.Log.i("ConclaveScreenCap", "cleanup() called — WHO?", Throwable("cleanup stack"))
         try {
             videoCapturer?.stopCapture()
@@ -462,11 +496,26 @@ internal class WebRTCClient : SendTransport.Listener, RecvTransport.Listener, Pr
 
         consumers.values.forEach { it.consumer.close() }
         consumers.clear()
+        videoFreezeStats.clear()
 
         localVideoTrack?.setEnabled(false)
         localAudioTrack?.setEnabled(false)
         localVideoTrack = null
         localAudioTrack = null
+
+        // Reset the produce-state flags (mirrors the Swift WebRTCClient.cleanup
+        // fix). The client is reused across calls via the singleton VM, so a
+        // stale-true flag would make the next join's unmute / camera-on take the
+        // resume branch against a now-null producer and silently produce nothing.
+        localAudioEnabled = false
+        localVideoEnabled = false
+        // On a rejoin (notifyLocalState=false) skip the change callbacks so they
+        // don't clobber the user's preserved mute/camera intent before
+        // startProducing re-publishes (mirrors the Swift suppression).
+        if (notifyLocalState) {
+            onLocalAudioEnabledChanged?.invoke(false)
+            onLocalVideoEnabledChanged?.invoke(false)
+        }
 
         localVideoTrackWrapper = null
         remoteVideoTracks.removeAll()
@@ -481,6 +530,16 @@ internal class WebRTCClient : SendTransport.Listener, RecvTransport.Listener, Pr
 
     internal fun getCaptureSession(): Any? = null
     internal fun getLocalVideoTrack(): Any? = localVideoTrackWrapper
+
+    /// The raw org.webrtc.VideoTrack for a participant's webcam (by user id), or
+    /// the local camera track when `userId == "local"`. Used to feed the
+    /// Picture-in-Picture window the active speaker's video.
+    internal fun rawVideoTrack(userId: String): VideoTrack? {
+        if (userId == "local") {
+            return localVideoTrack
+        }
+        return remoteVideoTracks[userId]?.rtcVideoTrack
+    }
 
     // MARK: - Audio Device Routing
 
@@ -660,6 +719,73 @@ internal class WebRTCClient : SendTransport.Listener, RecvTransport.Listener, Pr
         } catch (_: Throwable) {
             null
         }
+    }
+
+    // Video freeze watchdog — mirrors iOS checkVideoFreezes (and the web one):
+    // if framesDecoded stays flat while real media still flows (bytesReceived
+    // climbs >= threshold) across 2 checks, the decoder is stuck on a stale
+    // frame; request a keyframe (PLI) so it un-freezes. Invisible to track-mute.
+    private val videoFreezeStats: MutableMap<String, Triple<Double, Double, Int>> =
+        mutableMapOf()
+
+    internal suspend fun checkVideoFreezes() {
+        val minStallByteDelta = 8000.0
+        val stallSamplesBeforePLI = 2
+        val active = mutableSetOf<String>()
+        for ((consumerId, info) in consumers) {
+            if (info.kind != "video") continue
+            active.add(consumerId)
+            val statsJson = try {
+                info.consumer.getStats()
+            } catch (_: Throwable) {
+                continue
+            }
+            val sample = parseInboundVideoDecode(statsJson) ?: continue
+            val frames = sample.first
+            val bytes = sample.second
+            val prev = videoFreezeStats[consumerId]
+            var stalls = 0
+            if (prev != null) {
+                val stuck = frames == prev.first &&
+                    (bytes - prev.second) >= minStallByteDelta
+                stalls = if (stuck) prev.third + 1 else 0
+            }
+            if (stalls >= stallSamplesBeforePLI) {
+                // Still frozen — request a keyframe. Do NOT reset the stall
+                // counter (mirrors the Swift fix): if this PLI is lost on a
+                // congested link, the next ~2s poll still sees frames flat and
+                // re-requests, instead of waiting out two fresh stall windows.
+                // Resets to 0 naturally once frames advance.
+                try {
+                    socketManager?.resumeConsumer(consumerId, true)
+                } catch (_: Throwable) {
+                }
+            }
+            videoFreezeStats[consumerId] = Triple(frames, bytes, stalls)
+        }
+        for (key in videoFreezeStats.keys.toList()) {
+            if (!active.contains(key)) videoFreezeStats.remove(key)
+        }
+    }
+
+    private fun parseInboundVideoDecode(statsJson: String): Pair<Double, Double>? {
+        val array = try {
+            org.json.JSONArray(statsJson)
+        } catch (_: Throwable) {
+            return null
+        }
+        for (i in 0 until array.length()) {
+            val obj = array.optJSONObject(i) ?: continue
+            if (obj.optString("type") != "inbound-rtp") continue
+            val kind = if (obj.has("kind")) obj.optString("kind") else obj.optString("mediaType")
+            if (kind != "video") continue
+            if (!obj.has("framesDecoded") || !obj.has("bytesReceived")) continue
+            val frames = obj.optDouble("framesDecoded", -1.0)
+            val bytes = obj.optDouble("bytesReceived", -1.0)
+            if (frames < 0 || bytes < 0) continue
+            return Pair(frames, bytes)
+        }
+        return null
     }
 
     override fun onConnect(transport: Transport, dtlsParameters: String) {

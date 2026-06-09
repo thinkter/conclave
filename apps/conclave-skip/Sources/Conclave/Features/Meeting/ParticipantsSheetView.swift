@@ -21,6 +21,7 @@ func acmListSectionHeader(_ title: String) -> some View {
 
 struct ParticipantsSheetView: View {
     @Bindable var viewModel: MeetingViewModel
+    var bodyReady: Bool = true
     @Environment(\.dismiss) var dismiss
     var onBack: (() -> Void)? = nil
 
@@ -321,8 +322,9 @@ struct ParticipantsSheetView: View {
         VStack(spacing: 0) {
             MeetingSheetHeader(title: "Participants", onBack: onBack, onDone: { dismiss() })
 
+            if bodyReady {
             ScrollView {
-                VStack(alignment: .leading, spacing: ACMSpacing.md) {
+                LazyVStack(alignment: .leading, spacing: ACMSpacing.md) {
                     if viewModel.state.isAdmin {
                         VStack(alignment: .leading, spacing: ACMSpacing.xs) {
                             acmListSectionHeader("Host controls")
@@ -403,7 +405,15 @@ struct ParticipantsSheetView: View {
                 .padding(.top, ACMSpacing.md)
                 .padding(.bottom, ACMSpacing.lg)
             }
+            .transition(.opacity)
+            } else {
+                Spacer()
+            }
         }
+        #if SKIP
+        .frame(maxWidth: .infinity, alignment: .top)
+        #else
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        #endif
     }
 }

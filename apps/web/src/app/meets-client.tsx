@@ -38,6 +38,7 @@ import { useMeetRooms } from "./hooks/useMeetRooms";
 import { useMeetSocket } from "./hooks/useMeetSocket";
 import { useMeetState } from "./hooks/useMeetState";
 import { useMeetTts } from "./hooks/useMeetTts";
+import { useConnectionQuality } from "./hooks/useConnectionQuality";
 import { useIsMobile } from "./hooks/useIsMobile";
 import { usePrewarmSocket } from "./hooks/usePrewarmSocket";
 import { useSharedBrowser } from "./hooks/useSharedBrowser";
@@ -97,8 +98,6 @@ export type MeetsClientProps = {
   enableRoomRouting?: boolean;
   forceJoinOnly?: boolean;
   allowGhostMode?: boolean;
-  bypassMediaPermissions?: boolean;
-  broadcastMode?: boolean;
   fontClassName?: string;
   user?: {
     id?: string;
@@ -131,8 +130,6 @@ export default function MeetsClient({
   enableRoomRouting = false,
   forceJoinOnly = false,
   allowGhostMode = true,
-  bypassMediaPermissions = false,
-  broadcastMode = false,
   fontClassName,
   user,
   isAdmin = false,
@@ -771,7 +768,6 @@ export default function MeetsClient({
     onTtsMessage: handleTtsMessage,
     prewarm,
     onSocketReady: setAppsSocket,
-    bypassMediaPermissions,
   });
 
   useMeetAudioActivity({
@@ -1090,6 +1086,17 @@ export default function MeetsClient({
   // ============================================
   // Render Helpers
   // ============================================
+
+  // Network-quality polling reuses the media hook's existing transport refs;
+  // it does not create or own any peer connection. This hook MUST run above the
+  // `if (!mounted) return null` early-return below — every hook has to be called
+  // unconditionally on every render (Rules of Hooks), or React throws a
+  // "change in the order of Hooks" error and the whole client crashes.
+  const { quality: selfConnectionQuality } = useConnectionQuality({
+    producerTransportRef: refs.producerTransportRef,
+    consumerTransportRef: refs.consumerTransportRef,
+    enabled: connectionState === "joined",
+  });
 
   if (!mounted) return null;
 
@@ -1443,6 +1450,7 @@ export default function MeetsClient({
       <MeetsMainContent
         isJoined={isJoined}
         connectionState={connectionState}
+        selfConnectionQuality={selfConnectionQuality}
         isLoading={isLoading}
         roomId={roomId}
         setRoomId={setRoomId}
@@ -1471,6 +1479,13 @@ export default function MeetsClient({
         isHandRaised={isHandRaised}
         participants={participants}
         isMirrorCamera={isMirrorCamera}
+        onToggleMirror={() => setIsMirrorCamera((prev) => !prev)}
+        selectedAudioInputDeviceId={selectedAudioInputDeviceId}
+        selectedAudioOutputDeviceId={selectedAudioOutputDeviceId}
+        selectedVideoInputDeviceId={selectedVideoInputDeviceId}
+        onAudioInputDeviceChange={handleAudioInputDeviceChange}
+        onAudioOutputDeviceChange={handleAudioOutputDeviceChange}
+        onVideoInputDeviceChange={handleVideoInputDeviceSelect}
         activeSpeakerId={effectiveActiveSpeakerId}
         currentUserId={userId}
         audioOutputDeviceId={selectedAudioOutputDeviceId}
@@ -1552,7 +1567,6 @@ export default function MeetsClient({
         onUpdateWebinarConfig={socket.updateWebinarConfig}
         onGenerateWebinarLink={socket.generateWebinarLink}
         onRotateWebinarLink={socket.rotateWebinarLink}
-        broadcastMode={broadcastMode}
         isVoiceAgentRunning={voiceAgent.isRunning}
         isVoiceAgentStarting={voiceAgent.isStarting}
         voiceAgentError={voiceAgent.error}

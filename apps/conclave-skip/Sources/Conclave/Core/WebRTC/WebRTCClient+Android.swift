@@ -31,6 +31,7 @@ final class WebRTCClient {
     private(set) var localAudioEnabled: Bool = false
     private(set) var localVideoEnabled: Bool = false
     var remoteVideoTracks: [String: VideoTrackWrapper] = [:]
+    var isConfigured: Bool { fatalError() }
 
     func configure(socketManager: SocketIOManager, rtpCapabilities: RtpCapabilities) { fatalError() }
     func createTransports() async throws { fatalError() }
@@ -39,7 +40,9 @@ final class WebRTCClient {
     func updateVideoQuality(_ quality: VideoQuality) { fatalError() }
     func startProducingAudio() async throws { fatalError() }
     func startProducingVideo() async throws { fatalError() }
-    func cleanup() async { fatalError() }
+    func cleanup(notifyLocalState: Bool = true) async { fatalError() }
+    func checkVideoFreezes() async { fatalError() }
+    func consumerId(forProducer producerId: String) -> String? { fatalError() }
     func setAudioEnabled(_ enabled: Bool) async { fatalError() }
     func setVideoEnabled(_ enabled: Bool) async { fatalError() }
 

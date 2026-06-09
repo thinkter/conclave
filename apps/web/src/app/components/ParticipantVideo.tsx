@@ -149,7 +149,7 @@ function ParticipantVideo({
   return (
     <div
       onClick={handleClick}
-      className={`acm-video-tile ${
+      className={`acm-video-tile group ${
         compact ? "h-36 shrink-0" : "w-full h-full"
       } ${speakerHighlight} ${handRaisedHighlight} ${
         isAdmin && onAdminClick ? "cursor-pointer hover:border-[#F95F4A]/40" : ""
@@ -240,7 +240,9 @@ function ParticipantVideo({
             e.stopPropagation();
             onTogglePin(participant.userId);
           }}
-          className="absolute top-3 right-3 p-2 bg-black/60 rounded-full border border-[#fafafa]/10 text-[#fafafa]/82 transition-[border-color,color] duration-[120ms] hover:border-[#F95F4A]/40 hover:text-[#fafafa]"
+          className={`absolute top-3 right-3 p-2 bg-black/60 rounded-full border border-[#fafafa]/10 text-[#fafafa]/82 transition-[border-color,color,opacity] duration-[120ms] hover:border-[#F95F4A]/40 hover:text-[#fafafa] focus-visible:opacity-100 ${
+            isPinned ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+          }`}
           title={isPinned ? "Unpin" : "Pin to spotlight"}
           aria-label={isPinned ? "Unpin" : "Pin to spotlight"}
         >
@@ -248,7 +250,7 @@ function ParticipantVideo({
         </button>
       )}
       {isAdmin && onAdminClick && (
-        <div className={`absolute top-3 ${onTogglePin ? "right-14" : "right-3"} p-2 bg-black/60 rounded-full border border-[#fafafa]/10 transition-all hover:border-[#F95F4A]/40`}>
+        <div className={`absolute top-3 ${onTogglePin ? "right-14" : "right-3"} p-2 bg-black/60 rounded-full border border-[#fafafa]/10 opacity-0 transition-[border-color,opacity] duration-[120ms] group-hover:opacity-100 hover:border-[#F95F4A]/40`}>
           <Info className="w-4 h-4 text-[#fafafa]/82" />
         </div>
       )}

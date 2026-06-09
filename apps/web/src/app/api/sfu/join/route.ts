@@ -1,6 +1,7 @@
 import jwt from "jsonwebtoken";
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
+import { resolveHostGrant } from "@conclave/meeting-core";
 import { auth } from "@/lib/auth";
 import { lookupScheduledWebinarByRoomId } from "@/lib/sfu-user-auth";
 
@@ -203,12 +204,17 @@ export async function POST(request: Request) {
     .catch(() => null);
   const sessionUser = session?.user;
   const sessionEmail = sessionUser?.email?.trim() || undefined;
-  const email = sessionEmail || body?.user?.email?.trim() || undefined;
+  // SECURITY: identity (the userKey the SFU keys host-tracking, allow/block
+  // lists, no-guests, and dedup on) is trusted ONLY from a verified better-auth
+  // session. An unauthenticated caller's body.user.email / body.user.id is NOT
+  // trusted as identity — it was spoofable, enabling impersonation, no-guests
+  // bypass, and allowlist evasion. Unauthenticated callers get a guest- key.
+  // (The display NAME may still come from the body — it is not a security id.)
+  const email = sessionEmail;
   const name =
     sessionUser?.name?.trim() || body?.user?.name?.trim() || undefined;
   const normalizedSessionEmail = normalizeEmail(sessionEmail);
-  const providedId =
-    sessionUser?.id?.trim() || body?.user?.id?.trim() || undefined;
+  const providedId = sessionUser?.id?.trim() || undefined;
   const baseUserId = email || providedId || `guest-${sessionId}`;
   const isWebinarAttendeeJoin = joinMode === "webinar_attendee";
   const isScheduledHostRoom = isScheduledRoomId(roomId);
@@ -235,14 +241,18 @@ export async function POST(request: Request) {
     }
   }
 
-  const isHost = isWebinarAttendeeJoin
-    ? false
-    : isForcedHost ||
-      scheduledRoomHostMatch ||
-      (!isScheduledHostRoom && requestedHost);
-  const allowRoomCreation = isWebinarAttendeeJoin
-    ? false
-    : !isScheduledHostRoom && Boolean(body?.allowRoomCreation);
+  // Host/admin is NEVER minted from a bare client claim. The decision (and its
+  // security invariant + regression tests) lives in resolveHostGrant: a host
+  // *intent* only grants room-creation, so the creator becomes host via the
+  // SFU's server-authoritative createdRoom path — never seizing an existing room.
+  const { isHost, allowRoomCreation } = resolveHostGrant({
+    isWebinarAttendeeJoin,
+    isForcedHost,
+    scheduledRoomHostMatch,
+    isScheduledHostRoom,
+    requestedHost,
+    bodyAllowRoomCreation: Boolean(body?.allowRoomCreation),
+  });
 
   const secret = process.env.SFU_SECRET || "development-secret";
   logSecretFingerprint(secret);

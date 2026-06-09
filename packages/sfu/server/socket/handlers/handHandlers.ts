@@ -1,6 +1,7 @@
 import type { HandRaisedNotification, SetHandRaisedData } from "../../../types.js";
 import type { ConnectionContext } from "../context.js";
 import { respond } from "./ack.js";
+import { RATE_LIMITS, takeToken } from "../rateLimit.js";
 
 export const registerHandHandlers = (context: ConnectionContext): void => {
   const { socket, io } = context;
@@ -20,6 +21,12 @@ export const registerHandHandlers = (context: ConnectionContext): void => {
           respond(callback, {
             error: "Watch-only attendees cannot raise a hand",
           });
+          return;
+        }
+
+        // Throttle: drop over-budget toggles (ack an error, do not broadcast).
+        if (!takeToken(socket, "setHandRaised", RATE_LIMITS.hand)) {
+          respond(callback, { error: "You are raising your hand too quickly" });
           return;
         }
 

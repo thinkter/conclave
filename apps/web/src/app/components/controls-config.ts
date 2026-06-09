@@ -51,10 +51,22 @@ export interface ControlsBarProps {
   onToggleHandRaised: () => void;
   onSendReaction: (reaction: ReactionOption) => void;
   onLeave: () => void;
+  // Device pickers surfaced as Meet-style carets beside the mic / camera button.
+  selectedAudioInputDeviceId?: string;
+  selectedAudioOutputDeviceId?: string;
+  selectedVideoInputDeviceId?: string;
+  onAudioInputDeviceChange?: (deviceId: string) => void;
+  onAudioOutputDeviceChange?: (deviceId: string) => void;
+  onVideoInputDeviceChange?: (deviceId: string) => void;
+  isMirrorCamera?: boolean;
+  onToggleMirror?: () => void;
   isAdmin?: boolean | null;
   isGhostMode?: boolean;
   isParticipantsOpen?: boolean;
   onToggleParticipants?: () => void;
+  /** Host-controls side panel (parent-owned, content-shrinking like chat). */
+  isHostControlsOpen?: boolean;
+  onToggleHostControls?: () => void;
   pendingUsersCount?: number;
   isRoomLocked?: boolean;
   onToggleLock?: () => void;

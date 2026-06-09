@@ -11,6 +11,7 @@ import GridLayout from "./GridLayout";
 import ConnectionBanner from "./ConnectionBanner";
 import JoinScreen from "./JoinScreen";
 import ParticipantsPanel from "./ParticipantsPanel";
+import MeetSettingsPanel from "./MeetSettingsPanel";
 import PresentationLayout from "./PresentationLayout";
 import ReactionOverlay from "./ReactionOverlay";
 import BrowserLayout from "./BrowserLayout";
@@ -23,6 +24,7 @@ import ParticipantVideo from "./ParticipantVideo";
 import MeetingIdentity from "./MeetingIdentity";
 import ToastQueue from "./ToastQueue";
 import type { BrowserState } from "../hooks/useSharedBrowser";
+import type { ConnectionQuality } from "../hooks/useConnectionQuality";
 
 import type {
   ChatMessage,
@@ -80,6 +82,13 @@ interface MeetsMainContentProps {
   isHandRaised: boolean;
   participants: Map<string, Participant>;
   isMirrorCamera: boolean;
+  onToggleMirror?: () => void;
+  selectedAudioInputDeviceId?: string;
+  selectedAudioOutputDeviceId?: string;
+  selectedVideoInputDeviceId?: string;
+  onAudioInputDeviceChange?: (deviceId: string) => void;
+  onAudioOutputDeviceChange?: (deviceId: string) => void;
+  onVideoInputDeviceChange?: (deviceId: string) => void;
   activeSpeakerId: string | null;
   currentUserId: string;
   audioOutputDeviceId?: string;
@@ -167,10 +176,7 @@ interface MeetsMainContentProps {
   ) => Promise<WebinarConfigSnapshot | null>;
   onGenerateWebinarLink?: () => Promise<WebinarLinkResponse | null>;
   onRotateWebinarLink?: () => Promise<WebinarLinkResponse | null>;
-  /** Recorder-bot view: strip every UI chrome so the rendered tab is
-   * publishable as-is (no controls, header, chat, reactions, recording
-   * indicator). The participant video grid is the only thing left. */
-  broadcastMode?: boolean;
+  selfConnectionQuality?: ConnectionQuality;
 }
 
 const getLiveVideoStream = (stream: MediaStream | null): MediaStream | null => {
@@ -261,6 +267,13 @@ export default function MeetsMainContent({
   isHandRaised,
   participants,
   isMirrorCamera,
+  onToggleMirror,
+  selectedAudioInputDeviceId,
+  selectedAudioOutputDeviceId,
+  selectedVideoInputDeviceId,
+  onAudioInputDeviceChange,
+  onAudioOutputDeviceChange,
+  onVideoInputDeviceChange,
   activeSpeakerId,
   currentUserId,
   audioOutputDeviceId,
@@ -342,7 +355,7 @@ export default function MeetsMainContent({
   onUpdateWebinarConfig,
   onGenerateWebinarLink,
   onRotateWebinarLink,
-  broadcastMode = false,
+  selfConnectionQuality = "unknown",
 }: MeetsMainContentProps) {
   const {
     state: appsState,
@@ -405,6 +418,10 @@ export default function MeetsMainContent({
   } | null>(null);
   const [webinarAudioBlocked, setWebinarAudioBlocked] = useState(false);
   const [webinarAudioPlaybackAttempt, setWebinarAudioPlaybackAttempt] = useState(0);
+  // Host controls render as a right-docked, content-shrinking side panel — the
+  // same one-at-a-time behavior as chat / participants. Owned here so the stage
+  // shrinks (paddingRight reserve) exactly like the other panels.
+  const [isHostControlsOpen, setIsHostControlsOpen] = useState(false);
 
   const webinarStage = useMemo(() => {
     if (!nonSystemParticipants.length) {
@@ -657,11 +674,14 @@ export default function MeetsMainContent({
   );
   const handleToggleParticipants = useCallback(() => {
     const opening = !isParticipantsOpen;
-    // Mutually exclusive with chat (one right-dock panel at a time). Fire the
-    // side effect OUTSIDE the setState updater so StrictMode's double-invoke
-    // doesn't toggle chat twice and leave both panels open.
+    // Mutually exclusive with chat AND host controls (one right-dock panel at a
+    // time). Fire the side effect OUTSIDE the setState updater so StrictMode's
+    // double-invoke doesn't toggle chat twice and leave both panels open.
     if (opening && isChatOpen) {
       toggleChat();
+    }
+    if (opening) {
+      setIsHostControlsOpen(false);
     }
     setIsParticipantsOpen(opening);
   }, [isParticipantsOpen, isChatOpen, setIsParticipantsOpen, toggleChat]);
@@ -675,12 +695,32 @@ export default function MeetsMainContent({
     if (isChatOpenRef.current) {
       toggleChat();
     }
+    setIsHostControlsOpen(false);
     setIsParticipantsOpen(true);
   }, [toggleChat, setIsParticipantsOpen]);
 
   const handleCloseParticipants = useCallback(
     () => setIsParticipantsOpen(false),
     [setIsParticipantsOpen],
+  );
+
+  const handleToggleHostControls = useCallback(() => {
+    const opening = !isHostControlsOpen;
+    // One right-dock panel at a time. Fire the side effects OUTSIDE the setState
+    // updater so StrictMode's double-invoke doesn't toggle chat twice and leave
+    // both panels docked (mirrors handleToggleParticipants).
+    if (opening && isChatOpenRef.current) {
+      toggleChat();
+    }
+    if (opening) {
+      setIsParticipantsOpen(false);
+    }
+    setIsHostControlsOpen(opening);
+  }, [isHostControlsOpen, toggleChat, setIsParticipantsOpen]);
+
+  const handleCloseHostControls = useCallback(
+    () => setIsHostControlsOpen(false),
+    [],
   );
   useEffect(() => {
     if (!isChatOpen || chatOverlayMessages.length === 0) return;
@@ -721,8 +761,11 @@ export default function MeetsMainContent({
     );
   }, [socket, isDmEnabled]);
   const handleToggleChat = useCallback(() => {
-    if (!isChatOpen && isParticipantsOpen) {
-      setIsParticipantsOpen(false);
+    if (!isChatOpen) {
+      if (isParticipantsOpen) {
+        setIsParticipantsOpen(false);
+      }
+      setIsHostControlsOpen(false);
     }
     toggleChat();
   }, [isChatOpen, isParticipantsOpen, setIsParticipantsOpen, toggleChat]);
@@ -758,22 +801,19 @@ export default function MeetsMainContent({
   const dockedPanelReserve =
     isJoined &&
     !isWebinarAttendee &&
-    !broadcastMode &&
-    (isChatOpen || isParticipantsOpen)
+    (isChatOpen || isParticipantsOpen || isHostControlsOpen)
       ? DOCKED_PANEL_WIDTH
       : 0;
-  const mainContentStyle =
-    isJoined && !broadcastMode
-      ? { paddingRight: `calc(1rem + ${dockedPanelReserve}px)` }
-      : undefined;
+  const mainContentStyle = isJoined
+    ? { paddingRight: `calc(1rem + ${dockedPanelReserve}px)` }
+    : undefined;
 
   return (
     <div
-      className={`flex-1 flex flex-col overflow-hidden relative transition-[padding-right] duration-[200ms] ease-out ${
-        broadcastMode ? "p-0 bg-[#0a0a0b]" : isJoined ? "p-4" : "p-0"
+      className={`flex-1 flex flex-col overflow-hidden relative ${
+        isJoined ? "p-4" : "p-0"
       }`}
       style={mainContentStyle}
-      data-broadcast={broadcastMode ? "1" : undefined}
     >
       {isJoined && (!isWebinarAttendee || serverRestartNotice) && (
         <ConnectionBanner
@@ -801,18 +841,19 @@ export default function MeetsMainContent({
           isWebinarAttendee ? webinarAudioPlaybackAttempt : undefined
         }
       />
-      {!broadcastMode && isJoined && reactions.length > 0 && (
+      {isJoined && reactions.length > 0 && (
         <ReactionOverlay
           reactions={reactions}
           getDisplayName={resolveDisplayName}
         />
       )}
-      {isJoined && !broadcastMode && !isWebinarAttendee && (
+      {isJoined && !isWebinarAttendee && (
         <MeetingIdentity
           connectionState={connectionState}
           serverRestartNotice={serverRestartNotice}
           isScreenSharing={isScreenSharing}
           isGhost={ghostEnabled}
+          connectionQuality={selfConnectionQuality}
         />
       )}
       {isDevToolsEnabled && isJoined && !isWebinarAttendee && (
@@ -845,7 +886,6 @@ export default function MeetsMainContent({
                     className="pointer-events-auto flex items-center"
                     aria-label="ACM-VIT"
                   >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src="/assets/acm_topleft.svg"
                       alt="ACM-VIT"
@@ -1116,6 +1156,7 @@ export default function MeetsMainContent({
               audioOutputDeviceId={audioOutputDeviceId}
               onOpenParticipantsPanel={handleOpenParticipants}
               getDisplayName={resolveDisplayName}
+              sidePanelReserve={dockedPanelReserve}
             />
           </div>
           {presentationStream && (
@@ -1149,6 +1190,7 @@ export default function MeetsMainContent({
                   id: "browser",
                   label: "Browser error",
                   message: browserLaunchError,
+                  tone: "danger" as const,
                   onDismiss: onClearBrowserError,
                 }
               : null,
@@ -1157,6 +1199,7 @@ export default function MeetsMainContent({
                   id: "voice",
                   label: "Voice agent error",
                   message: voiceAgentError,
+                  tone: "danger" as const,
                   onDismiss: onClearVoiceAgentError,
                 }
               : null,
@@ -1164,7 +1207,7 @@ export default function MeetsMainContent({
         />
       )}
 
-      {isJoined && !broadcastMode &&
+      {isJoined &&
         (isWebinarAttendee ? (
           <div className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-black/30 px-4 py-3">
             <div>
@@ -1192,10 +1235,22 @@ export default function MeetsMainContent({
                 onToggleHandRaised={toggleHandRaised}
                 onSendReaction={sendReaction}
                 onLeave={leaveRoom}
+                selectedAudioInputDeviceId={selectedAudioInputDeviceId}
+                selectedAudioOutputDeviceId={selectedAudioOutputDeviceId}
+                selectedVideoInputDeviceId={selectedVideoInputDeviceId}
+                onAudioInputDeviceChange={onAudioInputDeviceChange}
+                onAudioOutputDeviceChange={onAudioOutputDeviceChange}
+                onVideoInputDeviceChange={onVideoInputDeviceChange}
+                isMirrorCamera={isMirrorCamera}
+                onToggleMirror={onToggleMirror}
                 isAdmin={isAdmin}
                 isGhostMode={ghostEnabled}
                 isParticipantsOpen={isParticipantsOpen}
                 onToggleParticipants={handleToggleParticipants}
+                isHostControlsOpen={isHostControlsOpen}
+                onToggleHostControls={
+                  isAdmin ? handleToggleHostControls : undefined
+                }
                 pendingUsersCount={isAdmin ? pendingUsers.size : 0}
                 isRoomLocked={isRoomLocked}
                 onToggleLock={onToggleLock}
@@ -1256,7 +1311,7 @@ export default function MeetsMainContent({
           </div>
         ))}
 
-      {isJoined && !isWebinarAttendee && !broadcastMode && isChatOpen && (
+      {isJoined && !isWebinarAttendee && isChatOpen && (
         <ChatPanel
           messages={chatMessages}
           chatInput={chatInput}
@@ -1272,7 +1327,7 @@ export default function MeetsMainContent({
         />
       )}
 
-      {isJoined && !isWebinarAttendee && !broadcastMode && isParticipantsOpen && (
+      {isJoined && !isWebinarAttendee && isParticipantsOpen && (
         <ParticipantsPanel
           participants={participants}
           currentUserId={currentUserId}
@@ -1295,7 +1350,36 @@ export default function MeetsMainContent({
 
       {isJoined &&
         !isWebinarAttendee &&
-        !broadcastMode &&
+        isAdmin &&
+        isHostControlsOpen && (
+          <MeetSettingsPanel
+            isRoomLocked={isRoomLocked}
+            onToggleLock={onToggleLock}
+            isNoGuests={isNoGuests}
+            onToggleNoGuests={onToggleNoGuests}
+            isChatLocked={isChatLocked}
+            onToggleChatLock={onToggleChatLock}
+            isTtsDisabled={isTtsDisabled}
+            onToggleTtsDisabled={handleToggleTtsDisabled}
+            isDmEnabled={isDmEnabled}
+            onToggleDmEnabled={handleToggleDmEnabled}
+            meetingRequiresInviteCode={meetingRequiresInviteCode}
+            onGetMeetingConfig={onGetMeetingConfig}
+            onUpdateMeetingConfig={onUpdateMeetingConfig}
+            webinarConfig={webinarConfig}
+            webinarRole={webinarRole}
+            webinarLink={webinarLink}
+            onSetWebinarLink={onSetWebinarLink}
+            onGetWebinarConfig={onGetWebinarConfig}
+            onUpdateWebinarConfig={onUpdateWebinarConfig}
+            onGenerateWebinarLink={onGenerateWebinarLink}
+            onRotateWebinarLink={onRotateWebinarLink}
+            onClose={handleCloseHostControls}
+          />
+        )}
+
+      {isJoined &&
+        !isWebinarAttendee &&
         !isChatOpen &&
         chatOverlayMessages.length > 0 && (
         <ChatOverlay

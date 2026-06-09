@@ -49,11 +49,18 @@ final class WebRTCClient: NSObject, ObservableObject {
     var onLocalAudioEnabledChanged: ((Bool) -> Void)?
     var onLocalVideoEnabledChanged: ((Bool) -> Void)?
 
+    /// When true, mutating localAudioEnabled/localVideoEnabled does NOT fire the
+    /// onLocal*EnabledChanged callbacks. The binding handlers hop through
+    /// `Task { @MainActor }` (async), so on the reconnect-rejoin path a cleanup()
+    /// that fired them would land AFTER the VM restored the user's mute/camera
+    /// intent and flip it back — leaving an unmuted user rejoining muted. The
+    /// rejoin teardown sets this via cleanup(notifyLocalState: false).
+    private var suppressLocalStateCallbacks = false
     private(set) var localAudioEnabled: Bool = false {
-        didSet { onLocalAudioEnabledChanged?(localAudioEnabled) }
+        didSet { if !suppressLocalStateCallbacks { onLocalAudioEnabledChanged?(localAudioEnabled) } }
     }
     private(set) var localVideoEnabled: Bool = false {
-        didSet { onLocalVideoEnabledChanged?(localVideoEnabled) }
+        didSet { if !suppressLocalStateCallbacks { onLocalVideoEnabledChanged?(localVideoEnabled) } }
     }
     @Published private(set) var remoteVideoTracks: [String: VideoTrackWrapper] = [:]
     @Published private(set) var connectionState: RTCPeerConnectionState = .new
@@ -61,6 +68,10 @@ final class WebRTCClient: NSObject, ObservableObject {
     // MARK: - Mediasoup Core
 
     var device: Device?
+    /// True once configure() has set up the mediasoup Device for a session and
+    /// before cleanup() tears it down. Lets the rejoin path detect a still-live
+    /// prior session that must be torn down before reconfiguring.
+    var isConfigured: Bool { device != nil }
     var sendTransport: SendTransport?
     var receiveTransport: ReceiveTransport?
     var sendTransportId: String?
@@ -82,6 +93,16 @@ final class WebRTCClient: NSObject, ObservableObject {
     }
 
     var consumers: [String: ConsumerInfo] = [:]
+
+    /// The consumer id we hold for a remote producer (the consumers map is keyed
+    /// by consumer id, not producer id). Used by the producer-sync safety net to
+    /// re-assert resume on a consumer that may have been left server-paused.
+    func consumerId(forProducer producerId: String) -> String? {
+        for (id, info) in consumers where info.producerId == producerId {
+            return id
+        }
+        return nil
+    }
 
     // MARK: - RTP Capabilities (from server)
 
@@ -349,7 +370,10 @@ final class WebRTCClient: NSObject, ObservableObject {
             trackKey: trackKey
         )
 
-        try await socket.resumeConsumer(consumerId: response.id)
+        // Request a keyframe on the initial video consume so the decoder gets a
+        // fresh IDR immediately instead of showing nothing/garbage until the
+        // producer's next natural keyframe.
+        try await socket.resumeConsumer(consumerId: response.id, requestKeyFrame: response.kind == "video")
 
         if response.kind == "video", let videoTrack = consumer.track as? RTCVideoTrack {
             let trackWrapper = VideoTrackWrapper(
@@ -370,10 +394,12 @@ final class WebRTCClient: NSObject, ObservableObject {
             for id in consumerIds {
                 consumers[id]?.consumer.close()
                 consumers.removeValue(forKey: id)
+                videoFreezeStats.removeValue(forKey: id)
             }
         } else if let entry = consumers.first(where: { $0.value.producerId == producerId }) {
             entry.value.consumer.close()
             consumers.removeValue(forKey: entry.key)
+            videoFreezeStats.removeValue(forKey: entry.key)
             // Remove exactly the track this consumer fed (webcam OR screen),
             // never the sibling — so stopping a share leaves the webcam intact.
             let key = entry.value.trackKey.isEmpty ? entry.value.userId : entry.value.trackKey
@@ -495,9 +521,74 @@ final class WebRTCClient: NSObject, ObservableObject {
         return best
     }
 
+    // MARK: - Video freeze watchdog
+
+    // Last decode progress + consecutive stall count per remote video consumer.
+    private var videoFreezeStats: [String: (frames: Double, bytes: Double, stalls: Int)] = [:]
+
+    private static func statsNumber(_ obj: [String: Any], _ key: String) -> Double? {
+        if let d = obj[key] as? Double { return d }
+        if let i = obj[key] as? Int { return Double(i) }
+        if let n = obj[key] as? NSNumber { return n.doubleValue }
+        return nil
+    }
+
+    private static func parseInboundVideoDecode(_ statsJson: String) -> (frames: Double, bytes: Double)? {
+        guard let data = statsJson.data(using: .utf8),
+              let array = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
+            return nil
+        }
+        for obj in array {
+            guard (obj["type"] as? String) == "inbound-rtp" else { continue }
+            let kind = (obj["kind"] as? String) ?? (obj["mediaType"] as? String)
+            guard kind == "video",
+                  let frames = statsNumber(obj, "framesDecoded"),
+                  let bytes = statsNumber(obj, "bytesReceived") else {
+                continue
+            }
+            return (frames: frames, bytes: bytes)
+        }
+        return nil
+    }
+
+    /// Mirrors the web freeze watchdog: for each remote VIDEO consumer, if
+    /// framesDecoded stays flat while real media still flows (bytesReceived
+    /// climbs >= threshold) across 2 consecutive checks, the decoder is stuck on
+    /// a stale frame — request a keyframe (PLI) so it un-freezes. A frozen decoder
+    /// that keeps receiving RTP is invisible to track-mute callbacks, so this is
+    /// the only path that recovers it. Driven from the VM poll (~every 2s).
+    func checkVideoFreezes() async {
+        let minStallByteDelta: Double = 8000
+        let stallSamplesBeforePLI = 2
+        var active = Set<String>()
+        for (consumerId, info) in consumers where info.kind == "video" {
+            active.insert(consumerId)
+            guard let sample = Self.parseInboundVideoDecode(info.consumer.stats) else { continue }
+            let prev = videoFreezeStats[consumerId]
+            var stalls = 0
+            if let prev = prev {
+                let stuck = sample.frames == prev.frames
+                    && (sample.bytes - prev.bytes) >= minStallByteDelta
+                stalls = stuck ? prev.stalls + 1 : 0
+            }
+            if stalls >= stallSamplesBeforePLI {
+                // Still frozen — request a keyframe. Do NOT reset the stall
+                // counter: if this PLI is lost on a congested link, the next
+                // ~2s poll still sees frames flat and re-requests immediately,
+                // instead of waiting out two fresh stall windows (~4s of dead
+                // video). The counter resets to 0 naturally once frames advance.
+                try? await socketManager?.resumeConsumer(consumerId: consumerId, requestKeyFrame: true)
+            }
+            videoFreezeStats[consumerId] = (frames: sample.frames, bytes: sample.bytes, stalls: stalls)
+        }
+        for key in Array(videoFreezeStats.keys) where !active.contains(key) {
+            videoFreezeStats.removeValue(forKey: key)
+        }
+    }
+
     // MARK: - Cleanup
 
-    func cleanup() async {
+    func cleanup(notifyLocalState: Bool = true) async {
         await videoCapturer?.stopCapture()
         videoCapturer = nil
 
@@ -512,11 +603,28 @@ final class WebRTCClient: NSObject, ObservableObject {
             info.consumer.close()
         }
         consumers.removeAll()
+        videoFreezeStats.removeAll()
 
         rtcLocalVideoTrack?.isEnabled = false
         rtcLocalAudioTrack?.isEnabled = false
         rtcLocalVideoTrack = nil
         rtcLocalAudioTrack = nil
+
+        // Reset the produce-state flags. The VM (and this client) is now a
+        // process-wide singleton reused across calls, so leaving them stale-true
+        // would make the NEXT join's unmute / camera-on take the resume branch
+        // (`guard let producer = audioProducer else { return }`) against a
+        // now-nil producer — silently producing nothing (inaudible / black tile,
+        // no error). They're otherwise only cleared by onTransportClose, which
+        // cannot fire here since the producers are nilled before the transport
+        // closes. Resetting them makes a reused client create fresh producers.
+        // On a rejoin (notifyLocalState:false) suppress the change callbacks so
+        // their async @MainActor hop doesn't land after the VM restores the
+        // user's mute/camera intent and flip it back.
+        suppressLocalStateCallbacks = !notifyLocalState
+        localAudioEnabled = false
+        localVideoEnabled = false
+        suppressLocalStateCallbacks = false
 
         localVideoTrack = nil
         remoteVideoTracks.removeAll()

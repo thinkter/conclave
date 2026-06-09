@@ -15,6 +15,7 @@ import { Admin } from "../../../config/classes/Admin.js";
 import { Logger } from "../../../utilities/loggers.js";
 import type { ConnectionContext } from "../context.js";
 import { respond } from "./ack.js";
+import { RATE_LIMITS, takeToken } from "../rateLimit.js";
 
 const decodeBase64 = (value: string): Uint8Array | null => {
   const trimmed = value.trim();
@@ -193,6 +194,8 @@ export const registerAppsHandlers = (context: ConnectionContext): void => {
   socket.on("apps:yjs:update", (data: AppsUpdateData) => {
     if (!context.currentRoom || !context.currentClient) return;
     if (context.currentClient.isObserver) return;
+    // High-frequency event: drop (ignore) when over budget rather than process.
+    if (!takeToken(socket, "apps:yjs:update", RATE_LIMITS.appsYjsUpdate)) return;
 
     const appId = data?.appId?.trim();
     if (!appId) return;
@@ -222,6 +225,8 @@ export const registerAppsHandlers = (context: ConnectionContext): void => {
   socket.on("apps:awareness", (data: AppsAwarenessData) => {
     if (!context.currentRoom || !context.currentClient) return;
     if (context.currentClient.isObserver) return;
+    // High-frequency event: drop (ignore) when over budget rather than process.
+    if (!takeToken(socket, "apps:awareness", RATE_LIMITS.appsAwareness)) return;
 
     const appId = data?.appId?.trim();
     if (!appId) return;

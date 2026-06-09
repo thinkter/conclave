@@ -4,6 +4,7 @@ import { Logger } from "../../../utilities/loggers.js";
 import type Room from "../../../config/classes/Room.js";
 import type { ConnectionContext } from "../context.js";
 import { respond } from "./ack.js";
+import { RATE_LIMITS, takeToken } from "../rateLimit.js";
 
 const AT_DIRECT_MESSAGE_PATTERN = /^@(\S+)\s+([\s\S]+)$/;
 const DM_COMMAND_PATTERN = /^\/dm\s+(\S+)\s+([\s\S]+)$/i;
@@ -182,6 +183,12 @@ export const registerChatHandlers = (context: ConnectionContext): void => {
       try {
         if (!context.currentClient || !context.currentRoom) {
           respond(callback, { error: "Not in a room" });
+          return;
+        }
+
+        // Throttle: drop over-budget messages (ack an error, do not process).
+        if (!takeToken(socket, "sendChat", RATE_LIMITS.chat)) {
+          respond(callback, { error: "You are sending messages too quickly" });
           return;
         }
 

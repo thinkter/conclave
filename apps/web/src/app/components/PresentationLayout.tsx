@@ -50,14 +50,25 @@ function PresentationLayout({
 
   useEffect(() => {
     const video = localVideoRef.current;
-    if (video && localStream) {
-      video.srcObject = localStream;
+    if (!video) return;
+    if (localStream) {
+      // Only (re)assign when the stream actually changed — re-setting srcObject
+      // re-attaches the stream and resets the decoder (flicker).
+      if (video.srcObject !== localStream) {
+        video.srcObject = localStream;
+      }
       video.play().catch((err) => {
         if (err.name !== "AbortError") {
           console.error("[Meets] Presentation local video play error:", err);
         }
       });
+    } else if (video.srcObject) {
+      video.srcObject = null;
     }
+    return () => {
+      // Detach on unmount / stream change so the element can't hold a stale stream.
+      if (video) video.srcObject = null;
+    };
   }, [localStream]);
 
   useEffect(() => {

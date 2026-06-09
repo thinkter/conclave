@@ -48,7 +48,6 @@ export default function DevMeetToolsPanel({ roomId }: DevMeetToolsPanelProps) {
   const [joinMode, setJoinMode] = useState<JoinMode>("meeting");
   const [autoJoin, setAutoJoin] = useState(true);
   const [hideJoinUI, setHideJoinUI] = useState(true);
-  const [bypassMedia, setBypassMedia] = useState(true);
   const [spawnDelayMs, setSpawnDelayMs] = useState(150);
   const [autoCloseSeconds, setAutoCloseSeconds] = useState(0);
   const [asAdmin, setAsAdmin] = useState(false);
@@ -69,7 +68,6 @@ export default function DevMeetToolsPanel({ roomId }: DevMeetToolsPanelProps) {
       const url = new URL(`/${safeRoomId}`, window.location.origin);
       if (autoJoin) url.searchParams.set("autojoin", "1");
       if (shouldHideJoinUI) url.searchParams.set("hide", "1");
-      if (bypassMedia) url.searchParams.set("recorder", "1");
       if (asAdmin) url.searchParams.set("admin", "1");
       if (joinMode === "webinar_attendee") {
         url.searchParams.set("mode", "webinar_attendee");
@@ -82,7 +80,7 @@ export default function DevMeetToolsPanel({ roomId }: DevMeetToolsPanelProps) {
       }
       return url.toString();
     },
-    [roomId, autoJoin, hideJoinUI, bypassMedia, asAdmin, joinMode],
+    [roomId, autoJoin, hideJoinUI, asAdmin, joinMode],
   );
 
   const removeInlineBot = useCallback((id: string) => {
@@ -498,14 +496,6 @@ export default function DevMeetToolsPanel({ roomId }: DevMeetToolsPanelProps) {
                     onChange={(event) => setHideJoinUI(event.target.checked)}
                   />
                   Hide join UI
-                </label>
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={bypassMedia}
-                    onChange={(event) => setBypassMedia(event.target.checked)}
-                  />
-                  Bypass media
                 </label>
                 <label className="flex items-center gap-2">
                   <input

@@ -44,20 +44,12 @@ export default async function MeetRoomPage({
   const roomCode = decodeURIComponent(rawCode);
   const resolvedRoomCode =
     roomCode === "undefined" || roomCode === "null" ? "" : roomCode;
-  const bypassMediaPermissions = isTruthyParam(
-    resolvedSearchParams.recorder
-  );
-  const broadcastMode =
-    bypassMediaPermissions && isTruthyParam(resolvedSearchParams.broadcast);
   const devOverridesEnabled = process.env.NODE_ENV === "development";
-  const recorderOverridesEnabled = bypassMediaPermissions;
-  const safeBotOverridesEnabled =
-    devOverridesEnabled || recorderOverridesEnabled;
   const autoJoinOnMount =
-    safeBotOverridesEnabled && isTruthyParam(resolvedSearchParams.autojoin);
+    devOverridesEnabled && isTruthyParam(resolvedSearchParams.autojoin);
   const hideJoinUI =
-    safeBotOverridesEnabled && isTruthyParam(resolvedSearchParams.hide);
-  const joinModeParam = safeBotOverridesEnabled
+    devOverridesEnabled && isTruthyParam(resolvedSearchParams.hide);
+  const joinModeParam = devOverridesEnabled
     ? getParamValue(resolvedSearchParams.mode)
     : undefined;
   const joinMode =
@@ -66,7 +58,7 @@ export default async function MeetRoomPage({
     joinMode === "webinar_attendee"
       ? sanitizeWebinarLinkCode(resolvedRoomCode)
       : sanitizeRoomCode(resolvedRoomCode);
-  const displayName = safeBotOverridesEnabled
+  const displayName = devOverridesEnabled
     ? getParamValue(resolvedSearchParams.name)
     : undefined;
   const sfuClientId = sanitizeClientId(resolvedSearchParams.clientId);
@@ -78,8 +70,6 @@ export default async function MeetRoomPage({
     <MeetsClientShell
       initialRoomId={sanitizedRoomCode}
       forceJoinOnly={true}
-      bypassMediaPermissions={bypassMediaPermissions}
-      broadcastMode={broadcastMode}
       sfuClientId={sfuClientId}
       autoJoinOnMount={autoJoinOnMount}
       hideJoinUI={hideJoinUI}

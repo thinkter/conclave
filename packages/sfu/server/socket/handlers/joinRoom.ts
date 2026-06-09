@@ -73,8 +73,6 @@ export const registerJoinRoomHandler = (context: ConnectionContext): void => {
             ? "webinar_attendee"
             : "meeting";
         const isWebinarAttendeeJoin = joinMode === "webinar_attendee";
-        const isRecorderJoin =
-          !isWebinarAttendeeJoin && Boolean(data?.recorder);
         const clientId =
           typeof user?.clientId === "string" ? user.clientId : "default";
         let roomId = requestedRoomId;
@@ -158,7 +156,6 @@ export const registerJoinRoomHandler = (context: ConnectionContext): void => {
           scheduledWebinarForRoom?.status !== "cancelled";
         if (
           isActiveScheduledWebinarRoom &&
-          !isRecorderJoin &&
           !forcedHostJoin &&
           !hostRequested
         ) {
@@ -554,12 +551,6 @@ export const registerJoinRoomHandler = (context: ConnectionContext): void => {
             socket,
             mode: "webinar_attendee",
           });
-        } else if (isRecorderJoin) {
-          context.currentClient = new Client({
-            id: userId,
-            socket,
-            mode: "recorder",
-          });
         } else {
           context.currentClient = new Client({
             id: userId,
@@ -600,11 +591,7 @@ export const registerJoinRoomHandler = (context: ConnectionContext): void => {
         const resolvedDisplayName =
           context.currentRoom.getDisplayNameForUser(userId) || displayName;
         if (!wasReconnecting) {
-          if (context.currentClient.isRecorder) {
-            // Recorder bots are hidden implementation clients. They need the
-            // full producer snapshot to render the meeting, but should not
-            // appear in participant rosters or join/leave notifications.
-          } else if (context.currentClient.isGhost) {
+          if (context.currentClient.isGhost) {
             emitUserJoined(context.currentRoom, userId, resolvedDisplayName, {
               ghostOnly: true,
               excludeUserId: userId,
@@ -649,12 +636,10 @@ export const registerJoinRoomHandler = (context: ConnectionContext): void => {
           roomId: context.currentRoom.id,
         } satisfies HandRaisedSnapshot & { roomId: string });
 
-        if (!context.currentClient.isRecorder) {
-          socket.emit("chatHistorySnapshot", {
-            messages: context.currentRoom.getChatHistorySnapshot(),
-            roomId: context.currentRoom.id,
-          } satisfies ChatHistorySnapshot);
-        }
+        socket.emit("chatHistorySnapshot", {
+          messages: context.currentRoom.getChatHistorySnapshot(),
+          roomId: context.currentRoom.id,
+        } satisfies ChatHistorySnapshot);
 
         socket.emit("roomLockChanged", {
           locked: context.currentRoom.isLocked,
@@ -733,10 +718,6 @@ export const registerJoinRoomHandler = (context: ConnectionContext): void => {
           registerAdminHandlers(context, { roomId });
         }
 
-        const recordingState = context.recordings.publicState(
-          context.currentRoom.channelId,
-        );
-
         respond(callback, {
           roomId,
           rtpCapabilities: context.currentRoom.rtpCapabilities,
@@ -759,12 +740,6 @@ export const registerJoinRoomHandler = (context: ConnectionContext): void => {
           webinarRequiresInviteCode: webinarSnapshot.requiresInviteCode,
           webinarAttendeeCount: webinarSnapshot.attendeeCount,
           webinarMaxAttendees: webinarSnapshot.maxAttendees,
-          recording: {
-            active: recordingState.active,
-            paused: recordingState.paused,
-            startedAt: recordingState.startedAt,
-            available: recordingState.available,
-          },
         });
       } catch (error) {
         Logger.error("Error joining room:", error);

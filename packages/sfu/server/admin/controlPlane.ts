@@ -7,9 +7,15 @@ import type {
   ProducerType,
 } from "../../config/classes/Client.js";
 import type { Room } from "../../config/classes/Room.js";
-import { getRoomChannelId } from "../rooms.js";
+import type { AppsAwarenessData } from "../../types.js";
+import { isGuestUserKey } from "../identity.js";
+import { cleanupRoom, getRoomChannelId } from "../rooms.js";
+import { emitUserLeft } from "../notifications.js";
 import type { SfuState } from "../state.js";
-import { emitWebinarFeedChanged } from "../webinarNotifications.js";
+import {
+  emitWebinarAttendeeCountChanged,
+  emitWebinarFeedChanged,
+} from "../webinarNotifications.js";
 
 type ParticipantRole = "host" | "admin" | "participant" | "ghost" | "attendee";
 
@@ -184,7 +190,6 @@ export const toPendingUserSnapshots = (room: Room): PendingUserSnapshot[] => {
 
 export const toRoomSnapshot = (room: Room): RoomSnapshot => {
   const participants = Array.from(room.clients.values())
-    .filter((client) => !client.isRecorder)
     .map((client) => toParticipantSnapshot(room, client));
   const pendingUsers = toPendingUserSnapshots(room);
   const adminCount = participants.filter(
@@ -203,11 +208,9 @@ export const toRoomSnapshot = (room: Room): RoomSnapshot => {
   const attendees = participants.filter(
     (participant) => participant.role === "attendee",
   ).length;
-  const guests = participants.filter((participant) => {
-    const key = participant.userKey;
-    if (!key) return false;
-    return key.startsWith("guest:");
-  }).length;
+  const guests = participants.filter((participant) =>
+    isGuestUserKey(participant.userKey),
+  ).length;
 
   return {
     id: room.id,
@@ -666,10 +669,77 @@ export const clearAllRaisedHands = (io: SocketIOServer, room: Room): number => {
   return count;
 };
 
+/**
+ * Deterministically remove a client from a room RIGHT NOW as part of a
+ * moderation action (kick / block).
+ *
+ * Why this exists: a normal network drop schedules a ~15s disconnect grace
+ * (Room.scheduleDisconnect / disconnectHandlers) during which the client's
+ * producers keep flowing. If a host kicks/blocks that user concurrently, calling
+ * `socket.disconnect(true)` on the already-dead socket is a no-op and does NOT
+ * cancel the pending grace — so media would keep flowing for the full grace
+ * window. Here we explicitly clear any pending grace and close the client's
+ * producers/transports immediately so media stops at once, then emit the same
+ * userLeft / awareness / webinar updates the normal disconnect finalize would.
+ *
+ * The non-moderated disconnect-grace reconnect path is untouched: it still runs
+ * through disconnectHandlers and is only short-circuited here when an admin
+ * takes an explicit action.
+ */
+export const forceRemoveClientNow = (options: {
+  io: SocketIOServer;
+  state: SfuState;
+  room: Room;
+  userId: string;
+}): boolean => {
+  const { io, state, room, userId } = options;
+  const target = room.getClient(userId);
+  if (!target) {
+    // Already gone (grace may have already expired); nothing to stop.
+    room.clearPendingDisconnect(userId);
+    return false;
+  }
+
+  const roomChannelId = room.channelId;
+  const isGhost = target.isGhost;
+  const isWebinarAttendee = target.isWebinarAttendee;
+
+  // Cancel any in-flight disconnect grace so the timer cannot double-process.
+  room.clearPendingDisconnect(userId);
+
+  // Clear awareness before removing the client so peers stop seeing its cursor.
+  const awarenessRemovals = room.clearUserAwareness(userId);
+  for (const removal of awarenessRemovals) {
+    io.to(roomChannelId).emit("apps:awareness", {
+      appId: removal.appId,
+      awarenessUpdate: removal.awarenessUpdate,
+    } satisfies AppsAwarenessData);
+  }
+
+  // removeClient() closes the client's producers + transports => media stops now.
+  room.removeClient(userId);
+
+  if (isGhost) {
+    emitUserLeft(room, userId, { ghostOnly: true, excludeUserId: userId });
+  } else if (!isWebinarAttendee) {
+    io.to(roomChannelId).emit("userLeft", { userId });
+  }
+
+  emitWebinarAttendeeCountChanged(io, state, room);
+  emitWebinarFeedChanged(io, state, room);
+
+  if (state.rooms.has(roomChannelId)) {
+    cleanupRoom(state, roomChannelId);
+  }
+
+  return true;
+};
+
 export const kickClient = (
   room: Room,
   userId: string,
   reason = "Removed by host",
+  options?: { io?: SocketIOServer; state?: SfuState },
 ): boolean => {
   const target = room.getClient(userId);
   if (!target) {
@@ -677,6 +747,18 @@ export const kickClient = (
   }
   target.socket.emit("kicked", { reason, roomId: room.id });
   target.socket.disconnect(true);
+
+  // When io/state are available, also deterministically stop media now so a
+  // concurrent network drop's disconnect grace cannot keep producers flowing.
+  if (options?.io && options.state) {
+    forceRemoveClientNow({
+      io: options.io,
+      state: options.state,
+      room,
+      userId,
+    });
+  }
+
   return true;
 };
 

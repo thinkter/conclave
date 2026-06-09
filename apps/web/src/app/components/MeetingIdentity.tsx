@@ -3,12 +3,15 @@
 import { Monitor, RefreshCw, VenetianMask } from "lucide-react";
 import { useMemo, type ReactNode } from "react";
 import { color } from "@conclave/ui-tokens";
+import type { ConnectionQuality } from "../hooks/useConnectionQuality";
+import { ConnectionQualityIndicator } from "./ConnectionIndicator";
 
 interface MeetingIdentityProps {
   connectionState: string;
   serverRestartNotice?: string | null;
   isScreenSharing?: boolean;
   isGhost?: boolean;
+  connectionQuality?: ConnectionQuality;
 }
 
 /**
@@ -21,6 +24,7 @@ export default function MeetingIdentity({
   serverRestartNotice,
   isScreenSharing,
   isGhost,
+  connectionQuality = "unknown",
 }: MeetingIdentityProps) {
   const chip = useMemo<{ icon: ReactNode; label: string; tone: string } | null>(() => {
     const connecting =
@@ -45,16 +49,36 @@ export default function MeetingIdentity({
     return null;
   }, [connectionState, serverRestartNotice, isScreenSharing, isGhost]);
 
-  if (!chip) return null;
+  const showQuality = connectionQuality !== "unknown";
+  if (!chip && !showQuality) return null;
+
+  const qualityLabel =
+    connectionQuality === "good"
+      ? "Good connection"
+      : connectionQuality === "fair"
+        ? "Fair connection"
+        : "Poor connection";
+
   return (
-    <div className="pointer-events-none absolute left-3 top-3 z-40">
-      <div
-        className="pointer-events-auto inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px]"
-        style={{ backgroundColor: color.scrim, borderColor: color.border, color: chip.tone }}
-      >
-        {chip.icon}
-        {chip.label}
-      </div>
+    <div className="pointer-events-none absolute left-3 top-3 z-40 flex items-center gap-1.5">
+      {chip && (
+        <div
+          className="pointer-events-auto inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px]"
+          style={{ backgroundColor: color.scrim, borderColor: color.border, color: chip.tone }}
+        >
+          {chip.icon}
+          {chip.label}
+        </div>
+      )}
+      {showQuality && (
+        <div
+          className="pointer-events-auto inline-flex items-center rounded-full border px-2 py-1"
+          style={{ backgroundColor: color.scrim, borderColor: color.border }}
+          title={qualityLabel}
+        >
+          <ConnectionQualityIndicator quality={connectionQuality} />
+        </div>
+      )}
     </div>
   );
 }

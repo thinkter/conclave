@@ -27,10 +27,24 @@ internal fun VideoTrackView(track: VideoTrack?, mirror: Boolean, fit: Boolean = 
         }
     }
 
+    // Sink attachment is keyed on the track: when the track changes (active
+    // speaker swap, camera re-toggle producing a new track, PiP's ~400ms video
+    // updates) we detach the old track and attach the new one — but we must NOT
+    // release the renderer here, or the SAME remembered SurfaceViewRenderer is
+    // permanently torn down (EGL surface + render thread gone) and every
+    // subsequent track renders black.
     DisposableEffect(track) {
         track?.addSink(renderer)
         onDispose {
             track?.removeSink(renderer)
+        }
+    }
+
+    // The renderer's EGL/render-thread lifetime is tied to the composable, not
+    // the track. Release exactly once, when the composable finally leaves the
+    // composition.
+    DisposableEffect(Unit) {
+        onDispose {
             renderer.release()
         }
     }

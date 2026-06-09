@@ -16,9 +16,14 @@
     "./video-encodings": "./src/video-encodings.ts"
   },
   "scripts": {
-    "gen:swift-events": "node scripts/gen-swift-events.mjs"
+    "gen:swift-events": "node scripts/gen-swift-events.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "peerDependencies": {
     "mediasoup-client": "^3.18.3"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.4"
   }
 }

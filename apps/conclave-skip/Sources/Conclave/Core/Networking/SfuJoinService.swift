@@ -53,6 +53,7 @@ enum SfuJoinService {
         var request = URLRequest(url: resolveJoinURL())
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("true", forHTTPHeaderField: "ngrok-skip-browser-warning")  // TEMP rig: bypass ngrok interstitial (DO NOT COMMIT)
         if !clientId.isEmpty {
             request.setValue(clientId, forHTTPHeaderField: "x-sfu-client")
         }
@@ -95,7 +96,9 @@ enum SfuJoinService {
 
     static func resolveJoinURL() -> URL {
         #if SKIP
-        return URL(string: "http://10.0.2.2:3000/api/sfu/join")!  // TEMP rig: Android emulator → host localhost dev backend (DO NOT COMMIT)
+        // TEMP rig: Android device → host :3000 over `adb reverse tcp:3000 tcp:3000`
+        // (the device's localhost is forwarded to the Mac via USB). DO NOT COMMIT.
+        return URL(string: "http://localhost:3000/api/sfu/join")!
         #endif
         #if targetEnvironment(simulator)
         return URL(string: "http://localhost:3000/api/sfu/join")!  // TEMP rig: iOS simulator → host localhost dev backend (DO NOT COMMIT)

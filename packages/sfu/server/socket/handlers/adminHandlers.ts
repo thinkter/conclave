@@ -10,6 +10,7 @@ import {
   closeClientProducers,
   closeProducerById,
   closeProducerForMediaKey,
+  forceRemoveClientNow,
   kickClient,
   rejectAllPendingUsers,
   toPendingUserSnapshots,
@@ -264,6 +265,17 @@ export const registerAdminHandlers = (
 ): void => {
   const { socket, io, state } = context;
 
+  // Idempotent per socket. joinRoom (incl. the in-place room-switch path) and
+  // both host-promotion paths can each invoke this on the SAME live socket;
+  // binding twice would stack duplicate socket.on listeners so every admin
+  // action (kick / end-room / promote …) fires N times and listeners leak. The
+  // single bound set always acts on the CURRENT room — the handlers resolve it
+  // live from the (per-socket, mutated-in-place) context via ensureAdminRoom.
+  if (context.adminHandlersRegistered) {
+    return;
+  }
+  context.adminHandlersRegistered = true;
+
   socket.on("kickUser", ({ userId: targetId }: { userId: string }, cb) => {
     const guard = ensureAdminRoom(context);
     if ("error" in guard) {
@@ -279,7 +291,10 @@ export const registerAdminHandlers = (
       return;
     }
 
-    const kicked = kickClient(guard.room, targetId);
+    const kicked = kickClient(guard.room, targetId, "Removed by host", {
+      io,
+      state,
+    });
     if (!kicked) {
       respond(cb, { error: "User not found" });
       return;
@@ -843,12 +858,16 @@ export const registerAdminHandlers = (
         }
 
         if (kickPresent) {
-          for (const [userId, key] of guard.room.userKeysById.entries()) {
+          for (const [userId, key] of [
+            ...guard.room.userKeysById.entries(),
+          ]) {
             if (key !== userKey) continue;
             const target = guard.room.getClient(userId);
             if (!target) continue;
             target.socket.emit("kicked", { reason, roomId: guard.room.id });
             target.socket.disconnect(true);
+            // Deterministically stop media now (cancel any disconnect grace).
+            forceRemoveClientNow({ io, state, room: guard.room, userId });
             kickedUserIds.add(userId);
           }
         }

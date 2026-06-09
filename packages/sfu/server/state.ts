@@ -12,7 +12,6 @@ import {
   type ScheduledMeetingPersistence,
   type ScheduledMeetingStore,
 } from "./scheduledMeetings.js";
-import type { RecordingSession } from "./recording/recordingSession.js";
 
 export type EndedRoom = {
   roomId: string;
@@ -33,7 +32,6 @@ export type SfuState = {
   scheduledWebinarTimer: NodeJS.Timeout | null;
   scheduledMeetings: ScheduledMeetingStore;
   scheduledMeetingPersistence: ScheduledMeetingPersistence | null;
-  recordingSessions: Map<string, RecordingSession>;
   isDraining: boolean;
 };
 
@@ -49,7 +47,6 @@ export const createSfuState = (options?: { isDraining?: boolean }): SfuState => 
     scheduledWebinarTimer: null,
     scheduledMeetings: createScheduledMeetingStore(),
     scheduledMeetingPersistence: null,
-    recordingSessions: new Map(),
     isDraining: options?.isDraining ?? config.draining,
   };
 };

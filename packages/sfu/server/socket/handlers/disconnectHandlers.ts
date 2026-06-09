@@ -64,7 +64,6 @@ export const registerDisconnectHandlers = (
         const wasAdmin = activeClient instanceof Admin;
         const isGhost = activeClient.isGhost;
         const isWebinarAttendee = activeClient.isWebinarAttendee;
-        const isRecorder = activeClient.isRecorder;
         const awarenessRemovals = activeRoom.clearUserAwareness(userId);
 
         for (const removal of awarenessRemovals) {
@@ -80,7 +79,7 @@ export const registerDisconnectHandlers = (
             ghostOnly: true,
             excludeUserId: userId,
           });
-        } else if (!isWebinarAttendee && !isRecorder) {
+        } else if (!isWebinarAttendee) {
           io.to(roomChannelId).emit("userLeft", { userId });
         }
         emitWebinarAttendeeCountChanged(io, state, activeRoom);

@@ -104,6 +104,35 @@ internal fun meetingIconTint(key: String): Color = when (key) {
     else            -> Color(0xFFFAFAFA)
 }
 
+/// Pre-builds every meeting ImageVector off the UI thread so the first sheet /
+/// controls render doesn't stall on the lazy `material-icons-extended` build.
+/// Each `Icons.Rounded.X` getter lazily constructs its ImageVector and caches it
+/// in a top-level backing field on first access; touching them all once at app
+/// start populates that process-global cache, so every later `MeetingIcon`
+/// reuses the prebuilt vector instead of building ~12 of them synchronously while
+/// a sheet is opening. Building an ImageVector is pure data (no Android UI / main
+/// thread dependency), and the getter is idempotent, so warming on a background
+/// thread is safe. Fire-and-forget — returns immediately.
+fun warmMeetingIcons() {
+    val warm = Thread {
+        val keys = listOf(
+            "mic", "mic.off", "video", "video.off", "screen.share", "screen.share.off",
+            "hangup", "more", "chat", "chat.outline", "participants", "settings",
+            "raise.hand", "raise.hand.off", "reactions", "lock", "lock.open", "send",
+            "close", "copy", "pin.off", "ghost", "host", "remove.person",
+            "arrow.forward", "back", "account", "block", "forum", "volume",
+            "volume.off", "add", "warning"
+        )
+        for (k in keys) {
+            // Touch the vector so its backing field initializes; result unused.
+            meetingIconVector(k)
+        }
+    }
+    warm.isDaemon = true
+    warm.name = "meeting-icon-warm"
+    warm.start()
+}
+
 /// Renders a meeting icon with an EXPLICIT tint (defaults to near-white `text`).
 @Composable
 internal fun MeetingIcon(name: String, size: Double, tint: String = "text", modifier: Modifier = Modifier) {

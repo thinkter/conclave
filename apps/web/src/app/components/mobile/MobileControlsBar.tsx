@@ -407,7 +407,7 @@ function MobileControlsBar({
   if (isObserverMode) {
     return (
       <div className="fixed inset-x-0 bottom-0 z-40">
-        <div className="absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-black/95 via-black/70 to-transparent pointer-events-none" />
+        <div className="absolute inset-x-0 bottom-0 h-28 bg-black/55 pointer-events-none" />
         <div className="relative flex items-center justify-center px-4 pb-[calc(12px+env(safe-area-inset-bottom))] pt-4">
           <div className="mobile-glass mobile-pill flex items-center gap-3 px-4 py-3">
             <span
@@ -1476,7 +1476,7 @@ function MobileControlsBar({
 
       {/* Main controls bar */}
       <div className="fixed inset-x-0 bottom-0 z-40">
-        <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-black/95 via-black/70 to-transparent pointer-events-none" />
+        <div className="absolute inset-x-0 bottom-0 h-32 bg-black/55 pointer-events-none" />
         <div className="relative flex items-center justify-center px-4 pb-[calc(12px+env(safe-area-inset-bottom))] pt-4">
           <div className="mobile-glass mobile-pill flex items-center gap-3 px-4 py-3">
             {/* Mute button */}

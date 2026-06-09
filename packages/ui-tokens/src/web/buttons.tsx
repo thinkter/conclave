@@ -48,8 +48,9 @@ export function ControlButton({
       onClick={onClick}
       className={
         "relative inline-flex items-center justify-center rounded-full border " +
-        "transition-[background-color,border-color,filter] duration-[120ms] " +
-        "hover:brightness-110 active:brightness-95 disabled:opacity-35 disabled:cursor-not-allowed " +
+        "transition-[background-color,border-color,filter,transform] duration-[120ms] " +
+        "hover:brightness-110 active:brightness-95 active:scale-[0.94] " +
+        "disabled:opacity-35 disabled:cursor-not-allowed " +
         className
       }
       style={{

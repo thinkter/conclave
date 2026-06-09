@@ -56,6 +56,9 @@ struct VideoGridItem: View {
                     .strokeBorder(lineWidth: isSpeaking ? 2.0 : 1.0)
                     .foregroundStyle(isSpeaking ? ACMColors.primaryOrange : ACMColors.creamFaint)
             }
+            // Ease the flat 2px orange active-speaker border in/out so it reads as
+            // responsive rather than snapping (Zoom/Teams do ~120ms). No glow.
+            .animation(.easeOut(duration: 0.12), value: isSpeaking)
     }
 
     @ViewBuilder
@@ -120,7 +123,6 @@ struct VideoGridItem: View {
             VStack(spacing: 8) {
                 ACMSystemIcon.icon("theatermasks.fill", android: "ghost", size: 48)
                     .foregroundStyle(ACMColors.primaryPink)
-                    .shadow(color: ACMColors.primaryPinkSoft, radius: 16.0)
 
                 Text("Ghost")
                     .font(ACMFont.trial(11, weight: .medium))
@@ -151,7 +153,6 @@ struct VideoGridItem: View {
                             .foregroundStyle(ACMColors.handRaisedBorder)
                     }
                     .clipShape(Circle())
-                    .shadow(color: ACMColors.handRaisedShadow, radius: 8.0)
 
                 Spacer()
             }

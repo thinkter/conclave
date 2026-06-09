@@ -10,9 +10,11 @@
 		<true/>
 	</dict>
 	<key>NSCameraUsageDescription</key>
-	<string>Conclave needs access to your camera to share video in meetings.</string>
+	<string>Conclave uses the camera so you can turn on your video in a meeting.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Conclave needs access to your microphone to share audio in meetings.</string>
+	<string>Conclave uses the microphone so you can be heard in a meeting.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Conclave uses the local network to connect your call's audio and video to other people, for faster and more reliable meetings.</string>
 	<key>SFU_CLIENT_ID</key>
 	<string>public</string>
 	<key>SFU_JOIN_URL</key>

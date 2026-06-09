@@ -1,4 +1,5 @@
 import type { MediaKind } from "mediasoup/types";
+import { timingSafeEqual } from "node:crypto";
 import cors from "cors";
 import express from "express";
 import type { Express, Request, Response } from "express";
@@ -14,6 +15,7 @@ import {
   clearAllRaisedHands,
   closeClientProducers,
   closeProducerById,
+  forceRemoveClientNow,
   kickClient,
   rejectAllPendingUsers,
   resolveRoom,
@@ -22,23 +24,34 @@ import {
   toWorkerSnapshots,
 } from "../admin/controlPlane.js";
 import { forceCloseRoom, markRoomEnded } from "../rooms.js";
+import { resolveCorsOrigins } from "../cors.js";
 import { registerScheduledWebinarRoutes } from "./scheduledWebinarRoutes.js";
 import { registerScheduledMeetingRoutes } from "./scheduledMeetingRoutes.js";
-import { registerRecordingRoutes } from "./recordingRoutes.js";
-import { registerRecorderBotRoutes } from "./recorderBotRoutes.js";
-import type { RecordingManager } from "../recording/recordingManager.js";
 import type { SfuState } from "../state.js";
 
 export type CreateSfuAppOptions = {
   state: SfuState;
   config?: typeof defaultConfig;
   getIo?: () => SocketIOServer | null;
-  recordings: RecordingManager;
+};
+
+// Constant-time secret comparison to avoid a timing side-channel. `===` on
+// strings can short-circuit on the first differing byte, leaking length/prefix
+// information to an attacker measuring response time. timingSafeEqual compares
+// in fixed time, but it requires equal-length buffers — so we length-guard first
+// (a length mismatch is always a non-match anyway).
+const secretsMatch = (provided: string, expected: string): boolean => {
+  const providedBuffer = Buffer.from(provided, "utf8");
+  const expectedBuffer = Buffer.from(expected, "utf8");
+  if (providedBuffer.length !== expectedBuffer.length) {
+    return false;
+  }
+  return timingSafeEqual(providedBuffer, expectedBuffer);
 };
 
 const hasValidSecret = (req: Request, secret: string): boolean => {
   const provided = req.header("x-sfu-secret");
-  return Boolean(provided && provided === secret);
+  return Boolean(provided && secretsMatch(provided, secret));
 };
 
 const DEFAULT_SERVER_RESTART_NOTICE =
@@ -170,10 +183,12 @@ export const createSfuApp = ({
   state,
   config = defaultConfig,
   getIo,
-  recordings,
 }: CreateSfuAppOptions): Express => {
   const app = express();
-  app.use(cors());
+  // Env-driven CORS allow-list. Defaults to "*" (unchanged dev behavior); set
+  // SFU_CORS_ORIGINS to a comma-separated list to lock origins down in prod.
+  const corsOrigins = resolveCorsOrigins();
+  app.use(cors({ origin: corsOrigins }));
   app.use(express.json());
 
   const requireSecret = (req: Request, res: Response): boolean => {
@@ -633,6 +648,11 @@ export const createSfuApp = ({
       return;
     }
 
+    const io = requireIo(res);
+    if (!io) {
+      return;
+    }
+
     const lookup = resolveRoomForAdmin(req, res);
     if (!lookup || "error" in lookup) {
       return;
@@ -646,7 +666,7 @@ export const createSfuApp = ({
 
     const reason =
       toStringOrEmpty(req.body?.reason) || "Removed by host";
-    const kicked = kickClient(lookup.room, userId, reason);
+    const kicked = kickClient(lookup.room, userId, reason, { io, state });
 
     if (!kicked) {
       res.status(404).json({ error: "User not found" });
@@ -836,12 +856,16 @@ export const createSfuApp = ({
       }
 
       if (kickPresent) {
-        for (const [userId, key] of lookup.room.userKeysById.entries()) {
+        for (const [userId, key] of [
+          ...lookup.room.userKeysById.entries(),
+        ]) {
           if (key !== userKey) continue;
           const client = lookup.room.getClient(userId);
           if (!client) continue;
           client.socket.emit("kicked", { reason, roomId: lookup.room.id });
           client.socket.disconnect(true);
+          // Deterministically stop media now (cancel any disconnect grace).
+          forceRemoveClientNow({ io, state, room: lookup.room, userId });
           kickedUserIds.add(userId);
         }
       }
@@ -896,6 +920,11 @@ export const createSfuApp = ({
       return;
     }
 
+    const io = requireIo(res);
+    if (!io) {
+      return;
+    }
+
     const lookup = resolveRoomForAdmin(req, res);
     if (!lookup || "error" in lookup) {
       return;
@@ -906,7 +935,8 @@ export const createSfuApp = ({
     const reason = toStringOrEmpty(req.body?.reason) || "Meeting reset by operator";
     const kickedUserIds: string[] = [];
 
-    for (const client of lookup.room.clients.values()) {
+    // Snapshot clients before iterating: forceRemoveClientNow mutates room.clients.
+    for (const client of [...lookup.room.clients.values()]) {
       if (client instanceof Admin) {
         continue;
       }
@@ -918,6 +948,8 @@ export const createSfuApp = ({
       }
       client.socket.emit("kicked", { reason, roomId: lookup.room.id });
       client.socket.disconnect(true);
+      // Deterministically stop media now (cancel any disconnect grace).
+      forceRemoveClientNow({ io, state, room: lookup.room, userId: client.id });
       kickedUserIds.push(client.id);
     }
 
@@ -931,6 +963,11 @@ export const createSfuApp = ({
 
   app.post("/admin/rooms/:roomId/users/:userId/block", (req, res) => {
     if (!requireSecret(req, res)) {
+      return;
+    }
+
+    const io = requireIo(res);
+    if (!io) {
       return;
     }
 
@@ -957,6 +994,8 @@ export const createSfuApp = ({
     if (target) {
       target.socket.emit("kicked", { reason, roomId: lookup.room.id });
       target.socket.disconnect(true);
+      // Deterministically stop media now (cancel any disconnect grace).
+      forceRemoveClientNow({ io, state, room: lookup.room, userId });
     }
 
     res.json({
@@ -1240,16 +1279,6 @@ export const createSfuApp = ({
   registerScheduledMeetingRoutes(app, {
     state,
     sfuSecret: config.sfuSecret,
-  });
-
-  registerRecordingRoutes(app, {
-    state,
-    sfuSecret: config.sfuSecret,
-    recordings,
-  });
-
-  registerRecorderBotRoutes(app, {
-    recordings,
   });
 
   return app;

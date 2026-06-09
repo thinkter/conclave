@@ -212,11 +212,15 @@ export function useMeetMedia({
 
       return new Promise<{ ok: boolean; error?: string }>((resolve) => {
         let settled = false;
+        // 1500ms was too tight: a slow-but-healthy ack would time out and (on
+        // unmute) trigger a destructive producer-recreate. The toggle itself is
+        // delivered reliably (TCP) and the SFU acts on the event, not the ack —
+        // so we can afford to wait for the ack rather than assume failure.
         const timeout = window.setTimeout(() => {
           if (settled) return;
           settled = true;
           resolve({ ok: false, error: "toggleMute timeout" });
-        }, 1500);
+        }, 5000);
 
         socket.emit(
           "toggleMute",
@@ -801,12 +805,47 @@ export function useMeetMedia({
         } catch {}
         const toggleResult = await emitToggleMute(producer.id, false);
         if (!toggleResult.ok) {
-          console.warn(
-            "[Meets] toggleMute failed, restarting audio producer:",
-            toggleResult.error
-          );
-          resetAudioProducer(producer);
-          producer = null;
+          const isTimeout = toggleResult.error === "toggleMute timeout";
+          const producerDead =
+            producer.closed || producer.track?.readyState !== "live";
+          if (isTimeout && !producerDead) {
+            // A slow/lost ACK on a healthy producer does NOT mean the producer
+            // is broken: the SFU resumes its producer from the toggleMute event
+            // itself (reliably delivered), not the ack. Keep the producer and
+            // retry the toggle idempotently rather than recreating it — a
+            // recreate fires producerClosed+newProducer and forces every
+            // listener to re-consume (a multi-RTT audio gap, and a prime cause
+            // of "I unmuted but nobody can hear me").
+            console.warn(
+              "[Meets] unmute ack timed out but producer is healthy — retrying toggle:",
+              toggleResult.error
+            );
+            const retry = await emitToggleMute(producer.id, false);
+            if (!retry.ok) {
+              // The retry ALSO failed (likely a real disconnect/non-delivery,
+              // not just a slow ack). Don't claim "unmuted" over a producer that
+              // may still be paused server-side — recreate so a fresh, resumed
+              // producer is published (or transport.produce() throws and we roll
+              // back to muted below).
+              console.warn(
+                "[Meets] unmute retry also failed — recreating to be safe:",
+                retry.error
+              );
+              resetAudioProducer(producer);
+              producer = null;
+            }
+          } else {
+            // An EXPLICIT server error (e.g. "Microphone producer not found")
+            // or a dead local producer means the SFU has no live producer for
+            // us — keeping it would leave us silently muted server-side. Tear
+            // down + recreate so a fresh producer is published.
+            console.warn(
+              "[Meets] unmute failed (server error / dead producer) — recreating:",
+              toggleResult.error
+            );
+            resetAudioProducer(producer);
+            producer = null;
+          }
         }
       }
 

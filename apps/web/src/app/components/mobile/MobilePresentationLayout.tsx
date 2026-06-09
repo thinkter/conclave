@@ -182,7 +182,7 @@ function MobilePresentationLayout({
           />
           {isCameraOff && (
             <div className="absolute inset-0 flex items-center justify-center bg-[#131316]">
-              <div className="absolute inset-0 bg-gradient-to-br from-[#F95F4A]/15 to-[#FF007A]/10" />
+              <div className="absolute inset-0 bg-[rgba(249,95,74,0.15)]" />
               <div
                 className="relative w-10 h-10 rounded-full mobile-avatar flex items-center justify-center text-lg text-[#fafafa] font-bold"
                 style={{ fontFamily: "'PolySans Bulky Wide', sans-serif" }}
@@ -232,7 +232,7 @@ function MobilePresentationLayout({
               />
             ) : (
               <div className="absolute inset-0 flex items-center justify-center bg-[#131316]">
-                <div className="absolute inset-0 bg-gradient-to-br from-[#F95F4A]/15 to-[#FF007A]/10" />
+                <div className="absolute inset-0 bg-[rgba(249,95,74,0.15)]" />
                 <div
                   className="relative w-10 h-10 rounded-full mobile-avatar flex items-center justify-center text-lg text-[#fafafa] font-bold"
                   style={{ fontFamily: "'PolySans Bulky Wide', sans-serif" }}

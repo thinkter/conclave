@@ -23,6 +23,7 @@ enum SocketEvent {
     static let produce = "produce"
     static let consume = "consume"
     static let resumeConsumer = "resumeConsumer"
+    static let getProducers = "getProducers"
     static let toggleMute = "toggleMute"
     static let toggleCamera = "toggleCamera"
     static let closeProducer = "closeProducer"
@@ -75,6 +76,7 @@ enum SocketEvent {
     static let setVideoQuality = "setVideoQuality"
     static let redirect = "redirect"
     static let kicked = "kicked"
+    static let roomEnded = "roomEnded"
 }
 
 // MARK: - Socket Manager
@@ -114,6 +116,7 @@ final class SocketIOManager {
     var onJoinRejected: (() -> Void)?
     var onHostAssigned: (() -> Void)?
     var onKicked: ((String?) -> Void)?
+    var onRoomEnded: ((String?) -> Void)?
 
     // Participant events
     var onUserJoined: ((UserJoinedNotification) -> Void)?
@@ -327,9 +330,21 @@ final class SocketIOManager {
         return try JSONDecoder().decode(ConsumeResponse.self, from: data)
     }
 
-    func resumeConsumer(consumerId: String) async throws {
-        let request = ResumeConsumerRequest(consumerId: consumerId)
+    func resumeConsumer(consumerId: String, requestKeyFrame: Bool = false) async throws {
+        let request = ResumeConsumerRequest(consumerId: consumerId, requestKeyFrame: requestKeyFrame)
         _ = try await emit(event: SocketEvent.resumeConsumer, payload: request)
+    }
+
+    /// Snapshot the room's current producers (producer-sync safety net). The SFU
+    /// `getProducers` handler is callback-only (`(callback) => …`), so emit with
+    /// NO payload — the payloaded emit() would put `{}` in the first arg slot and
+    /// the server would bind the ack callback to it, silently dropping the reply.
+    /// Returns the whole response object (not the array) so the Skip-transpiled
+    /// caller iterates `.producers` itself — a bare `[ProducerInfo]` across the
+    /// hand-written-Kotlin boundary trips Skip's Array/List bridging.
+    func getProducers() async throws -> GetProducersResponse {
+        let data = try await emitAckOnly(event: SocketEvent.getProducers)
+        return try JSONDecoder().decode(GetProducersResponse.self, from: data)
     }
 
     // MARK: - Media Controls
@@ -430,6 +445,39 @@ final class SocketIOManager {
     }
 
     // MARK: - Private: Emit with Ack
+
+    /// Emit an event that carries NO request payload — just an ack callback (e.g.
+    /// getProducers). The SFU handlers for these are `(callback) => …`; the
+    /// payloaded emit() below would send `{}` as a real first arg, so the server
+    /// would bind the ack callback to that object and never reply. Mirrors the
+    /// web client's `socket.emit(event, callback)` and the Kotlin emitAckOnly.
+    func emitAckOnly(event: String) async throws -> Data {
+        guard let socket = socket else {
+            throw SocketError.notConnected
+        }
+
+        return try await withCheckedThrowingContinuation { continuation in
+            socket.emitWithAck(event).timingOut(after: 30) { [weak self] data in
+                guard let self else {
+                    continuation.resume(returning: Data())
+                    return
+                }
+                guard let first = data.first else {
+                    continuation.resume(returning: Data())
+                    return
+                }
+                if let errorMessage = self.extractError(from: first) {
+                    continuation.resume(throwing: SocketError.serverError(errorMessage))
+                    return
+                }
+                if let responseData = self.jsonData(from: first) {
+                    continuation.resume(returning: responseData)
+                } else {
+                    continuation.resume(returning: Data())
+                }
+            }
+        }
+    }
 
     func emit<T: Encodable>(event: String, payload: T) async throws -> Data {
         guard let socket = socket else {
@@ -720,6 +768,11 @@ final class SocketIOManager {
 
         socket.on(SocketEvent.kicked) { [weak self] _, _ in
             self?.onKicked?(nil)
+        }
+
+        socket.on(SocketEvent.roomEnded) { [weak self] data, _ in
+            let message = (data.first as? [String: Any])?["message"] as? String
+            self?.onRoomEnded?(message)
         }
     }
 }

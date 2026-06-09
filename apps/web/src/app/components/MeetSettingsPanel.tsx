@@ -104,22 +104,22 @@ const copyToClipboard = async (value: string): Promise<boolean> => {
 
 /* ------------------------------------------------------------ scoped CSS ---
  * Keyframes + the 4px custom scrollbar live in a single scoped style block so
- * this presentation refactor never has to touch globals.css. */
+ * this presentation refactor never has to touch globals.css. Flat surfaces
+ * only: the skeleton is a solid placeholder with a <=120ms opacity pulse, the
+ * spinner a single rotating arc — no gradient shimmer, no glow. */
 const PANEL_STYLES = `
 @keyframes hostpanel-spin { to { transform: rotate(360deg); } }
-@keyframes hostpanel-shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
+@keyframes hostpanel-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
 }
 .hostpanel-scroll { scrollbar-width: thin; scrollbar-color: rgba(250,250,250,0.18) transparent; }
 .hostpanel-scroll::-webkit-scrollbar { width: 4px; height: 0; }
 .hostpanel-scroll::-webkit-scrollbar-track { background: transparent; }
 .hostpanel-scroll::-webkit-scrollbar-thumb { background: rgba(250,250,250,0.18); border-radius: 2px; }
 .hostpanel-skeleton {
-  background: linear-gradient(90deg, transparent 0%, rgba(250,250,250,0.06) 50%, transparent 100%), rgba(250,250,250,0.08);
-  background-size: 200% 100%, 100% 100%;
-  background-repeat: no-repeat;
-  animation: hostpanel-shimmer 1400ms linear infinite;
+  background: rgba(250,250,250,0.08);
+  animation: hostpanel-pulse 1200ms ease-in-out infinite;
 }
 @media (prefers-reduced-motion: reduce) {
   .hostpanel-spin, .hostpanel-skeleton { animation: none; }
@@ -340,15 +340,14 @@ function ActionBtn({
   className?: string;
 }) {
   const base =
-    "inline-flex h-8 items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium transition-[background-color,border-color,filter] duration-[120ms] disabled:cursor-not-allowed disabled:opacity-40";
+    "inline-flex h-8 items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium transition-[background-color,border-color] duration-[120ms] disabled:cursor-not-allowed disabled:opacity-40";
   if (variant === "primary") {
     return (
       <button
         type="button"
         onClick={onClick}
         disabled={disabled}
-        className={`${base} text-white hover:brightness-[1.08] ${className}`}
-        style={{ backgroundColor: color.accent }}
+        className={`${base} bg-[#F95F4A] text-white hover:bg-[#e8553f] active:bg-[#d34933] ${className}`}
       >
         {working ? <Spinner /> : children}
       </button>
@@ -632,28 +631,24 @@ export default function MeetSettingsPanel({
   return (
     <>
       <style>{PANEL_STYLES}</style>
+      {/* Right-docked, content-shrinking side panel — the same sibling pattern
+          as Chat / Participants (fixed rail, the stage reserves room for it via
+          MeetsMainContent's paddingRight). Flat surface, 1px left border, no
+          floating popover, no shadow-glow. */}
       <div
-        className="absolute left-1/2 z-50 flex max-w-[calc(100vw-24px)] -translate-x-1/2 flex-col overflow-hidden rounded-2xl border border-white/[0.14] bg-[#18181b]"
-        style={{
-          bottom: "calc(var(--controls-bar-height, 56px) + 8px)",
-          width: 380,
-          maxHeight: "min(560px, calc(100dvh - 120px))",
-          fontFamily: SANS,
-        }}
+        className="fixed right-0 top-0 bottom-0 z-40 flex w-[360px] flex-col overflow-hidden border-l border-white/10 bg-[#18181b] animate-[meet-panel-in_280ms_cubic-bezier(0.22,1,0.36,1)]"
+        style={{ fontFamily: SANS }}
       >
-        {/* Header (sticky inside the scroll region) */}
-        <div
-          className="sticky top-0 z-10 flex h-12 items-center justify-between border-b px-4"
-          style={{ backgroundColor: color.surface, borderColor: color.border }}
-        >
-          <span className="text-[13px] font-medium text-[#fafafa]">Host controls</span>
+        {/* Header */}
+        <div className="flex shrink-0 items-center justify-between border-b border-white/10 px-4 py-3">
+          <h2 className="text-[15px] font-semibold text-[#fafafa]">Host controls</h2>
           <button
             type="button"
             onClick={onClose}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-full text-[rgba(250,250,250,0.56)] transition-colors duration-[120ms] hover:bg-white/[0.08] hover:text-[#fafafa]"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[#a1a1aa] transition-colors duration-[120ms] hover:bg-white/[0.06] hover:text-[#fafafa]"
             aria-label="Close host controls"
           >
-            <X size={16} strokeWidth={ICON_STROKE} />
+            <X size={18} strokeWidth={ICON_STROKE} />
           </button>
         </div>
 

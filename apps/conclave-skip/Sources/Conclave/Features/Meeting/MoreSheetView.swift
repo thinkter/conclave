@@ -14,6 +14,7 @@ import UIKit
 
 struct MoreSheetView: View {
     @Bindable var viewModel: MeetingViewModel
+    var bodyReady: Bool = true
     let onOpenSettings: () -> Void
     let onOpenParticipants: () -> Void
     @Environment(\.dismiss) private var dismiss
@@ -24,8 +25,9 @@ struct MoreSheetView: View {
         VStack(spacing: 0) {
             MeetingSheetHeader(title: "More", onDone: { dismiss() })
 
+            if bodyReady {
             ScrollView {
-                VStack(alignment: .leading, spacing: ACMSpacing.md) {
+                LazyVStack(alignment: .leading, spacing: ACMSpacing.md) {
                     VStack(alignment: .leading, spacing: ACMSpacing.xs) {
                         acmListSectionHeader("Quick reactions")
 
@@ -99,8 +101,16 @@ struct MoreSheetView: View {
                 .padding(.top, ACMSpacing.md)
                 .padding(.bottom, ACMSpacing.lg)
             }
+            .transition(.opacity)
+            } else {
+                Spacer()
+            }
         }
+        #if SKIP
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        #else
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        #endif
     }
 }
 

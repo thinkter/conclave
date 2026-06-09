@@ -2,18 +2,21 @@ import type { Worker } from "mediasoup/types";
 
 const getWorker = (workers: Worker[]): Promise<Worker> => {
   return new Promise(async (resolve, reject) => {
-    if (workers.length === 0) {
+    // Only consider LIVE workers — a worker that just died (and is mid-
+    // replacement by the self-healing handler in createWorkers) would throw on
+    // getResourceUsage and must never be handed out for a new router.
+    const liveWorkers = workers.filter((worker) => !worker.closed);
+    if (liveWorkers.length === 0) {
       reject(new Error("No workers available"));
       return;
     }
 
-    const workersLoad = workers.map((worker) => {
-      return new Promise<number>(async (resolve) => {
-        const stats = await worker.getResourceUsage();
-        const cpuUsage = stats.ru_utime + stats.ru_stime;
-        resolve(cpuUsage);
-      });
-    });
+    const workersLoad = liveWorkers.map((worker) =>
+      worker
+        .getResourceUsage()
+        .then((stats) => stats.ru_utime + stats.ru_stime)
+        .catch(() => Number.POSITIVE_INFINITY),
+    );
 
     const workersLoadCalc = await Promise.all(workersLoad);
 
@@ -27,7 +30,7 @@ const getWorker = (workers: Worker[]): Promise<Worker> => {
       }
     }
 
-    resolve(workers[leastLoadedWorkerIndex]);
+    resolve(liveWorkers[leastLoadedWorkerIndex]);
   });
 };
 

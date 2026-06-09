@@ -21,6 +21,7 @@ final class SocketIOManager {
     var onJoinRejected: (() -> Void)?
     var onHostAssigned: (() -> Void)?
     var onKicked: ((String?) -> Void)?
+    var onRoomEnded: ((String?) -> Void)?
 
     var onUserJoined: ((UserJoinedNotification) -> Void)?
     var onUserLeft: ((String) -> Void)?
@@ -73,7 +74,8 @@ final class SocketIOManager {
     }
 
     func consume(producerId: String, rtpCapabilities: RtpCapabilities) async throws -> ConsumeResponse { fatalError() }
-    func resumeConsumer(consumerId: String) async throws { fatalError() }
+    func resumeConsumer(consumerId: String, requestKeyFrame: Bool = false) async throws { fatalError() }
+    func getProducers() async throws -> GetProducersResponse { fatalError() }
 
     func toggleMute(producerId: String, paused: Bool) async throws { fatalError() }
     func toggleCamera(producerId: String, paused: Bool) async throws { fatalError() }

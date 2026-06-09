@@ -44,6 +44,7 @@ import type {
 import type { ParticipantAction } from "../lib/participant-reducer";
 import { createMeetError, isSystemUserId, normalizeDisplayName } from "../lib/utils";
 import { normalizeChatMessage } from "../lib/chat-commands";
+import { telemetry } from "../lib/telemetry";
 import {
   getPreferredWebcamCodec,
   produceWebcamTrack,
@@ -225,7 +226,6 @@ interface UseMeetSocketOptions {
     getCachedToken?: (roomId: string) => JoinInfo | null;
   };
   onSocketReady?: (socket: Socket | null) => void;
-  bypassMediaPermissions?: boolean;
 }
 
 export function useMeetSocket({
@@ -284,7 +284,6 @@ export function useMeetSocket({
   onTtsMessage,
   prewarm,
   onSocketReady,
-  bypassMediaPermissions = false,
 }: UseMeetSocketOptions) {
   const participantIdsRef = useRef<Set<string>>(new Set([userId]));
   const serverRoomIdRef = useRef<string | null>(null);
@@ -299,6 +298,14 @@ export function useMeetSocket({
   );
   const mutedConsumerSinceRef = useRef<Map<string, number>>(new Map());
   const producerPausedStateRef = useRef<Map<string, boolean>>(new Map());
+  // Per-video-consumer decode progress for the freeze watchdog: last
+  // framesDecoded/bytesReceived sample + how many consecutive checks the decoder
+  // has been stuck (frames flat while bytes still climb). See the freeze-watchdog
+  // effect below — this catches a frozen decoder that `track.muted` never fires
+  // for (RTP keeps flowing, the decoder is stuck on a stale reference frame).
+  const videoFreezeStatsRef = useRef<
+    Map<string, { frames: number; bytes: number; stalls: number }>
+  >(new Map());
   const consumerRecoveryInFlightRef = useRef<Set<string>>(new Set());
   const consumeProducerRef = useRef<
     (producerInfo: ProducerInfo) => Promise<void>
@@ -371,8 +378,12 @@ export function useMeetSocket({
 
     useTurnFallbackRef.current = true;
     console.warn(`[Meets] ${reason}. Retrying with TURN fallback.`);
+    telemetry.capture("meet_turn_relay_activated", {
+      reason,
+      roomId: currentRoomIdRef.current ?? undefined,
+    });
     return true;
-  }, []);
+  }, [currentRoomIdRef]);
 
   const resolveIceServers = useCallback((): RTCIceServer[] | undefined => {
     const stunIceServers =
@@ -418,6 +429,7 @@ export function useMeetSocket({
       staleConsumerRecoveryTimeoutsRef.current.clear();
       mutedConsumerSinceRef.current.clear();
       producerPausedStateRef.current.clear();
+      videoFreezeStatsRef.current.clear();
       consumerRecoveryInFlightRef.current.clear();
       producerMapRef.current.clear();
       pendingProducersRef.current.clear();
@@ -604,13 +616,50 @@ export function useMeetSocket({
 
   const setProducerPausedState = useCallback(
     (producerId: string, paused: boolean) => {
+      const wasPaused = producerPausedStateRef.current.get(producerId);
       producerPausedStateRef.current.set(producerId, paused);
-      if (!paused) return;
 
       mutedConsumerSinceRef.current.delete(producerId);
       clearStaleConsumerRecoveryTimeout(producerId);
+
+      if (paused) {
+        // Muting / camera-off: the producer sends no RTP; nothing to resume.
+        return;
+      }
+
+      // Only act on a REAL paused -> unpaused TRANSITION. syncProducers calls
+      // this with paused=false for every live producer every 15s; without this
+      // guard we'd re-emit a keyframe (PLI) for every remote video on every sync
+      // tick (periodic bandwidth/quality spikes). On the first call (consume
+      // time) wasPaused is undefined, and the consume path does its own resume.
+      if (wasPaused !== true) {
+        return;
+      }
+
+      // UNMUTE / camera-on: the remote producer is live again, but our consumer
+      // for it was left PAUSED server-side while it was muted (the consume path
+      // skips the initial resume for a paused producer). Re-emit resumeConsumer
+      // IMMEDIATELY so audio/video flows the instant the speaker unmutes.
+      //
+      // Previously this only recorded state and returned, relying on the ~15s
+      // producer-sync (or a track 'onunmute' that never fires for a paused
+      // server consumer) to recover — that delay/miss IS the "I unmuted but
+      // nobody can hear me" / "their video stays frozen" bug. Request a keyframe
+      // for video so the decoder un-freezes at once instead of waiting.
+      const consumer = consumersRef.current.get(producerId);
+      const socket = socketRef.current;
+      if (consumer && socket) {
+        socket.emit(
+          "resumeConsumer",
+          {
+            consumerId: consumer.id,
+            requestKeyFrame: consumer.kind === "video",
+          },
+          () => {},
+        );
+      }
     },
-    [clearStaleConsumerRecoveryTimeout],
+    [clearStaleConsumerRecoveryTimeout, consumersRef, socketRef],
   );
 
   const setProducerPausedByUser = useCallback(
@@ -646,6 +695,7 @@ export function useMeetSocket({
       clearStaleConsumerRecoveryTimeout(producerId);
       mutedConsumerSinceRef.current.delete(producerId);
       producerPausedStateRef.current.delete(producerId);
+      videoFreezeStatsRef.current.delete(producerId);
       consumerRecoveryInFlightRef.current.delete(producerId);
       const consumer = consumersRef.current.get(producerId);
       if (consumer) {
@@ -1505,6 +1555,124 @@ export function useMeetSocket({
   );
   recoverStaleConsumerRef.current = recoverStaleConsumer;
 
+  // ----- Video freeze watchdog -----
+  // A frozen remote decoder (stuck on a stale reference frame while RTP keeps
+  // flowing) is invisible to `track.muted`, so the existing mute-based recovery
+  // never fires. Poll each remote VIDEO consumer's getStats every ~2s: if
+  // framesDecoded stops advancing while bytesReceived keeps climbing and the
+  // producer isn't paused, the decoder is stuck — request a fresh keyframe (PLI)
+  // so it un-freezes. Conservative: needs 2 consecutive stalled samples (~4s)
+  // before a PLI, and resets after each PLI to avoid keyframe storms in lossy
+  // rooms. Persistent failures still fall through to the existing stale-consumer
+  // / producer-sync recovery.
+  useEffect(() => {
+    const FREEZE_CHECK_MS = 2000;
+    const STALL_SAMPLES_BEFORE_PLI = 2;
+    // Only treat a flat frame count as a freeze when REAL media is still
+    // arriving (>~32kbps over the 2s window). A truly frozen decoder still
+    // receives full-bitrate RTP from the sender, so a real freeze easily clears
+    // this; an idle/static source with only padding/RTX trickle does not — this
+    // avoids needless keyframe (PLI) storms on low-activity tiles.
+    const MIN_STALL_BYTE_DELTA = 8000;
+
+    const interval = window.setInterval(() => {
+      const socket = socketRef.current;
+      if (!socket?.connected) return;
+      const stats = videoFreezeStatsRef.current;
+
+      consumersRef.current.forEach((consumer, producerId) => {
+        const info = producerMapRef.current.get(producerId);
+        if (!info || info.kind !== "video") return;
+        if (producerPausedStateRef.current.get(producerId)) {
+          stats.delete(producerId);
+          return;
+        }
+        const track = consumer.track;
+        if (!track || track.readyState !== "live") return;
+        const consumerId = consumer.id;
+
+        void consumer
+          .getStats()
+          .then((report: RTCStatsReport) => {
+            // Read framesDecoded + bytesReceived from ONE inbound-rtp video entry
+            // (don't mix fields across simulcast layers / entries).
+            let framesDecoded: number | null = null;
+            let bytesReceived: number | null = null;
+            report.forEach((entry) => {
+              if (framesDecoded !== null) return;
+              const stat = entry as unknown as Record<string, unknown>;
+              if (
+                stat.type === "inbound-rtp" &&
+                (stat.kind === "video" || stat.mediaType === "video") &&
+                typeof stat.framesDecoded === "number" &&
+                typeof stat.bytesReceived === "number"
+              ) {
+                framesDecoded = stat.framesDecoded;
+                bytesReceived = stat.bytesReceived;
+              }
+            });
+            const decodedNow = framesDecoded;
+            const bytesNow = bytesReceived;
+            if (decodedNow == null || bytesNow == null) return;
+
+            // getStats was async — the consumer may have been closed/replaced or
+            // the producer paused meanwhile. Revalidate before acting.
+            const live = consumersRef.current.get(producerId);
+            if (!live || live.id !== consumerId) {
+              stats.delete(producerId);
+              return;
+            }
+            if (producerPausedStateRef.current.get(producerId)) {
+              stats.delete(producerId);
+              return;
+            }
+
+            const prev = stats.get(producerId);
+            let stalls = 0;
+            if (prev) {
+              const decoderStuck =
+                decodedNow === prev.frames &&
+                bytesNow - prev.bytes >= MIN_STALL_BYTE_DELTA;
+              stalls = decoderStuck ? prev.stalls + 1 : 0;
+            }
+
+            if (stalls >= STALL_SAMPLES_BEFORE_PLI) {
+              // Decoder is frozen but real media is flowing → force a keyframe.
+              const socket2 = socketRef.current;
+              if (socket2?.connected) {
+                socket2.emit(
+                  "resumeConsumer",
+                  { consumerId: live.id, requestKeyFrame: true },
+                  () => {},
+                );
+              }
+              stalls = 0; // give the PLI time to land before re-requesting
+            }
+
+            stats.set(producerId, {
+              frames: decodedNow,
+              bytes: bytesNow,
+              stalls,
+            });
+          })
+          .catch(() => {});
+      });
+
+      // Drop tracking for consumers that no longer exist.
+      stats.forEach((_value, producerId) => {
+        if (!consumersRef.current.has(producerId)) stats.delete(producerId);
+      });
+    }, FREEZE_CHECK_MS);
+
+    return () => window.clearInterval(interval);
+  }, [
+    socketRef,
+    consumersRef,
+    producerMapRef,
+    producerPausedStateRef,
+    videoFreezeStatsRef,
+  ]);
+
   const syncProducers = useCallback(async () => {
     const socket = socketRef.current;
     const device = deviceRef.current;
@@ -1728,7 +1896,6 @@ export function useMeetSocket({
       joinOptions: {
         displayName?: string;
         isGhost: boolean;
-        isRecorder: boolean;
         joinMode: JoinMode;
         webinarInviteCode?: string;
         meetingInviteCode?: string;
@@ -1748,7 +1915,6 @@ export function useMeetSocket({
             sessionId: sessionIdRef.current,
             displayName: joinOptions.displayName,
             ghost: joinOptions.isGhost,
-            recorder: joinOptions.isRecorder,
             webinarInviteCode: joinOptions.webinarInviteCode,
             meetingInviteCode: joinOptions.meetingInviteCode,
           },
@@ -1856,7 +2022,6 @@ export function useMeetSocket({
               const shouldProduce =
                 !!stream &&
                 !joinOptions.isGhost &&
-                !joinOptions.isRecorder &&
                 joinOptions.joinMode !== "webinar_attendee";
 
               await Promise.all([
@@ -2006,6 +2171,15 @@ export function useMeetSocket({
                 return;
               }
 
+              // A deliberate server-side disconnect (kick / ban / room ended /
+              // shutdown) is terminal — don't fight it with reconnect attempts
+              // that race the kicked/roomEnded/roomClosed messages. Only
+              // transient drops (ping timeout, transport close/error) reconnect.
+              if (reason === "io server disconnect") {
+                setConnectionState("disconnected");
+                return;
+              }
+
               if (currentRoomIdRef.current) {
                 handleReconnectRef.current();
               } else {
@@ -2023,6 +2197,23 @@ export function useMeetSocket({
               setWaitingMessage(null);
               cleanup();
             });
+
+            // Host ended the meeting (admin:endRoom). The SFU emits roomEnded to
+            // everyone (incl. pending) then disconnects them; without this the
+            // client just went silently dark. Tear down + show a terminal notice.
+            socket.on(
+              "roomEnded",
+              ({ message }: { message?: string }) => {
+                console.log("[Meets] Room ended by host");
+                setMeetError({
+                  code: "UNKNOWN",
+                  message: message || "The host ended the meeting.",
+                  recoverable: false,
+                });
+                setWaitingMessage(null);
+                cleanup();
+              },
+            );
 
             socket.on("connect_error", (err) => {
               clearTimeout(connectionTimeout);
@@ -2708,9 +2899,7 @@ export function useMeetSocket({
               let stream = localStreamRef.current;
               const shouldRequestMedia =
                 !joinOptions.isGhost &&
-                !joinOptions.isRecorder &&
-                joinOptions.joinMode !== "webinar_attendee" &&
-                !bypassMediaPermissions;
+                joinOptions.joinMode !== "webinar_attendee";
 
               if (!stream && shouldRequestMedia) {
                 stream = await requestMediaPermissions();
@@ -2723,9 +2912,7 @@ export function useMeetSocket({
                 currentRoomIdRef.current &&
                 (stream ||
                   joinOptions.isGhost ||
-                  joinOptions.isRecorder ||
-                  joinOptions.joinMode === "webinar_attendee" ||
-                  bypassMediaPermissions)
+                  joinOptions.joinMode === "webinar_attendee")
               ) {
                 joinRoomInternal(
                   currentRoomIdRef.current,
@@ -2739,7 +2926,6 @@ export function useMeetSocket({
                     roomId: currentRoomIdRef.current,
                     hasStream: !!localStreamRef.current,
                     isGhost: joinOptionsRef.current.isGhost,
-                    bypassMediaPermissions,
                   },
                 );
               }
@@ -2980,7 +3166,6 @@ export function useMeetSocket({
       userId,
       onTtsMessage,
       onSocketReady,
-      bypassMediaPermissions,
     ],
   );
 
@@ -2990,6 +3175,12 @@ export function useMeetSocket({
 
     try {
       while (reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {
+        // A terminal event (kick / ban / roomEnded / roomClosed / explicit
+        // leave) sets intentionalDisconnectRef via cleanup(). If it lands while
+        // this loop is already retrying a transient drop, stop fighting it —
+        // otherwise we'd briefly re-enter the call and then clobber the terminal
+        // notice ("The host ended the meeting.") with "Failed to reconnect".
+        if (intentionalDisconnectRef.current) return;
         setConnectionState("reconnecting");
         reconnectAttemptsRef.current++;
         const delay =
@@ -2998,7 +3189,15 @@ export function useMeetSocket({
         console.log(
           `[Meets] Reconnecting in ${delay}ms (attempt ${reconnectAttemptsRef.current})`,
         );
+        telemetry.capture("meet_reconnect_attempt", {
+          roomId: currentRoomIdRef.current ?? undefined,
+          attempt: reconnectAttemptsRef.current,
+          maxAttempts: MAX_RECONNECT_ATTEMPTS,
+          usingTurnFallback: useTurnFallbackRef.current,
+        });
         await new Promise((r) => setTimeout(r, delay));
+        // The terminal event may have arrived during the backoff wait.
+        if (intentionalDisconnectRef.current) return;
 
         try {
           const reconnectRoomId = currentRoomIdRef.current;
@@ -3010,6 +3209,9 @@ export function useMeetSocket({
             throw new Error("Missing room ID for reconnect");
           }
           await connectSocket(reconnectRoomId);
+          // …or while the socket was (re)connecting — bail before rejoining so
+          // we don't re-enter a room we were just removed from.
+          if (intentionalDisconnectRef.current) return;
 
           const joinOptions = joinOptionsRef.current;
           const stream = localStreamRef.current || localStream;
@@ -3017,18 +3219,30 @@ export function useMeetSocket({
             reconnectRoomId &&
             (stream ||
               joinOptions.isGhost ||
-              joinOptions.isRecorder ||
-              joinOptions.joinMode === "webinar_attendee" ||
-              bypassMediaPermissions)
+              joinOptions.joinMode === "webinar_attendee")
           ) {
             await joinRoomInternal(reconnectRoomId, stream, joinOptions);
           }
+          telemetry.capture("meet_reconnect_success", {
+            roomId: reconnectRoomId ?? undefined,
+            attempt: reconnectAttemptsRef.current,
+            usingTurnFallback: useTurnFallbackRef.current,
+          });
           return;
         } catch (_err) {
           // retry
         }
       }
 
+      // Don't surface a reconnect-failure error if the user was kicked / the
+      // room ended mid-loop — that terminal notice + state must stand.
+      if (intentionalDisconnectRef.current) return;
+
+      telemetry.capture("meet_reconnect_give_up", {
+        roomId: currentRoomIdRef.current ?? undefined,
+        attempts: reconnectAttemptsRef.current,
+        usingTurnFallback: useTurnFallbackRef.current,
+      });
       setMeetError({
         code: "CONNECTION_FAILED",
         message: "Failed to reconnect after multiple attempts",
@@ -3042,6 +3256,7 @@ export function useMeetSocket({
     cleanupRoomResources,
     connectSocket,
     currentRoomIdRef,
+    intentionalDisconnectRef,
     joinOptionsRef,
     joinRoomInternal,
     localStream,
@@ -3051,7 +3266,6 @@ export function useMeetSocket({
     setConnectionState,
     setMeetError,
     socketRef,
-    bypassMediaPermissions,
   ]);
 
   useEffect(() => {
@@ -3134,6 +3348,13 @@ export function useMeetSocket({
     async (targetRoomId: string) => {
       if (refs.abortControllerRef.current?.signal.aborted) return;
 
+      telemetry.capture("meet_join_attempt", {
+        roomId: targetRoomId,
+        joinMode,
+        isGhost: ghostEnabled,
+        isAdmin,
+      });
+
       setMeetError(null);
       setConnectionState("connecting");
       primeAudioOutput();
@@ -3150,22 +3371,18 @@ export function useMeetSocket({
       const joinOptions: {
         displayName?: string;
         isGhost: boolean;
-        isRecorder: boolean;
         joinMode: JoinMode;
         webinarInviteCode?: string;
         meetingInviteCode?: string;
       } = {
         displayName: isAdmin ? normalizedDisplayName || undefined : undefined,
         isGhost: ghostEnabled,
-        isRecorder: bypassMediaPermissions,
         joinMode,
       };
       joinOptionsRef.current = joinOptions;
       const shouldRequestMedia =
         !joinOptions.isGhost &&
-        !joinOptions.isRecorder &&
-        joinOptions.joinMode !== "webinar_attendee" &&
-        !bypassMediaPermissions;
+        joinOptions.joinMode !== "webinar_attendee";
 
       try {
         const [, stream] = await Promise.all([
@@ -3186,7 +3403,16 @@ export function useMeetSocket({
         let nextJoinOptions = joinOptions;
         while (true) {
           try {
-            await joinRoomInternal(targetRoomId, stream, nextJoinOptions);
+            const joinResult = await joinRoomInternal(
+              targetRoomId,
+              stream,
+              nextJoinOptions,
+            );
+            telemetry.capture("meet_join_success", {
+              roomId: targetRoomId,
+              joinMode: nextJoinOptions.joinMode,
+              status: joinResult,
+            });
             break;
           } catch (joinError) {
             const joinMessage =
@@ -3234,6 +3460,11 @@ export function useMeetSocket({
         }
       } catch (err) {
         console.error("[Meets] Error joining room:", err);
+        telemetry.capture("meet_join_failure", {
+          roomId: targetRoomId,
+          joinMode,
+          error: err instanceof Error ? err.message : String(err ?? ""),
+        });
         const stream = localStreamRef.current;
         if (stream) {
           stream.getTracks().forEach((track) => stopLocalTrack(track));
@@ -3256,7 +3487,6 @@ export function useMeetSocket({
       requestMediaPermissions,
       requestMeetingInviteCode,
       requestWebinarInviteCode,
-      bypassMediaPermissions,
       refs.abortControllerRef,
       refs.intentionalDisconnectRef,
       setConnectionState,

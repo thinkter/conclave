@@ -166,7 +166,6 @@ export class Room {
       if (client.isWebinarAttendee && !options?.includeWebinarAttendees) {
         continue;
       }
-      if (client.isRecorder) continue;
       const displayName = this.getDisplayNameForUser(userId) || userId;
       snapshot.push({ userId, displayName });
     }
@@ -196,8 +195,26 @@ export class Room {
       client.close();
       this.clients.delete(clientId);
     }
+    const departingUserKey = this.userKeysById.get(clientId);
     this.userKeysById.delete(clientId);
     this.handRaisedByUserId.delete(clientId);
+    // Drop the cached display name once NO live client still shares this userKey
+    // (a user may be joined from two tabs under one key). Without this,
+    // displayNamesByKey is only cleared on full room teardown, so a long-lived
+    // room accumulates an entry for every rotating client-minted guest identity
+    // that ever joined → unbounded heap growth / eventual OOM.
+    if (departingUserKey !== undefined) {
+      let stillPresent = false;
+      for (const key of this.userKeysById.values()) {
+        if (key === departingUserKey) {
+          stillPresent = true;
+          break;
+        }
+      }
+      if (!stillPresent) {
+        this.displayNamesByKey.delete(departingUserKey);
+      }
+    }
     if (this.webinarActiveSpeakerUserId === clientId) {
       this.webinarActiveSpeakerUserId = null;
     }

@@ -42,6 +42,10 @@ open class AndroidAppMain: Application {
         logger.info("starting app")
         ProcessInfo.launch(applicationContext)
         AppDelegate.shared.onInit()
+        // Prebuild the meeting icon vectors on a background thread now, so the
+        // first sheet/controls render reuses the cached vectors instead of
+        // building ~12 of them on the main thread mid-open (the sheet-content lag).
+        warmMeetingIcons()
     }
 
     companion object {
@@ -63,25 +67,29 @@ open class MainActivity: AppCompatActivity {
         enableEdgeToEdge()
 
         setContent {
-            val saveableStateHolder = rememberSaveableStateHolder()
-            saveableStateHolder.SaveableStateProvider(true) {
-                PresentationRootView(ComposeContext())
-                SideEffect { saveableStateHolder.removeState(true) }
+            // While in Picture-in-Picture, render ONLY the minimal active-speaker
+            // layout (no controls/chrome — Mute/Leave live in the system PiP
+            // action bar). Restore the full meeting UI when leaving PiP. Reading
+            // PipController.inPipMode (a Compose mutableState) recomposes on the
+            // PiP-mode transition.
+            if (PipController.inPipMode) {
+                PipContent()
+            } else {
+                val saveableStateHolder = rememberSaveableStateHolder()
+                saveableStateHolder.SaveableStateProvider(true) {
+                    PresentationRootView(ComposeContext())
+                    SideEffect { saveableStateHolder.removeState(true) }
+                }
             }
         }
 
         AppDelegate.shared.onLaunch()
 
-        // Example of requesting permissions on startup.
-        // These must match the permissions in the AndroidManifest.xml file.
-        //let permissions = listOf(
-        //    Manifest.permission.ACCESS_COARSE_LOCATION,
-        //    Manifest.permission.ACCESS_FINE_LOCATION
-        //    Manifest.permission.CAMERA,
-        //    Manifest.permission.WRITE_EXTERNAL_STORAGE,
-        //)
-        //let requestTag = 1
-        //ActivityCompat.requestPermissions(self, permissions.toTypedArray(), requestTag)
+        // Request CAMERA + RECORD_AUDIO up front so the in-meeting WebRTC capturer
+        // never opens the device without runtime permission (which crashes the
+        // process from its async capture thread). In a clean-Kotlin helper because
+        // skip.lib.* shadows the stdlib collection ops in this file.
+        PermissionHelper.requestMediaPermissions(this)
     }
 
     override fun onStart() {
@@ -102,6 +110,25 @@ open class MainActivity: AppCompatActivity {
     override fun onStop() {
         super.onStop()
         AppDelegate.shared.onStop()
+    }
+
+    /// Fired when the user is leaving the activity (Home / Recents). If a call is
+    /// active, enter Picture-in-Picture showing the active speaker's video so the
+    /// call stays visible. The foreground service already keeps audio alive.
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (PipController.isInCall && android.os.Build.VERSION.SDK_INT >= 26) {
+            PipManager.enterPip(this, PipController.muted)
+        }
+    }
+
+    override fun onPictureInPictureModeChanged(
+        isInPictureInPictureMode: Boolean,
+        newConfig: android.content.res.Configuration
+    ) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        // Swap the Compose content to / from the minimal PiP layout.
+        PipController.inPipMode = isInPictureInPictureMode
     }
 
     override fun onDestroy() {

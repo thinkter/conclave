@@ -11,8 +11,6 @@ const roboto = Roboto({
 type MeetsClientShellProps = {
   initialRoomId?: string;
   forceJoinOnly?: boolean;
-  bypassMediaPermissions?: boolean;
-  broadcastMode?: boolean;
   sfuClientId?: string;
   joinMode?: JoinMode;
   autoJoinOnMount?: boolean;
@@ -28,8 +26,6 @@ type MeetsClientShellProps = {
 export default function MeetsClientShell({
   initialRoomId,
   forceJoinOnly,
-  bypassMediaPermissions,
-  broadcastMode,
   sfuClientId,
   joinMode,
   autoJoinOnMount,
@@ -41,8 +37,6 @@ export default function MeetsClientShell({
     <MeetsClientPage
       initialRoomId={initialRoomId}
       forceJoinOnly={forceJoinOnly}
-      bypassMediaPermissions={bypassMediaPermissions}
-      broadcastMode={broadcastMode}
       sfuClientId={sfuClientId}
       joinMode={joinMode}
       autoJoinOnMount={autoJoinOnMount}

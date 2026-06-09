@@ -110,7 +110,6 @@ struct VideoGridItem: View {
                 Image(systemName: "theatermasks.fill")
                     .font(.system(size: 48))
                     .foregroundStyle(ACMColors.primaryPink)
-                    .shadow(color: ACMColors.primaryPinkSoft, radius: 16.0)
 
                 Text("Ghost")
                     .font(ACMFont.trial(11, weight: .medium))
@@ -142,7 +141,6 @@ struct VideoGridItem: View {
                             .foregroundStyle(ACMColors.handRaisedBorder)
                     }
                     .clipShape(Circle())
-                    .shadow(color: ACMColors.handRaisedShadow, radius: 8.0)
 
                 Spacer()
             }

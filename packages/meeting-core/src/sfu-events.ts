@@ -64,13 +64,6 @@ export const SFU_EVENTS = {
     redirectUser: "redirectUser",
     muteAll: "muteAll",
 
-    // Recording (host)
-    recordingStart: "recording:start",
-    recordingStop: "recording:stop",
-    recordingPause: "recording:pause",
-    recordingResume: "recording:resume",
-    recordingGetState: "recording:getState",
-
     // Shared browser (host)
     browserLaunch: "browser:launch",
     browserNavigate: "browser:navigate",
@@ -160,9 +153,6 @@ export const SFU_EVENTS = {
     noGuestsChanged: "noGuestsChanged",
     dmStateChanged: "dmStateChanged",
     ttsDisabledChanged: "ttsDisabledChanged",
-
-    // Recording
-    recordingStateChanged: "recordingStateChanged",
 
     // Session lifecycle / disruptive
     kicked: "kicked",

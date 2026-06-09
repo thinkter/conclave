@@ -23,6 +23,7 @@ internal object SocketEvent {
     const val produce = "produce"
     const val consume = "consume"
     const val resumeConsumer = "resumeConsumer"
+    const val getProducers = "getProducers"
     const val toggleMute = "toggleMute"
     const val toggleCamera = "toggleCamera"
     const val closeProducer = "closeProducer"
@@ -74,6 +75,7 @@ internal object SocketEvent {
     const val setVideoQuality = "setVideoQuality"
     const val redirect = "redirect"
     const val kicked = "kicked"
+    const val roomEnded = "roomEnded"
 }
 
 /// Raw consume-response fields, carrying rtpParameters as the verbatim JSON
@@ -115,6 +117,7 @@ internal class SocketIOManager {
     internal var onJoinRejected: (() -> Unit)? = null
     internal var onHostAssigned: (() -> Unit)? = null
     internal var onKicked: ((String?) -> Unit)? = null
+    internal var onRoomEnded: ((String?) -> Unit)? = null
 
     internal var onUserJoined: ((UserJoinedNotification) -> Unit)? = null
     internal var onUserLeft: ((String) -> Unit)? = null
@@ -339,9 +342,19 @@ internal class SocketIOManager {
         )
     }
 
-    internal suspend fun resumeConsumer(consumerId: String) {
-        val request = ResumeConsumerRequest(consumerId = consumerId)
+    internal suspend fun resumeConsumer(consumerId: String, requestKeyFrame: Boolean = false) {
+        val request = ResumeConsumerRequest(consumerId = consumerId, requestKeyFrame = requestKeyFrame)
         emit(SocketEvent.resumeConsumer, request)
+    }
+
+    /// Snapshot the room's current producers (producer-sync safety net). The SFU
+    /// handler takes ONLY an ack callback — emit with no payload via emitAckOnly.
+    /// Returns the whole response object; the caller iterates `.producers` (a
+    /// bare list return trips Skip's Array/List bridging). Throws on failure;
+    /// the caller's do/catch swallows it.
+    internal suspend fun getProducers(): GetProducersResponse {
+        val data = emitAckOnly(SocketEvent.getProducers)
+        return JSONDecoder().decode(GetProducersResponse::class, from = data)
     }
 
     internal suspend fun toggleMute(producerId: String, paused: Boolean) {
@@ -725,6 +738,13 @@ internal class SocketIOManager {
 
         socket.on(SocketEvent.kicked, Emitter.Listener {
             onKicked?.invoke(null)
+        })
+
+        socket.on(SocketEvent.roomEnded, Emitter.Listener { args ->
+            val message = (args.firstOrNull() as? org.json.JSONObject)
+                ?.optString("message")
+                ?.takeIf { it.isNotEmpty() }
+            onRoomEnded?.invoke(message)
         })
     }
 }

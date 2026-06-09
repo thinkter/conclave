@@ -518,7 +518,6 @@ const normalizeStoredWebinar = (raw: any): ScheduledWebinar | null => {
     waitingRoomEnabled: sanitizeBoolean(raw.waitingRoomEnabled, true),
     earlyEntryMinutes: sanitizeEarlyEntry(raw.earlyEntryMinutes, DEFAULT_EARLY_ENTRY_MINUTES),
     qaEnabled: sanitizeBoolean(raw.qaEnabled, true),
-    recordingRequested: sanitizeBoolean(raw.recordingRequested, false),
     notes: sanitizeString(raw.notes, { max: MAX_NOTES_LENGTH, allowEmpty: true }),
     createdAt: Number(raw.createdAt) || Date.now(),
     createdBy: String(raw.createdBy ?? ""),
@@ -631,7 +630,6 @@ export const createScheduledWebinar = (
     DEFAULT_EARLY_ENTRY_MINUTES,
   );
   const qaEnabled = sanitizeBoolean(request.qaEnabled, true);
-  const recordingRequested = sanitizeBoolean(request.recordingRequested, false);
 
   const now = Date.now();
   const webinar: ScheduledWebinar = {
@@ -654,7 +652,6 @@ export const createScheduledWebinar = (
     waitingRoomEnabled,
     earlyEntryMinutes,
     qaEnabled,
-    recordingRequested,
     notes,
     createdAt: now,
     createdBy: options.createdBy,
@@ -780,9 +777,6 @@ export const updateScheduledWebinar = (
   }
   if (patch.qaEnabled !== undefined) {
     existing.qaEnabled = Boolean(patch.qaEnabled);
-  }
-  if (patch.recordingRequested !== undefined) {
-    existing.recordingRequested = Boolean(patch.recordingRequested);
   }
   if (patch.status !== undefined) {
     const valid: ScheduledWebinarStatus[] = [

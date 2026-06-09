@@ -43,16 +43,43 @@ private enum MeetingSheetNavigationDirection {
 struct MeetingSheetView: View {
     @Bindable var viewModel: MeetingViewModel
     @Binding var page: MeetingSheetPage
+    var androidDetentHeight: CGFloat? = nil
     @State private var navigationDirection: MeetingSheetNavigationDirection = .push
+    @State private var pageTransitionsEnabled = false
+    // Defer the heavy sheet BODY (icon rows / bordered cards) until just after the
+    // open slide settles, so the Material ModalBottomSheet's open animation isn't
+    // blocked by first-frame composition (the cheap header still shows during the
+    // slide). Drag-to-close stays smooth because the body is already composed.
+    @State private var bodyReady = false
 
+    static let detentFraction: CGFloat = 0.62
+    private static let fallbackAndroidDetentHeight: CGFloat = 420.0
     private static let pageAnimation = Animation.easeInOut(duration: 0.18)
+
+    private var resolvedAndroidDetentHeight: CGFloat {
+        max(1.0, androidDetentHeight ?? Self.fallbackAndroidDetentHeight)
+    }
 
     private func navigate(to nextPage: MeetingSheetPage) {
         guard page != nextPage else { return }
 
         navigationDirection = nextPage == .more ? .pop : .push
+        guard pageTransitionsEnabled else {
+            page = nextPage
+            return
+        }
+
         withAnimation(Self.pageAnimation) {
             page = nextPage
+        }
+    }
+
+    @ViewBuilder
+    private func pageView<Content: View>(_ content: Content) -> some View {
+        if pageTransitionsEnabled {
+            content.transition(navigationDirection.transition)
+        } else {
+            content
         }
     }
 
@@ -60,18 +87,18 @@ struct MeetingSheetView: View {
         ZStack(alignment: .top) {
             switch page {
             case .more:
-                MoreSheetView(
-                    viewModel: viewModel,
-                    onOpenSettings: { navigate(to: .settings) },
-                    onOpenParticipants: { navigate(to: .participants) }
+                pageView(
+                    MoreSheetView(
+                        viewModel: viewModel,
+                        bodyReady: bodyReady,
+                        onOpenSettings: { navigate(to: .settings) },
+                        onOpenParticipants: { navigate(to: .participants) }
+                    )
                 )
-                .transition(navigationDirection.transition)
             case .participants:
-                ParticipantsSheetView(viewModel: viewModel, onBack: { navigate(to: .more) })
-                    .transition(navigationDirection.transition)
+                pageView(ParticipantsSheetView(viewModel: viewModel, bodyReady: bodyReady, onBack: { navigate(to: .more) }))
             case .settings:
-                SettingsSheetView(viewModel: viewModel, onBack: { navigate(to: .more) })
-                    .transition(navigationDirection.transition)
+                pageView(SettingsSheetView(viewModel: viewModel, bodyReady: bodyReady, onBack: { navigate(to: .more) }))
             }
         }
         // Android system / gesture BACK: on a sub-page (.participants/.settings)
@@ -89,9 +116,13 @@ struct MeetingSheetView: View {
             .frame(width: 0, height: 0)
         }
         #endif
-        .animation(Self.pageAnimation, value: page)
         .clipped()
+        #if SKIP
+        .frame(maxWidth: .infinity, alignment: .top)
+        .frame(height: resolvedAndroidDetentHeight, alignment: .top)
+        #else
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        #endif
         // The sheet base is the app's darkest surface so the lighter rows /
         // cards inside each page keep their contrast (More's surfaceRaised card,
         // the participants/settings surface rows).
@@ -104,7 +135,30 @@ struct MeetingSheetView: View {
         // / re-settles when the content swaps — a single clean spring reads as
         // instant. ~62% leaves the scrollable lists room while keeping More from
         // opening near-full.
-        .presentationDetents([.fraction(0.62)])
+        #if SKIP
+        .presentationDetents([.height(resolvedAndroidDetentHeight)])
+        #else
+        .presentationDetents([.fraction(Self.detentFraction)])
+        #endif
+        .onAppear {
+            pageTransitionsEnabled = true
+            #if SKIP
+            // Android only: keep the very first slide frame light (just the cheap
+            // header), then bring the body in almost immediately. The icon vectors
+            // are pre-warmed at app start (warmMeetingIcons), so the body now
+            // composes cheaply — a short ~90ms beat is enough to keep the open
+            // smooth without the content feeling like it arrives late.
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 90_000_000)
+                withAnimation(.easeOut(duration: 0.10)) {
+                    bodyReady = true
+                }
+            }
+            #else
+            // iOS sheets aren't lag-bound — show the body immediately.
+            bodyReady = true
+            #endif
+        }
         #if !SKIP
         .presentationDragIndicator(.visible)
         #endif

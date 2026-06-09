@@ -6,22 +6,50 @@ import { Logger } from "./loggers.js";
 
 const totalThreads = os.cpus().length;
 
+const spawnWorker = (): Promise<Worker> =>
+  mediasoup.createWorker({
+    rtcMinPort: config.workerSettings.rtcMinPort,
+    rtcMaxPort: config.workerSettings.rtcMaxPort,
+    logLevel: config.workerSettings.logLevel,
+    logTags: config.workerSettings.logTags,
+  });
+
 const createWorkers = async (): Promise<Worker[]> => {
   const workers: Worker[] = [];
 
-  for (let i = 0; i < totalThreads; i++) {
-    const worker = await mediasoup.createWorker({
-      rtcMinPort: config.workerSettings.rtcMinPort,
-      rtcMaxPort: config.workerSettings.rtcMaxPort,
-      logLevel: config.workerSettings.logLevel,
-      logTags: config.workerSettings.logTags,
-    });
-
+  // A dead mediasoup worker takes its routers — and the rooms running on them —
+  // with it. Previously the handler did `process.exit(1)`, which killed the
+  // WHOLE instance and every healthy room on the other workers too. Instead we
+  // recreate a replacement worker IN PLACE so the pool stays full and new rooms
+  // get allocated to a healthy worker. `workers` is the exact array stored on
+  // `state.workers`, so mutating it here updates the live pool. Rooms that were
+  // on the dead worker degrade (their producers/consumers error) and their
+  // clients rejoin via the normal reconnect path, landing on a healthy worker.
+  const attachDiedHandler = (worker: Worker, label: string): void => {
     worker.on("died", () => {
-      Logger.error(`Worker ${i} has died`);
-      process.exit(1);
+      Logger.error(`Worker ${label} has died — recreating a replacement`);
+      const deadIndex = workers.indexOf(worker);
+      spawnWorker()
+        .then((replacement) => {
+          if (deadIndex >= 0) {
+            workers[deadIndex] = replacement;
+          } else {
+            workers.push(replacement);
+          }
+          attachDiedHandler(replacement, label);
+          Logger.info(`Worker ${label} replacement created`);
+        })
+        .catch((err) => {
+          Logger.error(
+            `Failed to recreate dead worker ${label}: ${String(err)}`,
+          );
+        });
     });
+  };
 
+  for (let i = 0; i < totalThreads; i++) {
+    const worker = await spawnWorker();
+    attachDiedHandler(worker, String(i));
     workers.push(worker);
     Logger.info(`Worker ${i} created`);
   }

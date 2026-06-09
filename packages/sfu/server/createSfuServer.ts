@@ -18,18 +18,12 @@ import {
 import { createSfuSocketServer } from "./socket/createSocketServer.js";
 import { createSfuState } from "./state.js";
 import type { SfuState } from "./state.js";
-import {
-  createRecordingManager,
-  type RecordingManager,
-} from "./recording/recordingManager.js";
-import { isFfmpegAvailable } from "./recording/ffmpegBridge.js";
 
 export type SfuServer = {
   app: Express;
   httpServer: HttpServer;
   io: SocketIOServer;
   state: SfuState;
-  recordings: RecordingManager;
   start: () => Promise<void>;
   stop: () => Promise<void>;
 };
@@ -44,19 +38,14 @@ export const createSfuServer = (
   const config = options.config ?? defaultConfig;
   const state = createSfuState({ isDraining: config.draining });
   let io: SocketIOServer | null = null;
-  const recordings = createRecordingManager({
-    state,
-    getIo: () => io,
-  });
 
   const app = createSfuApp({
     state,
     config,
     getIo: () => io,
-    recordings,
   });
   const httpServer = createHttpServer(app);
-  io = createSfuSocketServer(httpServer, { state, config, recordings });
+  io = createSfuSocketServer(httpServer, { state, config });
 
   let scheduledMeetingTickTimer: NodeJS.Timeout | null = null;
 
@@ -64,7 +53,7 @@ export const createSfuServer = (
     await initMediaSoup(state);
     initScheduledWebinars(state);
     initScheduledMeetings(state);
-    startScheduledWebinarTimer(state, () => io, undefined, recordings);
+    startScheduledWebinarTimer(state, () => io, undefined);
     scheduledMeetingTickTimer = setInterval(() => {
       const changed = advanceScheduledMeetings(state.scheduledMeetings);
       if (changed > 0 && state.scheduledMeetingPersistence) {
@@ -77,7 +66,6 @@ export const createSfuServer = (
         }
       }
     }, 5000);
-    void isFfmpegAvailable();
 
     await new Promise<void>((resolve) => {
       httpServer.listen(config.port, () => {
@@ -129,7 +117,6 @@ export const createSfuServer = (
     httpServer,
     io,
     state,
-    recordings,
     start,
     stop,
   };

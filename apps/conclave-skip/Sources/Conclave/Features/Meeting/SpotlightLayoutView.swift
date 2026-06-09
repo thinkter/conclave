@@ -69,8 +69,15 @@ struct SpotlightLayoutView: View {
                             Button {
                                 viewModel.togglePin(id)
                             } label: {
+                                // A subtle dark card bezel behind each thumbnail so
+                                // it reads as a distinct tappable target against the
+                                // video (the tile keeps its own 1px/2px border, so
+                                // the active-speaker orange still shows through).
                                 tileFor(userId: id)
                                     .frame(width: 124, height: 76)
+                                    .padding(2)
+                                    .acmColorBackground(ACMColors.surface)
+                                    .clipShape(RoundedRectangle(cornerRadius: ACMRadius.lg))
                             }
                             .buttonStyle(.plain)
                         }

@@ -87,7 +87,12 @@ type ClientPolicy = {
 const defaultClientPolicies: Record<string, ClientPolicy> = {
   default: {
     allowNonHostRoomCreation: false,
-    allowHostJoin: true,
+    // Secure by default: a bare `isHost` claim must NOT grant admin of an
+    // EXISTING room. Legit host of an existing room is always server-tracked
+    // (returning primary host / promoted admin) or a session-verified forced
+    // host; the room creator still becomes host via the createdRoom path. Only
+    // explicitly-trusted clients (the `internal` policy) keep claim-based host.
+    allowHostJoin: false,
     useWaitingRoom: true,
     allowDisplayNameUpdate: false,
   },

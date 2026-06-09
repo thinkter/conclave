@@ -3,6 +3,7 @@ import { allowedEmojiReactions } from "../../constants.js";
 import { isValidReactionAssetPath } from "../../reactions.js";
 import type { ConnectionContext } from "../context.js";
 import { respond } from "./ack.js";
+import { RATE_LIMITS, takeToken } from "../rateLimit.js";
 
 export const registerReactionHandlers = (
   context: ConnectionContext,
@@ -24,6 +25,12 @@ export const registerReactionHandlers = (
           respond(callback, {
             error: "Watch-only attendees cannot send reactions",
           });
+          return;
+        }
+
+        // Throttle: drop over-budget reactions (ack an error, do not broadcast).
+        if (!takeToken(socket, "sendReaction", RATE_LIMITS.reaction)) {
+          respond(callback, { error: "You are reacting too quickly" });
           return;
         }
 

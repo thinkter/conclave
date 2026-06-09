@@ -27,7 +27,10 @@ private func acmM3(_ r: Double, _ g: Double, _ b: Double, _ a: Double = 1.0) -> 
 
 struct ContentView: View {
     @Bindable var appState: AppState
-    @State var meetingViewModel = MeetingViewModel()
+    // Retained singleton (NOT a fresh per-view instance) so the call survives
+    // backgrounding / Activity recreation / the PiP composition swap — returning
+    // to the app lands back in the meeting, not the join screen.
+    @State var meetingViewModel = MeetingViewModel.shared
 
     var body: some View {
         Group {

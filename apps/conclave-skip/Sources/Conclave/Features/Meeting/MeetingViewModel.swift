@@ -18,6 +18,14 @@ import AVFoundation
 @Observable
 final class MeetingViewModel {
 
+    // Process-wide singleton so the live call (socket + WebRTC + connectionState)
+    // SURVIVES Android Activity / Compose recreation and the PiP composition
+    // swap. The foreground service keeps the process alive in the background, so
+    // when the user returns the root view re-derives the in-call screen from this
+    // still-`.joined` VM instead of a fresh one (which would dump them on the
+    // join screen and orphan the call).
+    static let shared = MeetingViewModel()
+
     var state = MeetingState()
 
     // MARK: - Reactions
@@ -69,6 +77,23 @@ final class MeetingViewModel {
         socketManager.onConnected = { [weak self] in
             Task { @MainActor in
                 guard let self = self else { return }
+                // socket.io fires 'connect' on every RECONNECT too, not just the
+                // first connect. Routing to .connected mid-call would flash the
+                // join screen for one frame (ContentView maps .connected →
+                // JoinView) before onReconnected → rejoinIfPossible moves us to
+                // .joining. While a reconnect is pending, stay on the reconnecting
+                // overlay (.reconnecting → MeetingView); a genuine first connect
+                // (no call in progress) still surfaces .connected.
+                if self.shouldRejoinAfterReconnect && !self.isIntentionalLeave {
+                    self.state.connectionState = ConnectionState.reconnecting
+                    // Drive the rejoin from here too: socket.io can emit 'connect'
+                    // without a following 'reconnect' (onReconnected), which would
+                    // otherwise leave us parked in .reconnecting forever. The
+                    // isRejoinInFlight / shouldRejoinAfterReconnect guards in
+                    // rejoinIfPossible keep this idempotent with onReconnected.
+                    Task { await self.rejoinIfPossible() }
+                    return
+                }
                 self.state.connectionState = ConnectionState.connected
             }
         }
@@ -128,6 +153,22 @@ final class MeetingViewModel {
                 self.state.connectionState = ConnectionState.joined
                 self.state.waitingMessage = nil
 
+                // On a RECONNECT-driven rejoin the prior session's mediasoup
+                // Device / transports / producers / consumers are STILL LIVE —
+                // cleanup() only runs on an explicit leave / kick / end, not on a
+                // socket reconnect. Re-running configure()/createTransports() over
+                // them leaks native objects every reconnect and can leave media
+                // half-dead (new transports racing the SFU's old producers). Tear
+                // the old session down first. cleanup(notifyLocalState: false)
+                // resets the produce-flags WITHOUT firing the mute/camera change
+                // callbacks (whose async @MainActor hop would otherwise land
+                // after this and flip state.isMuted/isCameraOff back to true) —
+                // so the user's current intent is preserved and startProducing
+                // re-publishes audio/video correctly.
+                if self.webRTCClient.isConfigured {
+                    await self.webRTCClient.cleanup(notifyLocalState: false)
+                }
+
                 // Hydrate room policy from the join response (optional fields).
                 if let locked = response.isLocked {
                     self.state.isRoomLocked = locked
@@ -169,6 +210,13 @@ final class MeetingViewModel {
 
                     // Light up the speaking ring from remote audio levels.
                     self.startActiveSpeakerPoll()
+
+                    // Only bring up the OS-level call presence (iOS CallKit +
+                    // audio-interruption recovery; Android ongoing-call FGS + PiP)
+                    // once the media path is actually up — otherwise a failed
+                    // setup would leave a CallKit call / foreground service with
+                    // no live audio.
+                    self.activateCallPresence()
                 } catch {
                     debugLog("[Meeting] WebRTC setup error: \(error)")
                     #if SKIP
@@ -178,6 +226,8 @@ final class MeetingViewModel {
                     #if !SKIP
                     HapticManager.shared.trigger(.error)
                     #endif
+                    // Setup failed — make sure no call presence is left armed.
+                    self.deactivateCallPresence()
                 }
             }
         }
@@ -231,6 +281,21 @@ final class MeetingViewModel {
                 guard let self = self else { return }
                 self.state.connectionState = ConnectionState.disconnected
                 self.state.errorMessage = reason ?? "You were removed from the meeting"
+                #if !SKIP
+                HapticManager.shared.trigger(.error)
+                #endif
+                await self.cleanup()
+            }
+        }
+
+        // Host ended the meeting (admin:endRoom) — the SFU emits roomEnded then
+        // disconnects everyone. Mirror onKicked: terminal state + notice, no
+        // reconnect (cleanup tears the socket down).
+        socketManager.onRoomEnded = { [weak self] message in
+            Task { @MainActor in
+                guard let self = self else { return }
+                self.state.connectionState = ConnectionState.disconnected
+                self.state.errorMessage = message ?? "The host ended the meeting"
                 #if !SKIP
                 HapticManager.shared.trigger(.error)
                 #endif
@@ -552,6 +617,12 @@ final class MeetingViewModel {
         self.state.isGhostMode = isGhost
         self.state.isAdmin = isHost
         self.state.waitingMessage = nil
+        // Clear any error left over from a prior session on THIS reused singleton
+        // VM (e.g. a kick / room-ended notice, or a transient in-call error).
+        // cleanup() deliberately preserves errorMessage so the .error screens
+        // (ErrorView) still show it after teardown — so the fresh-join path is
+        // where we wipe it, or it would leak into the next meeting's banner.
+        self.state.errorMessage = nil
         self.isIntentionalLeave = false
         self.shouldRejoinAfterReconnect = false
         
@@ -580,10 +651,11 @@ final class MeetingViewModel {
                     // A host starting a NEW meeting must be allowed to create the room.
                     allowRoomCreation: isHost
                 )
-                var sfuUrl = joinInfo.sfuUrl
-                #if SKIP
-                sfuUrl = sfuUrl.replacingOccurrences(of: "localhost", with: "10.0.2.2").replacingOccurrences(of: "127.0.0.1", with: "10.0.2.2")  // TEMP rig: emulator → host localhost dev backend (DO NOT COMMIT)
-                #endif
+                // TEMP rig: the join API returns http://localhost:3031; on an
+                // Android device that resolves to the Mac's SFU via
+                // `adb reverse tcp:3031 tcp:3031`. iOS simulator reaches it
+                // directly. DO NOT COMMIT (prod returns a real SFU URL).
+                let sfuUrl = joinInfo.sfuUrl
                 let token = joinInfo.token
 
                 try await socketManager.connect(sfuURL: sfuUrl, token: token)
@@ -641,13 +713,57 @@ final class MeetingViewModel {
     /// `state.activeSpeakerId`. Idempotent — a running poll is cancelled first.
     func startActiveSpeakerPoll() {
         activeSpeakerTask?.cancel()
-        activeSpeakerTask = Task { [weak self] in
+        // @MainActor so the poll (which iterates the WebRTC client's consumers +
+        // mutates the freeze-watchdog state) is serialized with consume/close on
+        // both platforms — on Android a plain Task would run off-main and could
+        // race the consumer maps.
+        activeSpeakerTask = Task { @MainActor [weak self] in
+            var freezeTick = 0
+            var syncTick = 0
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 400_000_000)
                 if Task.isCancelled { return }
                 guard let self = self else { return }
                 self.updateActiveSpeaker()
+                // Run the video freeze watchdog ~every 2s (every 5th 400ms tick):
+                // un-freezes a stuck remote decoder via a keyframe request.
+                freezeTick += 1
+                if freezeTick >= 5 {
+                    freezeTick = 0
+                    await self.webRTCClient.checkVideoFreezes()
+                }
+                // Producer-sync safety net ~every 10s (every 25th tick): recover
+                // a consumer the SFU left paused after a dropped resumeConsumer
+                // ack (the "can't hear one specific person" case).
+                syncTick += 1
+                if syncTick >= 25 {
+                    syncTick = 0
+                    await self.syncProducers()
+                }
             }
+        }
+    }
+
+    /// Periodic safety net mirroring the web client's producer sync: reconcile
+    /// against the SFU's current producer list and re-assert resume on every
+    /// live (non-paused) remote producer we already consume. The SFU's
+    /// resumeConsumer is a no-op when the consumer is already resumed, so this is
+    /// cheap — but it recovers a consumer stranded server-paused by a dropped
+    /// ack, which otherwise stays silent for the rest of the call. No keyframe
+    /// request here (the freeze watchdog handles stuck video); this targets the
+    /// audio "can't hear them even though they're unmuted" case.
+    private func syncProducers() async {
+        guard state.connectionState == ConnectionState.joined else { return }
+        let response: GetProducersResponse
+        do {
+            response = try await socketManager.getProducers()
+        } catch {
+            return
+        }
+        for producer in response.producers {
+            if producer.paused == true { continue }
+            guard let consumerId = webRTCClient.consumerId(forProducer: producer.producerId) else { continue }
+            try? await socketManager.resumeConsumer(consumerId: consumerId, requestKeyFrame: false)
         }
     }
 
@@ -662,6 +778,10 @@ final class MeetingViewModel {
     /// nobody is above the threshold the previous speaker lingers for
     /// `activeSpeakerHoldSeconds` to debounce the ring, then clears to nil.
     private func updateActiveSpeaker() {
+        #if SKIP
+        // Keep the Picture-in-Picture window pointed at whoever is talking.
+        updatePipVideo()
+        #endif
         let levels = webRTCClient.sampleAudioLevels()
 
         var loudestId: String?
@@ -737,12 +857,111 @@ final class MeetingViewModel {
         }
     }
     
+    // MARK: - System Call Presence
+
+    /// Brings up the OS-level call presence so the call survives backgrounding
+    /// and gets system mute/leave controls. iOS = CallKit + audio-session
+    /// interruption recovery; Android = the ongoing-call foreground service.
+    /// Idempotent (guarded by the underlying managers) and gated on being in a
+    /// joined call via CallSessionCoordinator.
+    func activateCallPresence() {
+        CallSessionCoordinator.shared.register(self)
+        #if os(iOS) && !SKIP
+        CallAudioSession.shared.begin()
+        CallKitManager.shared.reportCallStarted(title: state.roomId.isEmpty ? "Conclave meeting" : state.roomId)
+        CallKitManager.shared.updateMuteState(muted: state.isMuted)
+        #endif
+        #if SKIP
+        // Android: route the notification + PiP Leave/Mute actions back into
+        // this VM (hopped to the main thread by the dispatcher).
+        CallActionDispatcher.register(
+            mute: { self.toggleMute() },
+            leave: { self.leaveRoom() }
+        )
+        // Start the ongoing-call foreground service (microphone + mediaPlayback)
+        // so the OS keeps the call alive in the background, with a Leave + Mute
+        // notification that deep-links back to the meeting.
+        CallNotificationBridge.startCall(muted: state.isMuted)
+        // Arm Picture-in-Picture: MainActivity.onUserLeaveHint enters PiP only
+        // while a call is active.
+        PipController.setInCall(active: true)
+        PipController.setMuted(value: state.isMuted)
+        updatePipVideo()
+        #endif
+    }
+
+    /// Tears the OS-level call presence down (left, kicked, host ended, error).
+    func deactivateCallPresence() {
+        CallSessionCoordinator.shared.unregister(self)
+        #if os(iOS) && !SKIP
+        CallKitManager.shared.reportCallEnded()
+        CallAudioSession.shared.end()
+        #endif
+        #if SKIP
+        CallActionDispatcher.clear()
+        CallNotificationBridge.stopCall()
+        // If the call ends while in PiP (Leave from the PiP bar, host ended,
+        // kicked), collapse the PiP window back to the full-screen activity —
+        // otherwise it's left showing a dead/blank tile until the user manually
+        // expands it. exitPip() is a no-op when not in PiP.
+        PipManager.exitPip()
+        PipController.setInCall(active: false)
+        #endif
+    }
+
+    /// Reflect the in-app mute state onto the system call surfaces.
+    private func syncCallPresenceMute() {
+        #if os(iOS) && !SKIP
+        CallKitManager.shared.updateMuteState(muted: state.isMuted)
+        #endif
+        #if SKIP
+        CallNotificationBridge.updateMuted(muted: state.isMuted)
+        PipController.setMuted(value: state.isMuted)
+        // If we're already in PiP, refresh the Mute/Unmute RemoteAction label.
+        if PipController.inPipMode {
+            PipManager.refreshActions(muted: state.isMuted)
+        }
+        #endif
+    }
+
+    #if SKIP
+    /// Pushes the active speaker's (or local, when nobody else is talking) video
+    /// track to the Picture-in-Picture window. Called on each active-speaker poll
+    /// tick so PiP always shows whoever is talking.
+    private func updatePipVideo() {
+        guard PipController.isInCall else { return }
+        // Prefer the active speaker; fall back to the local user so PiP is never
+        // blank when nobody else is talking.
+        let targetId = state.activeSpeakerId ?? state.userId
+        let isLocal = (targetId == state.userId)
+        let trackId = isLocal ? "local" : targetId
+        let track = webRTCClient.rawVideoTrack(userId: trackId)
+        let cameraOff: Bool
+        if isLocal {
+            cameraOff = state.isCameraOff
+        } else {
+            cameraOff = state.participants[targetId]?.isCameraOff ?? true
+        }
+        let name = state.displayName(for: targetId)
+        PipController.setPipVideo(track: track, cameraOff: cameraOff, displayName: name)
+    }
+    #endif
+
     func cleanup() async {
+        deactivateCallPresence()
         stopActiveSpeakerPoll()
         #if canImport(ReplayKit) && !SKIP
+        // Clear the external-stop callback BEFORE stopping: it captures this
+        // (now-singleton) VM, and a late broadcast-stopped signal from a dying
+        // extension could otherwise fire into the NEXT call and tear down a
+        // fresh share. (handleScreenShareEndedExternally guards on
+        // isScreenSharing, so this only matters if the next call is also
+        // sharing — but clear it at the call boundary to be safe.)
+        ScreenCaptureManager.shared.onBroadcastStopped = nil
         await ScreenCaptureManager.shared.stopCapture()
         #endif
         #if SKIP
+        ScreenCaptureManager.onProjectionRevoked = nil
         ScreenCaptureManager.stopCapture()
         #endif
         await webRTCClient.cleanup()
@@ -756,9 +975,30 @@ final class MeetingViewModel {
         state.isScreenSharing = false
         state.activeScreenShareUserId = nil
         state.activeSpeakerId = nil
+        state.pinnedUserId = nil
         state.unreadChatCount = 0
         state.waitingMessage = nil
         state.isAdmin = false
+        // The VM is a process-wide singleton now (survives the PiP composition
+        // swap / Activity recreation), so it's REUSED across calls. Reset every
+        // session-local field here or stale room policy / chat / pin state leaks
+        // into the next meeting. NOTE: do NOT clear errorMessage — the kick /
+        // reject / room-ended / redirect paths set it immediately before calling
+        // cleanup(), so clearing it would wipe the notice the user must see.
+        state.systemMessages.removeAll()
+        state.isRoomLocked = false
+        state.isChatLocked = false
+        state.isNoGuests = false
+        state.isDmEnabled = true
+        state.isTtsDisabled = false
+        state.isGhostMode = false
+        state.isChatOpen = false
+        state.roomId = ""
+        // Reset adaptive video quality: the SFU only pushes setVideoQuality when
+        // a room's quality CHANGES (or is already low), so a new standard-quality
+        // room may never re-raise it — leaving the reused singleton stuck at .low
+        // from a previous large room.
+        state.videoQuality = .standard
         lastJoinContext = nil
     }
     
@@ -784,6 +1024,7 @@ final class MeetingViewModel {
         #if !SKIP
         HapticManager.shared.trigger(.light)
         #endif
+        syncCallPresenceMute()
         Task {
             if newState {
                 // Muting - just pause the producer
@@ -1070,6 +1311,7 @@ final class MeetingViewModel {
     
     private func setMuted(_ muted: Bool) async {
         state.isMuted = muted
+        syncCallPresenceMute()
         if muted {
             await webRTCClient.setAudioEnabled(false)
         } else {
