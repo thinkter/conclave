@@ -62,6 +62,7 @@ const getRoomAppsState = (context: ConnectionContext): AppsState => {
   return {
     activeAppId: context.currentRoom.appsState.activeAppId,
     locked: context.currentRoom.appsState.locked,
+    roomId: context.currentRoom.id,
   };
 };
 

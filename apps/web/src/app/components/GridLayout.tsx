@@ -1,8 +1,27 @@
 "use client";
 
-import { Ghost, Hand, Link2, MicOff, UserPlus, Users } from "lucide-react";
+import {
+  Crop,
+  Focus,
+  Ghost,
+  Hand,
+  Link2,
+  Maximize2,
+  Minimize2,
+  MicOff,
+  MonitorUp,
+  Move,
+  Pin,
+  PinOff,
+  UserPlus,
+  Users,
+} from "lucide-react";
 import {
   memo,
+  type CSSProperties,
+  type Dispatch,
+  type PointerEvent as ReactPointerEvent,
+  type SetStateAction,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -16,7 +35,17 @@ import { isSystemUserId, truncateDisplayName } from "../lib/utils";
 import ParticipantAudio from "./ParticipantAudio";
 import ParticipantVideo from "./ParticipantVideo";
 import { avatarColor } from "@conclave/ui-tokens";
-import { computeGridLayout } from "@conclave/meeting-core";
+import { chooseStageMode, computeGridLayout } from "@conclave/meeting-core";
+import {
+  clampMeetViewTiles,
+  DEFAULT_MEET_VIEW_SETTINGS,
+  MEET_VIEW_MIN_TILES,
+  type MeetSelfViewCorner,
+  type MeetSelfViewMode,
+  type MeetViewMode,
+  type MeetViewSettings,
+} from "../lib/meet-view";
+import { createPlaybackRecoveryScheduler } from "../lib/playback-recovery";
 
 interface GridLayoutProps {
   localStream: MediaStream | null;
@@ -34,6 +63,13 @@ interface GridLayoutProps {
   selectedParticipantId?: string | null;
   onParticipantClick?: (userId: string) => void;
   onOpenParticipantsPanel?: () => void;
+  activeVideoEffectsCount?: number;
+  isVideoFramingEnabled?: boolean;
+  onToggleVideoFraming?: () => void;
+  viewSettings?: MeetViewSettings;
+  onViewSettingsChange?: Dispatch<SetStateAction<MeetViewSettings>>;
+  presentationStream?: MediaStream | null;
+  presenterName?: string;
   getDisplayName: (userId: string) => string;
   /** px the stage reserves on the right for a docked side panel (0 when none).
    *  Drives the one-shot reflow glide: when this changes, the grid re-measures
@@ -41,29 +77,514 @@ interface GridLayoutProps {
   sidePanelReserve?: number;
 }
 
-const MAX_GRID_TILES = 16;
 // Keep this many just-past-the-cutoff participants' <video> mounted (hidden but
 // still decoding) as SIBLINGS of the visible grid tiles. When the active-speaker
 // sort promotes one of them across the overflow boundary, React reconciles it by
 // key within the same parent — the tile REPOSITIONS in place instead of
 // unmount+remounting, so the decoder isn't reset and the tile doesn't black-flash.
 const WARM_BUFFER_TILES = 4;
+const RECENTLY_VISIBLE_WARM_BUFFER_TILES = 4;
+const RECENTLY_VISIBLE_WARM_HOLD_MS = 3500;
 // Spacing of the measured stage. GRID_PADDING mirrors `p-4`; GRID_GAP is the
 // inter-tile gap fed to the Meet packer so it reserves the same gutters we draw.
 const GRID_PADDING = 16;
 const GRID_GAP = 12;
 const GRID_MAX_COLS = 6;
+const AUTO_GRID_MIN_TILE_WIDTH = 176;
+const AUTO_GRID_MIN_TILE_HEIGHT = 99;
+const ROOM_TILING_METADATA_INTERVAL_MS = 200;
+const ROOM_TILING_PROMOTE_DELAY_MS = 220;
+const ROOM_TILING_MIN_SWITCH_INTERVAL_MS = 2200;
 const FLIP_DURATION_MS = 220;
 // Discrete side-panel reflow glides over the SAME duration/easing as the panel
 // slide (meet-panel-in) so the stage and the panel move together.
 const REFLOW_DURATION_MS = 280;
 const FLIP_EASING = "cubic-bezier(0.22, 1, 0.36, 1)";
 const FONT_SANS = "'PolySans Trial', system-ui, sans-serif";
+const LOCAL_STAGE_ID = "__local__";
+const PRESENTATION_TILE_ID = "__presentation__";
+
+type EffectiveMeetViewMode = MeetViewMode | "sideBySide";
+type ResolvedSelfViewMode = Exclude<MeetSelfViewMode, "auto">;
+type MeetRoomTilingWarmReason =
+  | "boundary"
+  | "recently-visible"
+  | "active-speaker";
+type MeetRoomTilingScore = {
+  id: string;
+  rank: number;
+  score: number;
+  active: boolean;
+  raised: boolean;
+  video: boolean;
+  audio: boolean;
+  visible: boolean;
+  hidden: boolean;
+  warm: boolean;
+  warmReasons: MeetRoomTilingWarmReason[];
+};
+
+type MeetVideoEffectsHumanTrack = {
+  trackId: string;
+  source: "face" | "foreground";
+  centerX: number;
+  centerY: number;
+  width: number;
+  height: number;
+  coverage: number;
+};
+
+type MeetVideoEffectsCropRect = {
+  sx: number;
+  sy: number;
+  sw: number;
+  sh: number;
+};
+
+type MeetVideoEffectsFrameMetadata = {
+  type: "FRAME_METADATA";
+  sequence: number;
+  processingConfigId: number;
+  approximateTimestampMs: number;
+  exactTimestampMs: number | null;
+  frame?: {
+    width: number;
+    height: number;
+  };
+  roomTilingMetadata?: {
+    tileCount: number;
+    tilesStable: boolean;
+    enabledFramesCount: number;
+    stableFramesCount: number;
+  };
+  humanTrackingMetadata?: {
+    lifetimeTrackCount: number;
+    activeTrackCount: number;
+    trackedHumans: MeetVideoEffectsHumanTrack[];
+  };
+  continuousAutozoomMetadata?: {
+    enabled: boolean;
+    source: "off" | "face" | "foreground" | "center";
+    zoomFactor: number;
+    crop: MeetVideoEffectsCropRect | null;
+    targetCrop: MeetVideoEffectsCropRect | null;
+    recentered: boolean;
+    recenterCount: number;
+  };
+};
+
+type MeetLocalVideoTracking = {
+  active: boolean;
+  source: MeetVideoEffectsHumanTrack["source"] | "none";
+  trackCount: number;
+  primaryTrack: MeetVideoEffectsHumanTrack | null;
+  objectPosition: string | null;
+  metadataSequence: number | null;
+  processingConfigId: number | null;
+  exactTimestampMs: number | null;
+  approximateTimestampMs: number | null;
+  roomTileCount: number | null;
+  autozoom: {
+    enabled: boolean;
+    source: "off" | "face" | "foreground" | "center";
+    zoomFactor: number;
+    crop: MeetVideoEffectsCropRect | null;
+    targetCrop: MeetVideoEffectsCropRect | null;
+    recentered: boolean;
+    recenterCount: number;
+  } | null;
+  receivedAt: number;
+};
+
+type MeetRoomTilingMetadataBase = {
+  source: "client";
+  intervalMs: number;
+  promoteDelayMs: number;
+  minSwitchIntervalMs: number;
+  activeSpeakerId: string | null;
+  requestedMode: MeetViewMode;
+  renderedMode: EffectiveMeetViewMode;
+  effectiveMode: EffectiveMeetViewMode;
+  autoStageMode: string;
+  dynamicCrop: boolean;
+  presenting: boolean;
+  pinnedId: string | null;
+  primaryIds: string[];
+  visibleRemoteIds: string[];
+  hiddenIds: string[];
+  warmIds: string[];
+  warmReasons: Record<string, MeetRoomTilingWarmReason[]>;
+  orderedRemoteIds: string[];
+  scores: MeetRoomTilingScore[];
+  counts: {
+    orderedRemote: number;
+    visible: number;
+    hidden: number;
+    warm: number;
+    totalGrid: number;
+    stageRail: number;
+    maxTiles: number;
+    requestedMaxTiles: number;
+    autoTileLimit: number;
+    recentlyVisibleWarm: number;
+  };
+  stage: {
+    mainKind: "presentation" | "local" | "remote" | "none";
+    candidateMainKind: "presentation" | "local" | "remote" | "none";
+    mainParticipantId: string | null;
+    sideCompanionKind: "local" | "remote" | "none";
+    sideCompanionId: string | null;
+    sideBySide: boolean;
+    spotlight: boolean;
+  };
+  selfView: {
+    requested: MeetSelfViewMode;
+    effective: ResolvedSelfViewMode;
+    placement: "stage" | "tile" | "floating" | "minimized" | "none";
+    corner: MeetSelfViewCorner;
+  };
+  layout: {
+    width: number;
+    height: number;
+    cols: number;
+    rows: number;
+    tileWidth: number;
+    tileHeight: number;
+    gridVideoFit: "cover" | "contain";
+    fullVideoTileIds: string[];
+  };
+  localVideo: MeetLocalVideoTracking;
+};
+
+type MeetRoomTilingMetadata = MeetRoomTilingMetadataBase & {
+  sequence: number;
+  timestamp: number;
+  performanceTime: number;
+  signature: string;
+};
+
+type MeetRoomTilingDebugSnapshot = {
+  current: MeetRoomTilingMetadata | null;
+  history: MeetRoomTilingMetadata[];
+  sequence: number;
+  intervalMs: number;
+};
+
+declare global {
+  interface Window {
+    __conclaveGetMeetRoomTilingDebug?: () => MeetRoomTilingDebugSnapshot;
+    __conclaveMeetRoomTilingDebug?: MeetRoomTilingDebugSnapshot;
+  }
+}
+
+const hasLiveTrack = (
+  stream: MediaStream | null | undefined,
+  kind: "audio" | "video",
+) => {
+  const track =
+    kind === "video" ? stream?.getVideoTracks()[0] : stream?.getAudioTracks()[0];
+  return Boolean(track && track.readyState === "live");
+};
+
+const hasLiveVideo = (stream: MediaStream | null | undefined) =>
+  hasLiveTrack(stream, "video");
+
+const participantHasLiveVideo = (participant: Participant) =>
+  !participant.isCameraOff && hasLiveVideo(participant.videoStream);
+
+const participantHasLiveAudio = (participant: Participant) =>
+  !participant.isMuted && hasLiveTrack(participant.audioStream, "audio");
+
+const emptyLocalVideoTracking = (): MeetLocalVideoTracking => ({
+  active: false,
+  source: "none",
+  trackCount: 0,
+  primaryTrack: null,
+  objectPosition: null,
+  metadataSequence: null,
+  processingConfigId: null,
+  exactTimestampMs: null,
+  approximateTimestampMs: null,
+  roomTileCount: null,
+  autozoom: null,
+  receivedAt: 0,
+});
+
+const clampUnit = (value: number) => Math.min(1, Math.max(0, value));
+
+const quantizeObjectPositionPercent = (value: number) =>
+  Math.round(value / 2) * 2;
+
+const getTrackingObjectPosition = (
+  track: MeetVideoEffectsHumanTrack,
+  frame: MeetVideoEffectsFrameMetadata["frame"] | undefined,
+  crop: MeetVideoEffectsCropRect | null | undefined,
+) => {
+  let centerX = clampUnit(track.centerX);
+  let centerY = clampUnit(track.centerY);
+
+  if (
+    frame &&
+    crop &&
+    frame.width > 0 &&
+    frame.height > 0 &&
+    crop.sw > 0 &&
+    crop.sh > 0
+  ) {
+    centerX = clampUnit((track.centerX * frame.width - crop.sx) / crop.sw);
+    centerY = clampUnit((track.centerY * frame.height - crop.sy) / crop.sh);
+  }
+
+  const x = quantizeObjectPositionPercent(
+    Math.min(82, Math.max(18, centerX * 100)),
+  );
+  const y = quantizeObjectPositionPercent(
+    Math.min(82, Math.max(18, centerY * 100)),
+  );
+  return `${x}% ${y}%`;
+};
+
+const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
+const readFiniteNumber = (value: unknown) =>
+  typeof value === "number" && Number.isFinite(value) ? value : null;
+
+const readCropRect = (value: unknown): MeetVideoEffectsCropRect | null => {
+  if (!isPlainRecord(value)) return null;
+  const sx = readFiniteNumber(value.sx);
+  const sy = readFiniteNumber(value.sy);
+  const sw = readFiniteNumber(value.sw);
+  const sh = readFiniteNumber(value.sh);
+  if (sx === null || sy === null || sw === null || sh === null) return null;
+  return { sx, sy, sw, sh };
+};
+
+const readHumanTrack = (value: unknown): MeetVideoEffectsHumanTrack | null => {
+  if (!isPlainRecord(value)) return null;
+  const source = value.source;
+  if (source !== "face" && source !== "foreground") return null;
+  const centerX = readFiniteNumber(value.centerX);
+  const centerY = readFiniteNumber(value.centerY);
+  const width = readFiniteNumber(value.width);
+  const height = readFiniteNumber(value.height);
+  const coverage = readFiniteNumber(value.coverage);
+  if (
+    centerX === null ||
+    centerY === null ||
+    width === null ||
+    height === null ||
+    coverage === null
+  ) {
+    return null;
+  }
+
+  return {
+    trackId:
+      typeof value.trackId === "string" && value.trackId
+        ? value.trackId
+        : `${source}:local:0`,
+    source,
+    centerX,
+    centerY,
+    width,
+    height,
+    coverage,
+  };
+};
+
+const readVideoEffectsFrameMetadata = (
+  detail: unknown,
+): MeetVideoEffectsFrameMetadata | null => {
+  if (!isPlainRecord(detail) || detail.type !== "FRAME_METADATA") return null;
+  const sequence = readFiniteNumber(detail.sequence);
+  const processingConfigId = readFiniteNumber(detail.processingConfigId);
+  const approximateTimestampMs = readFiniteNumber(detail.approximateTimestampMs);
+  if (
+    sequence === null ||
+    processingConfigId === null ||
+    approximateTimestampMs === null
+  ) {
+    return null;
+  }
+
+  const exactTimestampMs = readFiniteNumber(detail.exactTimestampMs);
+  const humanTrackingMetadata = isPlainRecord(detail.humanTrackingMetadata)
+    ? detail.humanTrackingMetadata
+    : null;
+  const trackedHumans = Array.isArray(
+    humanTrackingMetadata?.trackedHumans,
+  )
+    ? humanTrackingMetadata.trackedHumans
+        .map(readHumanTrack)
+        .filter((track): track is MeetVideoEffectsHumanTrack => Boolean(track))
+    : [];
+  const roomTilingMetadata = isPlainRecord(detail.roomTilingMetadata)
+    ? detail.roomTilingMetadata
+    : null;
+  const continuousAutozoomMetadata = isPlainRecord(
+    detail.continuousAutozoomMetadata,
+  )
+    ? detail.continuousAutozoomMetadata
+    : null;
+  const frame = isPlainRecord(detail.frame) ? detail.frame : null;
+  const frameWidth = readFiniteNumber(frame?.width);
+  const frameHeight = readFiniteNumber(frame?.height);
+  const autozoomSource = continuousAutozoomMetadata?.source;
+  const hasKnownAutozoomSource =
+    autozoomSource === "off" ||
+    autozoomSource === "face" ||
+    autozoomSource === "foreground" ||
+    autozoomSource === "center";
+  const autozoomCrop = readCropRect(continuousAutozoomMetadata?.crop);
+  const autozoomTargetCrop = readCropRect(
+    continuousAutozoomMetadata?.targetCrop,
+  );
+
+  return {
+    type: "FRAME_METADATA",
+    sequence,
+    processingConfigId,
+    approximateTimestampMs,
+    exactTimestampMs,
+    frame:
+      frameWidth !== null && frameHeight !== null
+        ? { width: frameWidth, height: frameHeight }
+        : undefined,
+    roomTilingMetadata: roomTilingMetadata
+      ? {
+          tileCount: readFiniteNumber(roomTilingMetadata.tileCount) ?? 0,
+          tilesStable: roomTilingMetadata.tilesStable === true,
+          enabledFramesCount:
+            readFiniteNumber(roomTilingMetadata.enabledFramesCount) ?? 0,
+          stableFramesCount:
+            readFiniteNumber(roomTilingMetadata.stableFramesCount) ?? 0,
+        }
+      : undefined,
+    humanTrackingMetadata: {
+      lifetimeTrackCount:
+        readFiniteNumber(humanTrackingMetadata?.lifetimeTrackCount) ??
+        trackedHumans.length,
+      activeTrackCount:
+        readFiniteNumber(humanTrackingMetadata?.activeTrackCount) ??
+        trackedHumans.length,
+      trackedHumans,
+    },
+    continuousAutozoomMetadata:
+      continuousAutozoomMetadata && hasKnownAutozoomSource
+        ? {
+            enabled: continuousAutozoomMetadata.enabled === true,
+            source: autozoomSource,
+            zoomFactor:
+              readFiniteNumber(continuousAutozoomMetadata.zoomFactor) ?? 1,
+            crop: autozoomCrop,
+            targetCrop: autozoomTargetCrop,
+            recentered: continuousAutozoomMetadata.recentered === true,
+            recenterCount:
+              readFiniteNumber(continuousAutozoomMetadata.recenterCount) ?? 0,
+          }
+        : undefined,
+  };
+};
+
+const createLocalVideoTracking = (
+  metadata: MeetVideoEffectsFrameMetadata | null,
+): MeetLocalVideoTracking => {
+  if (!metadata) return emptyLocalVideoTracking();
+  const tracks = metadata.humanTrackingMetadata?.trackedHumans ?? [];
+  const primaryTrack =
+    tracks.find((track) => track.source === "face") ?? tracks[0] ?? null;
+  const autozoomCrop = metadata.continuousAutozoomMetadata?.crop ?? null;
+
+  return {
+    active: Boolean(primaryTrack),
+    source: primaryTrack?.source ?? "none",
+    trackCount: tracks.length,
+    primaryTrack,
+    objectPosition: primaryTrack
+      ? getTrackingObjectPosition(primaryTrack, metadata.frame, autozoomCrop)
+      : null,
+    metadataSequence: metadata.sequence,
+    processingConfigId: metadata.processingConfigId,
+    exactTimestampMs: metadata.exactTimestampMs,
+    approximateTimestampMs: metadata.approximateTimestampMs,
+    roomTileCount: metadata.roomTilingMetadata?.tileCount ?? null,
+    autozoom: metadata.continuousAutozoomMetadata
+      ? {
+          enabled: metadata.continuousAutozoomMetadata.enabled,
+          source: metadata.continuousAutozoomMetadata.source,
+          zoomFactor: metadata.continuousAutozoomMetadata.zoomFactor,
+          crop: metadata.continuousAutozoomMetadata.crop,
+          targetCrop: metadata.continuousAutozoomMetadata.targetCrop,
+          recentered: metadata.continuousAutozoomMetadata.recentered,
+          recenterCount: metadata.continuousAutozoomMetadata.recenterCount,
+        }
+      : null,
+    receivedAt: Math.round(performance.now()),
+  };
+};
+
+const getLocalVideoTrackingRenderSignature = (
+  tracking: MeetLocalVideoTracking,
+) =>
+  [
+    tracking.active ? "1" : "0",
+    tracking.source,
+    String(tracking.trackCount),
+    tracking.objectPosition ?? "",
+    String(tracking.processingConfigId ?? ""),
+    String(tracking.roomTileCount ?? ""),
+    tracking.autozoom?.enabled ? "1" : "0",
+    tracking.autozoom?.source ?? "none",
+    String(Math.round((tracking.autozoom?.zoomFactor ?? 1) * 100) / 100),
+    String(tracking.autozoom?.recenterCount ?? 0),
+  ].join("|");
+
+const isLocalVideoTrackingRenderEquivalent = (
+  left: MeetLocalVideoTracking,
+  right: MeetLocalVideoTracking,
+) =>
+  getLocalVideoTrackingRenderSignature(left) ===
+  getLocalVideoTrackingRenderSignature(right);
 
 const prefersReducedMotion = () =>
   typeof window !== "undefined" &&
   typeof window.matchMedia === "function" &&
   window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+const computeMeetAutoTileLimit = (
+  requestedMaxTiles: number,
+  gridWidth: number,
+  gridHeight: number,
+) => {
+  const usableWidth = Math.max(0, gridWidth - GRID_PADDING * 2);
+  const usableHeight = Math.max(0, gridHeight - GRID_PADDING * 2);
+
+  if (usableWidth <= 0 || usableHeight <= 0) {
+    return requestedMaxTiles;
+  }
+
+  for (
+    let tileCount = requestedMaxTiles;
+    tileCount >= MEET_VIEW_MIN_TILES;
+    tileCount -= 1
+  ) {
+    const candidate = computeGridLayout(tileCount, usableWidth, usableHeight, {
+      gap: GRID_GAP,
+      maxCols: GRID_MAX_COLS,
+      maxTilesPerPage: tileCount,
+      targetAspect: 16 / 9,
+    });
+    if (
+      candidate.tileWidth >= AUTO_GRID_MIN_TILE_WIDTH &&
+      candidate.tileHeight >= AUTO_GRID_MIN_TILE_HEIGHT
+    ) {
+      return tileCount;
+    }
+  }
+
+  return Math.min(requestedMaxTiles, MEET_VIEW_MIN_TILES);
+};
 
 /**
  * No-dependency FLIP. Keeps every tile gliding smoothly (position AND size)
@@ -234,11 +755,23 @@ function GridLayout({
   selectedParticipantId,
   onParticipantClick,
   onOpenParticipantsPanel,
+  activeVideoEffectsCount = 0,
+  isVideoFramingEnabled = false,
+  onToggleVideoFraming,
+  viewSettings = DEFAULT_MEET_VIEW_SETTINGS,
+  onViewSettingsChange,
+  presentationStream = null,
+  presenterName = "Someone",
   getDisplayName,
   sidePanelReserve = 0,
 }: GridLayoutProps) {
+  const stageRootRef = useRef<HTMLDivElement>(null);
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const [isOverflowOpen, setIsOverflowOpen] = useState(false);
+  const [selfViewDragPoint, setSelfViewDragPoint] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
   const [copyStatus, setCopyStatus] = useState<"idle" | "copied">("idle");
   const [inviteStatus, setInviteStatus] = useState<"idle" | "shared" | "copied">(
     "idle"
@@ -246,34 +779,42 @@ function GridLayout({
   const copyTimeoutRef = useRef<number | null>(null);
   const inviteTimeoutRef = useRef<number | null>(null);
   const [pinnedId, setPinnedId] = useState<string | null>(null);
+  const [fullVideoTileIds, setFullVideoTileIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const togglePin = useCallback(
     (userId: string) => setPinnedId((prev) => (prev === userId ? null : userId)),
     [],
   );
-  const isLocalActiveSpeaker = activeSpeakerId === currentUserId;
-  const maxRemoteWithoutOverflow = Math.max(0, MAX_GRID_TILES - 1);
-
-  useEffect(() => {
-    const video = localVideoRef.current;
-    if (!video) return;
-
-    if (!localStream) {
-      if (video.srcObject) {
-        video.srcObject = null;
+  const toggleLocalPin = useCallback(
+    () =>
+      setPinnedId((prev) =>
+        prev === LOCAL_STAGE_ID ? null : LOCAL_STAGE_ID,
+      ),
+    [],
+  );
+  const toggleFullVideoTile = useCallback((tileId: string) => {
+    setFullVideoTileIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(tileId)) {
+        next.delete(tileId);
+      } else {
+        next.add(tileId);
       }
-      return;
-    }
-
-    if (video.srcObject !== localStream) {
-      video.srcObject = localStream;
-    }
-
-    video.play().catch((err) => {
-      if (err.name !== "AbortError") {
-        console.error("[Meets] Grid local video play error:", err);
-      }
+      return next;
     });
-  }, [localStream]);
+  }, []);
+  const isLocalActiveSpeaker = activeSpeakerId === currentUserId;
+  const isLocalPinned = pinnedId === LOCAL_STAGE_ID;
+  const hasPresentation = hasLiveVideo(presentationStream);
+  const localVideoTrack = localStream?.getVideoTracks()[0] ?? null;
+  const localVideoTrackingRef = useRef<MeetLocalVideoTracking>(
+    emptyLocalVideoTracking(),
+  );
+  const localVideoTrackingFlushTimerRef = useRef<number | null>(null);
+  const lastLocalVideoTrackingFlushAtRef = useRef(0);
+  const [localVideoTracking, setLocalVideoTracking] =
+    useState<MeetLocalVideoTracking>(() => emptyLocalVideoTracking());
 
   useEffect(() => {
     return () => {
@@ -286,6 +827,75 @@ function GridLayout({
     };
   }, []);
 
+  useEffect(() => {
+    const flushLocalVideoTracking = () => {
+      localVideoTrackingFlushTimerRef.current = null;
+      lastLocalVideoTrackingFlushAtRef.current = performance.now();
+      const nextTracking = localVideoTrackingRef.current;
+      setLocalVideoTracking((previousTracking) =>
+        isLocalVideoTrackingRenderEquivalent(previousTracking, nextTracking)
+          ? previousTracking
+          : nextTracking,
+      );
+    };
+    const scheduleFlush = () => {
+      const now = performance.now();
+      const delay = Math.max(
+        0,
+        ROOM_TILING_METADATA_INTERVAL_MS -
+          (now - lastLocalVideoTrackingFlushAtRef.current),
+      );
+      if (delay <= 0) {
+        flushLocalVideoTracking();
+        return;
+      }
+      if (localVideoTrackingFlushTimerRef.current !== null) return;
+      localVideoTrackingFlushTimerRef.current = window.setTimeout(
+        flushLocalVideoTracking,
+        delay,
+      );
+    };
+    const handleFrameMetadata = (event: Event) => {
+      const detail = (event as CustomEvent<unknown>).detail;
+      const metadata = readVideoEffectsFrameMetadata(detail);
+      if (!metadata) return;
+      localVideoTrackingRef.current = createLocalVideoTracking(metadata);
+      scheduleFlush();
+    };
+
+    window.addEventListener(
+      "conclave:video-effects-frame-metadata",
+      handleFrameMetadata,
+    );
+    return () => {
+      window.removeEventListener(
+        "conclave:video-effects-frame-metadata",
+        handleFrameMetadata,
+      );
+      if (localVideoTrackingFlushTimerRef.current !== null) {
+        window.clearTimeout(localVideoTrackingFlushTimerRef.current);
+        localVideoTrackingFlushTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isCameraOff && hasLiveVideo(localStream) && activeVideoEffectsCount > 0) {
+      return;
+    }
+    if (localVideoTrackingFlushTimerRef.current !== null) {
+      window.clearTimeout(localVideoTrackingFlushTimerRef.current);
+      localVideoTrackingFlushTimerRef.current = null;
+    }
+    const emptyTracking = emptyLocalVideoTracking();
+    localVideoTrackingRef.current = emptyTracking;
+    setLocalVideoTracking((previousTracking) =>
+      isLocalVideoTrackingRenderEquivalent(previousTracking, emptyTracking)
+        ? previousTracking
+        : emptyTracking,
+    );
+  }, [activeVideoEffectsCount, isCameraOff, localStream]);
+
   // Memoize the filtered input so it only changes identity when `participants`
   // actually changes — otherwise a fresh array every render defeats
   // useSmartParticipantOrder's internal memoization (new sorted array each tick).
@@ -294,93 +904,74 @@ function GridLayout({
       Array.from(participants.values()).filter(
         (participant) =>
           !isSystemUserId(participant.userId) &&
-          participant.userId !== currentUserId
+          participant.userId !== currentUserId &&
+          (!viewSettings.hideTilesWithoutVideo ||
+            participantHasLiveVideo(participant) ||
+            participant.userId === activeSpeakerId ||
+            participant.userId === pinnedId)
       ),
-    [participants, currentUserId]
+    [
+      activeSpeakerId,
+      currentUserId,
+      participants,
+      pinnedId,
+      viewSettings.hideTilesWithoutVideo,
+    ]
   );
-  const orderedRemoteParticipants = useSmartParticipantOrder(
-    remoteInput,
-    activeSpeakerId
+  const requestedSelfViewMode = viewSettings.selfViewMode;
+  const requestedSelfViewCorner = viewSettings.selfViewCorner;
+  const autoSelfViewMode: ResolvedSelfViewMode =
+    !hasPresentation && remoteInput.length === 1 ? "floating" : "tile";
+  const detachedSelfViewMode: ResolvedSelfViewMode =
+    requestedSelfViewMode === "auto"
+      ? autoSelfViewMode
+      : requestedSelfViewMode;
+  const canDetachSelfView = remoteInput.length > 0 || hasPresentation;
+  const effectiveSelfViewMode: ResolvedSelfViewMode = canDetachSelfView
+    ? detachedSelfViewMode
+    : "tile";
+  const shouldShowSelfAsTile =
+    effectiveSelfViewMode === "tile" || isLocalPinned;
+  const hasActiveVideoSpeaker =
+    activeSpeakerId === currentUserId
+      ? shouldShowSelfAsTile && !isCameraOff && hasLiveVideo(localStream)
+      : remoteInput.some(
+          (participant) =>
+            participant.userId === activeSpeakerId &&
+            participantHasLiveVideo(participant),
+        );
+  const autoStageMode = chooseStageMode({
+    count: remoteInput.length + 1,
+    presenting: hasPresentation,
+    pinned: Boolean(pinnedId),
+    hasActiveVideoSpeaker,
+  });
+  const effectiveViewMode: EffectiveMeetViewMode =
+    viewSettings.mode === "auto"
+      ? autoStageMode === "sidebar" ||
+        autoStageMode === "spotlight" ||
+        autoStageMode === "sideBySide"
+        ? autoStageMode
+        : "tiled"
+      : viewSettings.mode;
+  const renderedViewMode: EffectiveMeetViewMode =
+    pinnedId && effectiveViewMode === "tiled" ? "spotlight" : effectiveViewMode;
+  const usesAutoDynamicCrop =
+    viewSettings.mode === "auto" && renderedViewMode === "tiled";
+  const gridVideoObjectFit: "cover" | "contain" = usesAutoDynamicCrop
+    ? "cover"
+    : "contain";
+  const getGridVideoObjectFit = useCallback(
+    (tileId: string): "cover" | "contain" =>
+      usesAutoDynamicCrop && fullVideoTileIds.has(tileId)
+        ? "contain"
+        : gridVideoObjectFit,
+    [fullVideoTileIds, gridVideoObjectFit, usesAutoDynamicCrop],
   );
-  const pinnedParticipant = pinnedId
-    ? orderedRemoteParticipants.find((p) => p.userId === pinnedId) ?? null
-    : null;
-  useEffect(() => {
-    if (pinnedId && !orderedRemoteParticipants.some((p) => p.userId === pinnedId)) {
-      setPinnedId(null);
-    }
-  }, [pinnedId, orderedRemoteParticipants]);
-  const hasOverflow = orderedRemoteParticipants.length > maxRemoteWithoutOverflow;
-  const isSolo = orderedRemoteParticipants.length === 0;
-  const maxVisibleRemoteParticipants = hasOverflow
-    ? isOverflowOpen
-      ? maxRemoteWithoutOverflow
-      : Math.max(0, MAX_GRID_TILES - 2)
-    : maxRemoteWithoutOverflow;
-  const visibleParticipants = useMemo(() => {
-    if (maxVisibleRemoteParticipants <= 0) {
-      return [];
-    }
-
-    return orderedRemoteParticipants.slice(0, maxVisibleRemoteParticipants);
-  }, [orderedRemoteParticipants, maxVisibleRemoteParticipants]);
-
-  const hiddenParticipants = useMemo(() => {
-    const visibleIds = new Set(
-      visibleParticipants.map((participant) => participant.userId)
-    );
-    return orderedRemoteParticipants.filter(
-      (participant) => !visibleIds.has(participant.userId)
-    );
-  }, [orderedRemoteParticipants, visibleParticipants]);
-  const hiddenParticipantsCount = hiddenParticipants.length;
-  // The few hidden participants just past the visible cutoff that we keep warm
-  // (mounted + decoding, but visually hidden) so they cross the boundary without
-  // a remount. Empty while the overflow gallery is open — it already renders
-  // every hidden participant, so warming them too would double-mount the tile.
-  const warmParticipants = useMemo(() => {
-    if (isOverflowOpen) return [];
-    const warm = hiddenParticipants.slice(0, WARM_BUFFER_TILES);
-    // Also warm the active speaker even if they're hidden BEYOND the buffer —
-    // useSmartParticipantOrder will promote them into the grid after the debounce
-    // and we don't want that to mount a cold <video>.
-    if (
-      activeSpeakerId &&
-      !warm.some((p) => p.userId === activeSpeakerId)
-    ) {
-      const speaker = hiddenParticipants.find(
-        (p) => p.userId === activeSpeakerId,
-      );
-      if (speaker) warm.push(speaker);
-    }
-    return warm;
-  }, [isOverflowOpen, hiddenParticipants, activeSpeakerId]);
-  const showOverflowTile = hiddenParticipantsCount > 0;
-  const showOverflowTileInGrid = showOverflowTile && !isOverflowOpen;
-  const totalParticipants =
-    visibleParticipants.length + 1 + (showOverflowTileInGrid ? 1 : 0);
-  const overflowPreviewParticipants = hiddenParticipants.slice(0, 4);
-
-  useEffect(() => {
-    if (!showOverflowTile) {
-      setIsOverflowOpen(false);
-    }
-  }, [showOverflowTile]);
-
-  useEffect(() => {
-    if (!isOverflowOpen) return;
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setIsOverflowOpen(false);
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [isOverflowOpen]);
-
-  const localDisplayName = getDisplayName(currentUserId);
+  const fullVideoTileIdList = useMemo(
+    () => Array.from(fullVideoTileIds).sort(),
+    [fullVideoTileIds],
+  );
 
   // Measure the stage so the Meet packer can size tiles to the actual viewport.
   // We track the border-box and subtract padding ourselves (one source of truth
@@ -427,6 +1018,628 @@ function GridLayout({
     );
   }, [sidePanelReserve]);
 
+  const requestedMaxTiles = clampMeetViewTiles(viewSettings.maxTiles);
+  const autoGridTileLimit = useMemo(
+    () =>
+      viewSettings.mode === "auto" && renderedViewMode === "tiled"
+        ? computeMeetAutoTileLimit(
+            requestedMaxTiles,
+            gridSize.width,
+            gridSize.height,
+          )
+        : requestedMaxTiles,
+    [
+      gridSize.height,
+      gridSize.width,
+      renderedViewMode,
+      requestedMaxTiles,
+      viewSettings.mode,
+    ],
+  );
+  const usesMeasuredAutoTileLimit =
+    viewSettings.mode === "auto" && renderedViewMode === "tiled";
+  const maxGridTiles =
+    renderedViewMode === "spotlight"
+      ? 1
+      : renderedViewMode === "sidebar" || renderedViewMode === "sideBySide"
+        ? Math.min(requestedMaxTiles, 8)
+        : usesMeasuredAutoTileLimit
+          ? autoGridTileLimit
+          : requestedMaxTiles;
+  const wantsStageLayout =
+    renderedViewMode === "sidebar" ||
+    renderedViewMode === "sideBySide" ||
+    renderedViewMode === "spotlight" ||
+    Boolean(pinnedId);
+  const hasGridPresentationTile = hasPresentation && !wantsStageLayout;
+  const gridReservedTiles =
+    (shouldShowSelfAsTile ? 1 : 0) + (hasGridPresentationTile ? 1 : 0);
+  const maxRemoteWithoutOverflow = Math.max(
+    0,
+    maxGridTiles - gridReservedTiles,
+  );
+  const orderedRemoteParticipants = useSmartParticipantOrder(
+    remoteInput,
+    activeSpeakerId,
+    {
+      promoteDelayMs: ROOM_TILING_PROMOTE_DELAY_MS,
+      minSwitchIntervalMs: ROOM_TILING_MIN_SWITCH_INTERVAL_MS,
+    },
+  );
+  const orderedRemoteParticipantIds = useMemo(
+    () => new Set(orderedRemoteParticipants.map((participant) => participant.userId)),
+    [orderedRemoteParticipants],
+  );
+  useEffect(() => {
+    setFullVideoTileIds((prev) => {
+      let changed = false;
+      const next = new Set<string>();
+      prev.forEach((tileId) => {
+        if (tileId === "local" || orderedRemoteParticipantIds.has(tileId)) {
+          next.add(tileId);
+        } else {
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [orderedRemoteParticipantIds]);
+  const pinnedParticipant = pinnedId && pinnedId !== LOCAL_STAGE_ID
+    ? orderedRemoteParticipants.find((p) => p.userId === pinnedId) ?? null
+    : null;
+  useEffect(() => {
+    if (
+      pinnedId &&
+      pinnedId !== LOCAL_STAGE_ID &&
+      !orderedRemoteParticipants.some((p) => p.userId === pinnedId)
+    ) {
+      setPinnedId(null);
+    }
+  }, [pinnedId, orderedRemoteParticipants]);
+  const hasOverflow = orderedRemoteParticipants.length > maxRemoteWithoutOverflow;
+  const isSolo = orderedRemoteParticipants.length === 0 && !hasPresentation;
+  const maxVisibleRemoteParticipants = hasOverflow
+    ? isOverflowOpen
+      ? maxRemoteWithoutOverflow
+      : Math.max(0, maxGridTiles - gridReservedTiles - 1)
+    : maxRemoteWithoutOverflow;
+  const visibleParticipants = useMemo(() => {
+    if (maxVisibleRemoteParticipants <= 0) {
+      return [];
+    }
+
+    return orderedRemoteParticipants.slice(0, maxVisibleRemoteParticipants);
+  }, [orderedRemoteParticipants, maxVisibleRemoteParticipants]);
+
+  const hiddenParticipants = useMemo(() => {
+    const visibleIds = new Set(
+      visibleParticipants.map((participant) => participant.userId)
+    );
+    return orderedRemoteParticipants.filter(
+      (participant) => !visibleIds.has(participant.userId)
+    );
+  }, [orderedRemoteParticipants, visibleParticipants]);
+  const activeRemoteParticipant =
+    activeSpeakerId && activeSpeakerId !== currentUserId
+      ? orderedRemoteParticipants.find(
+          (participant) => participant.userId === activeSpeakerId,
+        ) ?? null
+      : null;
+  const stageMainKind: "presentation" | "local" | "remote" | null =
+    isLocalPinned
+      ? "local"
+      : pinnedParticipant
+        ? "remote"
+        : hasPresentation
+          ? "presentation"
+          : isLocalActiveSpeaker && hasActiveVideoSpeaker
+            ? "local"
+            : activeRemoteParticipant || orderedRemoteParticipants[0]
+              ? "remote"
+              : null;
+  const stageMainParticipant =
+    stageMainKind === "remote"
+      ? pinnedParticipant ??
+        activeRemoteParticipant ??
+        orderedRemoteParticipants[0] ??
+        null
+      : null;
+  const usesStageLayout = Boolean(stageMainKind) && wantsStageLayout;
+  const stageMainParticipantId = stageMainParticipant?.userId ?? null;
+
+  useEffect(() => {
+    const video = localVideoRef.current;
+    if (!video) return;
+
+    if (!localStream || isCameraOff) {
+      if (video.srcObject) {
+        video.srcObject = null;
+      }
+      return;
+    }
+
+    if (video.srcObject !== localStream) {
+      video.srcObject = localStream;
+    }
+
+    let cancelled = false;
+    const playVideo = () => {
+      if (cancelled) return;
+      video.play().catch((err) => {
+        if (err.name === "NotAllowedError") {
+          video.muted = true;
+          video.play().catch(() => {});
+          return;
+        }
+        if (err.name !== "AbortError") {
+          console.error("[Meets] Grid local video play error:", err);
+        }
+      });
+    };
+
+    const playbackRecovery = createPlaybackRecoveryScheduler({
+      attemptPlayback: playVideo,
+      shouldAttemptAnimationFrameReplay: () =>
+        !cancelled &&
+        (video.paused ||
+          video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA),
+    });
+    const scheduleReplay = playbackRecovery.schedule;
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        scheduleReplay();
+      }
+    };
+
+    scheduleReplay();
+    localVideoTrack?.addEventListener("unmute", scheduleReplay);
+    video.addEventListener("loadedmetadata", scheduleReplay);
+    video.addEventListener("loadeddata", scheduleReplay);
+    video.addEventListener("canplay", scheduleReplay);
+    video.addEventListener("stalled", scheduleReplay);
+    video.addEventListener("suspend", scheduleReplay);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      cancelled = true;
+      localVideoTrack?.removeEventListener("unmute", scheduleReplay);
+      video.removeEventListener("loadedmetadata", scheduleReplay);
+      video.removeEventListener("loadeddata", scheduleReplay);
+      video.removeEventListener("canplay", scheduleReplay);
+      video.removeEventListener("stalled", scheduleReplay);
+      video.removeEventListener("suspend", scheduleReplay);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      playbackRecovery.clear();
+      if (video.srcObject === localStream) {
+        video.srcObject = null;
+      }
+    };
+  }, [isCameraOff, localStream, localVideoTrack, usesStageLayout]);
+
+  const sideBySideActiveRemoteParticipant =
+    activeRemoteParticipant && participantHasLiveVideo(activeRemoteParticipant)
+      ? activeRemoteParticipant
+      : null;
+  const sideBySideFirstVideoParticipant =
+    orderedRemoteParticipants.find((participant) =>
+      participantHasLiveVideo(participant),
+    ) ?? null;
+  const sideBySideCompanionKind: "local" | "remote" | null =
+    renderedViewMode === "sideBySide" && hasPresentation
+      ? shouldShowSelfAsTile &&
+        isLocalActiveSpeaker &&
+        !isCameraOff &&
+        hasLiveVideo(localStream)
+        ? "local"
+        : sideBySideActiveRemoteParticipant || sideBySideFirstVideoParticipant
+          ? "remote"
+          : null
+      : null;
+  const sideBySideCompanionParticipant =
+    sideBySideCompanionKind === "remote"
+      ? sideBySideActiveRemoteParticipant ?? sideBySideFirstVideoParticipant
+      : null;
+  const sideBySideCompanionParticipantId =
+    sideBySideCompanionParticipant?.userId ?? null;
+  const usesSideBySideLayout =
+    usesStageLayout &&
+    renderedViewMode === "sideBySide" &&
+    hasPresentation &&
+    Boolean(sideBySideCompanionKind);
+  const usesSpotlightLayout = usesStageLayout && renderedViewMode === "spotlight";
+  const stageAuxTileCount =
+    (shouldShowSelfAsTile && stageMainKind !== "local" ? 1 : 0) +
+    (hasPresentation && stageMainKind !== "presentation" ? 1 : 0) +
+    (sideBySideCompanionKind === "remote" ? 1 : 0);
+  const stageSideRemoteCapacity = Math.max(
+    0,
+    usesSpotlightLayout ? 0 : maxGridTiles - 1 - stageAuxTileCount,
+  );
+  const stageSideParticipants = useMemo(
+    () =>
+      usesStageLayout
+        ? orderedRemoteParticipants
+            .filter(
+              (participant) =>
+                participant.userId !== stageMainParticipantId &&
+                participant.userId !== sideBySideCompanionParticipantId,
+            )
+            .slice(0, stageSideRemoteCapacity)
+        : [],
+    [
+      orderedRemoteParticipants,
+      sideBySideCompanionParticipantId,
+      stageMainParticipantId,
+      stageSideRemoteCapacity,
+      usesStageLayout,
+    ],
+  );
+  const stageSideParticipantIds = useMemo(
+    () =>
+      new Set(
+        stageSideParticipants.map((participant) => participant.userId),
+      ),
+    [stageSideParticipants],
+  );
+  const stageHiddenParticipants = useMemo(
+    () =>
+      usesStageLayout
+        ? orderedRemoteParticipants.filter(
+            (participant) =>
+              participant.userId !== stageMainParticipantId &&
+              participant.userId !== sideBySideCompanionParticipantId &&
+              !stageSideParticipantIds.has(participant.userId),
+          )
+        : hiddenParticipants,
+    [
+      hiddenParticipants,
+      orderedRemoteParticipants,
+      sideBySideCompanionParticipantId,
+      stageMainParticipantId,
+      stageSideParticipantIds,
+      usesStageLayout,
+    ],
+  );
+  const overflowParticipants = useMemo(
+    () =>
+      usesStageLayout ? stageHiddenParticipants : hiddenParticipants,
+    [hiddenParticipants, stageHiddenParticipants, usesStageLayout],
+  );
+  const hiddenParticipantsCount = overflowParticipants.length;
+  const roomTilingRemoteVisibleIds = useMemo(() => {
+    const ids: string[] = [];
+    if (usesStageLayout) {
+      if (stageMainKind === "remote" && stageMainParticipantId) {
+        ids.push(stageMainParticipantId);
+      }
+      if (sideBySideCompanionParticipantId) {
+        ids.push(sideBySideCompanionParticipantId);
+      }
+      stageSideParticipants.forEach((participant) => ids.push(participant.userId));
+    } else {
+      visibleParticipants.forEach((participant) => ids.push(participant.userId));
+    }
+    return Array.from(new Set(ids));
+  }, [
+    sideBySideCompanionParticipantId,
+    stageMainKind,
+    stageMainParticipantId,
+    stageSideParticipants,
+    usesStageLayout,
+    visibleParticipants,
+  ]);
+  const roomTilingRemoteVisibleIdSignature = useMemo(
+    () => roomTilingRemoteVisibleIds.join(","),
+    [roomTilingRemoteVisibleIds],
+  );
+  const orderedRemoteIdSignature = useMemo(
+    () => orderedRemoteParticipants.map((participant) => participant.userId).join(","),
+    [orderedRemoteParticipants],
+  );
+  const overflowParticipantIdSignature = useMemo(
+    () => overflowParticipants.map((participant) => participant.userId).join(","),
+    [overflowParticipants],
+  );
+  const recentlyVisibleWarmIdsRef = useRef<Map<string, number>>(new Map());
+  const previousVisibleWarmIdsRef = useRef<Set<string>>(new Set());
+  const [recentlyVisibleWarmRevision, setRecentlyVisibleWarmRevision] =
+    useState(0);
+
+  useEffect(() => {
+    const now = performance.now();
+    const visibleIds = new Set(
+      roomTilingRemoteVisibleIdSignature.split(",").filter(Boolean),
+    );
+    const previousVisibleIds = previousVisibleWarmIdsRef.current;
+    const orderedIds = new Set(
+      orderedRemoteIdSignature.split(",").filter(Boolean),
+    );
+    const map = recentlyVisibleWarmIdsRef.current;
+    let changed = false;
+
+    for (const id of visibleIds) {
+      if (map.get(id) !== Number.POSITIVE_INFINITY) {
+        map.set(id, Number.POSITIVE_INFINITY);
+        changed = true;
+      }
+    }
+
+    for (const id of previousVisibleIds) {
+      if (!visibleIds.has(id) && orderedIds.has(id)) {
+        const expiresAt = now + RECENTLY_VISIBLE_WARM_HOLD_MS;
+        if (map.get(id) !== expiresAt) {
+          map.set(id, expiresAt);
+          changed = true;
+        }
+      }
+    }
+
+    for (const [id, expiresAt] of map) {
+      if (visibleIds.has(id)) continue;
+      if (!orderedIds.has(id) || expiresAt <= now) {
+        map.delete(id);
+        changed = true;
+      }
+    }
+
+    previousVisibleWarmIdsRef.current = visibleIds;
+
+    if (changed) {
+      setRecentlyVisibleWarmRevision((revision) => revision + 1);
+    }
+
+    const nextExpiry = Array.from(map.values())
+      .filter(Number.isFinite)
+      .reduce((min, expiresAt) => Math.min(min, expiresAt), Number.POSITIVE_INFINITY);
+    if (!Number.isFinite(nextExpiry)) return;
+    const timeout = window.setTimeout(() => {
+      const pruneAt = performance.now();
+      let pruned = false;
+      for (const [id, expiresAt] of recentlyVisibleWarmIdsRef.current) {
+        if (
+          !orderedIds.has(id) ||
+          (Number.isFinite(expiresAt) && expiresAt <= pruneAt)
+        ) {
+          recentlyVisibleWarmIdsRef.current.delete(id);
+          pruned = true;
+        }
+      }
+      if (pruned) {
+        setRecentlyVisibleWarmRevision((revision) => revision + 1);
+      }
+    }, Math.max(16, nextExpiry - now + 16));
+
+    return () => window.clearTimeout(timeout);
+  }, [
+    orderedRemoteIdSignature,
+    overflowParticipantIdSignature,
+    roomTilingRemoteVisibleIdSignature,
+  ]);
+
+  // The few hidden participants just past the visible cutoff that we keep warm
+  // (mounted + decoding, but visually hidden) so they cross the boundary without
+  // a remount. Empty while the overflow gallery is open — it already renders
+  // every hidden participant, so warming them too would double-mount the tile.
+  const { warmParticipants, warmReasonById } = useMemo(() => {
+    const empty = {
+      warmParticipants: [] as Participant[],
+      warmReasonById: new Map<string, MeetRoomTilingWarmReason[]>(),
+    };
+    if (isOverflowOpen) return empty;
+
+    const visibleSet = new Set(roomTilingRemoteVisibleIds);
+    const warmById = new Map<string, Participant>();
+    const reasonSets = new Map<string, Set<MeetRoomTilingWarmReason>>();
+    const addWarm = (
+      participant: Participant | undefined,
+      reason: MeetRoomTilingWarmReason,
+    ) => {
+      if (!participant || visibleSet.has(participant.userId)) return;
+      warmById.set(participant.userId, participant);
+      const reasons = reasonSets.get(participant.userId) ?? new Set();
+      reasons.add(reason);
+      reasonSets.set(participant.userId, reasons);
+    };
+
+    overflowParticipants
+      .slice(0, WARM_BUFFER_TILES)
+      .forEach((participant) => addWarm(participant, "boundary"));
+
+    const now = performance.now();
+    const recentlyVisibleWarmIds = new Set(
+      Array.from(recentlyVisibleWarmIdsRef.current.entries())
+        .filter(([, expiresAt]) => expiresAt > now)
+        .map(([id]) => id),
+    );
+    overflowParticipants
+      .filter((participant) => recentlyVisibleWarmIds.has(participant.userId))
+      .slice(0, RECENTLY_VISIBLE_WARM_BUFFER_TILES)
+      .forEach((participant) => addWarm(participant, "recently-visible"));
+
+    // Also warm the active speaker even if they're hidden BEYOND the buffer —
+    // useSmartParticipantOrder will promote them into the grid after the debounce
+    // and we don't want that to mount a cold <video>.
+    if (activeSpeakerId) {
+      addWarm(
+        overflowParticipants.find(
+          (participant) => participant.userId === activeSpeakerId,
+        ),
+        "active-speaker",
+      );
+    }
+
+    return {
+      warmParticipants: Array.from(warmById.values()),
+      warmReasonById: new Map(
+        Array.from(reasonSets.entries()).map(([id, reasons]) => [
+          id,
+          Array.from(reasons),
+        ]),
+      ),
+    };
+  }, [
+    activeSpeakerId,
+    isOverflowOpen,
+    overflowParticipants,
+    recentlyVisibleWarmRevision,
+    roomTilingRemoteVisibleIds,
+  ]);
+  const showOverflowTile = hiddenParticipantsCount > 0 && !usesSpotlightLayout;
+  const showOverflowTileInGrid =
+    showOverflowTile && !isOverflowOpen && !usesStageLayout;
+  const stageRailLocalTileCount =
+    usesStageLayout &&
+    !usesSpotlightLayout &&
+    shouldShowSelfAsTile &&
+    (usesSideBySideLayout
+      ? sideBySideCompanionKind !== "local"
+      : stageMainKind !== "local")
+      ? 1
+      : 0;
+  const stageRailPresentationTileCount =
+    usesStageLayout &&
+    !usesSpotlightLayout &&
+    !usesSideBySideLayout &&
+    hasPresentation &&
+    stageMainKind !== "presentation"
+      ? 1
+      : 0;
+  const stageRailOverflowTileCount =
+    usesStageLayout && !usesSpotlightLayout && showOverflowTile ? 1 : 0;
+  const stageRailTileCount = usesStageLayout
+    ? stageRailLocalTileCount +
+      stageRailPresentationTileCount +
+      stageSideParticipants.length +
+      stageRailOverflowTileCount
+    : 0;
+  const totalParticipants =
+    visibleParticipants.length +
+    gridReservedTiles +
+    (showOverflowTileInGrid ? 1 : 0);
+  const overflowPreviewParticipants = overflowParticipants.slice(0, 4);
+  const roomTilingPrimaryIds = useMemo(() => {
+    const ids: string[] = [];
+    if (usesStageLayout && stageMainKind) {
+      ids.push(
+        stageMainKind === "presentation"
+          ? PRESENTATION_TILE_ID
+          : stageMainKind === "local"
+            ? "local"
+            : stageMainParticipantId ?? "",
+      );
+      roomTilingRemoteVisibleIds.forEach((userId) => ids.push(userId));
+      if (
+        stageMainKind !== "local" &&
+        stageRailLocalTileCount > 0
+      ) {
+        ids.push("local");
+      }
+    } else {
+      if (hasGridPresentationTile) ids.push(PRESENTATION_TILE_ID);
+      if (shouldShowSelfAsTile) ids.push("local");
+      visibleParticipants.forEach((participant) => ids.push(participant.userId));
+      if (showOverflowTileInGrid) ids.push("overflow");
+    }
+    return Array.from(new Set(ids.filter(Boolean)));
+  }, [
+    currentUserId,
+    hasGridPresentationTile,
+    roomTilingRemoteVisibleIds,
+    showOverflowTileInGrid,
+    stageMainKind,
+    stageMainParticipantId,
+    stageRailLocalTileCount,
+    usesStageLayout,
+    visibleParticipants,
+  ]);
+  const roomTilingHiddenIds = useMemo(
+    () => overflowParticipants.map((participant) => participant.userId),
+    [overflowParticipants],
+  );
+  const roomTilingWarmIds = useMemo(
+    () => warmParticipants.map((participant) => participant.userId),
+    [warmParticipants],
+  );
+  const roomTilingWarmReasons = useMemo(
+    () =>
+      Object.fromEntries(
+        warmReasonById.entries(),
+      ) as Record<string, MeetRoomTilingWarmReason[]>,
+    [warmReasonById],
+  );
+  const roomTilingWarmReasonsJson = useMemo(
+    () => JSON.stringify(roomTilingWarmReasons),
+    [roomTilingWarmReasons],
+  );
+  const roomTilingScores = useMemo<MeetRoomTilingScore[]>(() => {
+    const visibleSet = new Set(roomTilingRemoteVisibleIds);
+    const hiddenSet = new Set(roomTilingHiddenIds);
+    const warmSet = new Set(roomTilingWarmIds);
+    return orderedRemoteParticipants.map((participant, index) => {
+      const hasVideo = participantHasLiveVideo(participant);
+      const hasAudio = participantHasLiveAudio(participant);
+      const active = participant.userId === activeSpeakerId;
+      const raised = Boolean(participant.isHandRaised);
+      const visible = visibleSet.has(participant.userId);
+      const hidden = hiddenSet.has(participant.userId);
+      const warm = warmSet.has(participant.userId);
+      const warmReasons = warmReasonById.get(participant.userId) ?? [];
+      const score =
+        (active ? 100 : 0) +
+        (raised ? 35 : 0) +
+        (hasVideo ? 24 : hasAudio ? 12 : 0) +
+        (visible ? 8 : 0) +
+        (warm ? 3 : 0) -
+        (hidden ? 4 : 0);
+
+      return {
+        id: participant.userId,
+        rank: index,
+        score,
+        active,
+        raised,
+        video: hasVideo,
+        audio: hasAudio,
+        visible,
+        hidden,
+        warm,
+        warmReasons,
+      };
+    });
+  }, [
+    activeSpeakerId,
+    orderedRemoteParticipants,
+    roomTilingHiddenIds,
+    roomTilingRemoteVisibleIds,
+    roomTilingWarmIds,
+    warmReasonById,
+  ]);
+  const roomTilingScoresJson = useMemo(
+    () => JSON.stringify(roomTilingScores),
+    [roomTilingScores],
+  );
+
+  useEffect(() => {
+    if (!showOverflowTile) {
+      setIsOverflowOpen(false);
+    }
+  }, [showOverflowTile]);
+
+  useEffect(() => {
+    if (!isOverflowOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsOverflowOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isOverflowOpen]);
+
+  const localDisplayName = getDisplayName(currentUserId);
+
   // Optimal-packing grid (shared @conclave/meeting-core engine — same logic web,
   // RN, and the Swift port use). Tiles are sized exactly; flex-wrap + content-
   // center gives Meet's centered last row for free.
@@ -439,11 +1652,11 @@ function GridLayout({
         {
           gap: GRID_GAP,
           maxCols: GRID_MAX_COLS,
-          maxTilesPerPage: MAX_GRID_TILES,
+          maxTilesPerPage: maxGridTiles,
           targetAspect: 16 / 9,
         }
       ),
-    [totalParticipants, gridSize.width, gridSize.height]
+    [totalParticipants, gridSize.width, gridSize.height, maxGridTiles]
   );
   const tileStyle =
     layout.tileWidth > 0
@@ -456,20 +1669,336 @@ function GridLayout({
   // (the centered group re-centers) WITHOUT changing tile SIZE still re-runs the
   // FLIP effect on the settle commit — otherwise the pending reflow would be
   // dropped and the tiles would snap instead of glide.
-  const layoutSignature = `${layout.cols}x${layout.rows}-${layout.tileWidth}x${layout.tileHeight}-${gridSize.width}x${gridSize.height}`;
+  const layoutSignature = `${renderedViewMode}-${layout.cols}x${layout.rows}-${layout.tileWidth}x${layout.tileHeight}-${gridSize.width}x${gridSize.height}`;
   const hasMeasuredGrid = gridSize.width > 0 && gridSize.height > 0;
 
   const localSpeakerHighlight = isLocalActiveSpeaker ? "speaking" : "";
   const localHandRaisedHighlight = isHandRaised ? "!border-amber-400/60" : "";
+  const localGridVideoObjectFit = getGridVideoObjectFit("local");
+  const isLocalFullVideoShown = fullVideoTileIds.has("local");
+  const localFullVideoToggleLabel = isLocalFullVideoShown
+    ? "Crop this video"
+    : "Show the full video";
+  const localTrackingObjectPosition =
+    usesAutoDynamicCrop && !isLocalFullVideoShown
+      ? localVideoTracking.objectPosition
+      : null;
+  const localVideoStyle: CSSProperties | undefined = localTrackingObjectPosition
+    ? { objectPosition: localTrackingObjectPosition }
+    : undefined;
+  const showFloatingSelfView =
+    !isLocalPinned &&
+    stageMainKind !== "local" &&
+    (effectiveSelfViewMode === "floating" ||
+      (usesSpotlightLayout && shouldShowSelfAsTile));
+  const showMinimizedSelfView =
+    !isLocalPinned &&
+    stageMainKind !== "local" &&
+    effectiveSelfViewMode === "minimized";
+  const actualSelfViewPlacement = stageMainKind === "local"
+    ? "stage"
+    : shouldShowSelfAsTile && !usesSpotlightLayout
+      ? "tile"
+      : showFloatingSelfView
+        ? "floating"
+        : showMinimizedSelfView
+          ? "minimized"
+          : "none";
+  const roomTilingSequenceRef = useRef(0);
+  const roomTilingMetadataRef = useRef<MeetRoomTilingMetadata | null>(null);
+  const roomTilingHistoryRef = useRef<MeetRoomTilingMetadata[]>([]);
+  const lastPublishedRoomTilingSignatureRef = useRef<string | null>(null);
+  const latestRoomTilingMetadataBaseRef =
+    useRef<MeetRoomTilingMetadataBase | null>(null);
+  const latestRoomTilingMetadataSignatureRef = useRef("");
+  const roomTilingMetadataBase = useMemo<MeetRoomTilingMetadataBase>(
+    () => ({
+      source: "client",
+      intervalMs: ROOM_TILING_METADATA_INTERVAL_MS,
+      promoteDelayMs: ROOM_TILING_PROMOTE_DELAY_MS,
+      minSwitchIntervalMs: ROOM_TILING_MIN_SWITCH_INTERVAL_MS,
+      activeSpeakerId,
+      requestedMode: viewSettings.mode,
+      renderedMode: renderedViewMode,
+      effectiveMode: effectiveViewMode,
+      autoStageMode,
+      dynamicCrop: usesAutoDynamicCrop,
+      presenting: hasPresentation,
+      pinnedId,
+      primaryIds: roomTilingPrimaryIds,
+      visibleRemoteIds: roomTilingRemoteVisibleIds,
+      hiddenIds: roomTilingHiddenIds,
+      warmIds: roomTilingWarmIds,
+      warmReasons: roomTilingWarmReasons,
+      orderedRemoteIds: orderedRemoteParticipants.map(
+        (participant) => participant.userId,
+      ),
+      scores: roomTilingScores,
+      counts: {
+        orderedRemote: orderedRemoteParticipants.length,
+        visible: usesStageLayout
+          ? stageSideParticipants.length
+          : visibleParticipants.length,
+        hidden: hiddenParticipantsCount,
+        warm: warmParticipants.length,
+        totalGrid: totalParticipants,
+        stageRail: stageRailTileCount,
+        maxTiles: maxGridTiles,
+        requestedMaxTiles,
+        autoTileLimit: autoGridTileLimit,
+        recentlyVisibleWarm: Object.values(roomTilingWarmReasons).filter(
+          (reasons) => reasons.includes("recently-visible"),
+        ).length,
+      },
+      stage: {
+        mainKind: usesStageLayout ? stageMainKind ?? "none" : "none",
+        candidateMainKind: stageMainKind ?? "none",
+        mainParticipantId: usesStageLayout ? stageMainParticipantId : null,
+        sideCompanionKind: usesSideBySideLayout
+          ? sideBySideCompanionKind ?? "none"
+          : "none",
+        sideCompanionId:
+          usesSideBySideLayout && sideBySideCompanionKind === "local"
+            ? currentUserId
+            : usesSideBySideLayout
+              ? sideBySideCompanionParticipantId
+              : null,
+        sideBySide: usesSideBySideLayout,
+        spotlight: usesSpotlightLayout,
+      },
+      selfView: {
+        requested: requestedSelfViewMode,
+        effective: effectiveSelfViewMode,
+        placement: actualSelfViewPlacement,
+        corner: requestedSelfViewCorner,
+      },
+      layout: {
+        width: gridSize.width,
+        height: gridSize.height,
+        cols: layout.cols,
+        rows: layout.rows,
+        tileWidth: layout.tileWidth,
+        tileHeight: layout.tileHeight,
+        gridVideoFit: gridVideoObjectFit,
+        fullVideoTileIds: fullVideoTileIdList,
+      },
+      localVideo: localVideoTracking,
+    }),
+    [
+      activeSpeakerId,
+      actualSelfViewPlacement,
+      autoGridTileLimit,
+      autoStageMode,
+      currentUserId,
+      effectiveSelfViewMode,
+      effectiveViewMode,
+      fullVideoTileIdList,
+      gridSize.height,
+      gridSize.width,
+      gridVideoObjectFit,
+      hasPresentation,
+      hiddenParticipantsCount,
+      layout.cols,
+      layout.rows,
+      layout.tileHeight,
+      layout.tileWidth,
+      localVideoTracking,
+      maxGridTiles,
+      orderedRemoteParticipants,
+      pinnedId,
+      renderedViewMode,
+      requestedMaxTiles,
+      requestedSelfViewCorner,
+      requestedSelfViewMode,
+      roomTilingHiddenIds,
+      roomTilingPrimaryIds,
+      roomTilingRemoteVisibleIds,
+      roomTilingWarmReasons,
+      roomTilingScores,
+      roomTilingWarmIds,
+      sideBySideCompanionKind,
+      sideBySideCompanionParticipantId,
+      stageMainKind,
+      stageMainParticipantId,
+      stageRailTileCount,
+      stageSideParticipants.length,
+      totalParticipants,
+      usesAutoDynamicCrop,
+      usesSideBySideLayout,
+      usesSpotlightLayout,
+      usesStageLayout,
+      viewSettings.mode,
+      visibleParticipants.length,
+      warmParticipants.length,
+    ],
+  );
+  const roomTilingMetadataSignature = useMemo(
+    () => JSON.stringify(roomTilingMetadataBase),
+    [roomTilingMetadataBase],
+  );
+
+  useEffect(() => {
+    latestRoomTilingMetadataBaseRef.current = roomTilingMetadataBase;
+    latestRoomTilingMetadataSignatureRef.current = roomTilingMetadataSignature;
+  }, [roomTilingMetadataBase, roomTilingMetadataSignature]);
+
+  useEffect(() => {
+    const getSnapshot = (): MeetRoomTilingDebugSnapshot => ({
+      current: roomTilingMetadataRef.current,
+      history: roomTilingHistoryRef.current,
+      sequence: roomTilingSequenceRef.current,
+      intervalMs: ROOM_TILING_METADATA_INTERVAL_MS,
+    });
+    const publish = (force = false) => {
+      const base = latestRoomTilingMetadataBaseRef.current;
+      const signature = latestRoomTilingMetadataSignatureRef.current;
+      if (!base || !signature) return;
+      if (
+        lastPublishedRoomTilingSignatureRef.current === signature &&
+        (!force || roomTilingMetadataRef.current)
+      ) {
+        return;
+      }
+
+      const metadata: MeetRoomTilingMetadata = {
+        ...base,
+        sequence: roomTilingSequenceRef.current + 1,
+        timestamp: Date.now(),
+        performanceTime: Math.round(performance.now()),
+        signature,
+      };
+      roomTilingSequenceRef.current = metadata.sequence;
+      roomTilingMetadataRef.current = metadata;
+      roomTilingHistoryRef.current = [
+        ...roomTilingHistoryRef.current,
+        metadata,
+      ].slice(-24);
+      lastPublishedRoomTilingSignatureRef.current = signature;
+      window.__conclaveMeetRoomTilingDebug = getSnapshot();
+      window.dispatchEvent(
+        new CustomEvent("conclave:meet-room-tiling", { detail: metadata }),
+      );
+    };
+
+    window.__conclaveGetMeetRoomTilingDebug = getSnapshot;
+    publish(true);
+    const interval = window.setInterval(
+      () => publish(false),
+      ROOM_TILING_METADATA_INTERVAL_MS,
+    );
+
+    return () => {
+      window.clearInterval(interval);
+      if (window.__conclaveGetMeetRoomTilingDebug === getSnapshot) {
+        delete window.__conclaveGetMeetRoomTilingDebug;
+      }
+      delete window.__conclaveMeetRoomTilingDebug;
+    };
+  }, []);
+  const setSelfViewMode = useCallback(
+    (selfViewMode: MeetSelfViewMode) => {
+      onViewSettingsChange?.((current) => ({ ...current, selfViewMode }));
+    },
+    [onViewSettingsChange],
+  );
+  const setSelfViewCorner = useCallback(
+    (selfViewCorner: MeetSelfViewCorner) => {
+      onViewSettingsChange?.((current) => ({ ...current, selfViewCorner }));
+    },
+    [onViewSettingsChange],
+  );
+  const resolveSelfViewCornerFromPoint = useCallback(
+    (clientX: number, clientY: number): MeetSelfViewCorner => {
+      const rect = stageRootRef.current?.getBoundingClientRect();
+      const midpointX = (rect?.left ?? 0) + (rect?.width ?? window.innerWidth) / 2;
+      const midpointY = (rect?.top ?? 0) + (rect?.height ?? window.innerHeight) / 2;
+      const vertical = clientY < midpointY ? "top" : "bottom";
+      const horizontal = clientX < midpointX ? "left" : "right";
+      return `${vertical}-${horizontal}` as MeetSelfViewCorner;
+    },
+    [],
+  );
+  const getSelfViewDragPoint = useCallback((clientX: number, clientY: number) => {
+    const rect = stageRootRef.current?.getBoundingClientRect();
+    if (!rect) return { x: clientX, y: clientY };
+    return {
+      x: Math.min(Math.max(clientX - rect.left, 24), Math.max(24, rect.width - 24)),
+      y: Math.min(Math.max(clientY - rect.top, 24), Math.max(24, rect.height - 24)),
+    };
+  }, []);
+  const beginSelfViewDrag = useCallback(
+    (event: ReactPointerEvent<HTMLElement>) => {
+      if (!onViewSettingsChange) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setSelfViewDragPoint(
+        getSelfViewDragPoint(event.clientX, event.clientY),
+      );
+
+      const handlePointerMove = (pointerEvent: PointerEvent) => {
+        setSelfViewDragPoint(
+          getSelfViewDragPoint(pointerEvent.clientX, pointerEvent.clientY),
+        );
+      };
+      const handlePointerEnd = (pointerEvent: PointerEvent) => {
+        window.removeEventListener("pointermove", handlePointerMove);
+        window.removeEventListener("pointerup", handlePointerEnd);
+        window.removeEventListener("pointercancel", handlePointerEnd);
+        setSelfViewDragPoint(null);
+        setSelfViewCorner(
+          resolveSelfViewCornerFromPoint(
+            pointerEvent.clientX,
+            pointerEvent.clientY,
+          ),
+        );
+      };
+
+      window.addEventListener("pointermove", handlePointerMove);
+      window.addEventListener("pointerup", handlePointerEnd);
+      window.addEventListener("pointercancel", handlePointerEnd);
+    },
+    [
+      getSelfViewDragPoint,
+      onViewSettingsChange,
+      resolveSelfViewCornerFromPoint,
+      setSelfViewCorner,
+    ],
+  );
+  const selfViewCornerClass =
+    requestedSelfViewCorner === "top-left"
+      ? "left-4 top-4"
+      : requestedSelfViewCorner === "top-right"
+        ? "right-4 top-4"
+        : requestedSelfViewCorner === "bottom-left"
+          ? "bottom-4 left-4"
+          : "bottom-4 right-4";
+  const selfViewDragStyle = selfViewDragPoint
+    ? {
+        left: selfViewDragPoint.x,
+        top: selfViewDragPoint.y,
+        right: "auto",
+        bottom: "auto",
+        transform: "translate(-50%, -50%)",
+      }
+    : undefined;
 
   // Stable FLIP keys, in render order. Identity/order changes animate; pure
   // layout size changes only refresh the FLIP snapshot, so panel/window resizes
   // never run every tile through a transform animation.
   const flipKeys = useMemo(() => {
-    const keys = ["local", ...visibleParticipants.map((p) => p.userId)];
+    const keys = [
+      ...(hasGridPresentationTile ? [PRESENTATION_TILE_ID] : []),
+      ...(shouldShowSelfAsTile ? ["local"] : []),
+      ...visibleParticipants.map((p) => p.userId),
+    ];
     if (showOverflowTileInGrid) keys.push("overflow");
     return keys;
-  }, [visibleParticipants, showOverflowTileInGrid]);
+  }, [
+    hasGridPresentationTile,
+    shouldShowSelfAsTile,
+    visibleParticipants,
+    showOverflowTileInGrid,
+  ]);
   const registerTile = useFlip(
     flipKeys,
     layoutSignature,
@@ -556,6 +2085,7 @@ function GridLayout({
 
   return (
     <div
+      ref={stageRootRef}
       className="relative flex flex-1 min-h-0 flex-col"
       style={{ fontFamily: FONT_SANS }}
     >
@@ -574,69 +2104,540 @@ function GridLayout({
 
       <div
         ref={gridRef}
+        data-meet-view-layout={usesStageLayout ? renderedViewMode : "tiled"}
+        data-meet-view-requested={viewSettings.mode}
+        data-meet-view-effective={renderedViewMode}
+        data-meet-view-base-effective={effectiveViewMode}
+        data-meet-view-pinned-spotlight={
+          pinnedId && effectiveViewMode === "tiled" ? "true" : "false"
+        }
+        data-meet-view-dynamic-crop={
+          usesAutoDynamicCrop ? "true" : "false"
+        }
+        data-meet-view-local-tracking={
+          localVideoTracking.active ? "true" : "false"
+        }
+        data-meet-view-local-tracking-source={localVideoTracking.source}
+        data-meet-view-local-crop-position={localTrackingObjectPosition ?? ""}
+        data-meet-view-self-view-requested={requestedSelfViewMode}
+        data-meet-view-self-view-effective={effectiveSelfViewMode}
+        data-meet-view-self-view-placement={actualSelfViewPlacement}
+        data-meet-view-self-view-corner={requestedSelfViewCorner}
+        data-meet-view-self-view-tile={shouldShowSelfAsTile ? "true" : "false"}
+        data-meet-view-floating-self-view={
+          showFloatingSelfView ? "true" : "false"
+        }
+        data-meet-view-minimized-self-view={
+          showMinimizedSelfView ? "true" : "false"
+        }
+        data-meet-view-grid-video-fit={gridVideoObjectFit}
+        data-meet-view-full-video-tiles={fullVideoTileIdList.join(",")}
+        data-meet-view-auto-mode={
+          viewSettings.mode === "auto" ? autoStageMode : undefined
+        }
+        data-meet-view-presenting={hasPresentation ? "true" : "false"}
+        data-meet-view-grid-presentation={
+          hasGridPresentationTile ? "true" : "false"
+        }
+        data-meet-view-stage-main-kind={
+          usesStageLayout ? stageMainKind ?? "none" : "none"
+        }
+        data-meet-view-stage-candidate-kind={stageMainKind ?? "none"}
+        data-meet-view-side-companion-kind={
+          usesSideBySideLayout ? sideBySideCompanionKind ?? "none" : "none"
+        }
+        data-meet-view-side-companion={
+          usesSideBySideLayout
+            ? sideBySideCompanionKind === "local"
+              ? currentUserId
+              : sideBySideCompanionParticipant?.userId ?? "none"
+            : "none"
+        }
+        data-meet-view-ordered-count={orderedRemoteParticipants.length}
+        data-meet-view-visible-count={
+          usesStageLayout
+            ? stageSideParticipants.length
+            : visibleParticipants.length
+        }
+        data-meet-view-hidden-count={hiddenParticipantsCount}
+        data-meet-view-warm-count={warmParticipants.length}
+        data-meet-view-grid-count={totalParticipants}
+        data-meet-view-stage-rail-count={stageRailTileCount}
+        data-meet-view-max-tiles={maxGridTiles}
+        data-meet-view-requested-max-tiles={requestedMaxTiles}
+        data-meet-view-auto-tile-limit={autoGridTileLimit}
+        data-meet-view-auto-tile-limit-active={
+          usesMeasuredAutoTileLimit && autoGridTileLimit < requestedMaxTiles
+            ? "true"
+            : "false"
+        }
+        data-meet-view-auto-tile-min={
+          `${AUTO_GRID_MIN_TILE_WIDTH}x${AUTO_GRID_MIN_TILE_HEIGHT}`
+        }
+        data-meet-view-grid-size={`${gridSize.width}x${gridSize.height}`}
+        data-meet-view-hide-empty={
+          viewSettings.hideTilesWithoutVideo ? "true" : "false"
+        }
+        data-meet-view-overflow-open={isOverflowOpen ? "true" : "false"}
+        data-meet-view-overflow-tile={showOverflowTile ? "true" : "false"}
+        data-meet-room-tiling-source="client"
+        data-meet-room-tiling-metadata-interval={
+          ROOM_TILING_METADATA_INTERVAL_MS
+        }
+        data-meet-room-tiling-promote-delay={ROOM_TILING_PROMOTE_DELAY_MS}
+        data-meet-room-tiling-min-switch-interval={
+          ROOM_TILING_MIN_SWITCH_INTERVAL_MS
+        }
+        data-meet-room-tiling-active-speaker={activeSpeakerId ?? ""}
+        data-meet-room-tiling-primary-ids={roomTilingPrimaryIds.join(",")}
+        data-meet-room-tiling-visible-ids={roomTilingRemoteVisibleIds.join(",")}
+        data-meet-room-tiling-hidden-ids={roomTilingHiddenIds.join(",")}
+        data-meet-room-tiling-warm-ids={roomTilingWarmIds.join(",")}
+        data-meet-room-tiling-warm-hold={RECENTLY_VISIBLE_WARM_HOLD_MS}
+        data-meet-room-tiling-warm-reasons={roomTilingWarmReasonsJson}
+        data-meet-room-tiling-scores={roomTilingScoresJson}
         className={`flex flex-1 min-h-0 flex-wrap content-center justify-center overflow-hidden p-4 ${
           hasMeasuredGrid ? "opacity-100" : "opacity-0"
         }`}
         style={{ gap: GRID_GAP }}
       >
+        {usesSideBySideLayout && presentationStream ? (
+          <div
+            className="flex h-full w-full min-w-0 gap-3"
+            data-meet-side-by-side
+            data-meet-side-by-side-companion-kind={sideBySideCompanionKind}
+            data-meet-side-by-side-companion={
+              sideBySideCompanionKind === "local"
+                ? currentUserId
+                : sideBySideCompanionParticipant?.userId ?? "none"
+            }
+          >
+            <div
+              className="relative min-w-0 flex-[1.7]"
+              data-meet-stage-main={PRESENTATION_TILE_ID}
+            >
+              <PresentationVideoTile
+                stream={presentationStream}
+                presenterName={presenterName}
+                size="stage"
+              />
+            </div>
+
+            <div className="flex w-[min(32vw,28rem)] min-w-[17rem] max-w-[28rem] shrink-0 flex-col gap-3">
+              <div className="relative min-h-0 flex-[1.15]">
+                {sideBySideCompanionKind === "local" ? (
+                  <LocalVideoTile
+                    stream={localStream}
+                    isCameraOff={isCameraOff}
+                    isMuted={isMuted}
+                    isHandRaised={isHandRaised}
+                    isGhost={isGhost}
+                    isMirrorCamera={isMirrorCamera}
+                    displayName={localDisplayName}
+                    userEmail={userEmail}
+                    isActiveSpeaker={isLocalActiveSpeaker}
+                    isPinned={isLocalPinned}
+                    onTogglePin={toggleLocalPin}
+                    tracking={localVideoTracking}
+                    cropPosition={localTrackingObjectPosition}
+                    size="stage"
+                  />
+                ) : sideBySideCompanionParticipant ? (
+                  <ParticipantVideo
+                    key={sideBySideCompanionParticipant.userId}
+                    participant={sideBySideCompanionParticipant}
+                    displayName={getDisplayName(
+                      sideBySideCompanionParticipant.userId,
+                    )}
+                    isActiveSpeaker={
+                      activeSpeakerId === sideBySideCompanionParticipant.userId
+                    }
+                    audioOutputDeviceId={audioOutputDeviceId}
+                    disableAudio
+                    isAdmin={isAdmin}
+                    isSelected={
+                      selectedParticipantId ===
+                      sideBySideCompanionParticipant.userId
+                    }
+                    onAdminClick={onParticipantClick}
+                    isPinned={
+                      pinnedId === sideBySideCompanionParticipant.userId
+                    }
+                    onTogglePin={togglePin}
+                  />
+                ) : null}
+              </div>
+
+              <div
+                className="flex min-h-[7rem] max-h-[35%] flex-col gap-3 overflow-y-auto pr-1"
+                data-meet-stage-rail
+              >
+                {shouldShowSelfAsTile && sideBySideCompanionKind !== "local" ? (
+                  <LocalVideoTile
+                    stream={localStream}
+                    isCameraOff={isCameraOff}
+                    isMuted={isMuted}
+                    isHandRaised={isHandRaised}
+                    isGhost={isGhost}
+                    isMirrorCamera={isMirrorCamera}
+                    displayName={localDisplayName}
+                    userEmail={userEmail}
+                    isActiveSpeaker={isLocalActiveSpeaker}
+                    isPinned={isLocalPinned}
+                    onTogglePin={toggleLocalPin}
+                    tracking={localVideoTracking}
+                    cropPosition={localTrackingObjectPosition}
+                    size="rail"
+                  />
+                ) : null}
+
+                {stageSideParticipants.map((participant) => (
+                  <div
+                    key={participant.userId}
+                    className="relative h-28 shrink-0"
+                    data-userid={participant.userId}
+                  >
+                    <ParticipantVideo
+                      participant={participant}
+                      displayName={getDisplayName(participant.userId)}
+                      isActiveSpeaker={activeSpeakerId === participant.userId}
+                      audioOutputDeviceId={audioOutputDeviceId}
+                      disableAudio
+                      isAdmin={isAdmin}
+                      isSelected={selectedParticipantId === participant.userId}
+                      onAdminClick={onParticipantClick}
+                      isPinned={pinnedId === participant.userId}
+                      onTogglePin={togglePin}
+                    />
+                  </div>
+                ))}
+
+                {showOverflowTile ? (
+                  <button
+                    type="button"
+                    onClick={() => setIsOverflowOpen((prev) => !prev)}
+                    aria-expanded={isOverflowOpen}
+                    aria-label={`Show ${hiddenParticipantsCount} more participants`}
+                    title={`Show ${hiddenParticipantsCount} more participants`}
+                    className="acm-video-tile group relative flex h-28 shrink-0 flex-col items-center justify-center bg-[#131316] text-[#fafafa] transition-colors hover:border-[#fafafa]/15"
+                  >
+                    <div className="absolute inset-2 grid grid-cols-2 grid-rows-2 gap-1 opacity-30 transition-opacity duration-200 group-hover:opacity-50">
+                      {overflowPreviewParticipants.map((participant) => (
+                        <OverflowPreviewTile
+                          key={participant.userId}
+                          participant={participant}
+                          displayName={getDisplayName(participant.userId)}
+                        />
+                      ))}
+                    </div>
+                    <div className="relative z-10 flex flex-col items-center gap-2 px-4 text-center">
+                      <span className="text-[24px] font-semibold leading-none text-[#fafafa]">
+                        +{hiddenParticipantsCount}
+                      </span>
+                      <span className="flex items-center gap-1.5 rounded-full border border-[#fafafa]/12 bg-[#0a0a0b]/70 px-2.5 py-1 text-[12.5px] font-medium text-[#fafafa]/85 transition-colors group-hover:text-[#fafafa]">
+                        <Users size={16} strokeWidth={1.75} />
+                        Show all
+                      </span>
+                    </div>
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        ) : usesStageLayout && stageMainKind ? (
+          <div className="flex h-full w-full min-w-0 gap-3">
+            <div
+              className="relative min-w-0 flex-1"
+              data-meet-stage-main={
+                stageMainKind === "presentation"
+                  ? PRESENTATION_TILE_ID
+                  : stageMainKind === "local"
+                    ? currentUserId
+                    : stageMainParticipant?.userId
+              }
+            >
+              {stageMainKind === "presentation" && presentationStream ? (
+                <PresentationVideoTile
+                  stream={presentationStream}
+                  presenterName={presenterName}
+                  size="stage"
+                />
+              ) : stageMainKind === "local" ? (
+                <LocalVideoTile
+                  stream={localStream}
+                  isCameraOff={isCameraOff}
+                  isMuted={isMuted}
+                  isHandRaised={isHandRaised}
+                  isGhost={isGhost}
+                  isMirrorCamera={isMirrorCamera}
+                  displayName={localDisplayName}
+                  userEmail={userEmail}
+                  isActiveSpeaker={isLocalActiveSpeaker}
+                  isPinned={isLocalPinned}
+                  onTogglePin={toggleLocalPin}
+                  tracking={localVideoTracking}
+                  videoObjectFit="contain"
+                  size="stage"
+                />
+              ) : stageMainParticipant ? (
+                <ParticipantVideo
+                  key={stageMainParticipant.userId}
+                  participant={stageMainParticipant}
+                  displayName={getDisplayName(stageMainParticipant.userId)}
+                  isActiveSpeaker={
+                    activeSpeakerId === stageMainParticipant.userId
+                  }
+                  audioOutputDeviceId={audioOutputDeviceId}
+                  disableAudio
+                  videoObjectFit="contain"
+                  isAdmin={isAdmin}
+                  isSelected={
+                    selectedParticipantId === stageMainParticipant.userId
+                  }
+                  onAdminClick={onParticipantClick}
+                  isPinned={pinnedId === stageMainParticipant.userId}
+                  onTogglePin={togglePin}
+                />
+              ) : null}
+
+            </div>
+
+            {!usesSpotlightLayout ? (
+              <div
+                className="flex w-[min(22vw,15rem)] min-w-[10rem] max-w-[15rem] shrink-0 flex-col gap-3 overflow-y-auto pr-1"
+                data-meet-stage-rail
+              >
+                {shouldShowSelfAsTile && stageMainKind !== "local" ? (
+                  <LocalVideoTile
+                    stream={localStream}
+                    isCameraOff={isCameraOff}
+                    isMuted={isMuted}
+                    isHandRaised={isHandRaised}
+                    isGhost={isGhost}
+                    isMirrorCamera={isMirrorCamera}
+                    displayName={localDisplayName}
+                    userEmail={userEmail}
+                    isActiveSpeaker={isLocalActiveSpeaker}
+                    isPinned={isLocalPinned}
+                    onTogglePin={toggleLocalPin}
+                    tracking={localVideoTracking}
+                    cropPosition={localTrackingObjectPosition}
+                    size="rail"
+                  />
+                ) : null}
+
+                {hasPresentation &&
+                stageMainKind !== "presentation" &&
+                presentationStream ? (
+                  <PresentationVideoTile
+                    stream={presentationStream}
+                    presenterName={presenterName}
+                    size="rail"
+                  />
+                ) : null}
+
+                {stageSideParticipants.map((participant) => (
+                  <div
+                    key={participant.userId}
+                    className="relative h-28 shrink-0"
+                    data-userid={participant.userId}
+                  >
+                    <ParticipantVideo
+                      participant={participant}
+                      displayName={getDisplayName(participant.userId)}
+                      isActiveSpeaker={activeSpeakerId === participant.userId}
+                      audioOutputDeviceId={audioOutputDeviceId}
+                      disableAudio
+                      isAdmin={isAdmin}
+                      isSelected={selectedParticipantId === participant.userId}
+                      onAdminClick={onParticipantClick}
+                      isPinned={pinnedId === participant.userId}
+                      onTogglePin={togglePin}
+                    />
+                  </div>
+                ))}
+
+                {showOverflowTile ? (
+                  <button
+                    type="button"
+                    onClick={() => setIsOverflowOpen((prev) => !prev)}
+                    aria-expanded={isOverflowOpen}
+                    aria-label={`Show ${hiddenParticipantsCount} more participants`}
+                    title={`Show ${hiddenParticipantsCount} more participants`}
+                    className="acm-video-tile group relative flex h-28 shrink-0 flex-col items-center justify-center bg-[#131316] text-[#fafafa] transition-colors hover:border-[#fafafa]/15"
+                  >
+                    <div className="absolute inset-2 grid grid-cols-2 grid-rows-2 gap-1 opacity-30 transition-opacity duration-200 group-hover:opacity-50">
+                      {overflowPreviewParticipants.map((participant) => (
+                        <OverflowPreviewTile
+                          key={participant.userId}
+                          participant={participant}
+                          displayName={getDisplayName(participant.userId)}
+                        />
+                      ))}
+                    </div>
+                    <div className="relative z-10 flex flex-col items-center gap-2 px-4 text-center">
+                      <span className="text-[24px] font-semibold leading-none text-[#fafafa]">
+                        +{hiddenParticipantsCount}
+                      </span>
+                      <span className="flex items-center gap-1.5 rounded-full border border-[#fafafa]/12 bg-[#0a0a0b]/70 px-2.5 py-1 text-[12.5px] font-medium text-[#fafafa]/85 transition-colors group-hover:text-[#fafafa]">
+                        <Users size={16} strokeWidth={1.75} />
+                        Show all
+                      </span>
+                    </div>
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <>
+        {hasGridPresentationTile && presentationStream ? (
+          <div
+            ref={getTileRef(PRESENTATION_TILE_ID)}
+            className={tileClass}
+            style={tileStyle}
+          >
+            <PresentationVideoTile
+              stream={presentationStream}
+              presenterName={presenterName}
+              size="grid"
+            />
+          </div>
+        ) : null}
+
         {/* Local tile — wrapped in a stable FLIP node so the <video> never
             re-attaches when the grid reflows. */}
-        <div
-          ref={getTileRef("local")}
-          className={tileClass}
-          style={tileStyle}
-        >
+        {shouldShowSelfAsTile ? (
           <div
-            className={`acm-video-tile h-full w-full ${localSpeakerHighlight} ${localHandRaisedHighlight}`}
+            ref={getTileRef("local")}
+            className={tileClass}
+            style={tileStyle}
           >
-            <video
-              ref={localVideoRef}
-              autoPlay
-              muted
-              playsInline
-              className={`w-full h-full object-cover ${
-                isCameraOff ? "hidden" : ""
-              } ${isMirrorCamera ? "scale-x-[-1]" : ""}`}
-            />
-            {isCameraOff && (
-              <div className="absolute inset-0 flex items-center justify-center bg-[#18181b]">
-                <div
-                  className="flex h-20 w-20 items-center justify-center rounded-full text-3xl font-bold text-white"
-                  style={{ backgroundColor: avatarColor(userEmail) }}
-                >
-                  {(localDisplayName[0] || userEmail[0] || "?").toUpperCase()}
+            <div
+              className={`acm-video-tile group h-full w-full ${localSpeakerHighlight} ${localHandRaisedHighlight}`}
+            >
+              <video
+                ref={localVideoRef}
+                autoPlay
+                muted
+                playsInline
+                data-meet-tile-video="true"
+                data-video-object-fit={localGridVideoObjectFit}
+                data-meet-local-tracking={
+                  localVideoTracking.active ? "true" : "false"
+                }
+                data-meet-local-tracking-source={localVideoTracking.source}
+                data-meet-local-crop-position={localTrackingObjectPosition ?? ""}
+                style={localVideoStyle}
+                className={`w-full h-full ${
+                  localGridVideoObjectFit === "contain"
+                    ? "object-contain bg-black"
+                    : "object-cover"
+                } ${
+                  isCameraOff ? "hidden" : ""
+                } ${isMirrorCamera ? "scale-x-[-1]" : ""}`}
+              />
+              {isCameraOff && (
+                <div className="absolute inset-0 flex items-center justify-center bg-[#18181b]">
+                  <div
+                    className="flex h-20 w-20 items-center justify-center rounded-full text-3xl font-bold text-white"
+                    style={{ backgroundColor: avatarColor(userEmail) }}
+                  >
+                    {(localDisplayName[0] || userEmail[0] || "?").toUpperCase()}
+                  </div>
                 </div>
-              </div>
-            )}
-            {isGhost && (
-              <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/40">
-                <div className="flex flex-col items-center gap-2.5">
-                  <Ghost size={48} strokeWidth={1.75} className="text-[#FF007A]" />
-                  <span className="rounded-full border border-[#FF007A]/30 bg-black/60 px-2.5 py-1 text-[12px] font-medium text-[#FF007A]">
-                    Ghost mode
-                  </span>
-                </div>
-              </div>
-            )}
-            {isHandRaised && (
-              <div
-                className="absolute left-3 top-3 flex h-8 w-8 items-center justify-center rounded-full border border-amber-400/40 bg-amber-500/20 text-amber-300"
-                title="Hand raised"
-                aria-label="Hand raised"
-              >
-                <Hand size={18} strokeWidth={1.75} />
-              </div>
-            )}
-            <div className="absolute bottom-3 left-3 flex max-w-[80%] items-center gap-1.5 rounded-full border border-[#fafafa]/10 bg-[#0a0a0b]/70 px-3 py-1.5">
-              <span className="truncate text-[13px] font-medium text-[#fafafa]">
-                {localDisplayName}
-              </span>
-              <span className="text-[11px] font-medium text-[#F95F4A]">You</span>
-              {isMuted && (
-                <MicOff size={14} strokeWidth={1.75} className="shrink-0 text-[#F95F4A]" />
               )}
-            </div>
-            {isSolo && !isCameraOff ? (
+              {isGhost && (
+                <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/40">
+                  <div className="flex flex-col items-center gap-2.5">
+                    <Ghost size={48} strokeWidth={1.75} className="text-[#FF007A]" />
+                    <span className="rounded-full border border-[#FF007A]/30 bg-black/60 px-2.5 py-1 text-[12px] font-medium text-[#FF007A]">
+                      Ghost mode
+                    </span>
+                  </div>
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  toggleLocalPin();
+                }}
+                className={`absolute right-3 top-3 inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#fafafa]/10 bg-black/60 text-[#fafafa]/82 transition-[border-color,color,opacity] duration-[120ms] hover:border-[#F95F4A]/40 hover:text-[#fafafa] focus-visible:opacity-100 ${
+                  isLocalPinned ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                }`}
+                title={isLocalPinned ? "Unpin" : "Pin to spotlight"}
+                aria-label={isLocalPinned ? "Unpin" : "Pin to spotlight"}
+                aria-pressed={isLocalPinned}
+              >
+                {isLocalPinned ? (
+                  <PinOff size={18} strokeWidth={1.75} />
+                ) : (
+                  <Pin size={18} strokeWidth={1.75} />
+                )}
+              </button>
+              {usesAutoDynamicCrop && !isCameraOff && hasLiveVideo(localStream) ? (
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    toggleFullVideoTile("local");
+                  }}
+                  data-meet-tile-crop-toggle="local"
+                  data-meet-tile-crop-state={
+                    isLocalFullVideoShown ? "full" : "cropped"
+                  }
+                  className="absolute right-14 top-3 inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#fafafa]/10 bg-black/60 text-[#fafafa]/82 opacity-0 transition-[border-color,color,opacity] duration-[120ms] hover:border-[#F95F4A]/40 hover:text-[#fafafa] group-hover:opacity-100 focus-visible:opacity-100"
+                  title={localFullVideoToggleLabel}
+                  aria-label={localFullVideoToggleLabel}
+                  aria-pressed={isLocalFullVideoShown}
+                >
+                  {isLocalFullVideoShown ? (
+                    <Crop size={18} strokeWidth={1.75} />
+                  ) : (
+                    <Maximize2 size={18} strokeWidth={1.75} />
+                  )}
+                </button>
+              ) : null}
+              {onToggleVideoFraming && (
+                <div className="absolute left-1/2 top-3 flex -translate-x-1/2 items-center gap-2 opacity-0 transition-opacity duration-[120ms] group-hover:opacity-100 focus-within:opacity-100">
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onToggleVideoFraming();
+                    }}
+                    disabled={isCameraOff}
+                    title={isCameraOff ? "Reframe unavailable" : "Reframe"}
+                    aria-label={isCameraOff ? "Reframe unavailable" : "Reframe"}
+                    aria-pressed={isVideoFramingEnabled}
+                    className={`inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#fafafa]/12 bg-black/65 text-[#fafafa] shadow-[0_8px_20px_rgba(0,0,0,0.35)] transition-colors hover:bg-black/80 disabled:cursor-not-allowed disabled:opacity-45 ${
+                      isVideoFramingEnabled ? "text-[#F95F4A]" : ""
+                    }`}
+                  >
+                    <Focus size={18} strokeWidth={1.75} />
+                  </button>
+                </div>
+              )}
+              {isHandRaised && (
+                <div
+                  className="absolute left-3 top-3 flex h-8 w-8 items-center justify-center rounded-full border border-amber-400/40 bg-amber-500/20 text-amber-300"
+                  title="Hand raised"
+                  aria-label="Hand raised"
+                >
+                  <Hand size={18} strokeWidth={1.75} />
+                </div>
+              )}
+              <div className="absolute bottom-3 left-3 flex max-w-[80%] items-center gap-1.5 rounded-full border border-[#fafafa]/10 bg-[#0a0a0b]/70 px-3 py-1.5">
+                <span className="truncate text-[13px] font-medium text-[#fafafa]">
+                  {localDisplayName}
+                </span>
+                <span className="text-[11px] font-medium text-[#F95F4A]">You</span>
+                {isMuted && (
+                  <MicOff size={14} strokeWidth={1.75} className="shrink-0 text-[#F95F4A]" />
+                )}
+              </div>
+              {isSolo && !isCameraOff ? (
               // Camera is on — don't cover the live self-view with the full card;
               // show a compact corner invite pill instead.
               <button
@@ -651,7 +2652,7 @@ function GridLayout({
                   ? "Link copied"
                   : "Invite people"}
               </button>
-            ) : isSolo ? (
+              ) : isSolo ? (
               <div className="absolute left-3 top-3 w-[19rem] max-w-[calc(100%-1.5rem)] rounded-xl border border-[#fafafa]/12 bg-[#18181b] p-4 text-[#fafafa]">
                 <div className="flex items-center gap-2.5">
                   <span className="flex h-9 w-9 items-center justify-center rounded-full bg-white/[0.06] text-[#fafafa]">
@@ -689,9 +2690,10 @@ function GridLayout({
                   </button>
                 </div>
               </div>
-            ) : null}
+              ) : null}
+            </div>
           </div>
-        </div>
+        ) : null}
 
         {visibleParticipants.map((participant) => (
           <div
@@ -712,6 +2714,10 @@ function GridLayout({
               onAdminClick={onParticipantClick}
               isPinned={pinnedId === participant.userId}
               onTogglePin={togglePin}
+              videoObjectFit={getGridVideoObjectFit(participant.userId)}
+              isDynamicCropEnabled={usesAutoDynamicCrop}
+              isFullVideoShown={fullVideoTileIds.has(participant.userId)}
+              onToggleFullVideo={toggleFullVideoTile}
             />
           </div>
         ))}
@@ -779,6 +2785,7 @@ function GridLayout({
               disableAudio
               isAdmin={isAdmin}
               isPinned={false}
+              videoObjectFit={getGridVideoObjectFit(participant.userId)}
               // No interactive controls on a warm (off-screen, aria-hidden) tile
               // — passing onTogglePin would render a focusable pin button that a
               // keyboard / screen reader could still reach inside aria-hidden.
@@ -786,24 +2793,9 @@ function GridLayout({
             />
           </div>
         ))}
+          </>
+        )}
       </div>
-
-      {pinnedParticipant && (
-        <div className="absolute inset-0 z-20 flex flex-col bg-[#0a0a0b] p-4">
-          <div className="relative min-h-0 flex-1">
-            <ParticipantVideo
-              key={pinnedParticipant.userId}
-              participant={pinnedParticipant}
-              displayName={getDisplayName(pinnedParticipant.userId)}
-              isActiveSpeaker={activeSpeakerId === pinnedParticipant.userId}
-              disableAudio
-              videoObjectFit="contain"
-              isPinned
-              onTogglePin={togglePin}
-            />
-          </div>
-        </div>
-      )}
 
       {showOverflowTile ? (
         <div
@@ -853,7 +2845,7 @@ function GridLayout({
                     the warm buffer. Cold-mounting on open is fine (explicit
                     user action); the warm buffer covers the grid boundary. */}
                 {isOverflowOpen &&
-                  hiddenParticipants.map((participant) => (
+                  overflowParticipants.map((participant) => (
                     <OverflowGalleryTile
                       key={participant.userId}
                       participant={participant}
@@ -868,6 +2860,72 @@ function GridLayout({
           </div>
         </div>
       ) : null}
+
+      {showFloatingSelfView ? (
+        <div
+          className={`group absolute z-20 w-[min(15rem,32vw)] min-w-[10rem] overflow-hidden rounded-2xl shadow-[0_16px_42px_rgba(0,0,0,0.38)] ${
+            selfViewDragPoint ? "" : selfViewCornerClass
+          }`}
+          style={selfViewDragStyle}
+          data-meet-floating-self-view="true"
+          data-meet-detached-self-view="floating"
+          data-meet-self-view-corner={requestedSelfViewCorner}
+          data-meet-self-view-dragging={selfViewDragPoint ? "true" : "false"}
+        >
+          <LocalVideoTile
+            stream={localStream}
+            isCameraOff={isCameraOff}
+            isMuted={isMuted}
+            isHandRaised={isHandRaised}
+            isGhost={isGhost}
+            isMirrorCamera={isMirrorCamera}
+            displayName={localDisplayName}
+            userEmail={userEmail}
+            isActiveSpeaker={isLocalActiveSpeaker}
+            isPinned={isLocalPinned}
+            onTogglePin={toggleLocalPin}
+            tracking={localVideoTracking}
+            cropPosition={localTrackingObjectPosition}
+            size="rail"
+          />
+          <div className="absolute left-2 top-2 z-10 flex gap-1.5 opacity-0 transition-opacity duration-[120ms] group-hover:opacity-100 focus-within:opacity-100">
+            <button
+              type="button"
+              onPointerDown={beginSelfViewDrag}
+              aria-label="Move self-view"
+              title="Move self-view"
+              className="inline-flex h-7 w-7 cursor-grab items-center justify-center rounded-full border border-[#fafafa]/12 bg-black/65 text-[#fafafa]/82 shadow-[0_8px_20px_rgba(0,0,0,0.3)] transition-colors hover:bg-black/80 hover:text-[#fafafa] active:cursor-grabbing"
+            >
+              <Move size={14} strokeWidth={1.8} />
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelfViewMode("minimized")}
+              aria-label="Minimize self-view"
+              title="Minimize self-view"
+              className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-[#fafafa]/12 bg-black/65 text-[#fafafa]/82 shadow-[0_8px_20px_rgba(0,0,0,0.3)] transition-colors hover:bg-black/80 hover:text-[#fafafa]"
+            >
+              <Minimize2 size={14} strokeWidth={1.8} />
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {showMinimizedSelfView ? (
+        <MinimizedSelfViewPill
+          displayName={localDisplayName}
+          userEmail={userEmail}
+          isMuted={isMuted}
+          isHandRaised={isHandRaised}
+          isGhost={isGhost}
+          corner={requestedSelfViewCorner}
+          cornerClass={selfViewCornerClass}
+          dragStyle={selfViewDragStyle}
+          isDragging={Boolean(selfViewDragPoint)}
+          onDragStart={beginSelfViewDrag}
+          onRestore={() => setSelfViewMode("floating")}
+        />
+      ) : null}
     </div>
   );
 }
@@ -879,16 +2937,379 @@ const OverflowPreviewTile = memo(function OverflowPreviewTile({
   participant: Participant;
   displayName: string;
 }) {
-  // AVATAR-ONLY. This is a tiny 4-up hint inside the "+N" button; rendering a
-  // live <video> here DUPLICATED the decode of the same hidden participants the
-  // warm buffer already keeps mounted (double media attach per stream). A solid
-  // avatar is all the preview needs.
   return (
     <div
       className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-lg border border-[#fafafa]/10 text-[13px] font-semibold text-white"
       style={{ backgroundColor: avatarColor(participant.userId) }}
     >
       {displayName[0]?.toUpperCase() || "?"}
+    </div>
+  );
+});
+
+const PresentationVideoTile = memo(function PresentationVideoTile({
+  stream,
+  presenterName,
+  size,
+}: {
+  stream: MediaStream;
+  presenterName: string;
+  size: "stage" | "grid" | "rail";
+}) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const videoTrack = stream.getVideoTracks()[0] ?? null;
+  const compact = size === "rail";
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (video.srcObject !== stream) {
+      video.srcObject = stream;
+    }
+
+    let cancelled = false;
+    const playVideo = () => {
+      if (cancelled) return;
+      video.play().catch((err) => {
+        if (err.name === "NotAllowedError") {
+          video.muted = true;
+          video.play().catch(() => {});
+          return;
+        }
+        if (err.name !== "AbortError") {
+          console.error("[Meets] Presentation video play error:", err);
+        }
+      });
+    };
+
+    const playbackRecovery = createPlaybackRecoveryScheduler({
+      attemptPlayback: playVideo,
+      shouldAttemptAnimationFrameReplay: () =>
+        !cancelled &&
+        (video.paused ||
+          video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA),
+    });
+    const scheduleReplay = playbackRecovery.schedule;
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        scheduleReplay();
+      }
+    };
+
+    scheduleReplay();
+    videoTrack?.addEventListener("unmute", scheduleReplay);
+    video.addEventListener("loadedmetadata", scheduleReplay);
+    video.addEventListener("loadeddata", scheduleReplay);
+    video.addEventListener("canplay", scheduleReplay);
+    video.addEventListener("stalled", scheduleReplay);
+    video.addEventListener("suspend", scheduleReplay);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      cancelled = true;
+      videoTrack?.removeEventListener("unmute", scheduleReplay);
+      video.removeEventListener("loadedmetadata", scheduleReplay);
+      video.removeEventListener("loadeddata", scheduleReplay);
+      video.removeEventListener("canplay", scheduleReplay);
+      video.removeEventListener("stalled", scheduleReplay);
+      video.removeEventListener("suspend", scheduleReplay);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      playbackRecovery.clear();
+      if (video.srcObject === stream) {
+        video.srcObject = null;
+      }
+    };
+  }, [stream, videoTrack]);
+
+  return (
+    <div
+      className={`acm-video-tile group relative flex overflow-hidden bg-[#131316] ${
+        compact ? "h-28 shrink-0" : "h-full w-full"
+      }`}
+      data-meet-presentation-tile
+    >
+      <video
+        ref={videoRef}
+        autoPlay
+        muted
+        playsInline
+        data-meet-presentation-video="true"
+        className="h-full w-full bg-black object-contain"
+      />
+      <div
+        className={`absolute flex max-w-[calc(100%-1.5rem)] items-center gap-2 rounded-full border border-[#fafafa]/10 bg-[#0a0a0b]/70 ${
+          compact
+            ? "bottom-2 left-2 px-2.5 py-1"
+            : "left-3 top-3 px-3 py-1.5"
+        }`}
+      >
+        <MonitorUp
+          size={compact ? 15 : 18}
+          strokeWidth={1.75}
+          className="shrink-0 text-[#F95F4A]"
+        />
+        <span
+          className={`truncate font-medium text-[#fafafa] ${
+            compact ? "text-[12.5px]" : "text-[13px]"
+          }`}
+        >
+          {compact ? "Presenting" : `${presenterName} is presenting`}
+        </span>
+      </div>
+    </div>
+  );
+});
+
+const LocalVideoTile = memo(function LocalVideoTile({
+  stream,
+  isCameraOff,
+  isMuted,
+  isHandRaised,
+  isGhost,
+  isMirrorCamera,
+  displayName,
+  userEmail,
+  isActiveSpeaker = false,
+  isPinned = false,
+  onTogglePin,
+  tracking,
+  cropPosition = null,
+  videoObjectFit = "cover",
+  size = "rail",
+}: {
+  stream: MediaStream | null;
+  isCameraOff: boolean;
+  isMuted: boolean;
+  isHandRaised: boolean;
+  isGhost: boolean;
+  isMirrorCamera: boolean;
+  displayName: string;
+  userEmail: string;
+  isActiveSpeaker?: boolean;
+  isPinned?: boolean;
+  onTogglePin?: () => void;
+  tracking?: MeetLocalVideoTracking;
+  cropPosition?: string | null;
+  videoObjectFit?: "cover" | "contain";
+  size?: "rail" | "stage";
+}) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const videoTrack = stream?.getVideoTracks()[0] ?? null;
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (!stream || isCameraOff) {
+      if (video.srcObject) {
+        video.srcObject = null;
+      }
+      return;
+    }
+
+    if (video.srcObject !== stream) {
+      video.srcObject = stream;
+    }
+
+    const playVideo = () => {
+      video.play().catch(() => {});
+    };
+
+    playVideo();
+    videoTrack?.addEventListener("unmute", playVideo);
+
+    return () => {
+      videoTrack?.removeEventListener("unmute", playVideo);
+      if (video.srcObject === stream) {
+        video.srcObject = null;
+      }
+    };
+  }, [isCameraOff, stream, videoTrack]);
+
+  const initial = (displayName[0] || userEmail[0] || "?").toUpperCase();
+  const compact = size === "rail";
+  const speakerHighlight = isActiveSpeaker ? "speaking" : "";
+  const handRaisedHighlight = isHandRaised ? "!border-amber-400/60" : "";
+  const videoStyle: CSSProperties | undefined = cropPosition
+    ? { objectPosition: cropPosition }
+    : undefined;
+
+  return (
+    <div
+      className={`acm-video-tile group relative flex overflow-hidden bg-[#18181b] ${
+        compact ? "h-28 shrink-0" : "h-full w-full"
+      } ${speakerHighlight} ${handRaisedHighlight}`}
+    >
+      <video
+        ref={videoRef}
+        autoPlay
+        muted
+        playsInline
+        data-meet-local-tracking={tracking?.active ? "true" : "false"}
+        data-meet-local-tracking-source={tracking?.source ?? "none"}
+        data-meet-local-crop-position={cropPosition ?? ""}
+        style={videoStyle}
+        className={`h-full w-full ${
+          videoObjectFit === "contain" ? "object-contain bg-black" : "object-cover"
+        } ${
+          isCameraOff ? "hidden" : ""
+        } ${isMirrorCamera ? "scale-x-[-1]" : ""}`}
+      />
+      {isCameraOff ? (
+        <div className="absolute inset-0 flex items-center justify-center bg-[#18181b]">
+          <div
+            className={`flex items-center justify-center rounded-full font-bold text-white ${
+              compact ? "h-12 w-12 text-xl" : "h-20 w-20 text-3xl"
+            }`}
+            style={{ backgroundColor: avatarColor(userEmail) }}
+          >
+            {initial}
+          </div>
+        </div>
+      ) : null}
+      {isGhost ? (
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/40">
+          <Ghost
+            size={compact ? 30 : 48}
+            strokeWidth={1.75}
+            className="text-[#FF007A]"
+          />
+        </div>
+      ) : null}
+      {isHandRaised ? (
+        <div
+          className={`absolute flex items-center justify-center rounded-full border border-amber-400/40 bg-amber-500/20 text-amber-300 ${
+            compact ? "left-2 top-2 h-7 w-7" : "left-3 top-3 h-8 w-8"
+          }`}
+          title="Hand raised"
+          aria-label="Hand raised"
+        >
+          <Hand size={compact ? 16 : 18} strokeWidth={1.75} />
+        </div>
+      ) : null}
+      {onTogglePin ? (
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            onTogglePin();
+          }}
+          className={`absolute rounded-full border border-[#fafafa]/10 bg-black/60 text-[#fafafa]/82 transition-[border-color,color,opacity] duration-[120ms] hover:border-[#F95F4A]/40 hover:text-[#fafafa] focus-visible:opacity-100 ${
+            compact ? "right-2 top-2 p-1.5" : "right-3 top-3 p-2"
+          } ${isPinned ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
+          title={isPinned ? "Unpin" : "Pin to spotlight"}
+          aria-label={isPinned ? "Unpin" : "Pin to spotlight"}
+          aria-pressed={isPinned}
+        >
+          {isPinned ? (
+            <PinOff className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
+          ) : (
+            <Pin className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
+          )}
+        </button>
+      ) : null}
+      <div
+        className={`absolute flex max-w-[85%] items-center gap-1.5 rounded-full border border-[#fafafa]/10 bg-[#0a0a0b]/70 ${
+          compact ? "bottom-2 left-2 px-2.5 py-1" : "bottom-3 left-3 px-3 py-1.5"
+        }`}
+      >
+        <span
+          className={`truncate font-medium text-[#fafafa] ${
+            compact ? "text-[12.5px]" : "text-[13px]"
+          }`}
+        >
+          {truncateDisplayName(displayName, compact ? 18 : 24)}
+        </span>
+        <span className="text-[10.5px] font-medium text-[#F95F4A]">You</span>
+        {isMuted ? (
+          <MicOff
+            size={compact ? 13 : 14}
+            strokeWidth={1.75}
+            className="shrink-0 text-[#F95F4A]"
+          />
+        ) : null}
+      </div>
+    </div>
+  );
+});
+
+const MinimizedSelfViewPill = memo(function MinimizedSelfViewPill({
+  displayName,
+  userEmail,
+  isMuted,
+  isHandRaised,
+  isGhost,
+  corner,
+  cornerClass,
+  dragStyle,
+  isDragging,
+  onDragStart,
+  onRestore,
+}: {
+  displayName: string;
+  userEmail: string;
+  isMuted: boolean;
+  isHandRaised: boolean;
+  isGhost: boolean;
+  corner: MeetSelfViewCorner;
+  cornerClass: string;
+  dragStyle?: CSSProperties;
+  isDragging: boolean;
+  onDragStart: (event: ReactPointerEvent<HTMLElement>) => void;
+  onRestore: () => void;
+}) {
+  const initial = (displayName[0] || userEmail[0] || "?").toUpperCase();
+
+  return (
+    <div
+      className={`absolute z-20 flex max-w-[min(19rem,44vw)] items-center gap-2 rounded-full border border-[#fafafa]/12 bg-[#111114]/92 px-2.5 py-2 text-[#fafafa] shadow-[0_14px_36px_rgba(0,0,0,0.36)] ${
+        isDragging ? "" : cornerClass
+      }`}
+      style={dragStyle}
+      data-meet-minimized-self-view="true"
+      data-meet-detached-self-view="minimized"
+      data-meet-self-view-corner={corner}
+      data-meet-self-view-dragging={isDragging ? "true" : "false"}
+      aria-label="Minimized self-view"
+    >
+      <button
+        type="button"
+        onPointerDown={onDragStart}
+        aria-label="Move minimized self-view"
+        title="Move self-view"
+        className="inline-flex h-7 w-7 shrink-0 cursor-grab items-center justify-center rounded-full bg-white/[0.08] text-[#fafafa]/76 transition-colors hover:bg-white/[0.14] hover:text-[#fafafa] active:cursor-grabbing"
+      >
+        <Move size={14} strokeWidth={1.8} />
+      </button>
+      <span
+        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[13px] font-semibold text-white"
+        style={{ backgroundColor: avatarColor(userEmail) }}
+      >
+        {initial}
+      </span>
+      <span className="min-w-0 truncate text-[13px] font-medium">
+        {truncateDisplayName(displayName, 20)}
+      </span>
+      <span className="text-[11px] font-medium text-[#F95F4A]">You</span>
+      {isMuted ? (
+        <MicOff size={14} strokeWidth={1.75} className="shrink-0 text-[#F95F4A]" />
+      ) : null}
+      {isHandRaised ? (
+        <Hand size={14} strokeWidth={1.75} className="shrink-0 text-amber-300" />
+      ) : null}
+      {isGhost ? (
+        <Ghost size={14} strokeWidth={1.75} className="shrink-0 text-[#FF007A]" />
+      ) : null}
+      <button
+        type="button"
+        onClick={onRestore}
+        aria-label="Restore self-view"
+        title="Restore self-view"
+        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/[0.08] text-[#fafafa]/76 transition-colors hover:bg-white/[0.14] hover:text-[#fafafa]"
+      >
+        <Maximize2 size={14} strokeWidth={1.8} />
+      </button>
     </div>
   );
 });
@@ -931,11 +3352,17 @@ const OverflowGalleryTile = memo(function OverflowGalleryTile({
 
     playVideo();
 
-    if (!videoTrack) return;
-    videoTrack.addEventListener("unmute", playVideo);
+    if (videoTrack) {
+      videoTrack.addEventListener("unmute", playVideo);
+    }
 
     return () => {
-      videoTrack.removeEventListener("unmute", playVideo);
+      if (videoTrack) {
+        videoTrack.removeEventListener("unmute", playVideo);
+      }
+      if (video.srcObject === videoStream) {
+        video.srcObject = null;
+      }
     };
   }, [videoStream, videoTrack]);
 

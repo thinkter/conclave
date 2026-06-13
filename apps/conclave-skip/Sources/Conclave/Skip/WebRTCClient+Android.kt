@@ -10,9 +10,11 @@ import org.mediasoup.droid.Consumer
 import org.mediasoup.droid.Device
 import org.mediasoup.droid.MediasoupClient
 import org.mediasoup.droid.Producer
+import org.mediasoup.droid.PeerConnection as MediasoupPeerConnection
 import org.mediasoup.droid.RecvTransport
 import org.mediasoup.droid.SendTransport
 import org.mediasoup.droid.Transport
+import org.json.JSONArray
 import org.webrtc.AudioSource
 import org.webrtc.AudioTrack
 import org.webrtc.Camera1Enumerator
@@ -22,6 +24,7 @@ import org.webrtc.DefaultVideoEncoderFactory
 import org.webrtc.EglBase
 import org.webrtc.MediaConstraints
 import org.webrtc.MediaStreamTrack
+import org.webrtc.PeerConnection
 import org.webrtc.PeerConnectionFactory
 import org.webrtc.ScreenCapturerAndroid
 import org.webrtc.SurfaceTextureHelper
@@ -75,6 +78,8 @@ internal class WebRTCClient : SendTransport.Listener, RecvTransport.Listener, Pr
     private var receiveTransport: RecvTransport? = null
     private var sendTransportId: String? = null
     private var receiveTransportId: String? = null
+    private var runtimeIceServersJSON: String? = null
+    private val transportConnectionStates: MutableMap<String, String> = mutableMapOf()
 
     private var audioProducer: Producer? = null
     private var videoProducer: Producer? = null
@@ -93,6 +98,12 @@ internal class WebRTCClient : SendTransport.Listener, RecvTransport.Listener, Pr
     private val consumers: MutableMap<String, ConsumerInfo> = mutableMapOf()
     private var serverRtpCapabilities: RtpCapabilities? = null
 
+    internal fun hasBrokenTransport(): Boolean {
+        return transportConnectionStates.values.any { state ->
+            state == "failed" || state == "disconnected" || state == "closed"
+        }
+    }
+
     /// The consumer id we hold for a remote producer (the consumers map is keyed
     /// by consumer id, not producer id). Used by the producer-sync safety net.
     internal fun consumerId(forProducer: String): String? {
@@ -100,6 +111,21 @@ internal class WebRTCClient : SendTransport.Listener, RecvTransport.Listener, Pr
             if (entry.value.producerId == forProducer) return entry.key
         }
         return null
+    }
+
+    internal fun closeConsumers(exceptProducerIds: skip.lib.Array<String>) {
+        val activeProducerIds = exceptProducerIds.toSet()
+        val staleConsumers = consumers.filterValues { !activeProducerIds.contains(it.producerId) }
+        for ((consumerId, info) in staleConsumers) {
+            info.consumer.close()
+            consumers.remove(consumerId)
+            videoFreezeStats.remove(consumerId)
+
+            val key = if (info.trackKey.isEmpty()) info.userId else info.trackKey
+            if (key.isNotEmpty()) {
+                remoteVideoTracks.removeValue(forKey = key)
+            }
+        }
     }
     private var socketManager: SocketIOManager? = null
 
@@ -125,9 +151,10 @@ internal class WebRTCClient : SendTransport.Listener, RecvTransport.Listener, Pr
     private var screenSurfaceTextureHelper: SurfaceTextureHelper? = null
     private var screenVideoTrack: VideoTrack? = null
 
-    internal fun configure(socketManager: SocketIOManager, rtpCapabilities: RtpCapabilities) {
+    internal fun configure(socketManager: SocketIOManager, rtpCapabilities: RtpCapabilities, iceServersJSON: String?) {
         this.socketManager = socketManager
         this.serverRtpCapabilities = rtpCapabilities
+        this.runtimeIceServersJSON = iceServersJSON?.trim()?.takeIf { it.isNotEmpty() }
 
         val context = ProcessInfo.processInfo.androidContext
         MediasoupClient.initialize(context)
@@ -146,7 +173,6 @@ internal class WebRTCClient : SendTransport.Listener, RecvTransport.Listener, Pr
         try {
             device.load(capabilities, null)
         } catch (error: Throwable) {
-            android.util.Log.e("ConclaveScreenCap", "configure() device.load FAILED", error)
             debugLog("[WebRTC] Failed to load device capabilities: ${error}")
         }
         this.device = device
@@ -162,21 +188,56 @@ internal class WebRTCClient : SendTransport.Listener, RecvTransport.Listener, Pr
         sendTransportId = producerTransportParams.id
         receiveTransportId = consumerTransportParams.id
 
-        sendTransport = device.createSendTransport(
-            this,
-            producerTransportParams.id,
-            encodeJSONString(producerTransportParams.iceParameters),
-            encodeJSONString(producerTransportParams.iceCandidates),
-            encodeJSONString(producerTransportParams.dtlsParameters)
-        )
+        val peerConnectionOptions = resolvePeerConnectionOptions()
+        val producerIceParameters = encodeJSONString(producerTransportParams.iceParameters)
+        val producerIceCandidates = encodeJSONString(producerTransportParams.iceCandidates)
+        val producerDtlsParameters = encodeJSONString(producerTransportParams.dtlsParameters)
 
-        receiveTransport = device.createRecvTransport(
-            this,
-            consumerTransportParams.id,
-            encodeJSONString(consumerTransportParams.iceParameters),
-            encodeJSONString(consumerTransportParams.iceCandidates),
-            encodeJSONString(consumerTransportParams.dtlsParameters)
-        )
+        sendTransport = if (peerConnectionOptions != null) {
+            device.createSendTransport(
+                this,
+                producerTransportParams.id,
+                producerIceParameters,
+                producerIceCandidates,
+                producerDtlsParameters,
+                null,
+                peerConnectionOptions,
+                null
+            )
+        } else {
+            device.createSendTransport(
+                this,
+                producerTransportParams.id,
+                producerIceParameters,
+                producerIceCandidates,
+                producerDtlsParameters
+            )
+        }
+
+        val consumerIceParameters = encodeJSONString(consumerTransportParams.iceParameters)
+        val consumerIceCandidates = encodeJSONString(consumerTransportParams.iceCandidates)
+        val consumerDtlsParameters = encodeJSONString(consumerTransportParams.dtlsParameters)
+
+        receiveTransport = if (peerConnectionOptions != null) {
+            device.createRecvTransport(
+                this,
+                consumerTransportParams.id,
+                consumerIceParameters,
+                consumerIceCandidates,
+                consumerDtlsParameters,
+                null,
+                peerConnectionOptions,
+                null
+            )
+        } else {
+            device.createRecvTransport(
+                this,
+                consumerTransportParams.id,
+                consumerIceParameters,
+                consumerIceCandidates,
+                consumerDtlsParameters
+            )
+        }
     }
 
     internal suspend fun startProducingAudio() {
@@ -271,7 +332,7 @@ internal class WebRTCClient : SendTransport.Listener, RecvTransport.Listener, Pr
         // tears down the producer and resets UI.
         val capturer = ScreenCapturerAndroid(data, object : MediaProjection.Callback() {
             override fun onStop() {
-                ScreenCaptureManager.onProjectionRevoked?.invoke()
+                ScreenCaptureManager.onProjectionStoppedExternally()
             }
         })
         screenCapturer = capturer
@@ -290,7 +351,6 @@ internal class WebRTCClient : SendTransport.Listener, RecvTransport.Listener, Pr
             // capturer) and rethrow for the VM's catch to surface the error.
             capturer.startCapture(metrics.widthPixels, metrics.heightPixels, 30)
         } catch (t: Throwable) {
-            android.util.Log.e("ConclaveScreenCap", "startCapture FAILED", t)
             try {
                 capturer.dispose()
             } catch (_: Throwable) {
@@ -315,7 +375,7 @@ internal class WebRTCClient : SendTransport.Listener, RecvTransport.Listener, Pr
         val producer = sendTransport.produce(this, track as MediaStreamTrack, null, null, null, appData)
         producer.resume()
         screenProducer = producer
-        android.util.Log.i("ConclaveScreenCap", "startScreenSharing: screen producer created id=${producer.id}")
+        debugLog("[WebRTC] Screen sharing producer created: ${producer.id}")
     }
 
     internal suspend fun stopScreenSharing() {
@@ -400,60 +460,149 @@ internal class WebRTCClient : SendTransport.Listener, RecvTransport.Listener, Pr
             }
         }
 
-        if (userId.isNotEmpty()) {
+        if (producerId.isEmpty() && userId.isNotEmpty()) {
             remoteVideoTracks.removeValue(forKey = userId)
             remoteVideoTracks.removeValue(forKey = "${userId}-screen")
         }
     }
 
-    internal suspend fun setAudioEnabled(enabled: Boolean) {
-        val socket = socketManager ?: return
-        val producer = audioProducer ?: return
+    internal fun hasAudioConsumer(userIdPrefix: String): Boolean {
+        return consumers.values.any { it.kind == "audio" && it.userId.startsWith(userIdPrefix) }
+    }
 
-        if (enabled) {
-            producer.resume()
-        } else {
-            producer.pause()
+    internal fun setAudioConsumersEnabled(userIdPrefix: String, enabled: Boolean) {
+        for (info in consumers.values) {
+            if (info.kind != "audio" || !info.userId.startsWith(userIdPrefix)) {
+                continue
+            }
+            (info.consumer.track as? AudioTrack)?.setEnabled(enabled)
         }
+    }
 
-        socket.toggleMute(producer.id, paused = !enabled)
-        localAudioTrack?.setEnabled(enabled)
-        localAudioEnabled = enabled
-        onLocalAudioEnabledChanged?.invoke(enabled)
+    internal suspend fun setAudioEnabled(enabled: Boolean) {
+        val socket = socketManager ?: throw ErrorException("Socket not configured")
+        val producer = audioProducer ?: throw ErrorException("Audio producer not ready")
+        val previous = localAudioEnabled
+
+        try {
+            if (enabled) {
+                producer.resume()
+            } else {
+                producer.pause()
+            }
+
+            socket.toggleMute(producer.id, paused = !enabled)
+            localAudioTrack?.setEnabled(enabled)
+            localAudioEnabled = enabled
+            onLocalAudioEnabledChanged?.invoke(enabled)
+        } catch (error: Throwable) {
+            if (previous) {
+                producer.resume()
+            } else {
+                producer.pause()
+            }
+            localAudioTrack?.setEnabled(previous)
+            localAudioEnabled = previous
+            onLocalAudioEnabledChanged?.invoke(previous)
+            debugLog("[WebRTC] Failed to toggle audio: ${error}")
+            throw error
+        }
     }
 
     internal suspend fun setVideoEnabled(enabled: Boolean) {
-        val socket = socketManager ?: return
-        val producer = videoProducer ?: return
+        val socket = socketManager ?: throw ErrorException("Socket not configured")
+        val producer = videoProducer ?: throw ErrorException("Video producer not ready")
+        val previous = localVideoEnabled
 
-        if (enabled) {
-            producer.resume()
-        } else {
-            producer.pause()
-        }
+        try {
+            if (enabled) {
+                if (androidx.core.content.ContextCompat.checkSelfPermission(ProcessInfo.processInfo.androidContext, android.Manifest.permission.CAMERA) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                    throw ErrorException("Camera permission not granted")
+                }
+                videoCapturer?.startCapture(1280, 720, 30)
+                producer.resume()
+            } else {
+                producer.pause()
+            }
 
-        socket.toggleCamera(producer.id, paused = !enabled)
-        localVideoTrack?.setEnabled(enabled)
-        localVideoEnabled = enabled
-        localVideoTrackWrapper?.isEnabled = enabled
+            socket.toggleCamera(producer.id, paused = !enabled)
+            localVideoTrack?.setEnabled(enabled)
+            localVideoEnabled = enabled
+            localVideoTrackWrapper?.isEnabled = enabled
 
-        if (enabled) {
-            // Pre-check permission: startCapture's SecurityException fires on the
-            // async capture thread, so the try/catch below can't stop the crash.
-            if (androidx.core.content.ContextCompat.checkSelfPermission(ProcessInfo.processInfo.androidContext, android.Manifest.permission.CAMERA) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            if (!enabled) {
                 try {
-                    videoCapturer?.startCapture(1280, 720, 30)
+                    videoCapturer?.stopCapture()
                 } catch (_: Throwable) {
                 }
             }
-        } else {
+
+            onLocalVideoEnabledChanged?.invoke(enabled)
+        } catch (error: Throwable) {
+            if (previous) {
+                producer.resume()
+            } else {
+                producer.pause()
+                try {
+                    videoCapturer?.stopCapture()
+                } catch (_: Throwable) {
+                }
+            }
+            localVideoTrack?.setEnabled(previous)
+            localVideoTrackWrapper?.isEnabled = previous
+            localVideoEnabled = previous
+            onLocalVideoEnabledChanged?.invoke(previous)
+            debugLog("[WebRTC] Failed to toggle video: ${error}")
+            throw error
+        }
+    }
+
+    internal suspend fun closeLocalMedia(kind: String, type: String, producerId: String? = null): Boolean {
+        val isWebcam = type == ProducerType.webcam.rawValue
+        val isScreen = type == ProducerType.screen.rawValue
+
+        if (kind == "audio" && isWebcam && matchesProducer(audioProducer, producerId)) {
+            audioProducer?.close()
+            audioProducer = null
+            localAudioTrack?.setEnabled(false)
+            localAudioTrack = null
+            audioSource = null
+            localAudioEnabled = false
+            onLocalAudioEnabledChanged?.invoke(false)
+            return true
+        }
+
+        if (kind == "video" && isWebcam && matchesProducer(videoProducer, producerId)) {
+            videoProducer?.close()
+            videoProducer = null
+            localVideoTrack?.setEnabled(false)
+            localVideoTrackWrapper?.isEnabled = false
+            localVideoTrackWrapper = null
+            localVideoTrack = null
             try {
                 videoCapturer?.stopCapture()
             } catch (_: Throwable) {
             }
+            videoCapturer?.dispose()
+            videoCapturer = null
+            surfaceTextureHelper?.dispose()
+            surfaceTextureHelper = null
+            videoSource = null
+            localVideoEnabled = false
+            onLocalVideoEnabledChanged?.invoke(false)
+            return true
         }
 
-        onLocalVideoEnabledChanged?.invoke(enabled)
+        if (kind == "video" && isScreen && matchesProducer(screenProducer, producerId)) {
+            stopScreenSharing()
+            return true
+        }
+
+        return false
+    }
+
+    private fun matchesProducer(producer: Producer?, producerId: String?): Boolean {
+        return producer != null && (producerId == null || producer.id == producerId)
     }
 
     internal fun updateVideoQuality(quality: VideoQuality) {
@@ -466,7 +615,6 @@ internal class WebRTCClient : SendTransport.Listener, RecvTransport.Listener, Pr
     }
 
     internal suspend fun cleanup(notifyLocalState: Boolean = true) {
-        android.util.Log.i("ConclaveScreenCap", "cleanup() called — WHO?", Throwable("cleanup stack"))
         try {
             videoCapturer?.stopCapture()
         } catch (_: Throwable) {
@@ -497,6 +645,7 @@ internal class WebRTCClient : SendTransport.Listener, RecvTransport.Listener, Pr
         consumers.values.forEach { it.consumer.close() }
         consumers.clear()
         videoFreezeStats.clear()
+        previousConnectionLossSample = null
 
         localVideoTrack?.setEnabled(false)
         localAudioTrack?.setEnabled(false)
@@ -524,8 +673,10 @@ internal class WebRTCClient : SendTransport.Listener, RecvTransport.Listener, Pr
         receiveTransport?.close()
         sendTransport = null
         receiveTransport = null
+        transportConnectionStates.clear()
         device?.dispose()
         device = null
+        runtimeIceServersJSON = null
     }
 
     internal fun getCaptureSession(): Any? = null
@@ -675,6 +826,158 @@ internal class WebRTCClient : SendTransport.Listener, RecvTransport.Listener, Pr
         }
     }
 
+    private data class ConnectionLossSample(
+        val packetsLost: Double,
+        val packetsReceived: Double,
+    )
+
+    private data class ConnectionStatsSample(
+        val rttMs: Double?,
+        val jitterMs: Double?,
+        val packetsLost: Double,
+        val packetsReceived: Double,
+    )
+
+    private var previousConnectionLossSample: ConnectionLossSample? = null
+
+    internal fun sampleConnectionQuality(): ConnectionQuality {
+        val liveTransports = listOfNotNull(sendTransport, receiveTransport)
+            .filter { transport -> !transport.isClosed }
+        if (liveTransports.isEmpty()) {
+            previousConnectionLossSample = null
+            return ConnectionQuality.unknown
+        }
+
+        var rttMs: Double? = null
+        var jitterMs: Double? = null
+        var packetsLost = 0.0
+        var packetsReceived = 0.0
+        var foundStats = false
+
+        for (transport in liveTransports) {
+            val statsJson = try {
+                transport.getStats()
+            } catch (_: Throwable) {
+                continue
+            }
+            val sample = parseConnectionStats(statsJson) ?: continue
+            foundStats = true
+            sample.rttMs?.let { value -> rttMs = maxNullable(rttMs, value) }
+            sample.jitterMs?.let { value -> jitterMs = maxNullable(jitterMs, value) }
+            packetsLost += sample.packetsLost
+            packetsReceived += sample.packetsReceived
+        }
+
+        if (!foundStats) {
+            previousConnectionLossSample = null
+            return ConnectionQuality.unknown
+        }
+
+        var packetLoss: Double? = null
+        val previous = previousConnectionLossSample
+        if (previous != null) {
+            val deltaLost = kotlin.math.max(0.0, packetsLost - previous.packetsLost)
+            val deltaReceived = kotlin.math.max(0.0, packetsReceived - previous.packetsReceived)
+            val deltaTotal = deltaLost + deltaReceived
+            packetLoss = if (deltaTotal > 0.0) deltaLost / deltaTotal else 0.0
+        }
+        previousConnectionLossSample = ConnectionLossSample(packetsLost, packetsReceived)
+
+        return deriveConnectionQuality(rttMs, packetLoss, jitterMs)
+    }
+
+    private fun parseConnectionStats(statsJson: String): ConnectionStatsSample? {
+        val array = try {
+            JSONArray(statsJson)
+        } catch (_: Throwable) {
+            return null
+        }
+
+        var rttMs: Double? = null
+        var candidatePairRttMs: Double? = null
+        var jitterMs: Double? = null
+        var packetsLost = 0.0
+        var packetsReceived = 0.0
+        var foundMetric = false
+
+        for (i in 0 until array.length()) {
+            val obj = array.optJSONObject(i) ?: continue
+            when (obj.optString("type")) {
+                "candidate-pair" -> {
+                    val nominated = obj.optBoolean("nominated", false) ||
+                        obj.optString("state") == "succeeded"
+                    val rtt = jsonNumber(obj, "currentRoundTripTime")
+                    if (nominated && rtt != null) {
+                        candidatePairRttMs = maxNullable(candidatePairRttMs, rtt * 1000.0)
+                        foundMetric = true
+                    }
+                }
+                "inbound-rtp" -> {
+                    jsonNumber(obj, "jitter")?.let { value ->
+                        jitterMs = maxNullable(jitterMs, value * 1000.0)
+                        foundMetric = true
+                    }
+                    jsonNumber(obj, "packetsLost")?.let { value ->
+                        packetsLost += kotlin.math.max(0.0, value)
+                        foundMetric = true
+                    }
+                    jsonNumber(obj, "packetsReceived")?.let { value ->
+                        packetsReceived += kotlin.math.max(0.0, value)
+                        foundMetric = true
+                    }
+                }
+                "remote-inbound-rtp" -> {
+                    jsonNumber(obj, "roundTripTime")?.let { value ->
+                        rttMs = maxNullable(rttMs, value * 1000.0)
+                        foundMetric = true
+                    }
+                    jsonNumber(obj, "jitter")?.let { value ->
+                        jitterMs = maxNullable(jitterMs, value * 1000.0)
+                        foundMetric = true
+                    }
+                }
+            }
+        }
+
+        candidatePairRttMs?.let { value ->
+            rttMs = maxNullable(rttMs, value)
+        }
+
+        if (!foundMetric) return null
+        return ConnectionStatsSample(rttMs, jitterMs, packetsLost, packetsReceived)
+    }
+
+    private fun jsonNumber(obj: org.json.JSONObject, key: String): Double? {
+        if (!obj.has(key)) return null
+        val value = obj.optDouble(key, Double.NaN)
+        return if (!value.isNaN() && !value.isInfinite()) value else null
+    }
+
+    private fun maxNullable(current: Double?, next: Double): Double {
+        return if (current == null) next else kotlin.math.max(current, next)
+    }
+
+    private fun deriveConnectionQuality(
+        rttMs: Double?,
+        packetLoss: Double?,
+        jitterMs: Double?,
+    ): ConnectionQuality {
+        if (rttMs == null && packetLoss == null && jitterMs == null) {
+            return ConnectionQuality.unknown
+        }
+        if ((rttMs ?: 0.0) >= 500.0 ||
+            (packetLoss ?: 0.0) >= 0.08 ||
+            (jitterMs ?: 0.0) >= 60.0) {
+            return ConnectionQuality.poor
+        }
+        if ((rttMs ?: 0.0) >= 250.0 ||
+            (packetLoss ?: 0.0) >= 0.03 ||
+            (jitterMs ?: 0.0) >= 30.0) {
+            return ConnectionQuality.fair
+        }
+        return ConnectionQuality.good
+    }
+
     // Reads the per-consumer `audioLevel` (0.0–1.0, an RMS-derived linear value)
     // from each remote audio consumer's WebRTC stats and returns a userId->level
     // map. mediasoup's Consumer.getStats() returns the standard RTCStatsReport
@@ -711,7 +1014,8 @@ internal class WebRTCClient : SendTransport.Listener, RecvTransport.Listener, Pr
                     continue
                 }
                 val value = obj.optDouble("audioLevel", 0.0)
-                if (best == null || value > best!!) {
+                val currentBest = best
+                if (currentBest == null || value > currentBest) {
                     best = value
                 }
             }
@@ -804,6 +1108,7 @@ internal class WebRTCClient : SendTransport.Listener, RecvTransport.Listener, Pr
     }
 
     override fun onConnectionStateChange(transport: Transport, connectionState: String) {
+        transportConnectionStates[transport.id] = connectionState.lowercase()
     }
 
     override fun onProduce(transport: Transport, kind: String, rtpParameters: String, appData: String): String {
@@ -823,7 +1128,7 @@ internal class WebRTCClient : SendTransport.Listener, RecvTransport.Listener, Pr
                     paused = appDataPayload?.paused ?: false
                 )
             } catch (t: Throwable) {
-                android.util.Log.e("ConclaveScreenCap", "onProduce FAILED", t)
+                debugLog("[WebRTC] Produce failed: ${t}")
                 ""
             }
         }
@@ -856,8 +1161,12 @@ internal class WebRTCClient : SendTransport.Listener, RecvTransport.Listener, Pr
     override fun onTransportClose(consumer: Consumer) {
         val entry = consumers.entries.firstOrNull { it.value.consumer.id == consumer.id } ?: return
         consumers.remove(entry.key)
+        videoFreezeStats.remove(entry.key)
         if (entry.value.kind == "video") {
-            remoteVideoTracks.removeValue(forKey = entry.value.userId)
+            val trackKey = if (entry.value.trackKey.isEmpty()) entry.value.userId else entry.value.trackKey
+            if (trackKey.isNotEmpty()) {
+                remoteVideoTracks.removeValue(forKey = trackKey)
+            }
         }
     }
 
@@ -891,6 +1200,53 @@ internal class WebRTCClient : SendTransport.Listener, RecvTransport.Listener, Pr
             backName != null -> enumerator.createCapturer(backName, null)
             else -> null
         }
+    }
+
+    private fun resolvePeerConnectionOptions(): MediasoupPeerConnection.Options? {
+        val raw = runtimeIceServersJSON ?: return null
+        val iceServers = parseIceServers(raw)
+        if (iceServers.isEmpty()) return null
+
+        val rtcConfig = PeerConnection.RTCConfiguration(iceServers)
+        val options = MediasoupPeerConnection.Options()
+        options.setRTCConfig(rtcConfig)
+        return options
+    }
+
+    private fun parseIceServers(raw: String): List<PeerConnection.IceServer> {
+        val array = try {
+            JSONArray(raw)
+        } catch (_: Throwable) {
+            return emptyList()
+        }
+        val servers = mutableListOf<PeerConnection.IceServer>()
+
+        for (index in 0 until array.length()) {
+            val obj = array.optJSONObject(index) ?: continue
+            val urlsValue = obj.opt("urls")
+            val urls = when (urlsValue) {
+                is JSONArray -> {
+                    val out = mutableListOf<String>()
+                    for (urlIndex in 0 until urlsValue.length()) {
+                        val url = urlsValue.optString(urlIndex).trim()
+                        if (url.isNotEmpty()) out.add(url)
+                    }
+                    out
+                }
+                is String -> listOf(urlsValue.trim()).filter { it.isNotEmpty() }
+                else -> emptyList()
+            }
+            if (urls.isEmpty()) continue
+
+            val builder = PeerConnection.IceServer.builder(urls)
+            val username = obj.optString("username", "").trim()
+            val credential = obj.optString("credential", "").trim()
+            if (username.isNotEmpty()) builder.setUsername(username)
+            if (credential.isNotEmpty()) builder.setPassword(credential)
+            servers.add(builder.createIceServer())
+        }
+
+        return servers
     }
 
     private fun encodeJSONString(value: Any): String {

@@ -79,6 +79,21 @@ final class MeetingViewModel: ObservableObject {
         let isHost: Bool
         let user: SfuJoinUser?
     }
+
+    private func localUserKey(for user: SfuJoinUser?, sessionId: String) -> String {
+        let id = user?.id?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let email = user?.email?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let id, id.hasPrefix("guest-") {
+            return "guest-\(sessionId)"
+        }
+        if let email, !email.isEmpty, !email.contains("@guest.") {
+            return email
+        }
+        if let id, !id.isEmpty {
+            return id
+        }
+        return "guest-\(sessionId)"
+    }
     
     // MARK: - Computed Properties
     
@@ -92,7 +107,9 @@ final class MeetingViewModel: ObservableObject {
     }
     
     var participantCount: Int {
-        participants.count + 1
+        participants.values.reduce(1) { count, participant in
+            participant.id == userId ? count : count + 1
+        }
     }
     
     var pendingUsersCount: Int {
@@ -258,6 +275,12 @@ final class MeetingViewModel: ObservableObject {
             Task { @MainActor in
                 guard let self = self else { return }
                 let userId = notification.userId
+                if userId == self.userId {
+                    if let displayName = notification.displayName, !displayName.isEmpty {
+                        self.displayName = displayName
+                    }
+                    return
+                }
                 if self.participants[userId] == nil {
                     self.participants[userId] = Participant(id: userId)
                 }
@@ -388,6 +411,10 @@ final class MeetingViewModel: ObservableObject {
         socketManager.onParticipantMuted = { [weak self] notification in
             Task { @MainActor in
                 guard let self = self else { return }
+                if notification.userId == self.userId {
+                    self.isMuted = notification.muted
+                    return
+                }
                 if self.participants[notification.userId] == nil {
                     self.participants[notification.userId] = Participant(id: notification.userId)
                 }
@@ -398,6 +425,10 @@ final class MeetingViewModel: ObservableObject {
         socketManager.onParticipantCameraOff = { [weak self] notification in
             Task { @MainActor in
                 guard let self = self else { return }
+                if notification.userId == self.userId {
+                    self.isCameraOff = notification.cameraOff
+                    return
+                }
                 if self.participants[notification.userId] == nil {
                     self.participants[notification.userId] = Participant(id: notification.userId)
                 }
@@ -478,7 +509,20 @@ final class MeetingViewModel: ObservableObject {
     // MARK: - Helper Methods
     
     private func handleProducerState(_ producer: ProducerInfo) {
-        // Ensure participant exists
+        if producer.producerUserId == userId {
+            if producer.kind == "audio" {
+                isMuted = producer.paused ?? isMuted
+            } else if producer.kind == "video" {
+                if producer.type == "screen" {
+                    isScreenSharing = !(producer.paused ?? false)
+                    activeScreenShareUserId = isScreenSharing ? userId : nil
+                } else {
+                    isCameraOff = producer.paused ?? isCameraOff
+                }
+            }
+            return
+        }
+
         if participants[producer.producerUserId] == nil {
             participants[producer.producerUserId] = Participant(id: producer.producerUserId)
         }
@@ -522,7 +566,7 @@ final class MeetingViewModel: ObservableObject {
         self.shouldRejoinAfterReconnect = false
         
         let userPayload = user
-        let userKey = user?.email ?? user?.id ?? "guest-\(sessionId)"
+        let userKey = localUserKey(for: userPayload, sessionId: sessionId)
         self.userId = "\(userKey)#\(sessionId)"
         self.lastJoinContext = JoinContext(
             roomId: roomId,

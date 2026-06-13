@@ -33,6 +33,7 @@ function MobilePresentationLayout({
   userEmail,
   isMirrorCamera,
   activeSpeakerId,
+  currentUserId,
   getDisplayName,
 }: MobilePresentationLayoutProps) {
   const presentationVideoRef = useRef<HTMLVideoElement>(null);
@@ -124,31 +125,48 @@ function MobilePresentationLayout({
       if (replayRafId !== null) {
         window.cancelAnimationFrame(replayRafId);
       }
+      if (video.srcObject === presentationStream) {
+        video.srcObject = null;
+      }
     };
   }, [presentationStream]);
 
   useEffect(() => {
     const video = localVideoRef.current;
-    if (video && localStream) {
-      video.srcObject = localStream;
-      video.play().catch((err) => {
-        if (err.name !== "AbortError") {
-          console.error("[Meets] Mobile presentation local video play error:", err);
-        }
-      });
+    if (!video) return;
+
+    if (!localStream) {
+      if (video.srcObject) {
+        video.srcObject = null;
+      }
+      return;
     }
+
+    video.srcObject = localStream;
+    video.play().catch((err) => {
+      if (err.name !== "AbortError") {
+        console.error("[Meets] Mobile presentation local video play error:", err);
+      }
+    });
+
+    return () => {
+      if (video.srcObject === localStream) {
+        video.srcObject = null;
+      }
+    };
   }, [localStream]);
 
   const participantArray = useSmartParticipantOrder(
     Array.from(participants.values()).filter(
-      (participant) => !isSystemUserId(participant.userId)
+      (participant) =>
+        participant.userId !== currentUserId &&
+        !isSystemUserId(participant.userId)
     ),
     activeSpeakerId
   );
 
   return (
     <div className="flex flex-col w-full h-full p-3 gap-3">
-      {/* Presentation video - takes most space */}
       <div className="flex-1 relative mobile-tile min-h-0 bg-[#0b0b0b]">
         <video
           ref={presentationVideoRef}
@@ -157,7 +175,6 @@ function MobilePresentationLayout({
           playsInline
           className="w-full h-full object-contain"
         />
-        {/* Presenter badge */}
         <div
           className="absolute top-2 left-2 mobile-name-pill px-3 py-1 text-[10px] text-[#fafafa] font-medium uppercase tracking-[0.18em] backdrop-blur-md truncate max-w-[80%]"
           style={{ fontFamily: "'PolySans Trial', sans-serif" }}
@@ -167,11 +184,9 @@ function MobilePresentationLayout({
         </div>
       </div>
 
-      {/* Participant thumbnails - fixed height strip */}
       <div className="relative h-24 shrink-0">
         <div className="absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-[#0a0a0b] to-transparent z-10 pointer-events-none rounded-r-2xl" />
         <div className="h-full flex gap-3 overflow-x-scroll no-scrollbar snap-x snap-mandatory scroll-smooth pr-3">
-        {/* Local video thumbnail */}
         <div className="relative w-24 h-24 shrink-0 mobile-tile snap-start">
           <video
             ref={localVideoRef}
@@ -215,7 +230,6 @@ function MobilePresentationLayout({
           </div>
         </div>
 
-        {/* Other participants - thumbnails with audio */}
         {participantArray.map((participant) => (
           <div 
             key={participant.userId} 
@@ -298,6 +312,7 @@ const VideoThumbnail = memo(function VideoThumbnail({
     if (video.srcObject !== participant.videoStream) {
       video.srcObject = participant.videoStream;
     }
+    const videoStream = participant.videoStream;
 
     const playVideo = () => {
       video.play().catch(() => {});
@@ -306,11 +321,17 @@ const VideoThumbnail = memo(function VideoThumbnail({
     playVideo();
 
     const videoTrack = participant.videoStream.getVideoTracks()[0];
-    if (!videoTrack) return;
-    videoTrack.addEventListener("unmute", playVideo);
+    if (videoTrack) {
+      videoTrack.addEventListener("unmute", playVideo);
+    }
 
     return () => {
-      videoTrack.removeEventListener("unmute", playVideo);
+      if (videoTrack) {
+        videoTrack.removeEventListener("unmute", playVideo);
+      }
+      if (video.srcObject === videoStream) {
+        video.srcObject = null;
+      }
     };
   }, [participant.videoStream, participant.videoProducerId, isCameraOff]);
   
@@ -325,7 +346,6 @@ const VideoThumbnail = memo(function VideoThumbnail({
   );
 });
 
-// Separate audio player component
 const AudioPlayer = memo(function AudioPlayer({ stream }: { stream: MediaStream }) {
   const audioRef = useRef<HTMLAudioElement>(null);
   
@@ -335,6 +355,11 @@ const AudioPlayer = memo(function AudioPlayer({ stream }: { stream: MediaStream 
       audio.srcObject = stream;
       audio.play().catch(() => {});
     }
+    return () => {
+      if (audio?.srcObject === stream) {
+        audio.srcObject = null;
+      }
+    };
   }, [stream]);
   
   return <audio ref={audioRef} autoPlay />;

@@ -315,8 +315,12 @@ export function MeetScreen({
   const pendingToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingToastSeenRef = useRef<Set<string>>(new Set());
 
-  const userKey = user?.email || user?.id || `guest-${guestSessionId}`;
-  const userId = `${userKey}#${refs.sessionIdRef.current}`;
+  const sessionId = refs.sessionIdRef.current;
+  const isGuestIdentity = !user || Boolean(user.id?.startsWith("guest-"));
+  const userKey = isGuestIdentity
+    ? `guest-${sessionId}`
+    : user.email || user.id || `guest-${sessionId}`;
+  const userId = `${userKey}#${sessionId}`;
 
   const {
     setDisplayNames,
@@ -421,14 +425,17 @@ export function MeetScreen({
   });
 
   const participantCount = useMemo(() => {
-    let count = 1; // include local user
+    let count = 1;
     participants.forEach((participant) => {
-      if (!isSystemUserId(participant.userId)) {
+      if (
+        participant.userId !== userId &&
+        !isSystemUserId(participant.userId)
+      ) {
         count += 1;
       }
     });
     return count;
-  }, [participants]);
+  }, [participants, userId]);
 
   const participantCountRef = useRef(participantCount);
   useEffect(() => {
@@ -1534,7 +1541,7 @@ export function MeetScreen({
     void handleJoin(targetRoomId, { isHost: false });
   }, [autoJoinOnMount, handleJoin, initialRoomId, roomId]);
 
-  type ScreenSharePickerHandle = React.Component<any, any>;
+  type ScreenSharePickerHandle = React.Component<unknown, unknown>;
   const IOS_SCREENSHARE_EXTENSION_BUNDLE_ID =
     "com.acmvit.conclave.ScreenShareExtension";
   const ScreenSharePicker =

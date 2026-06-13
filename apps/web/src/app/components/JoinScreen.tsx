@@ -1,7 +1,12 @@
 "use client";
 
 import {
+  Blend,
+  CircleHelp,
   Loader2,
+  MessageSquareWarning,
+  MoreVertical,
+  Settings,
   Video,
   VideoOff,
   Mic,
@@ -12,10 +17,15 @@ import {
   Ghost,
 } from "lucide-react";
 import { memo, useEffect, useRef, useState } from "react";
+import type { Dispatch, SetStateAction } from "react";
 import { Avatar } from "@conclave/ui-tokens/web";
 import { signIn, signOut, useSession } from "@/lib/auth-client";
 import type { RoomInfo } from "@/lib/sfu-types";
-import type { ConnectionState, MeetError } from "../lib/types";
+import type {
+  ConnectionState,
+  MeetError,
+  PrejoinMediaHandoff,
+} from "../lib/types";
 import {
   DEFAULT_AUDIO_CONSTRAINTS,
   STANDARD_QUALITY_CONSTRAINTS,
@@ -29,6 +39,16 @@ import {
   sanitizeRoomCode,
 } from "../lib/utils";
 import MeetsErrorBanner from "./MeetsErrorBanner";
+import VideoEffectsPanel from "./VideoEffectsPanel";
+import {
+  prewarmVideoEffectsAssets,
+  useVideoEffects,
+} from "../hooks/useVideoEffects";
+import { useCameraPermissionState } from "../hooks/useCameraPermissionState";
+import {
+  countActiveVideoEffects,
+  type VideoEffectsState,
+} from "../lib/video-effects";
 
 const normalizeGuestName = (value: string): string =>
   value.trim().replace(/\s+/g, " ");
@@ -86,6 +106,9 @@ interface JoinScreenProps {
   onDismissMeetError?: () => void;
   onRetryMedia?: () => void;
   onTestSpeaker?: () => void;
+  videoEffects: VideoEffectsState;
+  onVideoEffectsChange: Dispatch<SetStateAction<VideoEffectsState>>;
+  onPrejoinMediaCommit?: (handoff: PrejoinMediaHandoff) => void;
 }
 
 // Flat, Google-Meet-style lobby (dark Carbon, no gradients/marketing): a single
@@ -102,6 +125,63 @@ const PROVIDER_BTN =
 
 const isGoogleSignInEnabled =
   process.env.NEXT_PUBLIC_GOOGLE_SIGN_IN_ENABLED === "true";
+const DEBUG_VIDEO_EFFECTS_STORAGE_KEY = "conclave:debug-video-effects";
+
+const isJoinMediaDebugEnabled = () => {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(DEBUG_VIDEO_EFFECTS_STORAGE_KEY) === "1";
+  } catch {
+    return false;
+  }
+};
+
+const getJoinTrackDebugSnapshot = (track: MediaStreamTrack | null) => {
+  if (!track) return null;
+  let settings: MediaTrackSettings = {};
+  try {
+    settings = track.getSettings();
+  } catch {
+    settings = {};
+  }
+  return {
+    id: track.id,
+    kind: track.kind,
+    label: track.label,
+    enabled: track.enabled,
+    muted: track.muted,
+    readyState: track.readyState,
+    settings,
+  };
+};
+
+const getJoinStreamDebugSnapshot = (stream: MediaStream | null) => {
+  if (!stream) return null;
+  return {
+    id: stream.id,
+    active: stream.active,
+    audioTracks: stream.getAudioTracks().map(getJoinTrackDebugSnapshot),
+    videoTracks: stream.getVideoTracks().map(getJoinTrackDebugSnapshot),
+  };
+};
+
+const logJoinMedia = (event: string, payload?: unknown) => {
+  if (!isJoinMediaDebugEnabled()) return;
+  if (payload === undefined) {
+    console.debug(`[JoinScreen media] ${event}`);
+    return;
+  }
+  console.debug(`[JoinScreen media] ${event}`, payload);
+};
+
+const warnJoinMedia = (event: string, payload?: unknown) => {
+  if (!isJoinMediaDebugEnabled()) return;
+  if (payload === undefined) {
+    console.warn(`[JoinScreen media] ${event}`);
+    return;
+  }
+  console.warn(`[JoinScreen media] ${event}`, payload);
+};
 
 function JoinScreen({
   roomId,
@@ -122,6 +202,9 @@ function JoinScreen({
   onDismissMeetError,
   onRetryMedia,
   onTestSpeaker,
+  videoEffects,
+  onVideoEffectsChange,
+  onPrejoinMediaCommit,
 }: JoinScreenProps) {
   const normalizedRoomId =
     roomId === "undefined" || roomId === "null" ? "" : roomId;
@@ -129,9 +212,16 @@ function JoinScreen({
   const enforceShortCode = enableRoomRouting || forceJoinOnly;
 
   const videoRef = useRef<HTMLVideoElement>(null);
+  const processedPreviewTrackRef = useRef<MediaStreamTrack | null>(null);
+  const localStreamRef = useRef<MediaStream | null>(null);
+  const handedOffTrackIdsRef = useRef<Set<string>>(new Set());
+  const moreOptionsRef = useRef<HTMLDivElement>(null);
+  const toggleCameraInFlightRef = useRef(false);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [isCameraOn, setIsCameraOn] = useState(false);
   const [isMicOn, setIsMicOn] = useState(false);
+  const [isEffectsOpen, setIsEffectsOpen] = useState(false);
+  const [isMoreOptionsOpen, setIsMoreOptionsOpen] = useState(false);
   const [guestName, setGuestName] = useState("");
   const [signInProvider, setSignInProvider] = useState<
     "google" | "apple" | null
@@ -158,8 +248,56 @@ function JoinScreen({
     normalizeGuestName(guestName || "") ||
     (userEmail ? userEmail.split("@")[0] : "") ||
     "You";
+  const {
+    effectiveStream: processedPreviewStream,
+    status: videoEffectsStatus,
+    error: videoEffectsError,
+    debugStats: videoEffectsDebugStats,
+  } = useVideoEffects({
+    sourceStream: localStream,
+    effects: videoEffects,
+    processedVideoTrackRef: processedPreviewTrackRef,
+  });
+  const previewStream = processedPreviewStream ?? localStream;
+  const activeVideoEffectsCount = countActiveVideoEffects(videoEffects);
+  const cameraPermissionState = useCameraPermissionState();
+  const hasLivePreviewCamera = Boolean(
+    localStream
+      ?.getVideoTracks()
+      .some((track) => track.readyState === "live" && track.enabled),
+  );
+  const isCameraPermissionBlocked =
+    meetError?.code === "PERMISSION_DENIED" ||
+    (!hasLivePreviewCamera && cameraPermissionState === "denied");
+  const isBackgroundBlurActive =
+    videoEffects.background === "blur-light" ||
+    videoEffects.background === "blur-strong";
+  const prewarmBackgroundBlur = () => {
+    if (isCameraPermissionBlocked) return;
+    void prewarmVideoEffectsAssets({
+      segmentation: true,
+      reason: "prejoin-quick-blur",
+    });
+  };
+  const toggleBackgroundBlur = () => {
+    if (isCameraPermissionBlocked) return;
+    const nextBackground = isBackgroundBlurActive ? "none" : "blur-strong";
+    onVideoEffectsChange((current) => ({
+      ...current,
+      background: nextBackground,
+    }));
+  };
+  const openEffectsPanel = () => {
+    if (isCameraPermissionBlocked) return;
+    setIsMoreOptionsOpen(false);
+    setIsEffectsOpen(true);
+  };
 
-  /* --- ?next= redirect after sign-in --- */
+  useEffect(() => {
+    if (!isCameraPermissionBlocked || !isEffectsOpen) return;
+    setIsEffectsOpen(false);
+  }, [isCameraPermissionBlocked, isEffectsOpen]);
+
   const [nextParam, setNextParam] = useState<string | null>(null);
   const hasPushedNextRef = useRef(false);
   useEffect(() => {
@@ -174,7 +312,6 @@ function JoinScreen({
     window.location.href = nextParam;
   }, [nextParam, session]);
 
-  /* --- auto-promote a signed-in session to the active user --- */
   useEffect(() => {
     if (!session?.user) {
       lastAppliedSessionUserIdRef.current = null;
@@ -199,73 +336,241 @@ function JoinScreen({
     }
   }, [session, user, onUserChange]);
 
-  /* --- seed the guest name field from a restored guest user --- */
   useEffect(() => {
     if (!user?.id?.startsWith("guest-") || guestName.trim().length > 0) return;
     const nextName = normalizeGuestName(user.name || "");
     if (nextName) setGuestName(nextName);
   }, [guestName, user]);
 
-  /* --- preview stream is throwaway: stop tracks on unmount (camera light off) --- */
   useEffect(() => {
-    if (videoRef.current && localStream) videoRef.current.srcObject = localStream;
-  }, [localStream]);
+    localStreamRef.current = localStream;
+    logJoinMedia("local_stream_changed", {
+      localStream: getJoinStreamDebugSnapshot(localStream),
+      isCameraOn,
+      isMicOn,
+    });
+  }, [isCameraOn, isMicOn, localStream]);
+  useEffect(() => {
+    if (!videoRef.current) return;
+    if (previewStream) {
+      logJoinMedia("preview_stream_attach", {
+        previewStream: getJoinStreamDebugSnapshot(previewStream),
+        localStream: getJoinStreamDebugSnapshot(localStream),
+        processedTrack: getJoinTrackDebugSnapshot(processedPreviewTrackRef.current),
+      });
+      videoRef.current.srcObject = previewStream;
+      videoRef.current.play().catch((err) => {
+        warnJoinMedia("preview_video_play_failed", {
+          error:
+            err instanceof Error
+              ? { name: err.name, message: err.message, stack: err.stack }
+              : err,
+          previewStream: getJoinStreamDebugSnapshot(previewStream),
+        });
+      });
+    } else if (videoRef.current.srcObject) {
+      logJoinMedia("preview_stream_clear");
+      videoRef.current.srcObject = null;
+    }
+  }, [localStream, previewStream]);
+  useEffect(() => {
+    if (!isMoreOptionsOpen) return;
+    const handlePointerDown = (event: MouseEvent) => {
+      if (
+        moreOptionsRef.current &&
+        !moreOptionsRef.current.contains(event.target as Node)
+      ) {
+        setIsMoreOptionsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [isMoreOptionsOpen]);
   useEffect(() => {
     return () => {
-      localStream?.getTracks().forEach((t) => t.stop());
+      const handedOffTrackIds = handedOffTrackIdsRef.current;
+      logJoinMedia("unmount_stop_local_stream", {
+        localStream: getJoinStreamDebugSnapshot(localStreamRef.current),
+        handedOffTrackIds: Array.from(handedOffTrackIds),
+      });
+      localStreamRef.current?.getTracks().forEach((track) => {
+        if (handedOffTrackIds.has(track.id)) return;
+        track.stop();
+      });
     };
-  }, [localStream]);
+  }, []);
+
+  const commitPrejoinMedia = () => {
+    if (!onPrejoinMediaCommit) return;
+    const stream = localStreamRef.current;
+    const liveTracks =
+      stream
+        ?.getTracks()
+        .filter((track) => {
+          if (track.readyState !== "live") return false;
+          if (track.kind === "video") return isCameraOn;
+          if (track.kind === "audio") return isMicOn;
+          return true;
+        }) ?? [];
+    handedOffTrackIdsRef.current = new Set(
+      liveTracks.map((track) => track.id),
+    );
+    const handoffStream =
+      liveTracks.length > 0 ? new MediaStream(liveTracks) : null;
+    const hasLiveVideo = liveTracks.some((track) => track.kind === "video");
+    const hasLiveAudio = liveTracks.some((track) => track.kind === "audio");
+    logJoinMedia("commit_prejoin_media", {
+      handoffStream: getJoinStreamDebugSnapshot(handoffStream),
+      isCameraOn,
+      isMicOn,
+    });
+    onPrejoinMediaCommit({
+      stream: handoffStream,
+      isCameraOn: isCameraOn && hasLiveVideo,
+      isMicOn: isMicOn && hasLiveAudio,
+    });
+  };
 
   const toggleCamera = async () => {
-    if (isCameraOn && localStream) {
-      const track = localStream.getVideoTracks()[0];
-      if (track) {
-        track.stop();
-        localStream.removeTrack(track);
-      }
-      setIsCameraOn(false);
+    if (toggleCameraInFlightRef.current) {
+      logJoinMedia("toggle_camera_ignored_in_flight", {
+        isCameraOn,
+        localStream: getJoinStreamDebugSnapshot(localStream),
+      });
       return;
     }
+
+    toggleCameraInFlightRef.current = true;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: STANDARD_QUALITY_CONSTRAINTS,
-      });
-      const videoTrack = stream.getVideoTracks()[0];
-      if (!videoTrack) return;
-      if ("contentHint" in videoTrack) videoTrack.contentHint = "motion";
-      if (localStream) {
-        localStream.addTrack(videoTrack);
-        if (videoRef.current) videoRef.current.srcObject = localStream;
-      } else {
-        setLocalStream(stream);
+        logJoinMedia("toggle_camera_start", {
+          isCameraOn,
+          localStream: getJoinStreamDebugSnapshot(localStream),
+          videoEffects,
+        });
+      if (isCameraOn && localStream) {
+        const track = localStream.getVideoTracks()[0];
+        if (track) {
+          logJoinMedia("camera_track_stop", {
+            track: getJoinTrackDebugSnapshot(track),
+          });
+          track.stop();
+        }
+        const nextTracks = localStream
+          .getTracks()
+          .filter((candidate) => candidate !== track);
+        setLocalStream(nextTracks.length > 0 ? new MediaStream(nextTracks) : null);
+        setIsCameraOn(false);
+        logJoinMedia("toggle_camera_off_done", {
+          nextTrackCount: nextTracks.length,
+        });
+        return;
       }
-      setIsCameraOn(true);
-    } catch {
-      /* permission denied — stay off */
+      try {
+        logJoinMedia("get_user_media_video_request", {
+          constraints: STANDARD_QUALITY_CONSTRAINTS,
+        });
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: STANDARD_QUALITY_CONSTRAINTS,
+        });
+        const videoTrack = stream.getVideoTracks()[0];
+        if (!videoTrack) {
+          warnJoinMedia("get_user_media_video_missing_track", {
+            stream: getJoinStreamDebugSnapshot(stream),
+          });
+          return;
+        }
+        if ("contentHint" in videoTrack) videoTrack.contentHint = "motion";
+        if (localStream) {
+          const nextStream = new MediaStream([...localStream.getTracks(), videoTrack]);
+          logJoinMedia("camera_track_add_to_existing_stream", {
+            receivedStream: getJoinStreamDebugSnapshot(stream),
+            nextStream: getJoinStreamDebugSnapshot(nextStream),
+          });
+          setLocalStream(nextStream);
+        } else {
+          logJoinMedia("camera_stream_set", {
+            stream: getJoinStreamDebugSnapshot(stream),
+          });
+          setLocalStream(stream);
+        }
+        setIsCameraOn(true);
+        logJoinMedia("toggle_camera_on_done", {
+          track: getJoinTrackDebugSnapshot(videoTrack),
+        });
+      } catch (err) {
+        warnJoinMedia("get_user_media_video_failed", {
+          error:
+            err instanceof Error
+              ? { name: err.name, message: err.message, stack: err.stack }
+              : err,
+        });
+      }
+    } finally {
+      toggleCameraInFlightRef.current = false;
     }
   };
 
   const toggleMic = async () => {
+    logJoinMedia("toggle_mic_start", {
+      isMicOn,
+      localStream: getJoinStreamDebugSnapshot(localStream),
+    });
     if (isMicOn && localStream) {
       const track = localStream.getAudioTracks()[0];
       if (track) {
+        logJoinMedia("mic_track_stop", {
+          track: getJoinTrackDebugSnapshot(track),
+        });
         track.stop();
-        localStream.removeTrack(track);
       }
+      const nextTracks = localStream
+        .getTracks()
+        .filter((candidate) => candidate !== track);
+      setLocalStream(nextTracks.length > 0 ? new MediaStream(nextTracks) : null);
       setIsMicOn(false);
+      logJoinMedia("toggle_mic_off_done", {
+        nextTrackCount: nextTracks.length,
+      });
       return;
     }
     try {
+      logJoinMedia("get_user_media_audio_request", {
+        constraints: DEFAULT_AUDIO_CONSTRAINTS,
+      });
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: DEFAULT_AUDIO_CONSTRAINTS,
       });
       const audioTrack = stream.getAudioTracks()[0];
-      if (!audioTrack) return;
-      if (localStream) localStream.addTrack(audioTrack);
-      else setLocalStream(stream);
+      if (!audioTrack) {
+        warnJoinMedia("get_user_media_audio_missing_track", {
+          stream: getJoinStreamDebugSnapshot(stream),
+        });
+        return;
+      }
+      if (localStream) {
+        const nextStream = new MediaStream([...localStream.getTracks(), audioTrack]);
+        logJoinMedia("mic_track_add_to_existing_stream", {
+          receivedStream: getJoinStreamDebugSnapshot(stream),
+          nextStream: getJoinStreamDebugSnapshot(nextStream),
+        });
+        setLocalStream(nextStream);
+      } else {
+        logJoinMedia("mic_stream_set", {
+          stream: getJoinStreamDebugSnapshot(stream),
+        });
+        setLocalStream(stream);
+      }
       setIsMicOn(true);
-    } catch {
-      /* permission denied — stay off */
+      logJoinMedia("toggle_mic_on_done", {
+        track: getJoinTrackDebugSnapshot(audioTrack),
+      });
+    } catch (err) {
+      warnJoinMedia("get_user_media_audio_failed", {
+        error:
+          err instanceof Error
+            ? { name: err.name, message: err.message, stack: err.stack }
+            : err,
+      });
     }
   };
 
@@ -275,7 +580,7 @@ function JoinScreen({
   useEffect(() => {
     if (!pending || !hasIdentity) return;
     const wantAdmin = pending.mode === "new";
-    if (Boolean(isAdmin) !== wantAdmin) return; // wait for isHost to land
+    if (Boolean(isAdmin) !== wantAdmin) return;
     const { mode, roomId: targetId } = pending;
     setPending(null);
     if (mode === "new" && enableRoomRouting && typeof window !== "undefined") {
@@ -297,6 +602,7 @@ function JoinScreen({
 
   const startMeeting = () => {
     if (!ensureGuest()) return;
+    commitPrejoinMedia();
     onIsAdminChange(true);
     setPending({ mode: "new", roomId: generateRoomCode() });
   };
@@ -306,6 +612,7 @@ function JoinScreen({
       : normalizedRoomId.trim();
     if (!candidate) return;
     if (!ensureGuest()) return;
+    commitPrejoinMedia();
     onIsAdminChange(false);
     setPending({ mode: "join", roomId: candidate });
   };
@@ -361,7 +668,6 @@ function JoinScreen({
     <div className="relative min-h-screen w-full bg-[#0a0a0b] text-[#fafafa] flex flex-col">
       <main className="flex-1 flex items-center justify-center px-4 py-10">
         <div className="grid w-full max-w-5xl items-stretch gap-6 md:grid-cols-[1.5fr_1fr]">
-          {/* LEFT — self preview */}
           <div className="relative aspect-video overflow-hidden rounded-2xl border border-white/10 bg-[#121214]">
             <video
               ref={videoRef}
@@ -398,6 +704,97 @@ function JoinScreen({
               >
                 {isCameraOn ? <Video size={18} /> : <VideoOff size={18} />}
               </button>
+              <button
+                onClick={toggleBackgroundBlur}
+                onFocus={prewarmBackgroundBlur}
+                onPointerEnter={prewarmBackgroundBlur}
+                onTouchStart={prewarmBackgroundBlur}
+                disabled={isCameraPermissionBlocked}
+                aria-label={
+                  isBackgroundBlurActive
+                    ? "Turn off background blur"
+                    : "Turn on background blur"
+                }
+                aria-pressed={isBackgroundBlurActive}
+                className={`inline-flex h-11 w-11 items-center justify-center rounded-full text-white transition-colors duration-150 hover:bg-[#2e2e33] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-[#232327] ${
+                  isBackgroundBlurActive ? "bg-[#1a73e8]" : "bg-[#232327]"
+                }`}
+              >
+                <Blend size={18} />
+              </button>
+              <div ref={moreOptionsRef} className="relative">
+                <button
+                  type="button"
+                  onClick={() => setIsMoreOptionsOpen((current) => !current)}
+                  aria-label="More options"
+                  aria-expanded={isMoreOptionsOpen}
+                  className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-[#232327] text-white transition-colors duration-150 hover:bg-[#2e2e33]"
+                >
+                  <MoreVertical size={18} />
+                </button>
+                {isMoreOptionsOpen ? (
+                  <div
+                    data-testid="prejoin-more-options-menu"
+                    className="absolute bottom-full right-0 z-30 mb-3 w-[260px] overflow-hidden rounded-xl border border-white/10 bg-[#242428] py-2 text-left shadow-2xl shadow-black/35"
+                  >
+                    <button
+                      type="button"
+                      data-testid="prejoin-more-backgrounds-effects"
+                      onClick={openEffectsPanel}
+                      disabled={isCameraPermissionBlocked}
+                      aria-label={
+                        isCameraPermissionBlocked
+                          ? "Backgrounds and effects: Permission needed"
+                          : "Backgrounds and effects"
+                      }
+                      className="flex w-full items-center gap-3 px-4 py-3 text-left text-[14px] text-[#f1f3f4] transition-colors duration-150 hover:bg-white/10 disabled:cursor-not-allowed disabled:text-[#f1f3f4]/45 disabled:hover:bg-transparent"
+                    >
+                      <Blend
+                        size={18}
+                        className={`shrink-0 ${
+                          isCameraPermissionBlocked
+                            ? "text-[#bdc1c6]/45"
+                            : "text-[#bdc1c6]"
+                        }`}
+                      />
+                      <span className="min-w-0">
+                        <span className="block truncate">
+                          Backgrounds and effects
+                        </span>
+                        {isCameraPermissionBlocked ? (
+                          <span className="block truncate text-[12px] text-[#f1f3f4]/40">
+                            Permission needed
+                          </span>
+                        ) : null}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsMoreOptionsOpen(false)}
+                      className="flex w-full items-center gap-3 px-4 py-3 text-[14px] text-[#f1f3f4] transition-colors duration-150 hover:bg-white/10"
+                    >
+                      <MessageSquareWarning size={18} className="shrink-0 text-[#bdc1c6]" />
+                      <span className="truncate">Report a problem</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsMoreOptionsOpen(false)}
+                      className="flex w-full items-center gap-3 px-4 py-3 text-[14px] text-[#f1f3f4] transition-colors duration-150 hover:bg-white/10"
+                    >
+                      <CircleHelp size={18} className="shrink-0 text-[#bdc1c6]" />
+                      <span className="truncate">Troubleshooting &amp; help</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsMoreOptionsOpen(false)}
+                      className="flex w-full items-center gap-3 px-4 py-3 text-[14px] text-[#f1f3f4] transition-colors duration-150 hover:bg-white/10"
+                    >
+                      <Settings size={18} className="shrink-0 text-[#bdc1c6]" />
+                      <span className="truncate">Settings</span>
+                    </button>
+                  </div>
+                ) : null}
+              </div>
             </div>
             {onTestSpeaker && (
               <button
@@ -409,7 +806,6 @@ function JoinScreen({
             )}
           </div>
 
-          {/* RIGHT — join actions */}
           <div className="flex flex-col justify-center gap-4">
             {meetError && (
               <MeetsErrorBanner
@@ -541,6 +937,21 @@ function JoinScreen({
           </div>
         </div>
       </main>
+      {isEffectsOpen && !isCameraPermissionBlocked && (
+        <VideoEffectsPanel
+          variant="dialog"
+          effects={videoEffects}
+          onEffectsChange={onVideoEffectsChange}
+          localStream={previewStream}
+          isCameraOff={!isCameraOn}
+          status={videoEffectsStatus}
+          error={videoEffectsError}
+          debugStats={videoEffectsDebugStats}
+          activeCount={activeVideoEffectsCount}
+          cameraPermissionBlocked={isCameraPermissionBlocked}
+          onClose={() => setIsEffectsOpen(false)}
+        />
+      )}
     </div>
   );
 }

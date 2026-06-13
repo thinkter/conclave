@@ -63,45 +63,70 @@ function BrowserLayout({
     const [navInput, setNavInput] = useState(browserUrl);
     const [navError, setNavError] = useState<string | null>(null);
 
-    // Wait for browser container to be ready before showing iframe
     useEffect(() => {
-        if (noVncUrl) {
-            const timer = setTimeout(() => {
-                setIsReady(true);
-            }, 3000); // Wait 3 seconds for container to stabilize
-            return () => clearTimeout(timer);
-        }
+        setIsReady(false);
+        if (!noVncUrl) return;
+
+        const timer = setTimeout(() => {
+            setIsReady(true);
+        }, 3000);
+        return () => clearTimeout(timer);
     }, [noVncUrl]);
 
     useEffect(() => {
         const video = localVideoRef.current;
-        if (video && localStream) {
-            video.srcObject = localStream;
-            video.play().catch((err) => {
-                if (err.name !== "AbortError") {
-                    console.error("[Meets] Browser layout local video play error:", err);
-                }
-            });
+        if (!video) return;
+
+        if (!localStream) {
+            if (video.srcObject) {
+                video.srcObject = null;
+            }
+            return;
         }
+
+        video.srcObject = localStream;
+        video.play().catch((err) => {
+            if (err.name !== "AbortError") {
+                console.error("[Meets] Browser layout local video play error:", err);
+            }
+        });
+
+        return () => {
+            if (video.srcObject === localStream) {
+                video.srcObject = null;
+            }
+        };
     }, [localStream]);
 
     useEffect(() => {
         const video = browserVideoRef.current;
-        if (video && browserVideoStream) {
-            video.srcObject = browserVideoStream;
-            video.play().catch((err) => {
-                if (err.name !== "AbortError") {
-                    console.error("[Meets] Browser video play error:", err);
-                }
-            });
+        if (!video) return;
+
+        if (!browserVideoStream) {
+            if (video.srcObject) {
+                video.srcObject = null;
+            }
+            return;
         }
+
+        video.srcObject = browserVideoStream;
+        video.play().catch((err) => {
+            if (err.name !== "AbortError") {
+                console.error("[Meets] Browser video play error:", err);
+            }
+        });
+
+        return () => {
+            if (video.srcObject === browserVideoStream) {
+                video.srcObject = null;
+            }
+        };
     }, [browserVideoStream]);
 
     useEffect(() => {
         setNavInput(browserUrl);
     }, [browserUrl]);
 
-    // Extract domain from URL for display
     const displayUrl = (() => {
         try {
             const url = new URL(browserUrl);
@@ -114,7 +139,9 @@ function BrowserLayout({
     const resolvedNoVncUrl = resolveNoVncUrl(noVncUrl);
     const remoteParticipants = useSmartParticipantOrder(
         Array.from(participants.values()).filter(
-            (participant) => !isSystemUserId(participant.userId)
+            (participant) =>
+                participant.userId !== currentUserId &&
+                !isSystemUserId(participant.userId)
         ),
         activeSpeakerId
     );

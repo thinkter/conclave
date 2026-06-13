@@ -137,6 +137,7 @@ export const SFU_EVENTS = {
 
     // Chat / reactions / hand / identity
     chatMessage: "chatMessage",
+    chatHistorySnapshot: "chatHistorySnapshot",
     reaction: "reaction",
     handRaised: "handRaised",
     handRaisedSnapshot: "handRaisedSnapshot",
@@ -156,6 +157,7 @@ export const SFU_EVENTS = {
 
     // Session lifecycle / disruptive
     kicked: "kicked",
+    roomClosed: "roomClosed",
     roomEnded: "roomEnded",
     redirect: "redirect",
     serverRestarting: "serverRestarting",

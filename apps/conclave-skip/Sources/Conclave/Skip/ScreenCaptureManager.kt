@@ -7,11 +7,11 @@ import android.media.projection.MediaProjectionManager
 import androidx.activity.ComponentActivity
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
+import kotlinx.coroutines.CancellableContinuation
+import kotlinx.coroutines.suspendCancellableCoroutine
 import skip.foundation.ProcessInfo
 import skip.ui.UIApplication
-import kotlin.coroutines.Continuation
 import kotlin.coroutines.resume
-import kotlin.coroutines.suspendCoroutine
 
 /// Bridges the shared SwiftUI MeetingViewModel (transpiled to this same
 /// conclave.module package) to the Android MediaProjection permission flow.
@@ -26,11 +26,16 @@ import kotlin.coroutines.suspendCoroutine
 object ScreenCaptureManager {
     private var captureLauncher: ActivityResultLauncher<Intent>? = null
     private var resultIntent: Intent? = null
-    private var resultCode: Int = 0
-    private val waiters = mutableListOf<Continuation<Boolean>>()
+    private val stateLock = Any()
+    private val waiters = mutableListOf<CancellableContinuation<Boolean>>()
+    private var requestInFlight = false
+    private var serviceForegrounded = false
+    private var suppressNextServiceDestroyCallback = false
+    private var projectionRevokedNotified = false
 
     /// Invoked when the projection ends from outside the in-app toggle (system
     /// "Stop sharing", the notification action, or the service being killed).
+    @Volatile
     var onProjectionRevoked: (() -> Unit)? = null
 
     /// Registered from MainActivity.onCreate (registerForActivityResult must run
@@ -40,8 +45,18 @@ object ScreenCaptureManager {
             ActivityResultContracts.StartActivityForResult()
         ) { result ->
             if (result.resultCode == Activity.RESULT_OK && result.data != null) {
-                resultCode = result.resultCode
-                resultIntent = result.data
+                val shouldStart = synchronized(stateLock) {
+                    requestInFlight && waiters.isNotEmpty()
+                }
+                if (!shouldStart) {
+                    synchronized(stateLock) {
+                        resultIntent = null
+                    }
+                    return@registerForActivityResult
+                }
+                synchronized(stateLock) {
+                    resultIntent = result.data
+                }
                 // Start the FGS now, but DON'T resume the waiter yet — wait for
                 // the service to confirm it foregrounded (onServiceForegrounded),
                 // because on API 34+ the projection may only be minted after a
@@ -49,12 +64,20 @@ object ScreenCaptureManager {
                 val ctx = ProcessInfo.processInfo.androidContext
                 val intent = Intent(ctx, ScreenCaptureService::class.java).apply {
                     action = ScreenCaptureService.ACTION_START
-                    putExtra(ScreenCaptureService.EXTRA_RESULT_CODE, result.resultCode)
-                    putExtra(ScreenCaptureService.EXTRA_DATA, result.data)
                 }
-                ctx.startForegroundService(intent)
+                try {
+                    ctx.startForegroundService(intent)
+                } catch (t: Throwable) {
+                    debugLog("[ScreenShare] Failed to start screen capture service: ${t}")
+                    synchronized(stateLock) {
+                        resultIntent = null
+                    }
+                    resumeAll(false)
+                }
             } else {
-                resultIntent = null
+                synchronized(stateLock) {
+                    resultIntent = null
+                }
                 resumeAll(false)
             }
         }
@@ -62,21 +85,75 @@ object ScreenCaptureManager {
 
     /// Request screen-capture consent. Returns true once consent is granted AND
     /// the foreground service is live; false on cancel/denied or if no Activity.
-    suspend fun requestCapture(): Boolean = suspendCoroutine { cont ->
+    suspend fun requestCapture(): Boolean = suspendCancellableCoroutine { cont ->
         val activity = UIApplication.shared.androidActivity
         val launcher = captureLauncher
         if (activity == null || launcher == null) {
             cont.resume(false)
-            return@suspendCoroutine
+            return@suspendCancellableCoroutine
         }
-        synchronized(waiters) { waiters.add(cont) }
+        synchronized(stateLock) {
+            if (requestInFlight) {
+                cont.resume(false)
+                return@suspendCancellableCoroutine
+            }
+            requestInFlight = true
+            serviceForegrounded = false
+            suppressNextServiceDestroyCallback = false
+            projectionRevokedNotified = false
+            waiters.add(cont)
+        }
+        cont.invokeOnCancellation {
+            var shouldStopService = false
+            synchronized(stateLock) {
+                if (waiters.remove(cont)) {
+                    requestInFlight = false
+                    resultIntent = null
+                    serviceForegrounded = false
+                    suppressNextServiceDestroyCallback = true
+                    shouldStopService = true
+                }
+            }
+            if (shouldStopService) {
+                requestServiceStop()
+            }
+        }
         val pm = activity.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        launcher.launch(pm.createScreenCaptureIntent())
+        try {
+            launcher.launch(pm.createScreenCaptureIntent())
+        } catch (t: Throwable) {
+            debugLog("[ScreenShare] Failed to launch screen capture consent: ${t}")
+            synchronized(stateLock) {
+                resultIntent = null
+            }
+            resumeAll(false)
+        }
+    }
+
+    fun isRequestingCapture(): Boolean = synchronized(stateLock) {
+        requestInFlight
+    }
+
+    fun isCaptureActive(): Boolean = synchronized(stateLock) {
+        resultIntent != null && serviceForegrounded
     }
 
     /// Called by ScreenCaptureService after startForeground() succeeds.
-    fun onServiceForegrounded() {
-        resumeAll(true)
+    fun onServiceForegrounded(): Boolean {
+        val shouldKeepService = synchronized(stateLock) {
+            if (resultIntent == null) {
+                serviceForegrounded = false
+                suppressNextServiceDestroyCallback = true
+                false
+            } else {
+                serviceForegrounded = true
+                suppressNextServiceDestroyCallback = false
+                projectionRevokedNotified = false
+                true
+            }
+        }
+        resumeAll(shouldKeepService)
+        return shouldKeepService
     }
 
     /// Called by ScreenCaptureService when startForeground(...mediaProjection)
@@ -84,15 +161,82 @@ object ScreenCaptureManager {
     /// minted; resume the waiter with false so the VM skips startScreenSharing()
     /// rather than crashing into a SecurityException and reverting.
     fun onServiceForegroundFailed() {
-        resultIntent = null
+        synchronized(stateLock) {
+            resultIntent = null
+            serviceForegrounded = false
+            suppressNextServiceDestroyCallback = true
+        }
         resumeAll(false)
     }
 
-    fun getCaptureResultIntent(): Intent? = resultIntent
+    fun getCaptureResultIntent(): Intent? = synchronized(stateLock) {
+        resultIntent
+    }
 
     /// Stop the share from the in-app toggle: tells the service to stop and
     /// clears the stored permission token.
     fun stopCapture() {
+        synchronized(stateLock) {
+            resultIntent = null
+            serviceForegrounded = false
+            suppressNextServiceDestroyCallback = true
+        }
+        requestServiceStop()
+        resumeAll(false)
+    }
+
+    /// Called by the service when it is destroyed / the projection is revoked.
+    fun onMediaProjectionStopped() {
+        val callback = synchronized(stateLock) {
+            resultIntent = null
+            serviceForegrounded = false
+            if (suppressNextServiceDestroyCallback) {
+                suppressNextServiceDestroyCallback = false
+                null
+            } else if (projectionRevokedNotified) {
+                null
+            } else {
+                projectionRevokedNotified = true
+                onProjectionRevoked
+            }
+        }
+        callback?.invoke()
+    }
+
+    /// Called by WebRTC's MediaProjection callback when the system projection
+    /// stops while the app is still alive. Also tears down the foreground
+    /// service so the "Sharing your screen" notification cannot linger.
+    fun onProjectionStoppedExternally() {
+        val callback = synchronized(stateLock) {
+            resultIntent = null
+            serviceForegrounded = false
+            suppressNextServiceDestroyCallback = true
+            if (projectionRevokedNotified) {
+                null
+            } else {
+                projectionRevokedNotified = true
+                onProjectionRevoked
+            }
+        }
+        requestServiceStop()
+        callback?.invoke()
+    }
+
+    private fun resumeAll(granted: Boolean) {
+        val snapshot: List<CancellableContinuation<Boolean>>
+        synchronized(stateLock) {
+            snapshot = waiters.toList()
+            waiters.clear()
+            requestInFlight = false
+        }
+        snapshot.forEach {
+            if (it.isActive) {
+                it.resume(granted)
+            }
+        }
+    }
+
+    private fun requestServiceStop() {
         val ctx = ProcessInfo.processInfo.androidContext
         val intent = Intent(ctx, ScreenCaptureService::class.java).apply {
             action = ScreenCaptureService.ACTION_STOP
@@ -101,20 +245,5 @@ object ScreenCaptureManager {
             ctx.startService(intent)
         } catch (_: Throwable) {
         }
-        resultIntent = null
-    }
-
-    /// Called by the service when it is destroyed / the projection is revoked.
-    fun onMediaProjectionStopped() {
-        onProjectionRevoked?.invoke()
-    }
-
-    private fun resumeAll(granted: Boolean) {
-        val snapshot: List<Continuation<Boolean>>
-        synchronized(waiters) {
-            snapshot = waiters.toList()
-            waiters.clear()
-        }
-        snapshot.forEach { it.resume(granted) }
     }
 }

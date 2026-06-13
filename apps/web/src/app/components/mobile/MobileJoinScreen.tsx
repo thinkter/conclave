@@ -11,9 +11,13 @@ import {
   Video,
   VideoOff,
 } from "lucide-react";
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { signIn, signOut, useSession } from "@/lib/auth-client";
-import type { ConnectionState, MeetError } from "../../lib/types";
+import type {
+  ConnectionState,
+  MeetError,
+  PrejoinMediaHandoff,
+} from "../../lib/types";
 import {
   DEFAULT_AUDIO_CONSTRAINTS,
   STANDARD_QUALITY_CONSTRAINTS,
@@ -86,6 +90,7 @@ interface MobileJoinScreenProps {
   onDismissMeetError?: () => void;
   onRetryMedia?: () => void;
   onTestSpeaker?: () => void;
+  onPrejoinMediaCommit?: (handoff: PrejoinMediaHandoff) => void;
 }
 
 function MobileJoinScreen({
@@ -111,11 +116,14 @@ function MobileJoinScreen({
   onDismissMeetError,
   onRetryMedia,
   onTestSpeaker,
+  onPrejoinMediaCommit,
 }: MobileJoinScreenProps) {
   const normalizedRoomId =
     roomId === "undefined" || roomId === "null" ? "" : roomId;
   const canJoin = normalizedRoomId.trim().length > 0;
   const videoRef = useRef<HTMLVideoElement>(null);
+  const localStreamRef = useRef<MediaStream | null>(null);
+  const handedOffTrackIdsRef = useRef<Set<string>>(new Set());
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [isCameraOn, setIsCameraOn] = useState(false);
   const [isMicOn, setIsMicOn] = useState(false);
@@ -208,17 +216,27 @@ function MobileJoinScreen({
   }, [session, user, onUserChange]);
 
   useEffect(() => {
+    localStreamRef.current = localStream;
+  }, [localStream]);
+
+  const stopUnhandedOffTracks = useCallback((stream: MediaStream | null) => {
+    const handedOffTrackIds = handedOffTrackIdsRef.current;
+    stream?.getTracks().forEach((track) => {
+      if (handedOffTrackIds.has(track.id)) return;
+      track.stop();
+    });
+  }, []);
+
+  useEffect(() => {
     if (phase !== "join" && localStream) {
-      localStream.getTracks().forEach((t) => t.stop());
+      stopUnhandedOffTracks(localStream);
       setLocalStream(null);
     }
 
     return () => {
-      if (localStream) {
-        localStream.getTracks().forEach((t) => t.stop());
-      }
+      stopUnhandedOffTracks(localStream);
     };
-  }, [localStream, phase]);
+  }, [localStream, phase, stopUnhandedOffTracks]);
 
   useEffect(() => {
     if (!user?.id?.startsWith("guest-")) return;
@@ -229,7 +247,25 @@ function MobileJoinScreen({
   }, [guestName, user]);
 
   useEffect(() => {
-    if (videoRef.current && localStream) videoRef.current.srcObject = localStream;
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (!localStream) {
+      if (video.srcObject) {
+        video.srcObject = null;
+      }
+      return;
+    }
+
+    if (video.srcObject !== localStream) {
+      video.srcObject = localStream;
+    }
+
+    return () => {
+      if (video.srcObject === localStream) {
+        video.srcObject = null;
+      }
+    };
   }, [localStream]);
 
   const toggleCamera = async () => {
@@ -247,7 +283,10 @@ function MobileJoinScreen({
         })
         .then((stream) => {
           const videoTrack = stream.getVideoTracks()[0];
-          if (!videoTrack) return;
+          if (!videoTrack) {
+            stream.getTracks().forEach((track) => track.stop());
+            return;
+          }
           if ("contentHint" in videoTrack) {
             videoTrack.contentHint = "motion";
           }
@@ -255,9 +294,6 @@ function MobileJoinScreen({
             localStream.addTrack(videoTrack);
           } else {
             setLocalStream(stream);
-          }
-          if (videoRef.current) {
-            videoRef.current.srcObject = localStream || stream;
           }
           setIsCameraOn(true);
         })
@@ -282,7 +318,10 @@ function MobileJoinScreen({
         })
         .then((stream) => {
           const audioTrack = stream.getAudioTracks()[0];
-          if (!audioTrack) return;
+          if (!audioTrack) {
+            stream.getTracks().forEach((track) => track.stop());
+            return;
+          }
           if (localStream) {
             localStream.addTrack(audioTrack);
           } else {
@@ -296,6 +335,32 @@ function MobileJoinScreen({
     }
   };
 
+  const commitPrejoinMedia = () => {
+    if (!onPrejoinMediaCommit) return;
+    const stream = localStreamRef.current;
+    const liveTracks =
+      stream
+        ?.getTracks()
+        .filter((track) => {
+          if (track.readyState !== "live") return false;
+          if (track.kind === "video") return isCameraOn;
+          if (track.kind === "audio") return isMicOn;
+          return true;
+        }) ?? [];
+    handedOffTrackIdsRef.current = new Set(
+      liveTracks.map((track) => track.id),
+    );
+    const handoffStream =
+      liveTracks.length > 0 ? new MediaStream(liveTracks) : null;
+    const hasLiveVideo = liveTracks.some((track) => track.kind === "video");
+    const hasLiveAudio = liveTracks.some((track) => track.kind === "audio");
+    onPrejoinMediaCommit({
+      stream: handoffStream,
+      isCameraOn: isCameraOn && hasLiveVideo,
+      isMicOn: isMicOn && hasLiveAudio,
+    });
+  };
+
   const handleCreateRoom = () => {
     onIsAdminChange(true);
     const sanitizedCustomCode = sanitizeRoomCode(customRoomCode);
@@ -304,6 +369,7 @@ function MobileJoinScreen({
     if (enableRoomRouting && typeof window !== "undefined") {
       window.history.pushState(null, "", `/${id}`);
     }
+    commitPrejoinMedia();
     onRoomIdChange(id);
     onJoinRoom(id);
   };
@@ -376,6 +442,7 @@ function MobileJoinScreen({
     if (candidate !== normalizedRoomId) {
       onRoomIdChange(candidate);
     }
+    commitPrejoinMedia();
     onJoinRoom(candidate);
   };
 
@@ -463,7 +530,6 @@ function MobileJoinScreen({
     );
   }
 
-  // Auth phase
   if (phase === "auth") {
     return (
       <div className="flex-1 flex flex-col px-6 py-8 bg-[#0a0a0b] safe-area-pt relative overflow-hidden">
@@ -618,12 +684,10 @@ function MobileJoinScreen({
     );
   }
 
-  // Join phase
   return (
     <div className="flex-1 flex flex-col bg-[#0a0a0b] safe-area-pt overflow-hidden relative">
       <div className="absolute inset-0 acm-bg-radial pointer-events-none" />
       <div className="absolute inset-0 acm-bg-dot-grid pointer-events-none" />
-      {/* Video preview */}
       <div className="relative flex-1 px-4 pt-3 pb-36 flex flex-col min-h-0">
         <div className="relative flex-1 rounded-[28px] border border-[#fafafa]/10 bg-[#131316] overflow-hidden">
           {isCameraOn && localStream ? (
@@ -648,7 +712,6 @@ function MobileJoinScreen({
             </div>
           )}
 
-          {/* Camera/mic controls */}
           <div className="absolute bottom-4 left-1/2 -translate-x-1/2 mobile-glass mobile-pill px-2.5 py-2 flex items-center gap-2">
             <button
               onClick={toggleMic}
@@ -680,7 +743,6 @@ function MobileJoinScreen({
             </button>
           </div>
 
-          {/* User email */}
           <div className="absolute top-4 left-4 right-4 flex items-start justify-between gap-3">
             <div
               className="min-w-0 max-w-[65%] h-8 px-3 flex items-center mobile-glass mobile-pill text-xs text-[#fafafa]/80 truncate"

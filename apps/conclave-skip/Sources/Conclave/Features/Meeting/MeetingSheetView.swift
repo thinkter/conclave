@@ -51,6 +51,7 @@ struct MeetingSheetView: View {
     // blocked by first-frame composition (the cheap header still shows during the
     // slide). Drag-to-close stays smooth because the body is already composed.
     @State private var bodyReady = false
+    @State private var bodyRevealGeneration = 0
 
     static let detentFraction: CGFloat = 0.62
     private static let fallbackAndroidDetentHeight: CGFloat = 420.0
@@ -142,14 +143,18 @@ struct MeetingSheetView: View {
         #endif
         .onAppear {
             pageTransitionsEnabled = true
+            bodyRevealGeneration += 1
+            let generation = bodyRevealGeneration
             #if SKIP
             // Android only: keep the very first slide frame light (just the cheap
             // header), then bring the body in almost immediately. The icon vectors
             // are pre-warmed at app start (warmMeetingIcons), so the body now
             // composes cheaply — a short ~90ms beat is enough to keep the open
             // smooth without the content feeling like it arrives late.
+            bodyReady = false
             Task { @MainActor in
                 try? await Task.sleep(nanoseconds: 90_000_000)
+                guard bodyRevealGeneration == generation else { return }
                 withAnimation(.easeOut(duration: 0.10)) {
                     bodyReady = true
                 }
@@ -158,6 +163,10 @@ struct MeetingSheetView: View {
             // iOS sheets aren't lag-bound — show the body immediately.
             bodyReady = true
             #endif
+        }
+        .onDisappear {
+            bodyRevealGeneration += 1
+            bodyReady = false
         }
         #if !SKIP
         .presentationDragIndicator(.visible)

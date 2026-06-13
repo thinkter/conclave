@@ -47,6 +47,8 @@ import {
 } from "../webcam-codec";
 import type { MeetRefs } from "./use-meet-refs";
 
+type SocketIoFactory = typeof import("socket.io-client").io;
+
 type JoinInfo = {
   token: string;
   sfuUrl: string;
@@ -1758,8 +1760,8 @@ export function useMeetSocket({
 
             if (typeof ioFn !== "function") {
               const required = require("socket.io-client") as
-                | { io?: typeof import("socket.io-client").io; default?: typeof import("socket.io-client").io }
-                | ((...args: any[]) => any);
+                | { io?: SocketIoFactory; default?: SocketIoFactory }
+                | SocketIoFactory;
               ioFn =
                 typeof required === "function"
                   ? required
@@ -2126,6 +2128,10 @@ export function useMeetSocket({
                 roomId?: string;
               }) => {
                 if (!isRoomEvent(eventRoomId)) return;
+                if (mutedUserId === userId) {
+                  setIsMuted(muted);
+                  return;
+                }
                 dispatchParticipants({
                   type: "UPDATE_MUTED",
                   userId: mutedUserId,
@@ -2146,6 +2152,10 @@ export function useMeetSocket({
                 roomId?: string;
               }) => {
                 if (!isRoomEvent(eventRoomId)) return;
+                if (camUserId === userId) {
+                  setIsCameraOff(cameraOff);
+                  return;
+                }
                 dispatchParticipants({
                   type: "UPDATE_CAMERA_OFF",
                   userId: camUserId,

@@ -122,6 +122,7 @@ export const registerMediaHandlers = (context: ConnectionContext): void => {
               targetClient.socket.emit("producerClosed", {
                 producerId: producer.id,
                 producerUserId: clientId,
+                roomId: activeRoom.id,
               });
             }
           }
@@ -204,6 +205,7 @@ export const registerMediaHandlers = (context: ConnectionContext): void => {
             kind,
             type,
             paused: producer.paused,
+            roomId: activeRoom.id,
           });
         }
         emitWebinarFeedChanged(io, state, activeRoom);
@@ -262,7 +264,10 @@ export const registerMediaHandlers = (context: ConnectionContext): void => {
 
         consumer.on("producerclose", () => {
           Logger.info(`Producer closed for consumer: ${consumer.id}`);
-          socket.emit("producerClosed", { producerId });
+          socket.emit("producerClosed", {
+            producerId,
+            roomId: context.currentRoom?.id,
+          });
         });
 
         respond(callback, {
@@ -486,6 +491,7 @@ export const registerMediaHandlers = (context: ConnectionContext): void => {
             client.socket.emit("producerClosed", {
               producerId: data.producerId,
               producerUserId: context.currentClient.id,
+              roomId: context.currentRoom.id,
             });
           }
           emitWebinarFeedChanged(io, state, context.currentRoom);

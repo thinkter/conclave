@@ -22,6 +22,13 @@ struct JoinRoomRequest: Codable {
     let sessionId: String
     let displayName: String?
     let ghost: Bool
+    let webinarInviteCode: String?
+    let meetingInviteCode: String?
+}
+
+enum JoinMode: String, Codable {
+    case meeting
+    case webinarAttendee = "webinar_attendee"
 }
 
 struct ConnectTransportRequest: Codable {
@@ -86,6 +93,24 @@ struct LaunchBrowserRequest: Codable {
     let url: String
 }
 
+struct NavigateBrowserRequest: Codable {
+    let url: String
+}
+
+struct LaunchBrowserResponse: Codable {
+    let success: Bool?
+    let noVncUrl: String?
+    let error: String?
+}
+
+struct AppsOpenRequest: Codable {
+    let appId: String
+}
+
+struct AppsLockRequest: Codable {
+    let locked: Bool
+}
+
 // MARK: - Incoming Messages / Responses
 
 struct JoinRoomResponse: Codable {
@@ -98,6 +123,7 @@ struct JoinRoomResponse: Codable {
     let hostUserId: String?
     let hostUserIds: [String]?
     let isLocked: Bool?
+    let isChatLocked: Bool?
     let noGuests: Bool?
     let isTtsDisabled: Bool?
     let isDmEnabled: Bool?
@@ -128,12 +154,18 @@ struct ConsumeResponse: Codable {
     let rtpParameters: RtpParameters
 }
 
+struct SendChatResponse: Codable {
+    let success: Bool?
+    let message: ChatMessageNotification?
+}
+
 struct ProducerInfo: Codable {
     let producerId: String
     let producerUserId: String
     let kind: String
     let type: String
     let paused: Bool?
+    let roomId: String?
 }
 
 /// Ack response for the `getProducers` RPC — the room's current producer list,
@@ -149,21 +181,84 @@ struct NewProducerNotification: Codable {
     let producerUserId: String
     let kind: String
     let type: String
+    let paused: Bool?
+    let roomId: String?
 }
 
 struct ProducerClosedNotification: Codable {
     let producerId: String
     let producerUserId: String?
+    let roomId: String?
+    let adminEnforced: Bool?
+}
+
+struct AdminProducerClosedNotification: Codable {
+    let roomId: String?
+    let userId: String
+    let producerId: String
+}
+
+struct AdminMediaProducer: Codable {
+    let producerId: String
+    let kind: String
+    let type: String
+}
+
+struct AdminMediaActionResponse: Codable {
+    let success: Bool?
+    let error: String?
+    let userId: String?
+    let affectedProducers: Int?
+    let producers: [AdminMediaProducer]?
+}
+
+struct AdminBulkMediaActionResponse: Codable {
+    let success: Bool?
+    let error: String?
+    let count: Int?
+    let affectedProducers: Int?
+    let users: [String]?
+}
+
+struct AdminMediaEnforcedNotification: Codable {
+    let roomId: String?
+    let userId: String?
+    let producerId: String?
+    let kind: String?
+    let type: String?
+    let action: String?
+    let reason: String?
+    let producers: [AdminMediaProducer]?
+
+    var closedProducers: [AdminMediaProducer] {
+        if let producers, !producers.isEmpty {
+            return producers
+        }
+        guard let producerId, let kind, let type else {
+            return []
+        }
+        return [AdminMediaProducer(producerId: producerId, kind: kind, type: type)]
+    }
+}
+
+struct AdminBulkMediaEnforcedNotification: Codable {
+    let roomId: String?
+    let reason: String?
+    let users: [String]?
+    let affectedUsers: Int?
+    let affectedProducers: Int?
 }
 
 struct UserJoinedNotification: Codable {
     let userId: String
     let displayName: String?
     let isGhost: Bool?
+    let roomId: String?
 }
 
 struct UserLeftNotification: Codable {
     let userId: String
+    let roomId: String?
 }
 
 struct DisplayNameSnapshotNotification: Codable {
@@ -192,6 +287,7 @@ struct ChatMessageNotification: Codable {
     let isDirect: Bool?
     let dmTargetUserId: String?
     let dmTargetDisplayName: String?
+    let roomId: String?
 }
 
 struct ChatHistorySnapshotNotification: Codable {
@@ -199,18 +295,41 @@ struct ChatHistorySnapshotNotification: Codable {
     let roomId: String?
 }
 
+extension ChatMessageNotification {
+    var chatMessage: ChatMessage {
+        chatMessage(taggedRoomId: nil)
+    }
+
+    func chatMessage(taggedRoomId: String?) -> ChatMessage {
+        ChatMessage(
+            id: id,
+            userId: userId,
+            displayName: displayName,
+            content: content,
+            timestamp: Date(timeIntervalSince1970: timestamp / 1000),
+            isDirect: isDirect ?? false,
+            dmTargetUserId: dmTargetUserId,
+            dmTargetDisplayName: dmTargetDisplayName,
+            roomId: roomId ?? taggedRoomId
+        )
+    }
+}
+
 struct ReactionNotification: Codable {
     let userId: String
-    let kind: String
-    let value: String
+    let emoji: String?
+    let kind: String?
+    let value: String?
     let label: String?
     let timestamp: Double
+    let roomId: String?
 }
 
 struct HandRaisedNotification: Codable {
     let userId: String
     let raised: Bool
     let timestamp: Double
+    let roomId: String?
 }
 
 struct HandRaisedSnapshotNotification: Codable {
@@ -226,11 +345,13 @@ struct HandRaisedSnapshotUser: Codable {
 struct ParticipantMutedNotification: Codable {
     let userId: String
     let muted: Bool
+    let roomId: String?
 }
 
 struct ParticipantCameraOffNotification: Codable {
     let userId: String
     let cameraOff: Bool
+    let roomId: String?
 }
 
 struct RoomLockChangedNotification: Codable {
@@ -279,22 +400,166 @@ struct PendingUserChangedNotification: Codable {
     let roomId: String?
 }
 
+struct RoomClosedNotification: Codable {
+    let roomId: String?
+    let reason: String?
+}
+
+struct KickedNotification: Codable {
+    let reason: String?
+    let roomId: String?
+}
+
+struct RoomEndedNotification: Codable {
+    let roomId: String?
+    let message: String?
+    let endedBy: String?
+}
+
+struct ServerRestartingNotification: Codable {
+    let roomId: String?
+    let message: String?
+    let reconnecting: Bool?
+}
+
+struct AdminNoticeNotification: Codable {
+    let roomId: String?
+    let message: String
+    let level: String?
+    let timestamp: Double?
+    let senderUserId: String?
+}
+
+struct AdminHandsClearedNotification: Codable {
+    let roomId: String?
+    let count: Int?
+}
+
+struct AdminRoomStateChangedNotification: Codable {
+    let roomId: String?
+    let snapshot: AdminRoomSnapshot
+}
+
+struct AdminRoomSnapshot: Codable {
+    let id: String?
+    let hostUserId: String?
+    let adminUserIds: [String]?
+    let quality: VideoQuality?
+    let policies: AdminRoomPolicySnapshot?
+    let appsState: AdminRoomAppsStateSnapshot?
+    let pendingUsers: [PendingUserSnapshot]?
+}
+
+struct AdminRoomPolicySnapshot: Codable {
+    let locked: Bool?
+    let chatLocked: Bool?
+    let noGuests: Bool?
+    let ttsDisabled: Bool?
+    let dmEnabled: Bool?
+    let requiresMeetingInviteCode: Bool?
+}
+
+struct AdminRoomAppsStateSnapshot: Codable {
+    let activeAppId: String?
+    let locked: Bool?
+}
+
+struct MeetingConfigSnapshot: Codable {
+    let roomId: String?
+    let requiresInviteCode: Bool?
+}
+
+struct MeetingConfigUpdateRequest: Encodable {
+    let inviteCode: String?
+
+    enum CodingKeys: String, CodingKey {
+        case inviteCode
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        if let inviteCode {
+            try container.encode(inviteCode, forKey: .inviteCode)
+        } else {
+            try container.encodeNil(forKey: .inviteCode)
+        }
+    }
+}
+
+struct MeetingConfigUpdateResponse: Codable {
+    let success: Bool?
+    let config: MeetingConfigSnapshot
+}
+
+struct WebinarConfigSnapshot: Codable {
+    let roomId: String?
+    let enabled: Bool?
+    let publicAccess: Bool?
+    let locked: Bool?
+    let maxAttendees: Int?
+    let attendeeCount: Int?
+    let requiresInviteCode: Bool?
+    let linkSlug: String?
+    let feedMode: String?
+}
+
+struct WebinarConfigUpdateResponse: Codable {
+    let success: Bool?
+    let config: WebinarConfigSnapshot
+}
+
+struct WebinarLinkResponse: Codable {
+    let slug: String
+    let link: String
+    let publicAccess: Bool
+    let linkVersion: Int
+}
+
+struct WebinarAttendeeCountChangedNotification: Codable {
+    let roomId: String?
+    let attendeeCount: Int?
+    let maxAttendees: Int?
+}
+
+struct WebinarFeedChangedNotification: Codable {
+    let roomId: String?
+    let speakerUserId: String?
+    let producers: [ProducerInfo]?
+}
+
 struct WaitingRoomStatusNotification: Codable {
     let message: String
     let roomId: String?
 }
 
+struct JoinDecisionNotification: Codable {
+    let roomId: String?
+}
+
 struct RedirectNotification: Codable {
+    let roomId: String?
     let userId: String?
     let newRoomId: String
 }
 
 struct HostAssignedNotification: Codable {
     let roomId: String?
+    let hostUserId: String?
+}
+
+struct HostChangedNotification: Codable {
+    let roomId: String?
+    let hostUserId: String?
+}
+
+struct AdminUsersChangedNotification: Codable {
+    let roomId: String?
+    let hostUserIds: [String]?
 }
 
 struct SetVideoQualityNotification: Codable {
     let quality: VideoQuality
+    let roomId: String?
 }
 
 struct BrowserStateNotification: Codable {
@@ -302,6 +567,35 @@ struct BrowserStateNotification: Codable {
     let url: String?
     let noVncUrl: String?
     let controllerUserId: String?
+    let roomId: String?
+}
+
+struct BrowserClosedNotification: Codable {
+    let closedBy: String?
+    let roomId: String?
+}
+
+struct AppsStateNotification: Codable {
+    let activeAppId: String?
+    let locked: Bool
+    let roomId: String?
+}
+
+struct AppsOpenResponse: Codable {
+    let success: Bool?
+    let activeAppId: String?
+    let error: String?
+}
+
+struct AppsCloseResponse: Codable {
+    let success: Bool?
+    let error: String?
+}
+
+struct AppsLockResponse: Codable {
+    let success: Bool?
+    let locked: Bool?
+    let error: String?
 }
 
 // MARK: - WebRTC Types (Simplified)

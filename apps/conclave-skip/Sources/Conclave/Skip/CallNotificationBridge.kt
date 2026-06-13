@@ -24,7 +24,7 @@ object CallNotificationBridge {
         try {
             ctx.startForegroundService(intent)
         } catch (t: Throwable) {
-            android.util.Log.e("ConclaveCall", "startForegroundService(call) failed", t)
+            debugLog("[Call] Failed to start foreground service: ${t}")
         }
     }
 

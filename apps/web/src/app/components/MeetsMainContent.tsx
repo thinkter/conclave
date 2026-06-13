@@ -12,7 +12,7 @@ import ConnectionBanner from "./ConnectionBanner";
 import JoinScreen from "./JoinScreen";
 import ParticipantsPanel from "./ParticipantsPanel";
 import MeetSettingsPanel from "./MeetSettingsPanel";
-import PresentationLayout from "./PresentationLayout";
+import MeetViewPanel from "./MeetViewPanel";
 import ReactionOverlay from "./ReactionOverlay";
 import BrowserLayout from "./BrowserLayout";
 import DevPlaygroundLayout from "./DevPlaygroundLayout";
@@ -25,6 +25,11 @@ import MeetingIdentity from "./MeetingIdentity";
 import ToastQueue from "./ToastQueue";
 import type { BrowserState } from "../hooks/useSharedBrowser";
 import type { ConnectionQuality } from "../hooks/useConnectionQuality";
+import VideoEffectsPanel from "./VideoEffectsPanel";
+import type {
+  VideoEffectsDebugStats,
+  VideoEffectsRuntimeStatus,
+} from "../hooks/useVideoEffects";
 
 import type {
   ChatMessage,
@@ -38,6 +43,7 @@ import type {
   WebinarConfigSnapshot,
   WebinarLinkResponse,
   WebinarUpdateRequest,
+  PrejoinMediaHandoff,
 } from "../lib/types";
 import {
   formatDisplayName,
@@ -45,7 +51,14 @@ import {
   isSystemUserId,
 } from "../lib/utils";
 import { useApps } from "@conclave/apps-sdk";
+import { useCameraPermissionState } from "../hooks/useCameraPermissionState";
 import { useStableSpeakerId } from "../hooks/useStableSpeakerId";
+import type { VideoEffectsState } from "../lib/video-effects";
+import {
+  DEFAULT_MEET_VIEW_SETTINGS,
+  normalizeMeetViewSettings,
+  type MeetViewSettings,
+} from "../lib/meet-view";
 
 interface MeetsMainContentProps {
   isJoined: boolean;
@@ -77,6 +90,15 @@ interface MeetsMainContentProps {
   presentationStream: MediaStream | null;
   presenterName: string;
   localStream: MediaStream | null;
+  videoEffects: VideoEffectsState;
+  onVideoEffectsChange: Dispatch<SetStateAction<VideoEffectsState>>;
+  onVideoEffectsRecenter?: () => void;
+  videoEffectsStatus: VideoEffectsRuntimeStatus;
+  videoEffectsError: string | null;
+  videoEffectsDebugStats?: VideoEffectsDebugStats | null;
+  activeVideoEffectsCount: number;
+  onDevCameraStreamChange?: (stream: MediaStream | null) => void;
+  onPrejoinMediaCommit?: (handoff: PrejoinMediaHandoff) => void;
   isCameraOff: boolean;
   isMuted: boolean;
   isHandRaised: boolean;
@@ -179,6 +201,29 @@ interface MeetsMainContentProps {
   selfConnectionQuality?: ConnectionQuality;
 }
 
+const MEET_VIEW_STORAGE_KEY = "conclave:meet-view";
+
+const readStoredMeetViewSettings = (): MeetViewSettings => {
+  if (typeof window === "undefined") return DEFAULT_MEET_VIEW_SETTINGS;
+  try {
+    const storedValue = window.localStorage.getItem(MEET_VIEW_STORAGE_KEY);
+    if (!storedValue) return DEFAULT_MEET_VIEW_SETTINGS;
+    return normalizeMeetViewSettings(JSON.parse(storedValue));
+  } catch {
+    return DEFAULT_MEET_VIEW_SETTINGS;
+  }
+};
+
+const writeStoredMeetViewSettings = (settings: MeetViewSettings) => {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      MEET_VIEW_STORAGE_KEY,
+      JSON.stringify(normalizeMeetViewSettings(settings)),
+    );
+  } catch {}
+};
+
 const getLiveVideoStream = (stream: MediaStream | null): MediaStream | null => {
   if (!stream) return null;
   const [track] = stream.getVideoTracks();
@@ -262,6 +307,15 @@ export default function MeetsMainContent({
   presentationStream,
   presenterName,
   localStream,
+  videoEffects,
+  onVideoEffectsChange,
+  onVideoEffectsRecenter,
+  videoEffectsStatus,
+  videoEffectsError,
+  videoEffectsDebugStats = null,
+  activeVideoEffectsCount,
+  onDevCameraStreamChange,
+  onPrejoinMediaCommit,
   isCameraOff,
   isMuted,
   isHandRaised,
@@ -394,9 +448,11 @@ export default function MeetsMainContent({
   const nonSystemParticipants = useMemo(
     () =>
       participantsArray.filter(
-        (participant) => !isSystemUserId(participant.userId),
+        (participant) =>
+          participant.userId !== currentUserId &&
+          !isSystemUserId(participant.userId),
       ),
-    [participantsArray],
+    [currentUserId, participantsArray],
   );
   const webinarParticipantIds = useMemo(
     () => nonSystemParticipants.map((participant) => participant.userId),
@@ -418,10 +474,53 @@ export default function MeetsMainContent({
   } | null>(null);
   const [webinarAudioBlocked, setWebinarAudioBlocked] = useState(false);
   const [webinarAudioPlaybackAttempt, setWebinarAudioPlaybackAttempt] = useState(0);
-  // Host controls render as a right-docked, content-shrinking side panel — the
-  // same one-at-a-time behavior as chat / participants. Owned here so the stage
-  // shrinks (paddingRight reserve) exactly like the other panels.
+  // Right-docked panels are owned here so the stage reserve stays in sync.
   const [isHostControlsOpen, setIsHostControlsOpen] = useState(false);
+  const [isVideoEffectsOpen, setIsVideoEffectsOpen] = useState(false);
+  const [isViewPanelOpen, setIsViewPanelOpen] = useState(false);
+  const [viewSettings, setViewSettings] = useState<MeetViewSettings>(
+    readStoredMeetViewSettings,
+  );
+  useEffect(() => {
+    writeStoredMeetViewSettings(viewSettings);
+  }, [viewSettings]);
+  const [devPresentationStream, setDevPresentationStream] =
+    useState<MediaStream | null>(null);
+  const [devCameraStream, setDevCameraStream] =
+    useState<MediaStream | null>(null);
+  const cameraPermissionState = useCameraPermissionState();
+  const hasLiveLocalCamera = Boolean(getLiveVideoStream(localStream));
+  const hasLiveDevCamera = Boolean(getLiveVideoStream(devCameraStream));
+  const isCameraPermissionBlocked =
+    meetError?.code === "PERMISSION_DENIED" ||
+    (!hasLiveLocalCamera &&
+      !hasLiveDevCamera &&
+      cameraPermissionState === "denied");
+  const effectivePresentationStream =
+    presentationStream ?? devPresentationStream;
+  const effectivePresenterName = presentationStream
+    ? presenterName
+    : devPresentationStream
+      ? "Dev presentation"
+      : presenterName;
+  const shouldUseDevCameraStream =
+    Boolean(devCameraStream) && !getLiveVideoStream(localStream);
+  const effectiveLocalStream = shouldUseDevCameraStream
+    ? devCameraStream
+    : localStream;
+  const hasRenderedLocalVideo = Boolean(getLiveVideoStream(effectiveLocalStream));
+  const effectiveIsCameraOff = hasRenderedLocalVideo ? false : isCameraOff;
+  const effectiveActiveSpeakerId =
+    isCameraOff && hasRenderedLocalVideo
+      ? currentUserId
+      : activeSpeakerId;
+  const handleDevCameraStreamChange = useCallback(
+    (stream: MediaStream | null) => {
+      setDevCameraStream(stream);
+      onDevCameraStreamChange?.(stream);
+    },
+    [onDevCameraStreamChange],
+  );
 
   const webinarStage = useMemo(() => {
     if (!nonSystemParticipants.length) {
@@ -674,14 +773,15 @@ export default function MeetsMainContent({
   );
   const handleToggleParticipants = useCallback(() => {
     const opening = !isParticipantsOpen;
-    // Mutually exclusive with chat AND host controls (one right-dock panel at a
-    // time). Fire the side effect OUTSIDE the setState updater so StrictMode's
-    // double-invoke doesn't toggle chat twice and leave both panels open.
+    // Fire the chat side effect outside the state updater so StrictMode's
+    // double-invoke doesn't toggle chat twice and leave panels open.
     if (opening && isChatOpen) {
       toggleChat();
     }
     if (opening) {
       setIsHostControlsOpen(false);
+      setIsVideoEffectsOpen(false);
+      setIsViewPanelOpen(false);
     }
     setIsParticipantsOpen(opening);
   }, [isParticipantsOpen, isChatOpen, setIsParticipantsOpen, toggleChat]);
@@ -696,6 +796,8 @@ export default function MeetsMainContent({
       toggleChat();
     }
     setIsHostControlsOpen(false);
+    setIsVideoEffectsOpen(false);
+    setIsViewPanelOpen(false);
     setIsParticipantsOpen(true);
   }, [toggleChat, setIsParticipantsOpen]);
 
@@ -714,6 +816,8 @@ export default function MeetsMainContent({
     }
     if (opening) {
       setIsParticipantsOpen(false);
+      setIsVideoEffectsOpen(false);
+      setIsViewPanelOpen(false);
     }
     setIsHostControlsOpen(opening);
   }, [isHostControlsOpen, toggleChat, setIsParticipantsOpen]);
@@ -722,6 +826,63 @@ export default function MeetsMainContent({
     () => setIsHostControlsOpen(false),
     [],
   );
+  const handleToggleVideoEffects = useCallback(() => {
+    if (isCameraPermissionBlocked) return;
+    const opening = !isVideoEffectsOpen;
+    if (opening && isChatOpenRef.current) {
+      toggleChat();
+    }
+    if (opening) {
+      setIsParticipantsOpen(false);
+      setIsHostControlsOpen(false);
+      setIsViewPanelOpen(false);
+    }
+    setIsVideoEffectsOpen(opening);
+  }, [
+    isCameraPermissionBlocked,
+    isVideoEffectsOpen,
+    setIsParticipantsOpen,
+    toggleChat,
+  ]);
+
+  const handleCloseVideoEffects = useCallback(
+    () => setIsVideoEffectsOpen(false),
+    [],
+  );
+  const handleOpenVideoEffects = useCallback(() => {
+    if (isCameraPermissionBlocked) return;
+    if (isChatOpenRef.current) {
+      toggleChat();
+    }
+    setIsParticipantsOpen(false);
+    setIsHostControlsOpen(false);
+    setIsViewPanelOpen(false);
+    setIsVideoEffectsOpen(true);
+  }, [isCameraPermissionBlocked, setIsParticipantsOpen, toggleChat]);
+
+  const handleToggleViewPanel = useCallback(() => {
+    const opening = !isViewPanelOpen;
+    if (opening && isChatOpenRef.current) {
+      toggleChat();
+    }
+    if (opening) {
+      setIsParticipantsOpen(false);
+      setIsHostControlsOpen(false);
+      setIsVideoEffectsOpen(false);
+    }
+    setIsViewPanelOpen(opening);
+  }, [isViewPanelOpen, setIsParticipantsOpen, toggleChat]);
+
+  const handleCloseViewPanel = useCallback(() => {
+    setIsViewPanelOpen(false);
+  }, []);
+
+  const handleToggleVideoFraming = useCallback(() => {
+    onVideoEffectsChange((current) => ({
+      ...current,
+      framing: !current.framing,
+    }));
+  }, [onVideoEffectsChange]);
   useEffect(() => {
     if (!isChatOpen || chatOverlayMessages.length === 0) return;
     setChatOverlayMessages([]);
@@ -766,6 +927,8 @@ export default function MeetsMainContent({
         setIsParticipantsOpen(false);
       }
       setIsHostControlsOpen(false);
+      setIsVideoEffectsOpen(false);
+      setIsViewPanelOpen(false);
     }
     toggleChat();
   }, [isChatOpen, isParticipantsOpen, setIsParticipantsOpen, toggleChat]);
@@ -801,7 +964,11 @@ export default function MeetsMainContent({
   const dockedPanelReserve =
     isJoined &&
     !isWebinarAttendee &&
-    (isChatOpen || isParticipantsOpen || isHostControlsOpen)
+    (isChatOpen ||
+      isParticipantsOpen ||
+      isHostControlsOpen ||
+      isVideoEffectsOpen ||
+      isViewPanelOpen)
       ? DOCKED_PANEL_WIDTH
       : 0;
   const mainContentStyle = isJoined
@@ -830,6 +997,7 @@ export default function MeetsMainContent({
       />
       <ScreenShareAudioPlayers
         participants={participants}
+        currentUserId={currentUserId}
         audioOutputDeviceId={audioOutputDeviceId}
         onAutoplayBlocked={
           isWebinarAttendee ? handleWebinarAudioAutoplayBlocked : undefined
@@ -857,7 +1025,11 @@ export default function MeetsMainContent({
         />
       )}
       {isDevToolsEnabled && isJoined && !isWebinarAttendee && (
-        <DevMeetToolsPanel roomId={roomId} />
+        <DevMeetToolsPanel
+          roomId={roomId}
+          onPresentationStreamChange={setDevPresentationStream}
+          onCameraStreamChange={handleDevCameraStreamChange}
+        />
       )}
       {!isJoined ? (
         hideJoinUI ? (
@@ -996,6 +1168,9 @@ export default function MeetsMainContent({
             onDismissMeetError={onDismissMeetError}
             onRetryMedia={onRetryMedia}
             onTestSpeaker={onTestSpeaker}
+            videoEffects={videoEffects}
+            onVideoEffectsChange={onVideoEffectsChange}
+            onPrejoinMediaCommit={onPrejoinMediaCommit}
           />
         )
       ) : isWebinarAttendee ? (
@@ -1130,56 +1305,29 @@ export default function MeetsMainContent({
           browserVideoStream={browserVideoStream}
         />
       ) : (
-        // Grid + presentation both stay mounted and crossfade via OPACITY. The
-        // grid (what everyone watches) never unmounts on a screen-share
-        // start/stop, so its participant <video> nodes keep identity and their
-        // streams never re-attach — no black flash. display:none is avoided
-        // because engines pause painting a zero-box <video> (flash on reveal).
-        <div className="relative flex min-h-0 flex-1 flex-col">
-          <div
-            className={`absolute inset-0 flex flex-col transition-opacity duration-[120ms] ease-out ${
-              presentationStream ? "pointer-events-none opacity-0" : "opacity-100"
-            }`}
-            aria-hidden={presentationStream ? true : undefined}
-          >
-            <GridLayout
-              localStream={localStream}
-              isCameraOff={isCameraOff}
-              isMuted={isMuted}
-              isHandRaised={isHandRaised}
-              isGhost={ghostEnabled}
-              participants={participants}
-              userEmail={userEmail}
-              isMirrorCamera={isMirrorCamera}
-              activeSpeakerId={activeSpeakerId}
-              currentUserId={currentUserId}
-              audioOutputDeviceId={audioOutputDeviceId}
-              onOpenParticipantsPanel={handleOpenParticipants}
-              getDisplayName={resolveDisplayName}
-              sidePanelReserve={dockedPanelReserve}
-            />
-          </div>
-          {presentationStream && (
-            <div className="absolute inset-0 flex flex-col">
-              <PresentationLayout
-                presentationStream={presentationStream}
-                presenterName={presenterName}
-                localStream={localStream}
-                isCameraOff={isCameraOff}
-                isMuted={isMuted}
-                isHandRaised={isHandRaised}
-                isGhost={ghostEnabled}
-                participants={participants}
-                userEmail={userEmail}
-                isMirrorCamera={isMirrorCamera}
-                activeSpeakerId={activeSpeakerId}
-                currentUserId={currentUserId}
-                audioOutputDeviceId={audioOutputDeviceId}
-                getDisplayName={resolveDisplayName}
-              />
-            </div>
-          )}
-        </div>
+        <GridLayout
+          localStream={effectiveLocalStream}
+          isCameraOff={effectiveIsCameraOff}
+          isMuted={isMuted}
+          isHandRaised={isHandRaised}
+          isGhost={ghostEnabled}
+          participants={participants}
+          userEmail={userEmail}
+          isMirrorCamera={isMirrorCamera}
+          activeSpeakerId={effectiveActiveSpeakerId}
+          currentUserId={currentUserId}
+          audioOutputDeviceId={audioOutputDeviceId}
+          onOpenParticipantsPanel={handleOpenParticipants}
+          activeVideoEffectsCount={activeVideoEffectsCount}
+          isVideoFramingEnabled={videoEffects.framing}
+          onToggleVideoFraming={handleToggleVideoFraming}
+          viewSettings={viewSettings}
+          onViewSettingsChange={setViewSettings}
+          presentationStream={effectivePresentationStream}
+          presenterName={effectivePresenterName}
+          getDisplayName={resolveDisplayName}
+          sidePanelReserve={dockedPanelReserve}
+        />
       )}
 
       {isJoined && (
@@ -1243,6 +1391,12 @@ export default function MeetsMainContent({
                 onVideoInputDeviceChange={onVideoInputDeviceChange}
                 isMirrorCamera={isMirrorCamera}
                 onToggleMirror={onToggleMirror}
+                isVideoEffectsOpen={isVideoEffectsOpen}
+                activeVideoEffectsCount={activeVideoEffectsCount}
+                isVideoEffectsPermissionBlocked={isCameraPermissionBlocked}
+                onToggleVideoEffects={handleToggleVideoEffects}
+                isViewPanelOpen={isViewPanelOpen}
+                onToggleViewPanel={handleToggleViewPanel}
                 isAdmin={isAdmin}
                 isGhostMode={ghostEnabled}
                 isParticipantsOpen={isParticipantsOpen}
@@ -1377,6 +1531,31 @@ export default function MeetsMainContent({
             onClose={handleCloseHostControls}
           />
         )}
+
+      {isJoined && !isWebinarAttendee && isVideoEffectsOpen && (
+        <VideoEffectsPanel
+          effects={videoEffects}
+          onEffectsChange={onVideoEffectsChange}
+          onRecenterFraming={onVideoEffectsRecenter}
+          localStream={effectiveLocalStream}
+          isCameraOff={effectiveIsCameraOff}
+          status={videoEffectsStatus}
+          error={videoEffectsError}
+          debugStats={videoEffectsDebugStats}
+          activeCount={activeVideoEffectsCount}
+          cameraPermissionBlocked={isCameraPermissionBlocked}
+          onClose={handleCloseVideoEffects}
+        />
+      )}
+
+      {isJoined && !isWebinarAttendee && isViewPanelOpen && (
+        <MeetViewPanel
+          settings={viewSettings}
+          onSettingsChange={setViewSettings}
+          participantCount={visibleParticipantCount + 1}
+          onClose={handleCloseViewPanel}
+        />
+      )}
 
       {isJoined &&
         !isWebinarAttendee &&

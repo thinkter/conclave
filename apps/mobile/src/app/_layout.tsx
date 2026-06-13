@@ -2,7 +2,7 @@ import React, { useEffect } from "react";
 import "../global.css";
 import "../lib/notifee-foreground";
 import { Stack } from "expo-router";
-import { LogBox } from 'react-native';
+import { LogBox } from "react-native";
 import { useFonts } from "expo-font";
 import * as SplashScreen from "expo-splash-screen";
 
@@ -11,7 +11,15 @@ LogBox.ignoreLogs([
   "SafeAreaView has been deprecated and will be removed in a future release. Please use 'react-native-safe-area-context' instead.",
 ]);
 
-SplashScreen.preventAutoHideAsync();
+const hideSplashScreen = () => {
+  void SplashScreen.hideAsync().catch((error) => {
+    console.warn("[SplashScreen] Failed to hide", error);
+  });
+};
+
+void SplashScreen.preventAutoHideAsync().catch((error) => {
+  console.warn("[SplashScreen] Failed to prevent auto-hide", error);
+});
 
 ErrorUtils.setGlobalHandler((error, isFatal) => {
   console.error("Caught global error:", error, isFatal);
@@ -35,10 +43,10 @@ export default function Layout() {
 
   useEffect(() => {
     if (fontsLoaded) {
-      SplashScreen.hideAsync();
+      hideSplashScreen();
     } else {
       const fallback = setTimeout(() => {
-        SplashScreen.hideAsync();
+        hideSplashScreen();
       }, 1500);
       return () => clearTimeout(fallback);
     }

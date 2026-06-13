@@ -217,10 +217,12 @@ function ChatPanel({
     const addedMessages = messages.length - previousCount;
     if (addedMessages > 0) {
       if (shouldAutoScrollRef.current) {
-        requestAnimationFrame(() => {
+        const frameId = window.requestAnimationFrame(() => {
           messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
         });
         setUnseenCount(0);
+        previousMessageCountRef.current = messages.length;
+        return () => window.cancelAnimationFrame(frameId);
       } else {
         setUnseenCount((prev) => prev + addedMessages);
       }
@@ -238,11 +240,12 @@ function ChatPanel({
   );
 
   useEffect(() => {
-    requestAnimationFrame(() => {
+    const frameId = window.requestAnimationFrame(() => {
       shouldAutoScrollRef.current = true;
       setUnseenCount(0);
       messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
     });
+    return () => window.cancelAnimationFrame(frameId);
   }, []);
 
   useEffect(() => {
@@ -395,7 +398,6 @@ function ChatPanel({
       className="fixed right-0 top-0 bottom-0 z-40 flex w-[360px] flex-col border-l border-white/10 bg-[#18181b] animate-[meet-panel-in_280ms_cubic-bezier(0.22,1,0.36,1)]"
       style={{ fontFamily: "'PolySans Trial', sans-serif" }}
     >
-      {/* Header */}
       <div className="flex shrink-0 items-center justify-between border-b border-white/10 px-4 py-3">
         <h2 className="text-[15px] font-semibold text-[#fafafa]">Chat</h2>
         <button
@@ -408,7 +410,6 @@ function ChatPanel({
         </button>
       </div>
 
-      {/* Messages */}
       <div className="relative min-h-0 flex-1">
         <div
           ref={scrollContainerRef}
@@ -499,7 +500,6 @@ function ChatPanel({
                       : ""
                   }`}
                 >
-                  {/* Avatar gutter (peer messages only, on group start) */}
                   <div className="w-7 shrink-0">
                     {!isOwn && !groupedWithPrevious ? (
                       <Avatar name={displayName} id={msg.userId} size={28} />
@@ -551,7 +551,6 @@ function ChatPanel({
         )}
       </div>
 
-      {/* Composer */}
       <form
         onSubmit={handleSubmit}
         className="shrink-0 border-t border-white/10 px-3 py-3"

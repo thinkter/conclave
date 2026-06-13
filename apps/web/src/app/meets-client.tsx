@@ -38,12 +38,26 @@ import { useMeetRooms } from "./hooks/useMeetRooms";
 import { useMeetSocket } from "./hooks/useMeetSocket";
 import { useMeetState } from "./hooks/useMeetState";
 import { useMeetTts } from "./hooks/useMeetTts";
+import {
+  prewarmVideoEffectsAssets,
+  useVideoEffects,
+} from "./hooks/useVideoEffects";
 import { useConnectionQuality } from "./hooks/useConnectionQuality";
 import { useIsMobile } from "./hooks/useIsMobile";
 import { usePrewarmSocket } from "./hooks/usePrewarmSocket";
 import { useSharedBrowser } from "./hooks/useSharedBrowser";
 import { useVoiceAgentParticipant } from "./hooks/useVoiceAgentParticipant";
-import type { JoinMode } from "./lib/types";
+import type { JoinMode, PrejoinMediaHandoff } from "./lib/types";
+import {
+  countActiveVideoEffects,
+  DEFAULT_VIDEO_EFFECTS,
+  hasActiveVideoEffects,
+  normalizeVideoEffectsState,
+  normalizeVideoEffectsStateForStorage,
+  type BackgroundEffectId,
+  type VideoEffectsState,
+} from "./lib/video-effects";
+import { getCustomVideoBackground } from "./lib/video-effects-custom-backgrounds";
 import {
   isSystemUserId,
   sanitizeInstitutionDisplayName,
@@ -56,7 +70,114 @@ type MeetUser = {
   name?: string | null;
 };
 
+type MeetVideoDebugWindow = Window & {
+  __conclaveGetMeetVideoDebug?: () => Record<string, unknown>;
+  __conclaveMeetVideoDebug?: Record<string, unknown>;
+};
+
 const GUEST_USER_STORAGE_KEY = "conclave:guest-user";
+const DEBUG_VIDEO_EFFECTS_STORAGE_KEY = "conclave:debug-video-effects";
+const VIDEO_EFFECTS_STORAGE_KEY = "conclave:video-effects";
+
+const isMeetVideoDebugEnabled = () => {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(DEBUG_VIDEO_EFFECTS_STORAGE_KEY) === "1";
+  } catch {
+    return false;
+  }
+};
+
+const readStoredVideoEffects = (): VideoEffectsState => {
+  if (typeof window === "undefined") return DEFAULT_VIDEO_EFFECTS;
+  try {
+    const storedValue = window.localStorage.getItem(VIDEO_EFFECTS_STORAGE_KEY);
+    if (!storedValue) return DEFAULT_VIDEO_EFFECTS;
+    return normalizeVideoEffectsState(JSON.parse(storedValue));
+  } catch {
+    return DEFAULT_VIDEO_EFFECTS;
+  }
+};
+
+const writeStoredVideoEffects = (effects: VideoEffectsState) => {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      VIDEO_EFFECTS_STORAGE_KEY,
+      JSON.stringify(normalizeVideoEffectsStateForStorage(effects)),
+    );
+  } catch {}
+};
+
+const getMeetVideoEffectsDebugSnapshot = (effects: VideoEffectsState) => {
+  const normalized = normalizeVideoEffectsState(effects);
+  const dataUrlBytes = normalized.customBackgroundDataUrl?.length ?? 0;
+
+  return {
+    ...normalized,
+    customBackgroundDataUrl: dataUrlBytes > 0 ? "[redacted]" : null,
+    customBackgroundDataUrlBytes: dataUrlBytes,
+  };
+};
+
+const hasLiveVideoTrack = (stream: MediaStream | null | undefined) =>
+  Boolean(stream?.getVideoTracks().some((track) => track.readyState === "live"));
+
+const getMeetTrackDebugSnapshot = (track: MediaStreamTrack | null) => {
+  if (!track) return null;
+  let settings: MediaTrackSettings = {};
+  try {
+    settings = track.getSettings();
+  } catch {
+    settings = {};
+  }
+  return {
+    id: track.id,
+    kind: track.kind,
+    label: track.label,
+    enabled: track.enabled,
+    muted: track.muted,
+    readyState: track.readyState,
+    settings,
+  };
+};
+
+const getMeetStreamDebugSnapshot = (stream: MediaStream | null) => {
+  if (!stream) return null;
+  return {
+    id: stream.id,
+    active: stream.active,
+    audioTracks: stream.getAudioTracks().map(getMeetTrackDebugSnapshot),
+    videoTracks: stream.getVideoTracks().map(getMeetTrackDebugSnapshot),
+  };
+};
+
+const serializeMeetVideoDebugPayload = (payload: unknown) => {
+  if (typeof payload === "string") return payload;
+  try {
+    return JSON.stringify(payload);
+  } catch {
+    return String(payload);
+  }
+};
+
+const logMeetVideo = (event: string, payload?: unknown) => {
+  if (!isMeetVideoDebugEnabled()) return;
+  if (payload === undefined) {
+    console.debug(`[Meets video] ${event}`);
+    return;
+  }
+  console.debug(`[Meets video] ${event}`, serializeMeetVideoDebugPayload(payload));
+};
+
+const warnMeetVideo = (event: string, payload?: unknown) => {
+  if (!isMeetVideoDebugEnabled()) return;
+  if (payload === undefined) {
+    console.warn(`[Meets video] ${event}`);
+    return;
+  }
+  console.warn(`[Meets video] ${event}`, serializeMeetVideoDebugPayload(payload));
+};
 
 const isGuestUser = (
   candidate?: MeetUser | null,
@@ -253,6 +374,134 @@ export default function MeetsClient({
     serverRestartNotice,
     setServerRestartNotice,
   } = useMeetState({ initialRoomId });
+  const [videoEffects, setVideoEffects] =
+    useState<VideoEffectsState>(readStoredVideoEffects);
+  const [framingRecenterToken, setFramingRecenterToken] = useState(0);
+  const [devCameraStream, setDevCameraStream] = useState<MediaStream | null>(
+    null,
+  );
+  const activeVideoEffectsCount = useMemo(
+    () => countActiveVideoEffects(videoEffects),
+    [videoEffects],
+  );
+  const getVideoPublishTrackRef = useRef<
+    ((stream?: MediaStream | null) => MediaStreamTrack | null) | null
+  >(null);
+  const restoredVideoEffectsPrewarmDoneRef = useRef(false);
+  const cameraLiveEffectsPrewarmDoneRef = useRef(false);
+
+  useEffect(() => {
+    writeStoredVideoEffects(videoEffects);
+  }, [videoEffects]);
+
+  useEffect(() => {
+    if (
+      videoEffects.background !== "custom" ||
+      !videoEffects.customBackgroundId ||
+      videoEffects.customBackgroundDataUrl
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+    const customBackgroundId = videoEffects.customBackgroundId;
+    void getCustomVideoBackground(customBackgroundId)
+      .then((background) => {
+        if (cancelled) return;
+        setVideoEffects((current) => {
+          if (
+            current.background !== "custom" ||
+            current.customBackgroundId !== customBackgroundId ||
+            current.customBackgroundDataUrl
+          ) {
+            return current;
+          }
+          if (!background) {
+            return {
+              ...current,
+              background: DEFAULT_VIDEO_EFFECTS.background,
+              customBackgroundId: DEFAULT_VIDEO_EFFECTS.customBackgroundId,
+              customBackgroundDataUrl:
+                DEFAULT_VIDEO_EFFECTS.customBackgroundDataUrl,
+              customBackgroundName: DEFAULT_VIDEO_EFFECTS.customBackgroundName,
+            };
+          }
+          return {
+            ...current,
+            customBackgroundDataUrl: background.dataUrl,
+            customBackgroundName: background.name,
+          };
+        });
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setVideoEffects((current) =>
+          current.background === "custom" &&
+          current.customBackgroundId === customBackgroundId &&
+          !current.customBackgroundDataUrl
+            ? {
+                ...current,
+                background: DEFAULT_VIDEO_EFFECTS.background,
+                customBackgroundId: DEFAULT_VIDEO_EFFECTS.customBackgroundId,
+                customBackgroundDataUrl:
+                  DEFAULT_VIDEO_EFFECTS.customBackgroundDataUrl,
+                customBackgroundName: DEFAULT_VIDEO_EFFECTS.customBackgroundName,
+              }
+            : current,
+        );
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    videoEffects.background,
+    videoEffects.customBackgroundDataUrl,
+    videoEffects.customBackgroundId,
+  ]);
+
+  useEffect(() => {
+    if (!hasActiveVideoEffects(videoEffects)) {
+      restoredVideoEffectsPrewarmDoneRef.current = false;
+      return;
+    }
+    if (restoredVideoEffectsPrewarmDoneRef.current) return;
+    restoredVideoEffectsPrewarmDoneRef.current = true;
+    const backgroundNeedsSegmentation =
+      videoEffects.background !== "none" &&
+      videoEffects.background !== "gradient" &&
+      (videoEffects.background !== "custom" ||
+        Boolean(videoEffects.customBackgroundDataUrl));
+    const backgrounds: BackgroundEffectId[] =
+      backgroundNeedsSegmentation &&
+      videoEffects.background !== "blur-light" &&
+      videoEffects.background !== "blur-strong" &&
+      videoEffects.background !== "custom"
+        ? [videoEffects.background]
+        : [];
+    void prewarmVideoEffectsAssets({
+      segmentation: backgroundNeedsSegmentation,
+      face: videoEffects.filter !== "none" || videoEffects.framing,
+      backgrounds,
+      reason: "restored-effects-state",
+    });
+  }, [videoEffects]);
+
+  useEffect(() => {
+    if (cameraLiveEffectsPrewarmDoneRef.current) return;
+    if (isCameraOff || !hasLiveVideoTrack(localStream)) return;
+
+    const timeoutId = window.setTimeout(() => {
+      cameraLiveEffectsPrewarmDoneRef.current = true;
+      void prewarmVideoEffectsAssets({
+        segmentation: true,
+        face: true,
+        reason: "camera-live",
+      });
+    }, 350);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [isCameraOff, localStream]);
 
   const [browserAudioNeedsGesture, setBrowserAudioNeedsGesture] =
     useState(false);
@@ -266,6 +515,9 @@ export default function MeetsClient({
   const voiceAgentApiKeyRef = useRef("");
   const toggleMuteCommandRef = useRef<(() => void) | null>(null);
   const toggleCameraCommandRef = useRef<(() => void) | null>(null);
+  const ensureProducerTransportRef = useRef<(() => Promise<boolean>) | null>(
+    null,
+  );
   const setHandRaisedCommandRef = useRef<((raised: boolean) => void) | null>(
     null,
   );
@@ -349,7 +601,10 @@ export default function MeetsClient({
     currentUser?.email ||
     currentUser?.id ||
     "guest";
-  const userKey = currentUser?.email || currentUser?.id || `guest-${sessionId}`;
+  const isGuestIdentity = !currentUser || isGuestUser(currentUser);
+  const userKey = isGuestIdentity
+    ? `guest-${sessionId}`
+    : currentUser.email || currentUser.id || `guest-${sessionId}`;
   const userId = `${userKey}#${sessionId}`;
 
   useEffect(() => {
@@ -494,9 +749,12 @@ export default function MeetsClient({
     setSelectedAudioOutputDeviceId,
     videoQuality,
     videoQualityRef: refs.videoQualityRef,
+    activeVideoEffectsCount,
+    getVideoPublishTrackRef,
     socketRef: refs.socketRef,
     deviceRef: refs.deviceRef,
     producerTransportRef: refs.producerTransportRef,
+    ensureProducerTransportRef,
     audioProducerRef: refs.audioProducerRef,
     videoProducerRef: refs.videoProducerRef,
     screenProducerRef: refs.screenProducerRef,
@@ -518,14 +776,17 @@ export default function MeetsClient({
   );
 
   const participantCount = useMemo(() => {
-    let count = 1; // include local user
+    let count = 1;
     participants.forEach((participant) => {
-      if (!isSystemUserId(participant.userId)) {
+      if (
+        participant.userId !== userId &&
+        !isSystemUserId(participant.userId)
+      ) {
         count += 1;
       }
     });
     return count;
-  }, [participants]);
+  }, [participants, userId]);
 
   const participantCountRef = useRef(participantCount);
   useEffect(() => {
@@ -573,10 +834,381 @@ export default function MeetsClient({
     stopLocalTrack,
   ]);
 
+  const handlePrejoinMediaCommit = useCallback(
+    (handoff: PrejoinMediaHandoff) => {
+      const liveTracks =
+        handoff.stream
+          ?.getTracks()
+          .filter((track) => track.readyState === "live") ?? [];
+      const liveTrackIds = new Set(liveTracks.map((track) => track.id));
+      const nextStream =
+        liveTracks.length > 0 ? new MediaStream(liveTracks) : null;
+      const hasLiveAudio = liveTracks.some((track) => track.kind === "audio");
+      const hasLiveVideo = liveTracks.some((track) => track.kind === "video");
+      const previousStream = refs.localStreamRef.current ?? localStream;
+
+      previousStream?.getTracks().forEach((track) => {
+        if (liveTrackIds.has(track.id)) return;
+        stopLocalTrack(track);
+      });
+
+      refs.localStreamRef.current = nextStream;
+      refs.prejoinMediaIntentRef.current = {
+        streamId: nextStream?.id ?? null,
+        trackIds: liveTrackIds,
+        isCameraOn: handoff.isCameraOn && hasLiveVideo,
+        isMicOn: handoff.isMicOn && hasLiveAudio,
+      };
+      setLocalStream(nextStream);
+      setIsCameraOff(!(handoff.isCameraOn && hasLiveVideo));
+      setIsMuted(!(handoff.isMicOn && hasLiveAudio));
+      setMeetError(null);
+      logMeetVideo("adopt_prejoin_media", {
+        handoff: {
+          stream: getMeetStreamDebugSnapshot(handoff.stream),
+          isCameraOn: handoff.isCameraOn,
+          isMicOn: handoff.isMicOn,
+        },
+        nextStream: getMeetStreamDebugSnapshot(nextStream),
+        previousStream: getMeetStreamDebugSnapshot(previousStream),
+      });
+    },
+    [
+      localStream,
+      refs.localStreamRef,
+      refs.prejoinMediaIntentRef,
+      setIsCameraOff,
+      setIsMuted,
+      setLocalStream,
+      setMeetError,
+      stopLocalTrack,
+    ],
+  );
+
   const handleTestSpeaker = useCallback(() => {
     primeAudioOutput();
     playNotificationSound("join");
   }, [playNotificationSound, primeAudioOutput]);
+
+  const {
+    effectiveStream: processedLocalStream,
+    processedTrackVersion,
+    processedTrackReady,
+    status: videoEffectsStatus,
+    error: videoEffectsError,
+    debugStats: videoEffectsDebugStats,
+  } = useVideoEffects({
+    sourceStream: hasLiveVideoTrack(localStream) ? localStream : devCameraStream,
+    effects: videoEffects,
+    processedVideoTrackRef: refs.processedVideoTrackRef,
+    framingRecenterToken,
+  });
+  const displayLocalStream = processedLocalStream ?? localStream;
+  const getVideoPublishTrack = useCallback(
+    (stream?: MediaStream | null) => {
+      const processedTrack = refs.processedVideoTrackRef.current;
+      if (
+        processedTrackReady &&
+        processedTrack &&
+        processedTrack.readyState === "live"
+      ) {
+        logMeetVideo("select_publish_track_processed", {
+          processedTrack: getMeetTrackDebugSnapshot(processedTrack),
+          rawStream: getMeetStreamDebugSnapshot(stream ?? null),
+        });
+        return processedTrack;
+      }
+      if (processedTrack && !processedTrackReady) {
+        logMeetVideo("skip_processed_track_not_ready", {
+          processedTrack: getMeetTrackDebugSnapshot(processedTrack),
+        });
+      }
+      if (processedTrack && processedTrack.readyState !== "live") {
+        warnMeetVideo("discard_stale_processed_track", {
+          processedTrack: getMeetTrackDebugSnapshot(processedTrack),
+        });
+        refs.processedVideoTrackRef.current = null;
+      }
+
+      const rawTrack =
+        stream?.getVideoTracks().find((track) => track.readyState === "live") ??
+        refs.localStreamRef.current
+          ?.getVideoTracks()
+          .find((track) => track.readyState === "live") ??
+        null;
+      logMeetVideo("select_publish_track_raw", {
+        processedTrack: getMeetTrackDebugSnapshot(processedTrack),
+        rawTrack: getMeetTrackDebugSnapshot(rawTrack),
+        rawStream: getMeetStreamDebugSnapshot(stream ?? null),
+        localStreamRef: getMeetStreamDebugSnapshot(refs.localStreamRef.current),
+      });
+      return rawTrack;
+    },
+    [processedTrackReady, refs.localStreamRef, refs.processedVideoTrackRef],
+  );
+
+  useEffect(() => {
+    getVideoPublishTrackRef.current = getVideoPublishTrack;
+    return () => {
+      if (getVideoPublishTrackRef.current === getVideoPublishTrack) {
+        getVideoPublishTrackRef.current = null;
+      }
+    };
+  }, [getVideoPublishTrack]);
+
+  const getRawVideoPublishTrack = useCallback(
+    (stream?: MediaStream | null) =>
+      stream?.getVideoTracks().find((track) => track.readyState === "live") ??
+      refs.localStreamRef.current
+        ?.getVideoTracks()
+        .find((track) => track.readyState === "live") ??
+      null,
+    [refs.localStreamRef],
+  );
+
+  const buildMeetVideoDebugSnapshot = useCallback(
+    (phase = "snapshot") => {
+      const producer = refs.videoProducerRef.current;
+      const producerTrack = producer?.track ?? null;
+      const processedTrack = refs.processedVideoTrackRef.current;
+      const rawTrack = getRawVideoPublishTrack(localStream);
+      const shouldPublishProcessed =
+        activeVideoEffectsCount > 0 &&
+        processedTrackReady &&
+        processedTrack?.readyState === "live";
+      const usingProcessedTrack = Boolean(
+        producerTrack &&
+          processedTrack &&
+          producerTrack.id === processedTrack.id,
+      );
+      const usingRawTrack = Boolean(
+        producerTrack && rawTrack && producerTrack.id === rawTrack.id,
+      );
+
+      return {
+        phase,
+        timestamp: Date.now(),
+        connectionState,
+        isCameraOff,
+        activeVideoEffectsCount,
+        videoEffects: getMeetVideoEffectsDebugSnapshot(videoEffects),
+        videoEffectsStatus,
+        videoEffectsError,
+        videoEffectsDebugStats,
+        processedTrackReady,
+        processedTrackVersion,
+        videoProducer: producer
+          ? {
+              id: producer.id,
+              closed: producer.closed,
+              paused: producer.paused,
+              kind: producer.kind,
+              track: getMeetTrackDebugSnapshot(producerTrack),
+            }
+          : null,
+        publish: {
+          shouldPublishProcessed,
+          usingProcessedTrack,
+          usingRawTrack,
+          producerTrackLive:
+            Boolean(producer) &&
+            !producer?.closed &&
+            producerTrack?.readyState === "live",
+          producerTrackEnabled: producerTrack?.enabled ?? null,
+        },
+        rawTrack: getMeetTrackDebugSnapshot(rawTrack),
+        processedTrack: getMeetTrackDebugSnapshot(processedTrack),
+        localStream: getMeetStreamDebugSnapshot(localStream),
+        localStreamRef: getMeetStreamDebugSnapshot(refs.localStreamRef.current),
+        processedLocalStream: getMeetStreamDebugSnapshot(processedLocalStream),
+        displayLocalStream: getMeetStreamDebugSnapshot(displayLocalStream),
+      };
+    },
+    [
+      activeVideoEffectsCount,
+      connectionState,
+      displayLocalStream,
+      getRawVideoPublishTrack,
+      isCameraOff,
+      localStream,
+      processedLocalStream,
+      processedTrackReady,
+      processedTrackVersion,
+      refs.localStreamRef,
+      refs.processedVideoTrackRef,
+      refs.videoProducerRef,
+      videoEffects,
+      videoEffectsError,
+      videoEffectsDebugStats,
+      videoEffectsStatus,
+    ],
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const debugWindow = window as MeetVideoDebugWindow;
+    if (!isMeetVideoDebugEnabled()) {
+      delete debugWindow.__conclaveGetMeetVideoDebug;
+      delete debugWindow.__conclaveMeetVideoDebug;
+      return;
+    }
+    debugWindow.__conclaveGetMeetVideoDebug = () =>
+      buildMeetVideoDebugSnapshot("getter");
+    debugWindow.__conclaveMeetVideoDebug =
+      buildMeetVideoDebugSnapshot("render");
+    return () => {
+      if (debugWindow.__conclaveGetMeetVideoDebug) {
+        debugWindow.__conclaveMeetVideoDebug =
+          buildMeetVideoDebugSnapshot("cleanup");
+        delete debugWindow.__conclaveGetMeetVideoDebug;
+      }
+    };
+  }, [buildMeetVideoDebugSnapshot]);
+
+  useEffect(() => {
+    if (connectionState !== "joined" || isCameraOff) {
+      logMeetVideo("skip_replace_track_not_joined_or_camera_off", {
+        connectionState,
+        isCameraOff,
+        processedTrackVersion,
+        processedTrackReady,
+      });
+      return;
+    }
+    const producer = refs.videoProducerRef.current;
+    if (!producer || producer.closed) {
+      warnMeetVideo("skip_replace_track_missing_or_closed_producer", {
+        hasProducer: Boolean(producer),
+        producerClosed: producer?.closed,
+        processedTrackVersion,
+        processedTrackReady,
+      });
+      return;
+    }
+
+    const nextTrack = getVideoPublishTrack(localStream);
+    if (!nextTrack) {
+      warnMeetVideo("skip_replace_track_no_next_track", {
+        producerTrack: getMeetTrackDebugSnapshot(producer.track ?? null),
+        localStream: getMeetStreamDebugSnapshot(localStream),
+        processedTrackVersion,
+        processedTrackReady,
+      });
+      return;
+    }
+    if (nextTrack.readyState !== "live") {
+      warnMeetVideo("skip_replace_track_candidate_not_live", {
+        nextTrack: getMeetTrackDebugSnapshot(nextTrack),
+        producerTrack: getMeetTrackDebugSnapshot(producer.track ?? null),
+        processedTrackVersion,
+        processedTrackReady,
+      });
+      if (refs.processedVideoTrackRef.current?.id === nextTrack.id) {
+        refs.processedVideoTrackRef.current = null;
+      }
+      return;
+    }
+    if (producer.track?.id === nextTrack.id) {
+      logMeetVideo("skip_replace_track_same_track", {
+        track: getMeetTrackDebugSnapshot(nextTrack),
+        processedTrackVersion,
+        processedTrackReady,
+      });
+      return;
+    }
+
+    logMeetVideo("replace_track_start", {
+      from: getMeetTrackDebugSnapshot(producer.track ?? null),
+      to: getMeetTrackDebugSnapshot(nextTrack),
+      processedTrackVersion,
+      processedTrackReady,
+    });
+    const isProcessedCandidate =
+      refs.processedVideoTrackRef.current?.id === nextTrack.id;
+    producer
+      .replaceTrack({ track: nextTrack })
+      .then(() => {
+        if (typeof window !== "undefined" && isMeetVideoDebugEnabled()) {
+          (window as MeetVideoDebugWindow).__conclaveMeetVideoDebug =
+            buildMeetVideoDebugSnapshot("replace_track_done");
+        }
+        logMeetVideo("replace_track_done", {
+          producerTrack: getMeetTrackDebugSnapshot(producer.track ?? null),
+        });
+      })
+      .catch((err) => {
+        if (typeof window !== "undefined" && isMeetVideoDebugEnabled()) {
+          (window as MeetVideoDebugWindow).__conclaveMeetVideoDebug =
+            buildMeetVideoDebugSnapshot("replace_track_failed");
+        }
+        warnMeetVideo("replace_track_failed", {
+          error:
+            err instanceof Error
+              ? { name: err.name, message: err.message, stack: err.stack }
+              : err,
+          from: getMeetTrackDebugSnapshot(producer.track ?? null),
+          to: getMeetTrackDebugSnapshot(nextTrack),
+        });
+        console.error("[Meets] Failed to publish processed camera track:", err);
+        if (!isProcessedCandidate || producer.closed) return;
+        if (refs.processedVideoTrackRef.current?.id === nextTrack.id) {
+          refs.processedVideoTrackRef.current = null;
+        }
+        const rawFallbackTrack = getRawVideoPublishTrack(localStream);
+        if (!rawFallbackTrack || rawFallbackTrack.readyState !== "live") {
+          warnMeetVideo("replace_track_raw_fallback_unavailable", {
+            rawFallbackTrack: getMeetTrackDebugSnapshot(rawFallbackTrack),
+            localStream: getMeetStreamDebugSnapshot(localStream),
+          });
+          return;
+        }
+        if (producer.track?.id === rawFallbackTrack.id) {
+          logMeetVideo("replace_track_raw_fallback_already_published", {
+            rawFallbackTrack: getMeetTrackDebugSnapshot(rawFallbackTrack),
+          });
+          return;
+        }
+        logMeetVideo("replace_track_raw_fallback_start", {
+          from: getMeetTrackDebugSnapshot(producer.track ?? null),
+          to: getMeetTrackDebugSnapshot(rawFallbackTrack),
+        });
+        producer
+          .replaceTrack({ track: rawFallbackTrack })
+          .then(() => {
+            if (typeof window !== "undefined" && isMeetVideoDebugEnabled()) {
+              (window as MeetVideoDebugWindow).__conclaveMeetVideoDebug =
+                buildMeetVideoDebugSnapshot("replace_track_raw_fallback_done");
+            }
+            logMeetVideo("replace_track_raw_fallback_done", {
+              producerTrack: getMeetTrackDebugSnapshot(producer.track ?? null),
+            });
+          })
+          .catch((fallbackErr) => {
+            warnMeetVideo("replace_track_raw_fallback_failed", {
+              error:
+                fallbackErr instanceof Error
+                  ? {
+                      name: fallbackErr.name,
+                      message: fallbackErr.message,
+                      stack: fallbackErr.stack,
+                    }
+                  : fallbackErr,
+              rawFallbackTrack: getMeetTrackDebugSnapshot(rawFallbackTrack),
+            });
+          });
+      });
+  }, [
+    buildMeetVideoDebugSnapshot,
+    connectionState,
+    getRawVideoPublishTrack,
+    getVideoPublishTrack,
+    isCameraOff,
+    localStream,
+    processedTrackVersion,
+    processedTrackReady,
+    refs.videoProducerRef,
+    refs.processedVideoTrackRef,
+  ]);
 
   const { toggleHandRaised, setHandRaisedState } = useMeetHandRaise({
     isHandRaised,
@@ -598,10 +1230,6 @@ export default function MeetsClient({
   useEffect(() => {
     setHandRaisedCommandRef.current = setHandRaisedState;
   }, [setHandRaisedState]);
-
-  // ============================================
-  // Keyboard Shortcuts
-  // ============================================
 
   useHotkey(
     HOTKEYS.toggleCamera.keys as RegisterableHotkey,
@@ -723,6 +1351,7 @@ export default function MeetsClient({
     displayNameInput,
     localStream,
     setLocalStream,
+    getVideoPublishTrack,
     dispatchParticipants,
     setDisplayNames,
     setPendingUsers,
@@ -769,6 +1398,15 @@ export default function MeetsClient({
     prewarm,
     onSocketReady: setAppsSocket,
   });
+
+  useEffect(() => {
+    ensureProducerTransportRef.current = socket.ensureProducerTransport;
+    return () => {
+      if (ensureProducerTransportRef.current === socket.ensureProducerTransport) {
+        ensureProducerTransportRef.current = null;
+      }
+    };
+  }, [socket.ensureProducerTransport]);
 
   useMeetAudioActivity({
     participants,
@@ -932,7 +1570,15 @@ export default function MeetsClient({
     handleStopVoiceAgent();
     playNotificationSoundForEvents("leave");
     socket.cleanup();
-  }, [handleStopVoiceAgent, playNotificationSoundForEvents, socket.cleanup]);
+    setIsCameraOff(true);
+    setIsMuted(true);
+  }, [
+    handleStopVoiceAgent,
+    playNotificationSoundForEvents,
+    setIsCameraOff,
+    setIsMuted,
+    socket.cleanup,
+  ]);
 
   useEffect(() => {
     leaveRoomCommandRef.current = leaveRoom;
@@ -1030,10 +1676,9 @@ export default function MeetsClient({
     resolveDisplayName,
   ]);
 
-  // Picture-in-Picture for when user tabs away
   useMeetPictureInPicture({
     isJoined: connectionState === "joined",
-    localStream,
+    localStream: displayLocalStream,
     participants,
     activeSpeakerId: effectiveActiveSpeakerId,
     presentationStream,
@@ -1044,11 +1689,10 @@ export default function MeetsClient({
     getDisplayName: resolveDisplayName,
   });
 
-  // Document PiP popout for mini meeting view
   const { isPopoutActive, isPopoutSupported, openPopout, closePopout } =
     useMeetPopout({
       isJoined: connectionState === "joined",
-      localStream,
+      localStream: displayLocalStream,
       participants,
       activeSpeakerId: effectiveActiveSpeakerId,
       currentUserId: userId,
@@ -1083,10 +1727,6 @@ export default function MeetsClient({
     ignoreInputs: true,
   });
 
-  // ============================================
-  // Render Helpers
-  // ============================================
-
   // Network-quality polling reuses the media hook's existing transport refs;
   // it does not create or own any peer connection. This hook MUST run above the
   // `if (!mounted) return null` early-return below — every hook has to be called
@@ -1105,7 +1745,7 @@ export default function MeetsClient({
     connectionState === "connecting" ||
     connectionState === "joining" ||
     connectionState === "reconnecting" ||
-    connectionState === "waiting"; // Waiting is a kind of loading state visually, or handled separately
+    connectionState === "waiting";
 
   const renderWithApps = (content: React.ReactNode) => (
     <AppsProvider
@@ -1305,7 +1945,8 @@ export default function MeetsClient({
           setIsGhostMode={setIsGhostMode}
           presentationStream={presentationStream}
           presenterName={presenterName || ""}
-          localStream={localStream}
+          localStream={displayLocalStream}
+          onPrejoinMediaCommit={handlePrejoinMediaCommit}
           isCameraOff={isCameraOff}
           isMuted={isMuted}
           isHandRaised={isHandRaised}
@@ -1397,7 +2038,6 @@ export default function MeetsClient({
     );
   }
 
-  // Desktop layout
   return renderWithApps(
     <div
       className={`flex flex-col h-full w-full bg-[#18181b] text-white ${fontClassName ?? ""}`}
@@ -1473,7 +2113,18 @@ export default function MeetsClient({
         setIsGhostMode={setIsGhostMode}
         presentationStream={presentationStream}
         presenterName={presenterName || ""}
-        localStream={localStream}
+        localStream={displayLocalStream}
+          videoEffects={videoEffects}
+          onVideoEffectsChange={setVideoEffects}
+          onVideoEffectsRecenter={() =>
+            setFramingRecenterToken((token) => token + 1)
+          }
+          videoEffectsStatus={videoEffectsStatus}
+          videoEffectsError={videoEffectsError}
+        videoEffectsDebugStats={videoEffectsDebugStats}
+        activeVideoEffectsCount={activeVideoEffectsCount}
+        onDevCameraStreamChange={setDevCameraStream}
+        onPrejoinMediaCommit={handlePrejoinMediaCommit}
         isCameraOff={isCameraOff}
         isMuted={isMuted}
         isHandRaised={isHandRaised}

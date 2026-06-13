@@ -69,10 +69,8 @@ export default function MeetsWaitingScreen({
             </div>
           </div>
 
-          {/* Divider line */}
           <div className="w-16 h-px bg-[#fafafa]/15 mb-8" />
 
-          {/* Status */}
           <div 
             className="flex items-center gap-2 mb-3"
             style={{ fontFamily: "'PolySans Trial', sans-serif" }}

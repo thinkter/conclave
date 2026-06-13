@@ -42,12 +42,14 @@ export interface ReactionNotification {
   value?: string;
   label?: string;
   timestamp: number;
+  roomId?: string;
 }
 
 export interface HandRaisedNotification {
   userId: string;
   raised: boolean;
   timestamp: number;
+  roomId?: string;
 }
 
 export interface HandRaisedSnapshot {
@@ -111,6 +113,7 @@ export interface ProducerInfo {
   kind: "audio" | "video";
   type: ProducerType;
   paused?: boolean;
+  roomId?: string;
 }
 
 export type VideoQuality = "low" | "standard";

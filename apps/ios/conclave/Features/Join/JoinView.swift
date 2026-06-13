@@ -629,13 +629,9 @@ struct JoinView: View {
     // MARK: - Actions
     
     private func handleGoogleSignIn() {
-        isSigningIn = true
-        // In production, implement proper OAuth flow
-        // For now, simulate sign-in
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-            isSigningIn = false
-            // TODO: Implement actual Google Sign-In
-        }
+        isSigningIn = false
+        viewModel.connectionState = .error
+        viewModel.errorMessage = "Google Sign-In is not configured for this build."
     }
     
     private func handleGuest() {

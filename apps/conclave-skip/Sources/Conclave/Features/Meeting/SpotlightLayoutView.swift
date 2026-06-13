@@ -14,81 +14,128 @@ struct SpotlightLayoutView: View {
     private let controlsOverlap: CGFloat = 8
 
     private var pinnedId: String {
-        viewModel.state.pinnedUserId ?? viewModel.state.userId
+        viewModel.state.spotlightUserId ?? viewModel.state.userId
     }
 
-    // Everyone except the pinned tile, local first.
     private var othersIds: [String] {
         var ids: [String] = []
-        if viewModel.state.userId != pinnedId {
+        if viewModel.state.userId != pinnedId && viewModel.state.shouldShowSelfTile {
             ids.append(viewModel.state.userId)
         }
-        for participant in viewModel.state.sortedParticipants where participant.id != pinnedId {
+        for participant in viewModel.state.visibleTileParticipants where participant.id != pinnedId {
             ids.append(participant.id)
         }
-        return ids
+        return Array(ids.prefix(max(0, stageRailTileLimit - 1)))
+    }
+
+    private var usesSidebarRail: Bool {
+        viewModel.state.usesSidebarLayout && !isCompact
+    }
+
+    private var stageRailTileLimit: Int {
+        if viewModel.state.usesSidebarLayout {
+            return MeetingViewConstants.clampStageRailTiles(viewModel.state.viewMaxTiles)
+        }
+        return MeetingViewConstants.clampTiles(viewModel.state.viewMaxTiles)
     }
 
     var body: some View {
         GeometryReader { geo in
-            VStack(spacing: 8) {
-                // Stage — the pinned participant, with an unpin affordance. The
-                // unpin pill is an .overlay (not a topTrailing ZStack) so Skip
-                // does not ghost its ComposeView icon at the stage corner.
-                tileFor(userId: pinnedId)
-                    .clipShape(RoundedRectangle(cornerRadius: ACMRadius.lg))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: ACMRadius.lg)
-                            .strokeBorder(lineWidth: 1)
-                            .foregroundStyle(ACMColors.border)
-                    }
-                    .overlay(alignment: .topTrailing) {
-                        Button {
-                            viewModel.clearPin()
-                        } label: {
-                            HStack(spacing: 5) {
-                                ACMSystemIcon.icon("pin.slash.fill", android: "pin.off", size: 12, tint: "white")
-                                Text("Unpin")
-                                    .font(ACMFont.trial(12, weight: .medium))
-                            }
-                            .foregroundStyle(Color.white)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 7)
-                            .acmColorBackground(ACMColors.scrim)
-                            .clipShape(Capsule())
-                        }
-                        .buttonStyle(.plain)
-                        .padding(10)
-                    }
-                    .frame(maxWidth: .infinity)
-
-                // Filmstrip — tap a thumbnail to spotlight that participant.
-                ScrollView(.horizontal, showsIndicators: false) {
+            Group {
+                if usesSidebarRail {
                     HStack(spacing: 8) {
-                        ForEach(othersIds, id: \.self) { id in
-                            Button {
-                                viewModel.togglePin(id)
-                            } label: {
-                                // A subtle dark card bezel behind each thumbnail so
-                                // it reads as a distinct tappable target against the
-                                // video (the tile keeps its own 1px/2px border, so
-                                // the active-speaker orange still shows through).
-                                tileFor(userId: id)
-                                    .frame(width: 124, height: 76)
-                                    .padding(2)
-                                    .acmColorBackground(ACMColors.surface)
-                                    .clipShape(RoundedRectangle(cornerRadius: ACMRadius.lg))
-                            }
-                            .buttonStyle(.plain)
-                        }
+                        stageView
+                        verticalRail
                     }
-                    .padding(.horizontal, 8)
+                } else {
+                    VStack(spacing: 8) {
+                        stageView
+                        horizontalRail
+                    }
                 }
-                .frame(height: 84)
             }
             .frame(width: geo.size.width, height: geo.size.height - controlsOverlap, alignment: .top)
             .padding(8)
+            .overlay {
+                if viewModel.state.shouldShowDetachedSelfView && pinnedId != viewModel.state.userId {
+                    DetachedSelfViewOverlay(viewModel: viewModel)
+                        .padding(.trailing, usesSidebarRail ? 164.0 : 16.0)
+                        .padding(.leading, 16.0)
+                        .padding(.top, 16.0)
+                        .padding(.bottom, 16.0)
+                }
+            }
         }
+    }
+
+    private var stageView: some View {
+        tileFor(userId: pinnedId)
+            .clipShape(RoundedRectangle(cornerRadius: ACMRadius.lg))
+            .overlay {
+                RoundedRectangle(cornerRadius: ACMRadius.lg)
+                    .strokeBorder(lineWidth: 1)
+                    .foregroundStyle(ACMColors.border)
+            }
+            .overlay(alignment: .topTrailing) {
+                if viewModel.state.pinnedUserId != nil {
+                    Button {
+                        viewModel.clearPin()
+                    } label: {
+                        HStack(spacing: 5) {
+                            ACMSystemIcon.icon("pin.slash.fill", android: "pin.off", size: 12, tint: "white")
+                            Text("Unpin")
+                                .font(ACMFont.trial(12, weight: .medium))
+                        }
+                        .foregroundStyle(Color.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .acmColorBackground(ACMColors.scrim)
+                        .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .padding(10)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var horizontalRail: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(othersIds, id: \.self) { id in
+                    railButton(userId: id)
+                }
+            }
+            .padding(.horizontal, 8)
+        }
+        .frame(height: 84)
+    }
+
+    private var verticalRail: some View {
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(spacing: 8) {
+                ForEach(othersIds, id: \.self) { id in
+                    railButton(userId: id)
+                }
+            }
+            .padding(8)
+        }
+        .frame(width: 148)
+        .acmColorBackground(ACMColors.bgAlt)
+        .clipShape(RoundedRectangle(cornerRadius: ACMRadius.lg))
+    }
+
+    private func railButton(userId: String) -> some View {
+        Button {
+            viewModel.togglePin(userId)
+        } label: {
+            tileFor(userId: userId)
+                .frame(width: 124, height: 76)
+                .padding(2)
+                .acmColorBackground(ACMColors.surface)
+                .clipShape(RoundedRectangle(cornerRadius: ACMRadius.lg))
+        }
+        .buttonStyle(.plain)
     }
 
     @ViewBuilder
@@ -100,7 +147,7 @@ struct SpotlightLayoutView: View {
                 isCameraOff: viewModel.state.isCameraOff,
                 isHandRaised: viewModel.state.isHandRaised,
                 isGhost: viewModel.state.isGhostMode,
-                isSpeaking: viewModel.state.activeSpeakerId == viewModel.state.userId,
+                isSpeaking: viewModel.state.effectiveActiveSpeakerId == viewModel.state.userId,
                 isLocal: true,
                 captureSession: viewModel.webRTCClient.getCaptureSession(),
                 localVideoTrack: viewModel.webRTCClient.getLocalVideoTrack()
@@ -112,7 +159,7 @@ struct SpotlightLayoutView: View {
                 isCameraOff: participant.isCameraOff,
                 isHandRaised: participant.isHandRaised,
                 isGhost: participant.isGhost,
-                isSpeaking: viewModel.state.activeSpeakerId == participant.id,
+                isSpeaking: viewModel.state.effectiveActiveSpeakerId == participant.id,
                 isLocal: false,
                 trackWrapper: viewModel.webRTCClient.remoteVideoTracks[participant.id]
             )
@@ -121,4 +168,3 @@ struct SpotlightLayoutView: View {
         }
     }
 }
-

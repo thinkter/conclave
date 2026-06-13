@@ -44,7 +44,7 @@ class CallForegroundService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> {
-                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopForegroundCompat()
                 stopSelf()
                 return START_NOT_STICKY
             }
@@ -89,7 +89,7 @@ class CallForegroundService : Service() {
                         startForeground(NOTIFICATION_ID, buildNotification())
                     }
                 } catch (t: Throwable) {
-                    android.util.Log.e("ConclaveCall", "startForeground(call) FAILED", t)
+                    debugLog("[Call] Failed to foreground call service: ${t}")
                     stopSelf()
                     return START_NOT_STICKY
                 }
@@ -104,6 +104,9 @@ class CallForegroundService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            return
+        }
         val channel = NotificationChannel(
             CHANNEL_ID,
             "Ongoing call",
@@ -117,9 +120,21 @@ class CallForegroundService : Service() {
         manager.createNotificationChannel(channel)
     }
 
+    private fun stopForegroundCompat() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } else {
+            @Suppress("DEPRECATION")
+            stopForeground(true)
+        }
+    }
+
     private fun buildNotification(): Notification {
         // Tap the body to return to the meeting.
-        val launchIntent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
+        val launchIntent = (
+            packageManager.getLaunchIntentForPackage(packageName)
+                ?: Intent().setClassName(packageName, "conclave.module.MainActivity")
+        ).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_NEW_TASK
         }
         val contentPending = PendingIntent.getActivity(

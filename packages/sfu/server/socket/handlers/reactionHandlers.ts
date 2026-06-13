@@ -46,6 +46,7 @@ export const registerReactionHandlers = (
             value: data.value,
             label: data.label,
             timestamp: Date.now(),
+            roomId: context.currentRoom.id,
           };
 
           socket.to(context.currentRoom.channelId).emit("reaction", reaction);
@@ -69,6 +70,7 @@ export const registerReactionHandlers = (
           value: emoji,
           label: data.label,
           timestamp: Date.now(),
+          roomId: context.currentRoom.id,
         };
 
         socket.to(context.currentRoom.channelId).emit("reaction", reaction);

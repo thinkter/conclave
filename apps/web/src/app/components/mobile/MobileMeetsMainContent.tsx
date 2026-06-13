@@ -11,6 +11,7 @@ import type {
   MeetingConfigSnapshot,
   MeetingUpdateRequest,
   Participant,
+  PrejoinMediaHandoff,
   ReactionEvent,
   ReactionOption,
   WebinarConfigSnapshot,
@@ -66,6 +67,7 @@ interface MobileMeetsMainContentProps {
   presentationStream: MediaStream | null;
   presenterName: string;
   localStream: MediaStream | null;
+  onPrejoinMediaCommit?: (handoff: PrejoinMediaHandoff) => void;
   isCameraOff: boolean;
   isMuted: boolean;
   isHandRaised: boolean;
@@ -242,6 +244,7 @@ function MobileMeetsMainContent({
   presentationStream,
   presenterName,
   localStream,
+  onPrejoinMediaCommit,
   isCameraOff,
   isMuted,
   isHandRaised,
@@ -748,6 +751,7 @@ function MobileMeetsMainContent({
         onDismissMeetError={onDismissMeetError}
         onRetryMedia={onRetryMedia}
         onTestSpeaker={onTestSpeaker}
+        onPrejoinMediaCommit={onPrejoinMediaCommit}
       />
     );
   }
@@ -770,12 +774,11 @@ function MobileMeetsMainContent({
       />
       <ScreenShareAudioPlayers
         participants={participants}
+        currentUserId={currentUserId}
         audioOutputDeviceId={audioOutputDeviceId}
       />
-      {/* Status bar area */}
       <div className="safe-area-pt bg-[#0a0a0b]" />
 
-      {/* Header with room info */}
       <div className="flex items-center justify-between px-4 py-3">
         <div className="flex items-center gap-2">
           <div className="mobile-glass mobile-pill px-3 py-2 flex items-center gap-2">
@@ -834,7 +837,6 @@ function MobileMeetsMainContent({
         />
       )}
 
-      {/* Reactions overlay */}
       {!isWebinarAttendee && reactions.length > 0 && (
         <ReactionOverlay
           reactions={reactions}
@@ -845,7 +847,6 @@ function MobileMeetsMainContent({
         <DevMeetToolsPanel roomId={roomId} />
       )}
 
-      {/* Main content area - with padding for controls */}
       <div className="flex-1 min-h-0 pb-24">
         {isWebinarAttendee ? (
           <div className="flex h-full items-center justify-center px-4">
@@ -976,7 +977,6 @@ function MobileMeetsMainContent({
         )}
       </div>
 
-      {/* Chat overlay messages */}
       {!isWebinarAttendee && !isChatOpen && chatOverlayMessages.length > 0 && (
         <div className="absolute top-16 left-4 right-4 z-30 pointer-events-none">
           <ChatOverlay
@@ -1025,7 +1025,6 @@ function MobileMeetsMainContent({
         </div>
       )}
 
-      {/* Controls bar */}
       {!isWebinarAttendee && browserAudioNeedsGesture && (
         <div className="px-4 mt-2 text-[11px] text-[#F95F4A]/70 text-center uppercase tracking-[0.4em]">
           Tap "Shared browser audio" to unlock the system sound.

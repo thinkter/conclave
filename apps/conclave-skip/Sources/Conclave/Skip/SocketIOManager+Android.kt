@@ -13,69 +13,111 @@ import skip.lib.ErrorException
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.withTimeout
+
+private const val ACK_TIMEOUT_MS = 30_000L
+private const val CONNECT_TIMEOUT_MS = 15_000L
 
 internal object SocketEvent {
-    const val joinRoom = "joinRoom"
-    const val createProducerTransport = "createProducerTransport"
-    const val createConsumerTransport = "createConsumerTransport"
-    const val connectProducerTransport = "connectProducerTransport"
-    const val connectConsumerTransport = "connectConsumerTransport"
-    const val produce = "produce"
-    const val consume = "consume"
-    const val resumeConsumer = "resumeConsumer"
-    const val getProducers = "getProducers"
-    const val toggleMute = "toggleMute"
-    const val toggleCamera = "toggleCamera"
-    const val closeProducer = "closeProducer"
-    const val sendChat = "sendChat"
-    const val sendReaction = "sendReaction"
-    const val setHandRaised = "setHandRaised"
-    const val updateDisplayName = "updateDisplayName"
-    const val lockRoom = "lockRoom"
-    const val lockChat = "lockChat"
-    const val setNoGuests = "setNoGuests"
-    const val setDmEnabled = "setDmEnabled"
-    const val setTtsDisabled = "setTtsDisabled"
-    const val admitUser = "admitUser"
-    const val rejectUser = "rejectUser"
-    const val admitAllPending = "admin:admitAllPending"
-    const val rejectAllPending = "admin:rejectAllPending"
-    const val kickUser = "kickUser"
-    const val muteAll = "muteAll"
-    const val promoteHost = "promoteHost"
-    const val adminMuteUser = "admin:muteUser"
+    val joinRoom = SfuClientEvent.joinRoom.rawValue
+    val createProducerTransport = SfuClientEvent.createProducerTransport.rawValue
+    val createConsumerTransport = SfuClientEvent.createConsumerTransport.rawValue
+    val connectProducerTransport = SfuClientEvent.connectProducerTransport.rawValue
+    val connectConsumerTransport = SfuClientEvent.connectConsumerTransport.rawValue
+    val produce = SfuClientEvent.produce.rawValue
+    val consume = SfuClientEvent.consume.rawValue
+    val resumeConsumer = SfuClientEvent.resumeConsumer.rawValue
+    val getProducers = SfuClientEvent.getProducers.rawValue
+    val toggleMute = SfuClientEvent.toggleMute.rawValue
+    val toggleCamera = SfuClientEvent.toggleCamera.rawValue
+    val closeProducer = SfuClientEvent.closeProducer.rawValue
+    val sendChat = SfuClientEvent.sendChat.rawValue
+    val sendReaction = SfuClientEvent.sendReaction.rawValue
+    val setHandRaised = SfuClientEvent.setHandRaised.rawValue
+    val updateDisplayName = SfuClientEvent.updateDisplayName.rawValue
+    val lockRoom = SfuClientEvent.lockRoom.rawValue
+    val lockChat = SfuClientEvent.lockChat.rawValue
+    val setNoGuests = SfuClientEvent.setNoGuests.rawValue
+    val setDmEnabled = SfuClientEvent.setDmEnabled.rawValue
+    val setTtsDisabled = SfuClientEvent.setTtsDisabled.rawValue
+    val admitUser = SfuClientEvent.admitUser.rawValue
+    val rejectUser = SfuClientEvent.rejectUser.rawValue
+    val admitAllPending = SfuClientEvent.adminAdmitAllPending.rawValue
+    val rejectAllPending = SfuClientEvent.adminRejectAllPending.rawValue
+    val kickUser = SfuClientEvent.kickUser.rawValue
+    val muteAll = SfuClientEvent.muteAll.rawValue
+    val closeAllVideo = SfuClientEvent.closeAllVideo.rawValue
+    val promoteHost = SfuClientEvent.promoteHost.rawValue
+    val adminMuteUser = SfuClientEvent.adminMuteUser.rawValue
+    val adminCloseUserVideo = SfuClientEvent.adminCloseUserVideo.rawValue
+    val adminStopUserScreenShare = SfuClientEvent.adminStopUserScreenShare.rawValue
+    val adminStopAllScreenShare = SfuClientEvent.adminStopAllScreenShare.rawValue
+    val adminClearRaisedHands = SfuClientEvent.adminClearRaisedHands.rawValue
+    val meetingGetConfig = SfuClientEvent.meetingGetConfig.rawValue
+    val meetingUpdateConfig = SfuClientEvent.meetingUpdateConfig.rawValue
+    val webinarGetConfig = SfuClientEvent.webinarGetConfig.rawValue
+    val webinarUpdateConfig = SfuClientEvent.webinarUpdateConfig.rawValue
+    val webinarGenerateLink = SfuClientEvent.webinarGenerateLink.rawValue
+    val webinarRotateLink = SfuClientEvent.webinarRotateLink.rawValue
+    val browserLaunch = SfuClientEvent.browserLaunch.rawValue
+    val browserNavigate = SfuClientEvent.browserNavigate.rawValue
+    val browserClose = SfuClientEvent.browserClose.rawValue
+    val browserGetState = SfuClientEvent.browserGetState.rawValue
+    val browserActivity = SfuClientEvent.browserActivity.rawValue
+    val appsOpen = SfuClientEvent.appsOpen.rawValue
+    val appsClose = SfuClientEvent.appsClose.rawValue
+    val appsLock = SfuClientEvent.appsLock.rawValue
+    val appsGetState = SfuClientEvent.appsGetState.rawValue
 
-    const val userJoined = "userJoined"
-    const val userLeft = "userLeft"
-    const val displayNameSnapshot = "displayNameSnapshot"
-    const val displayNameUpdated = "displayNameUpdated"
-    const val newProducer = "newProducer"
-    const val producerClosed = "producerClosed"
-    const val chatMessage = "chatMessage"
-    const val chatHistorySnapshot = "chatHistorySnapshot"
-    const val reaction = "reaction"
-    const val handRaised = "handRaised"
-    const val handRaisedSnapshot = "handRaisedSnapshot"
-    const val roomLockChanged = "roomLockChanged"
-    const val chatLockChanged = "chatLockChanged"
-    const val noGuestsChanged = "noGuestsChanged"
-    const val dmStateChanged = "dmStateChanged"
-    const val ttsDisabledChanged = "ttsDisabledChanged"
-    const val userRequestedJoin = "userRequestedJoin"
-    const val pendingUsersSnapshot = "pendingUsersSnapshot"
-    const val userAdmitted = "userAdmitted"
-    const val userRejected = "userRejected"
-    const val pendingUserLeft = "pendingUserLeft"
-    const val joinApproved = "joinApproved"
-    const val joinRejected = "joinRejected"
-    const val waitingRoomStatus = "waitingRoomStatus"
-    const val hostAssigned = "hostAssigned"
-    const val participantMuted = "participantMuted"
-    const val participantCameraOff = "participantCameraOff"
-    const val setVideoQuality = "setVideoQuality"
-    const val redirect = "redirect"
-    const val kicked = "kicked"
-    const val roomEnded = "roomEnded"
+    val userJoined = SfuServerEvent.userJoined.rawValue
+    val userLeft = SfuServerEvent.userLeft.rawValue
+    val displayNameSnapshot = SfuServerEvent.displayNameSnapshot.rawValue
+    val displayNameUpdated = SfuServerEvent.displayNameUpdated.rawValue
+    val newProducer = SfuServerEvent.newProducer.rawValue
+    val producerClosed = SfuServerEvent.producerClosed.rawValue
+    val chatMessage = SfuServerEvent.chatMessage.rawValue
+    val chatHistorySnapshot = SfuServerEvent.chatHistorySnapshot.rawValue
+    val reaction = SfuServerEvent.reaction.rawValue
+    val handRaised = SfuServerEvent.handRaised.rawValue
+    val handRaisedSnapshot = SfuServerEvent.handRaisedSnapshot.rawValue
+    val roomLockChanged = SfuServerEvent.roomLockChanged.rawValue
+    val chatLockChanged = SfuServerEvent.chatLockChanged.rawValue
+    val noGuestsChanged = SfuServerEvent.noGuestsChanged.rawValue
+    val dmStateChanged = SfuServerEvent.dmStateChanged.rawValue
+    val ttsDisabledChanged = SfuServerEvent.ttsDisabledChanged.rawValue
+    val userRequestedJoin = SfuServerEvent.userRequestedJoin.rawValue
+    val pendingUsersSnapshot = SfuServerEvent.pendingUsersSnapshot.rawValue
+    val userAdmitted = SfuServerEvent.userAdmitted.rawValue
+    val userRejected = SfuServerEvent.userRejected.rawValue
+    val pendingUserLeft = SfuServerEvent.pendingUserLeft.rawValue
+    val joinApproved = SfuServerEvent.joinApproved.rawValue
+    val joinRejected = SfuServerEvent.joinRejected.rawValue
+    val waitingRoomStatus = SfuServerEvent.waitingRoomStatus.rawValue
+    val hostAssigned = SfuServerEvent.hostAssigned.rawValue
+    val hostChanged = SfuServerEvent.hostChanged.rawValue
+    val adminUsersChanged = SfuServerEvent.adminUsersChanged.rawValue
+    val participantMuted = SfuServerEvent.participantMuted.rawValue
+    val participantCameraOff = SfuServerEvent.participantCameraOff.rawValue
+    val setVideoQuality = SfuServerEvent.setVideoQuality.rawValue
+    val redirect = SfuServerEvent.redirect.rawValue
+    val kicked = SfuServerEvent.kicked.rawValue
+    val roomClosed = SfuServerEvent.roomClosed.rawValue
+    val roomEnded = SfuServerEvent.roomEnded.rawValue
+    val serverRestarting = SfuServerEvent.serverRestarting.rawValue
+    val adminNotice = SfuServerEvent.adminNotice.rawValue
+    val adminMediaEnforced = SfuServerEvent.adminMediaEnforced.rawValue
+    val adminBulkMediaEnforced = SfuServerEvent.adminBulkMediaEnforced.rawValue
+    val adminHandsCleared = SfuServerEvent.adminHandsCleared.rawValue
+    val adminProducerClosed = SfuServerEvent.adminProducerClosed.rawValue
+    val adminRoomStateChanged = SfuServerEvent.adminRoomStateChanged.rawValue
+    val meetingConfigChanged = SfuServerEvent.meetingConfigChanged.rawValue
+    val webinarConfigChanged = SfuServerEvent.webinarConfigChanged.rawValue
+    val webinarAttendeeCountChanged = SfuServerEvent.webinarAttendeeCountChanged.rawValue
+    val webinarFeedChanged = SfuServerEvent.webinarFeedChanged.rawValue
+    val browserState = SfuServerEvent.browserState.rawValue
+    val browserClosed = SfuServerEvent.browserClosed.rawValue
+    val appsState = SfuServerEvent.appsState.rawValue
 }
 
 /// Raw consume-response fields, carrying rtpParameters as the verbatim JSON
@@ -110,17 +152,29 @@ internal class SocketIOManager {
     internal var onReconnected: (() -> Unit)? = null
     internal var onReconnectFailed: (() -> Unit)? = null
 
-    internal var onJoinedRoom: ((JoinRoomResponse) -> Unit)? = null
-    internal var onWaitingForAdmission: (() -> Unit)? = null
-    internal var onWaitingRoomStatus: ((String?) -> Unit)? = null
+    internal var onWaitingRoomStatus: ((WaitingRoomStatusNotification) -> Unit)? = null
     internal var onJoinApproved: (() -> Unit)? = null
     internal var onJoinRejected: (() -> Unit)? = null
-    internal var onHostAssigned: (() -> Unit)? = null
-    internal var onKicked: ((String?) -> Unit)? = null
-    internal var onRoomEnded: ((String?) -> Unit)? = null
+    internal var onHostAssigned: ((HostAssignedNotification) -> Unit)? = null
+    internal var onHostChanged: ((HostChangedNotification) -> Unit)? = null
+    internal var onAdminUsersChanged: ((AdminUsersChangedNotification) -> Unit)? = null
+    internal var onKicked: ((KickedNotification) -> Unit)? = null
+    internal var onRoomClosed: ((RoomClosedNotification) -> Unit)? = null
+    internal var onRoomEnded: ((RoomEndedNotification) -> Unit)? = null
+    internal var onServerRestarting: ((ServerRestartingNotification) -> Unit)? = null
+    internal var onAdminNotice: ((AdminNoticeNotification) -> Unit)? = null
+    internal var onAdminHandsCleared: ((AdminHandsClearedNotification) -> Unit)? = null
+    internal var onAdminRoomStateChanged: ((AdminRoomStateChangedNotification) -> Unit)? = null
+    internal var onMeetingConfigChanged: ((MeetingConfigSnapshot) -> Unit)? = null
+    internal var onWebinarConfigChanged: ((WebinarConfigSnapshot) -> Unit)? = null
+    internal var onWebinarAttendeeCountChanged: ((WebinarAttendeeCountChangedNotification) -> Unit)? = null
+    internal var onWebinarFeedChanged: ((WebinarFeedChangedNotification) -> Unit)? = null
+    internal var onBrowserState: ((BrowserStateNotification) -> Unit)? = null
+    internal var onBrowserClosed: ((BrowserClosedNotification) -> Unit)? = null
+    internal var onAppsState: ((AppsStateNotification) -> Unit)? = null
 
     internal var onUserJoined: ((UserJoinedNotification) -> Unit)? = null
-    internal var onUserLeft: ((String) -> Unit)? = null
+    internal var onUserLeft: ((UserLeftNotification) -> Unit)? = null
     internal var onDisplayNameSnapshot: ((DisplayNameSnapshotNotification) -> Unit)? = null
     internal var onDisplayNameUpdated: ((DisplayNameUpdatedNotification) -> Unit)? = null
     internal var onParticipantMuted: ((ParticipantMutedNotification) -> Unit)? = null
@@ -130,36 +184,47 @@ internal class SocketIOManager {
     internal var onProducerClosed: ((ProducerClosedNotification) -> Unit)? = null
 
     internal var onChatMessage: ((ChatMessage) -> Unit)? = null
-    internal var onChatHistorySnapshot: ((List<ChatMessage>) -> Unit)? = null
+    internal var onChatHistorySnapshot: ((ChatHistorySnapshotNotification) -> Unit)? = null
     internal var onReaction: ((Reaction) -> Unit)? = null
 
-    internal var onHandRaised: ((String, Boolean) -> Unit)? = null
+    internal var onHandRaised: ((HandRaisedNotification) -> Unit)? = null
     internal var onHandRaisedSnapshot: ((HandRaisedSnapshotNotification) -> Unit)? = null
 
-    internal var onRoomLockChanged: ((Boolean) -> Unit)? = null
-    internal var onChatLockChanged: ((Boolean) -> Unit)? = null
-    internal var onNoGuestsChanged: ((Boolean) -> Unit)? = null
-    internal var onDmStateChanged: ((Boolean) -> Unit)? = null
-    internal var onTtsDisabledChanged: ((Boolean) -> Unit)? = null
+    internal var onRoomLockChanged: ((RoomLockChangedNotification) -> Unit)? = null
+    internal var onChatLockChanged: ((ChatLockChangedNotification) -> Unit)? = null
+    internal var onNoGuestsChanged: ((NoGuestsChangedNotification) -> Unit)? = null
+    internal var onDmStateChanged: ((DmStateChangedNotification) -> Unit)? = null
+    internal var onTtsDisabledChanged: ((TtsDisabledChangedNotification) -> Unit)? = null
     internal var onPendingUsersSnapshot: ((PendingUsersSnapshotNotification) -> Unit)? = null
     internal var onUserRequestedJoin: ((UserRequestedJoinNotification) -> Unit)? = null
     internal var onPendingUserChanged: ((PendingUserChangedNotification) -> Unit)? = null
     internal var onRedirect: ((RedirectNotification) -> Unit)? = null
     internal var onSetVideoQuality: ((SetVideoQualityNotification) -> Unit)? = null
+    internal var onAdminMediaEnforced: ((AdminMediaEnforcedNotification) -> Unit)? = null
+    internal var onAdminBulkMediaEnforced: ((AdminBulkMediaEnforcedNotification) -> Unit)? = null
 
     private var manager: Manager? = null
     private var socket: Socket? = null
     private var isIntentionalDisconnect = false
     private var didAttemptReconnect = false
+    private var activeRoomId: String? = null
+    private var activeRoomAliases: Set<String> = emptySet()
+    private var pendingRoomAliases: Set<String> = emptySet()
+    private var pendingConnectFailure: ((ErrorException) -> Unit)? = null
 
     internal suspend fun connect(sfuURL: String, token: String) {
         if (isConnected) return
+        if (socket != null || manager != null) {
+            disconnect()
+        }
         if (token.isBlank()) {
             val error = ErrorException("Missing token for SFU connection")
             connectionError = error
             onError?.invoke(error)
             throw error
         }
+
+        isIntentionalDisconnect = false
 
         val opts = IO.Options().apply {
             forceNew = true
@@ -171,80 +236,138 @@ internal class SocketIOManager {
             auth = mapOf("token" to token)
         }
 
-        val socket = IO.socket(sfuURL, opts)
-        this.socket = socket
-        this.manager = socket.io()
-        registerEventHandlers(socket)
+        val socketManager = this
+        val currentSocket = IO.socket(sfuURL, opts)
+        val currentManager = currentSocket.io()
+        socket = currentSocket
+        manager = currentManager
+        registerEventHandlers(currentSocket)
 
-        suspendCancellableCoroutine<Unit> { cont ->
-            var didResume = false
+        try {
+            withTimeout(CONNECT_TIMEOUT_MS) {
+                suspendCancellableCoroutine<Unit> { cont ->
+                    var didResume = false
 
-            socket.on(Socket.EVENT_CONNECT, Emitter.Listener {
-                isConnected = true
-                connectionError = null
-                didAttemptReconnect = false
-                onConnected?.invoke()
-                if (!didResume) {
-                    didResume = true
-                    cont.resume(Unit)
+                    fun cleanupFailedConnect() {
+                        pendingConnectFailure = null
+                        currentSocket.off()
+                        currentManager.off()
+                        currentSocket.disconnect()
+                        if (socketManager.socket === currentSocket && socketManager.manager === currentManager) {
+                            socket = null
+                            manager = null
+                            isConnected = false
+                            activeRoomId = null
+                            activeRoomAliases = emptySet()
+                            pendingRoomAliases = emptySet()
+                        }
+                    }
+
+                    fun fail(error: ErrorException) {
+                        if (didResume) return
+                        didResume = true
+                        cleanupFailedConnect()
+                        cont.resumeWithException(error)
+                    }
+
+                    pendingConnectFailure = { error ->
+                        fail(error)
+                    }
+
+                    cont.invokeOnCancellation {
+                        if (!didResume) {
+                            didResume = true
+                            cleanupFailedConnect()
+                        }
+                    }
+
+                    currentSocket.on(Socket.EVENT_CONNECT, Emitter.Listener {
+                        if (socketManager.socket !== currentSocket) return@Listener
+                        isConnected = true
+                        connectionError = null
+                        didAttemptReconnect = false
+                        onConnected?.invoke()
+                        if (!didResume) {
+                            didResume = true
+                            pendingConnectFailure = null
+                            cont.resume(Unit)
+                        }
+                    })
+
+                    currentSocket.on(Socket.EVENT_DISCONNECT, Emitter.Listener { args ->
+                        if (socketManager.socket !== currentSocket) return@Listener
+                        isConnected = false
+                        val reason = args.firstOrNull()?.toString()
+                        if (!isIntentionalDisconnect) {
+                            onDisconnected?.invoke(reason)
+                        }
+                        if (!didResume) {
+                            val suffix = reason?.let { ": $it" } ?: ""
+                            fail(ErrorException("Socket disconnected before connection completed$suffix"))
+                        }
+                    })
+
+                    currentManager.on(Manager.EVENT_ERROR, Emitter.Listener { args ->
+                        if (socketManager.socket !== currentSocket || socketManager.manager !== currentManager) return@Listener
+                        val error = ErrorException(args.firstOrNull()?.toString() ?: "Socket error")
+                        connectionError = error
+                        onError?.invoke(error)
+                        fail(error)
+                    })
+
+                    currentSocket.on(Socket.EVENT_CONNECT_ERROR, Emitter.Listener { args ->
+                        if (socketManager.socket !== currentSocket) return@Listener
+                        val error = ErrorException(args.firstOrNull()?.toString() ?: "Connection error")
+                        connectionError = error
+                        onError?.invoke(error)
+                        fail(error)
+                    })
+
+                    currentManager.on(Manager.EVENT_RECONNECT_ATTEMPT, Emitter.Listener { args ->
+                        if (socketManager.socket !== currentSocket || socketManager.manager !== currentManager) return@Listener
+                        val attempt = (args.firstOrNull() as? Number)?.toInt() ?: 0
+                        didAttemptReconnect = true
+                        onReconnecting?.invoke(attempt)
+                    })
+
+                    currentManager.on(Manager.EVENT_RECONNECT, Emitter.Listener {
+                        if (socketManager.socket !== currentSocket || socketManager.manager !== currentManager) return@Listener
+                        didAttemptReconnect = false
+                        onReconnected?.invoke()
+                    })
+
+                    currentManager.on(Manager.EVENT_RECONNECT_FAILED, Emitter.Listener {
+                        if (socketManager.socket !== currentSocket || socketManager.manager !== currentManager) return@Listener
+                        if (didAttemptReconnect && !isIntentionalDisconnect) {
+                            didAttemptReconnect = false
+                            onReconnectFailed?.invoke()
+                        }
+                    })
+
+                    currentSocket.connect()
                 }
-            })
-
-            socket.on(Socket.EVENT_DISCONNECT, Emitter.Listener { args ->
-                isConnected = false
-                val reason = args.firstOrNull()?.toString()
-                if (!isIntentionalDisconnect) {
-                    onDisconnected?.invoke(reason)
-                }
-            })
-
-            manager?.on(Manager.EVENT_ERROR, Emitter.Listener { args ->
-                val error = ErrorException(args.firstOrNull()?.toString() ?: "Socket error")
-                connectionError = error
-                onError?.invoke(error)
-                if (!didResume) {
-                    didResume = true
-                    cont.resumeWithException(error)
-                }
-            })
-
-            socket.on(Socket.EVENT_CONNECT_ERROR, Emitter.Listener { args ->
-                val error = ErrorException(args.firstOrNull()?.toString() ?: "Connection error")
-                connectionError = error
-                onError?.invoke(error)
-                if (!didResume) {
-                    didResume = true
-                    cont.resumeWithException(error)
-                }
-            })
-
-            manager?.on(Manager.EVENT_RECONNECT_ATTEMPT, Emitter.Listener { args ->
-                val attempt = (args.firstOrNull() as? Number)?.toInt() ?: 0
-                didAttemptReconnect = true
-                onReconnecting?.invoke(attempt)
-            })
-
-            manager?.on(Manager.EVENT_RECONNECT, Emitter.Listener {
-                didAttemptReconnect = false
-                onReconnected?.invoke()
-            })
-
-            manager?.on(Manager.EVENT_RECONNECT_FAILED, Emitter.Listener {
-                if (didAttemptReconnect && !isIntentionalDisconnect) {
-                    didAttemptReconnect = false
-                    onReconnectFailed?.invoke()
-                }
-            })
-
-            socket.connect()
+            }
+        } catch (_: TimeoutCancellationException) {
+            val error = ErrorException("Timed out waiting for SFU connection")
+            connectionError = error
+            onError?.invoke(error)
+            disconnect()
+            throw error
         }
     }
 
     internal fun disconnect() {
         isIntentionalDisconnect = true
+        pendingConnectFailure?.invoke(ErrorException("Socket disconnected before connection completed"))
+        pendingConnectFailure = null
+        socket?.off()
+        manager?.off()
         socket?.disconnect()
         socket = null
         manager = null
+        activeRoomId = null
+        activeRoomAliases = emptySet()
+        pendingRoomAliases = emptySet()
         isConnected = false
     }
 
@@ -252,27 +375,44 @@ internal class SocketIOManager {
         roomId: String,
         sessionId: String,
         displayName: String?,
-        isGhost: Boolean
+        isGhost: Boolean,
+        meetingInviteCode: String? = null,
+        webinarInviteCode: String? = null
     ): JoinRoomResponse {
         val request = JoinRoomRequest(
             roomId = roomId,
             sessionId = sessionId,
             displayName = displayName,
-            ghost = isGhost
+            ghost = isGhost,
+            webinarInviteCode = webinarInviteCode,
+            meetingInviteCode = meetingInviteCode
         )
+        activeRoomId = null
+        activeRoomAliases = emptySet()
+        pendingRoomAliases = roomAliasSet(requestedRoomId = roomId, resolvedRoomId = null)
 
-        val data = emit(SocketEvent.joinRoom, request)
-        // Stash the router rtpCapabilities verbatim BEFORE decoding — mediasoup
-        // Device.load() wants this JSON, and re-encoding the decoded struct
-        // crashes Skip's JSONEncoder (AnyCodable codec params -> Tuple2).
-        extractRawObjectField(data, "rtpCapabilities")?.let { routerRtpCapabilitiesJson = it }
-        val response = JSONDecoder().decode(JoinRoomResponse::class, from = data)
-        if (response.status == "waiting") {
-            onWaitingForAdmission?.invoke()
-        } else {
-            onJoinedRoom?.invoke(response)
+        try {
+            val data = emit(SocketEvent.joinRoom, request)
+            // Stash the router rtpCapabilities verbatim BEFORE decoding — mediasoup
+            // Device.load() wants this JSON, and re-encoding the decoded struct
+            // crashes Skip's JSONEncoder (AnyCodable codec params -> Tuple2).
+            extractRawObjectField(data, "rtpCapabilities")?.let { routerRtpCapabilitiesJson = it }
+            val response = JSONDecoder().decode(JoinRoomResponse::class, from = data)
+            val resolvedRoomId = response.roomId ?: roomId
+            if (response.status == "waiting") {
+                activeRoomId = null
+                activeRoomAliases = emptySet()
+                pendingRoomAliases = roomAliasSet(requestedRoomId = roomId, resolvedRoomId = resolvedRoomId)
+            } else {
+                activeRoomId = resolvedRoomId
+                activeRoomAliases = roomAliasSet(requestedRoomId = roomId, resolvedRoomId = resolvedRoomId)
+                pendingRoomAliases = emptySet()
+            }
+            return response
+        } catch (error: Throwable) {
+            pendingRoomAliases = emptySet()
+            throw error
         }
-        return response
     }
 
     internal suspend fun createProducerTransport(): TransportResponse {
@@ -371,9 +511,12 @@ internal class SocketIOManager {
         emit(SocketEvent.closeProducer, mapOf("producerId" to producerId))
     }
 
-    internal suspend fun sendChat(content: String, recipient: String? = null) {
+    internal suspend fun sendChat(content: String, recipient: String? = null): ChatMessage {
         val request = SendChatRequest(content = content, recipient = recipient)
-        emit(SocketEvent.sendChat, request)
+        val data = emit(SocketEvent.sendChat, request)
+        val response = JSONDecoder().decode(SendChatResponse::class, from = data)
+        val notification = response.message ?: throw ErrorException("Missing chat message acknowledgement.")
+        return notification.toChatMessage(activeRoomId)
     }
 
     internal suspend fun sendReaction(emoji: String?, kind: String?, value: String?, label: String?) {
@@ -410,6 +553,127 @@ internal class SocketIOManager {
         emit(SocketEvent.setTtsDisabled, mapOf("disabled" to disabled))
     }
 
+    internal suspend fun getMeetingConfig(): MeetingConfigSnapshot {
+        val data = emitAckOnly(SocketEvent.meetingGetConfig)
+        return JSONDecoder().decode(MeetingConfigSnapshot::class, from = data)
+    }
+
+    internal suspend fun updateMeetingConfig(inviteCode: String?): MeetingConfigSnapshot {
+        val payload = JSONObject()
+        if (inviteCode == null) {
+            payload.put("inviteCode", JSONObject.NULL)
+        } else {
+            payload.put("inviteCode", inviteCode)
+        }
+        val data = emit(SocketEvent.meetingUpdateConfig, payload)
+        val response = JSONDecoder().decode(MeetingConfigUpdateResponse::class, from = data)
+        return response.config
+    }
+
+    internal suspend fun getWebinarConfig(): WebinarConfigSnapshot {
+        val data = emitAckOnly(SocketEvent.webinarGetConfig)
+        return JSONDecoder().decode(WebinarConfigSnapshot::class, from = data)
+    }
+
+    internal suspend fun updateWebinarEnabled(enabled: Boolean): WebinarConfigSnapshot {
+        return updateWebinarConfig(JSONObject().put("enabled", enabled))
+    }
+
+    internal suspend fun updateWebinarPublicAccess(publicAccess: Boolean): WebinarConfigSnapshot {
+        return updateWebinarConfig(JSONObject().put("publicAccess", publicAccess))
+    }
+
+    internal suspend fun updateWebinarLocked(locked: Boolean): WebinarConfigSnapshot {
+        return updateWebinarConfig(JSONObject().put("locked", locked))
+    }
+
+    internal suspend fun updateWebinarMaxAttendees(maxAttendees: Int): WebinarConfigSnapshot {
+        return updateWebinarConfig(JSONObject().put("maxAttendees", maxAttendees))
+    }
+
+    internal suspend fun updateWebinarInviteCode(inviteCode: String?): WebinarConfigSnapshot {
+        val payload = JSONObject()
+        if (inviteCode == null) {
+            payload.put("inviteCode", JSONObject.NULL)
+        } else {
+            payload.put("inviteCode", inviteCode)
+        }
+        return updateWebinarConfig(payload)
+    }
+
+    internal suspend fun updateWebinarLinkSlug(linkSlug: String?): WebinarConfigSnapshot {
+        val payload = JSONObject()
+        if (linkSlug == null) {
+            payload.put("linkSlug", JSONObject.NULL)
+        } else {
+            payload.put("linkSlug", linkSlug)
+        }
+        return updateWebinarConfig(payload)
+    }
+
+    internal suspend fun generateWebinarLink(): WebinarLinkResponse {
+        val data = emitAckOnly(SocketEvent.webinarGenerateLink)
+        return JSONDecoder().decode(WebinarLinkResponse::class, from = data)
+    }
+
+    internal suspend fun rotateWebinarLink(): WebinarLinkResponse {
+        val data = emitAckOnly(SocketEvent.webinarRotateLink)
+        return JSONDecoder().decode(WebinarLinkResponse::class, from = data)
+    }
+
+    internal suspend fun getBrowserState(): BrowserStateNotification {
+        val data = emitAckOnly(SocketEvent.browserGetState)
+        return JSONDecoder().decode(BrowserStateNotification::class, from = data)
+    }
+
+    internal suspend fun launchBrowser(url: String): LaunchBrowserResponse {
+        val request = LaunchBrowserRequest(url = url)
+        val data = emit(SocketEvent.browserLaunch, request)
+        return JSONDecoder().decode(LaunchBrowserResponse::class, from = data)
+    }
+
+    internal suspend fun navigateBrowser(url: String): LaunchBrowserResponse {
+        val request = NavigateBrowserRequest(url = url)
+        val data = emit(SocketEvent.browserNavigate, request)
+        return JSONDecoder().decode(LaunchBrowserResponse::class, from = data)
+    }
+
+    internal suspend fun closeBrowser() {
+        emitAckOnly(SocketEvent.browserClose)
+    }
+
+    internal fun sendBrowserActivity() {
+        socket?.emit(SocketEvent.browserActivity)
+    }
+
+    internal suspend fun getAppsState(): AppsStateNotification {
+        val data = emitAckOnly(SocketEvent.appsGetState)
+        return JSONDecoder().decode(AppsStateNotification::class, from = data)
+    }
+
+    internal suspend fun openApp(appId: String): AppsOpenResponse {
+        val request = AppsOpenRequest(appId = appId)
+        val data = emit(SocketEvent.appsOpen, request)
+        return JSONDecoder().decode(AppsOpenResponse::class, from = data)
+    }
+
+    internal suspend fun closeApp(): AppsCloseResponse {
+        val data = emitAckOnly(SocketEvent.appsClose)
+        return JSONDecoder().decode(AppsCloseResponse::class, from = data)
+    }
+
+    internal suspend fun setAppsLocked(locked: Boolean): AppsLockResponse {
+        val request = AppsLockRequest(locked = locked)
+        val data = emit(SocketEvent.appsLock, request)
+        return JSONDecoder().decode(AppsLockResponse::class, from = data)
+    }
+
+    private suspend fun updateWebinarConfig(payload: JSONObject): WebinarConfigSnapshot {
+        val data = emit(SocketEvent.webinarUpdateConfig, payload)
+        val response = JSONDecoder().decode(WebinarConfigUpdateResponse::class, from = data)
+        return response.config
+    }
+
     internal suspend fun admitUser(userId: String) {
         emit(SocketEvent.admitUser, mapOf("userId" to userId))
     }
@@ -430,12 +694,38 @@ internal class SocketIOManager {
         emit(SocketEvent.kickUser, mapOf("userId" to userId))
     }
 
-    internal suspend fun muteUser(userId: String) {
-        emit(SocketEvent.adminMuteUser, mapOf("userId" to userId))
+    internal suspend fun muteUser(userId: String): AdminMediaActionResponse {
+        val data = emit(SocketEvent.adminMuteUser, mapOf("userId" to userId))
+        return JSONDecoder().decode(AdminMediaActionResponse::class, from = data)
     }
 
-    internal suspend fun muteAll() {
-        emit(SocketEvent.muteAll, mapOf<String, String>())
+    internal suspend fun muteAll(): AdminBulkMediaActionResponse {
+        val data = emit(SocketEvent.muteAll, mapOf<String, String>())
+        return JSONDecoder().decode(AdminBulkMediaActionResponse::class, from = data)
+    }
+
+    internal suspend fun closeUserVideo(userId: String): AdminMediaActionResponse {
+        val data = emit(SocketEvent.adminCloseUserVideo, mapOf("userId" to userId))
+        return JSONDecoder().decode(AdminMediaActionResponse::class, from = data)
+    }
+
+    internal suspend fun stopUserScreenShare(userId: String): AdminMediaActionResponse {
+        val data = emit(SocketEvent.adminStopUserScreenShare, mapOf("userId" to userId))
+        return JSONDecoder().decode(AdminMediaActionResponse::class, from = data)
+    }
+
+    internal suspend fun closeAllVideo(): AdminBulkMediaActionResponse {
+        val data = emitAckOnly(SocketEvent.closeAllVideo)
+        return JSONDecoder().decode(AdminBulkMediaActionResponse::class, from = data)
+    }
+
+    internal suspend fun stopAllScreenShares(): AdminBulkMediaActionResponse {
+        val data = emitAckOnly(SocketEvent.adminStopAllScreenShare)
+        return JSONDecoder().decode(AdminBulkMediaActionResponse::class, from = data)
+    }
+
+    internal suspend fun clearRaisedHands() {
+        emitAckOnly(SocketEvent.adminClearRaisedHands)
     }
 
     internal suspend fun promoteHost(userId: String) {
@@ -447,19 +737,26 @@ internal class SocketIOManager {
     /// sends zero data args, so the server's `(callback) => …` binds correctly.
     private suspend fun emitAckOnly(event: String): Data {
         val socket = socket ?: throw ErrorException("Socket not connected")
-        return suspendCancellableCoroutine { cont ->
-            socket.emit(event, object : io.socket.client.Ack {
-                override fun call(vararg args: Any?) {
-                    val first = args.firstOrNull()
-                    val errorMessage = extractError(first)
-                    if (errorMessage != null) {
-                        cont.resumeWithException(ErrorException(errorMessage))
-                        return
+        return withAckTimeout(event) {
+            suspendCancellableCoroutine { cont ->
+                socket.emit(event, object : io.socket.client.Ack {
+                    override fun call(vararg args: Any?) {
+                        if (!cont.isActive) return
+                        if (this@SocketIOManager.socket !== socket) {
+                            cont.resumeWithException(ErrorException("Socket changed before $event acknowledgement"))
+                            return
+                        }
+                        val first = args.firstOrNull()
+                        val errorMessage = extractError(first)
+                        if (errorMessage != null) {
+                            cont.resumeWithException(ErrorException(errorMessage))
+                            return
+                        }
+                        val data = jsonData(first) ?: Data()
+                        cont.resume(data)
                     }
-                    val data = jsonData(first) ?: Data()
-                    cont.resume(data)
-                }
-            })
+                })
+            }
         }
     }
 
@@ -467,20 +764,37 @@ internal class SocketIOManager {
         val socket = socket ?: throw ErrorException("Socket not connected")
         val socketPayload = toSocketPayload(payload)
 
-        return suspendCancellableCoroutine { cont ->
-            socket.emit(event, socketPayload, object : io.socket.client.Ack {
-                override fun call(vararg args: Any?) {
-                    val first = args.firstOrNull()
-                    val errorMessage = extractError(first)
-                    if (errorMessage != null) {
-                        cont.resumeWithException(ErrorException(errorMessage))
-                        return
-                    }
+        return withAckTimeout(event) {
+            suspendCancellableCoroutine { cont ->
+                socket.emit(event, socketPayload, object : io.socket.client.Ack {
+                    override fun call(vararg args: Any?) {
+                        if (!cont.isActive) return
+                        if (this@SocketIOManager.socket !== socket) {
+                            cont.resumeWithException(ErrorException("Socket changed before $event acknowledgement"))
+                            return
+                        }
+                        val first = args.firstOrNull()
+                        val errorMessage = extractError(first)
+                        if (errorMessage != null) {
+                            cont.resumeWithException(ErrorException(errorMessage))
+                            return
+                        }
 
-                    val data = jsonData(first) ?: Data()
-                    cont.resume(data)
-                }
-            })
+                        val data = jsonData(first) ?: Data()
+                        cont.resume(data)
+                    }
+                })
+            }
+        }
+    }
+
+    private suspend fun withAckTimeout(event: String, block: suspend () -> Data): Data {
+        return try {
+            withTimeout(ACK_TIMEOUT_MS) {
+                block()
+            }
+        } catch (_: TimeoutCancellationException) {
+            throw ErrorException("Timed out waiting for $event acknowledgement")
         }
     }
 
@@ -557,194 +871,437 @@ internal class SocketIOManager {
         }
     }
 
+    private fun normalizedRoomId(roomId: String?): String? {
+        val trimmed = roomId?.trim().orEmpty()
+        return trimmed.ifEmpty { null }
+    }
+
+    private fun roomAliasSet(requestedRoomId: String?, resolvedRoomId: String?): Set<String> {
+        return listOfNotNull(normalizedRoomId(requestedRoomId), normalizedRoomId(resolvedRoomId)).toSet()
+    }
+
+    private fun eventRoomIdMatchesActiveOrPending(roomId: String?): Boolean {
+        val normalized = normalizedRoomId(roomId)
+        if (normalized == null) {
+            return activeRoomAliases.isNotEmpty() || pendingRoomAliases.isNotEmpty()
+        }
+        if (normalized in activeRoomAliases || normalized in pendingRoomAliases) {
+            return true
+        }
+        if (activeRoomAliases.isNotEmpty() || pendingRoomAliases.isEmpty()) {
+            return false
+        }
+        pendingRoomAliases = pendingRoomAliases + normalized
+        return true
+    }
+
+    private fun pendingRoomEventMatches(roomId: String?): Boolean {
+        if (pendingRoomAliases.isEmpty()) return false
+        val normalized = normalizedRoomId(roomId) ?: return true
+        if (normalized in pendingRoomAliases) {
+            return true
+        }
+        if (activeRoomAliases.isNotEmpty()) return false
+        pendingRoomAliases = pendingRoomAliases + normalized
+        return true
+    }
+
+    private fun ChatMessageNotification.toChatMessage(taggedRoomId: String? = null): ChatMessage {
+        return ChatMessage(
+            id = id,
+            userId = userId,
+            displayName = displayName,
+            content = content,
+            timestamp = Date(timeIntervalSince1970 = timestamp / 1000.0),
+            isDirect = isDirect ?: false,
+            dmTargetUserId = dmTargetUserId,
+            dmTargetDisplayName = dmTargetDisplayName,
+            roomId = roomId ?: taggedRoomId
+        )
+    }
+
     private fun registerEventHandlers(socket: Socket) {
         socket.on(SocketEvent.userJoined, Emitter.Listener { args ->
+            if (this.socket !== socket) return@Listener
+            if (activeRoomId == null) return@Listener
             val notification = decode<UserJoinedNotification>( args.firstOrNull()) ?: return@Listener
+            if (!eventRoomIdMatchesActiveOrPending(notification.roomId)) return@Listener
             onUserJoined?.invoke(notification)
         })
 
         socket.on(SocketEvent.userLeft, Emitter.Listener { args ->
+            if (this.socket !== socket) return@Listener
+            if (activeRoomId == null) return@Listener
             val notification = decode<UserLeftNotification>( args.firstOrNull()) ?: return@Listener
-            onUserLeft?.invoke(notification.userId)
+            if (!eventRoomIdMatchesActiveOrPending(notification.roomId)) return@Listener
+            onUserLeft?.invoke(notification)
         })
 
         socket.on(SocketEvent.displayNameSnapshot, Emitter.Listener { args ->
+            if (this.socket !== socket) return@Listener
             val notification = decode<DisplayNameSnapshotNotification>( args.firstOrNull()) ?: return@Listener
+            if (!eventRoomIdMatchesActiveOrPending(notification.roomId)) return@Listener
             onDisplayNameSnapshot?.invoke(notification)
         })
 
         socket.on(SocketEvent.displayNameUpdated, Emitter.Listener { args ->
+            if (this.socket !== socket) return@Listener
             val notification = decode<DisplayNameUpdatedNotification>( args.firstOrNull()) ?: return@Listener
+            if (!eventRoomIdMatchesActiveOrPending(notification.roomId)) return@Listener
             onDisplayNameUpdated?.invoke(notification)
         })
 
         socket.on(SocketEvent.newProducer, Emitter.Listener { args ->
+            if (this.socket !== socket) return@Listener
+            val roomId = activeRoomId ?: return@Listener
             val notification = decode<NewProducerNotification>( args.firstOrNull()) ?: return@Listener
+            if (!eventRoomIdMatchesActiveOrPending(notification.roomId)) return@Listener
             val info = ProducerInfo(
                 producerId = notification.producerId,
                 producerUserId = notification.producerUserId,
                 kind = notification.kind,
                 type = notification.type,
-                paused = null
+                paused = notification.paused,
+                roomId = notification.roomId ?: roomId
             )
             onNewProducer?.invoke(info)
         })
 
         socket.on(SocketEvent.producerClosed, Emitter.Listener { args ->
+            if (this.socket !== socket) return@Listener
+            if (activeRoomId == null) return@Listener
             val notification = decode<ProducerClosedNotification>( args.firstOrNull()) ?: return@Listener
+            if (!eventRoomIdMatchesActiveOrPending(notification.roomId)) return@Listener
             onProducerClosed?.invoke(notification)
         })
 
+        socket.on(SocketEvent.adminProducerClosed, Emitter.Listener { args ->
+            if (this.socket !== socket) return@Listener
+            if (activeRoomId == null) return@Listener
+            val notification = decode<AdminProducerClosedNotification>( args.firstOrNull()) ?: return@Listener
+            if (!eventRoomIdMatchesActiveOrPending(notification.roomId)) return@Listener
+            onProducerClosed?.invoke(ProducerClosedNotification(
+                producerId = notification.producerId,
+                producerUserId = notification.userId,
+                roomId = notification.roomId,
+                adminEnforced = true
+            ))
+        })
+
         socket.on(SocketEvent.chatMessage, Emitter.Listener { args ->
+            if (this.socket !== socket) return@Listener
             val notification = decode<ChatMessageNotification>( args.firstOrNull()) ?: return@Listener
-            val message = ChatMessage(
-                id = notification.id,
-                userId = notification.userId,
-                displayName = notification.displayName,
-                content = notification.content,
-                timestamp = Date(timeIntervalSince1970 = notification.timestamp / 1000.0),
-                isDirect = notification.isDirect ?: false,
-                dmTargetUserId = notification.dmTargetUserId,
-                dmTargetDisplayName = notification.dmTargetDisplayName
-            )
-            onChatMessage?.invoke(message)
+            val roomId = activeRoomId ?: return@Listener
+            if (!eventRoomIdMatchesActiveOrPending(notification.roomId)) return@Listener
+            onChatMessage?.invoke(notification.toChatMessage(roomId))
         })
 
         socket.on(SocketEvent.chatHistorySnapshot, Emitter.Listener { args ->
+            if (this.socket !== socket) return@Listener
             val notification = decode<ChatHistorySnapshotNotification>( args.firstOrNull()) ?: return@Listener
-            val messages = notification.messages.map { notification ->
-                ChatMessage(
-                    id = notification.id,
-                    userId = notification.userId,
-                    displayName = notification.displayName,
-                    content = notification.content,
-                    timestamp = Date(timeIntervalSince1970 = notification.timestamp / 1000.0),
-                    isDirect = notification.isDirect ?: false,
-                    dmTargetUserId = notification.dmTargetUserId,
-                    dmTargetDisplayName = notification.dmTargetDisplayName
-                )
-            }.toList()
-            onChatHistorySnapshot?.invoke(messages)
+            if (!eventRoomIdMatchesActiveOrPending(notification.roomId)) return@Listener
+            onChatHistorySnapshot?.invoke(notification)
         })
 
         socket.on(SocketEvent.reaction, Emitter.Listener { args ->
+            if (this.socket !== socket) return@Listener
             val notification = decode<ReactionNotification>( args.firstOrNull()) ?: return@Listener
+            val roomId = activeRoomId ?: return@Listener
+            if (!eventRoomIdMatchesActiveOrPending(notification.roomId)) return@Listener
+            val modernKind = notification.kind?.let { ReactionKind(rawValue = it) }
+            val modernValue = notification.value?.trim()
+            val legacyEmoji = notification.emoji?.trim()
+            val resolvedKind: ReactionKind
+            val resolvedValue: String
+            if (modernKind != null && !modernValue.isNullOrEmpty()) {
+                resolvedKind = modernKind
+                resolvedValue = modernValue
+            } else if (!legacyEmoji.isNullOrEmpty()) {
+                resolvedKind = ReactionKind.emoji
+                resolvedValue = legacyEmoji
+            } else {
+                return@Listener
+            }
             val reaction = Reaction(
                 userId = notification.userId,
-                kind = ReactionKind(rawValue = notification.kind) ?: ReactionKind.emoji,
-                value = notification.value,
+                kind = resolvedKind,
+                value = resolvedValue,
                 label = notification.label,
-                timestamp = Date(timeIntervalSince1970 = notification.timestamp / 1000.0)
+                timestamp = Date(timeIntervalSince1970 = notification.timestamp / 1000.0),
+                roomId = notification.roomId ?: roomId
             )
             onReaction?.invoke(reaction)
         })
 
         socket.on(SocketEvent.handRaised, Emitter.Listener { args ->
+            if (this.socket !== socket) return@Listener
+            if (activeRoomId == null) return@Listener
             val notification = decode<HandRaisedNotification>( args.firstOrNull()) ?: return@Listener
-            onHandRaised?.invoke(notification.userId, notification.raised)
+            if (!eventRoomIdMatchesActiveOrPending(notification.roomId)) return@Listener
+            onHandRaised?.invoke(notification)
         })
 
         socket.on(SocketEvent.handRaisedSnapshot, Emitter.Listener { args ->
+            if (this.socket !== socket) return@Listener
             val notification = decode<HandRaisedSnapshotNotification>( args.firstOrNull()) ?: return@Listener
+            if (!eventRoomIdMatchesActiveOrPending(notification.roomId)) return@Listener
             onHandRaisedSnapshot?.invoke(notification)
         })
 
         socket.on(SocketEvent.roomLockChanged, Emitter.Listener { args ->
+            if (this.socket !== socket) return@Listener
             val notification = decode<RoomLockChangedNotification>( args.firstOrNull()) ?: return@Listener
-            onRoomLockChanged?.invoke(notification.locked)
+            if (!eventRoomIdMatchesActiveOrPending(notification.roomId)) return@Listener
+            onRoomLockChanged?.invoke(notification)
         })
 
         socket.on(SocketEvent.chatLockChanged, Emitter.Listener { args ->
+            if (this.socket !== socket) return@Listener
             val notification = decode<ChatLockChangedNotification>( args.firstOrNull()) ?: return@Listener
-            onChatLockChanged?.invoke(notification.locked)
+            if (!eventRoomIdMatchesActiveOrPending(notification.roomId)) return@Listener
+            onChatLockChanged?.invoke(notification)
         })
 
         socket.on(SocketEvent.noGuestsChanged, Emitter.Listener { args ->
+            if (this.socket !== socket) return@Listener
             val notification = decode<NoGuestsChangedNotification>( args.firstOrNull()) ?: return@Listener
-            onNoGuestsChanged?.invoke(notification.noGuests)
+            if (!eventRoomIdMatchesActiveOrPending(notification.roomId)) return@Listener
+            onNoGuestsChanged?.invoke(notification)
         })
 
         socket.on(SocketEvent.dmStateChanged, Emitter.Listener { args ->
+            if (this.socket !== socket) return@Listener
             val notification = decode<DmStateChangedNotification>( args.firstOrNull()) ?: return@Listener
-            onDmStateChanged?.invoke(notification.enabled)
+            if (!eventRoomIdMatchesActiveOrPending(notification.roomId)) return@Listener
+            onDmStateChanged?.invoke(notification)
         })
 
         socket.on(SocketEvent.ttsDisabledChanged, Emitter.Listener { args ->
+            if (this.socket !== socket) return@Listener
             val notification = decode<TtsDisabledChangedNotification>( args.firstOrNull()) ?: return@Listener
-            onTtsDisabledChanged?.invoke(notification.disabled)
+            if (!eventRoomIdMatchesActiveOrPending(notification.roomId)) return@Listener
+            onTtsDisabledChanged?.invoke(notification)
         })
 
         socket.on(SocketEvent.userRequestedJoin, Emitter.Listener { args ->
+            if (this.socket !== socket) return@Listener
             val notification = decode<UserRequestedJoinNotification>( args.firstOrNull()) ?: return@Listener
+            if (!eventRoomIdMatchesActiveOrPending(notification.roomId)) return@Listener
             onUserRequestedJoin?.invoke(notification)
         })
 
         socket.on(SocketEvent.pendingUsersSnapshot, Emitter.Listener { args ->
+            if (this.socket !== socket) return@Listener
             val notification = decode<PendingUsersSnapshotNotification>( args.firstOrNull()) ?: return@Listener
+            if (!eventRoomIdMatchesActiveOrPending(notification.roomId)) return@Listener
             onPendingUsersSnapshot?.invoke(notification)
         })
 
         socket.on(SocketEvent.userAdmitted, Emitter.Listener { args ->
+            if (this.socket !== socket) return@Listener
             val notification = decode<PendingUserChangedNotification>( args.firstOrNull()) ?: return@Listener
+            if (!eventRoomIdMatchesActiveOrPending(notification.roomId)) return@Listener
             onPendingUserChanged?.invoke(notification)
         })
 
         socket.on(SocketEvent.userRejected, Emitter.Listener { args ->
+            if (this.socket !== socket) return@Listener
             val notification = decode<PendingUserChangedNotification>( args.firstOrNull()) ?: return@Listener
+            if (!eventRoomIdMatchesActiveOrPending(notification.roomId)) return@Listener
             onPendingUserChanged?.invoke(notification)
         })
 
         socket.on(SocketEvent.pendingUserLeft, Emitter.Listener { args ->
+            if (this.socket !== socket) return@Listener
             val notification = decode<PendingUserChangedNotification>( args.firstOrNull()) ?: return@Listener
+            if (!eventRoomIdMatchesActiveOrPending(notification.roomId)) return@Listener
             onPendingUserChanged?.invoke(notification)
         })
 
-        socket.on(SocketEvent.joinApproved, Emitter.Listener {
+        socket.on(SocketEvent.joinApproved, Emitter.Listener { args ->
+            if (this.socket !== socket) return@Listener
+            val notification = decode<JoinDecisionNotification>(args.firstOrNull())
+            if (!pendingRoomEventMatches(notification?.roomId)) return@Listener
             onJoinApproved?.invoke()
         })
 
-        socket.on(SocketEvent.joinRejected, Emitter.Listener {
+        socket.on(SocketEvent.joinRejected, Emitter.Listener { args ->
+            if (this.socket !== socket) return@Listener
+            val notification = decode<JoinDecisionNotification>(args.firstOrNull())
+            if (!pendingRoomEventMatches(notification?.roomId)) return@Listener
             onJoinRejected?.invoke()
         })
 
         socket.on(SocketEvent.waitingRoomStatus, Emitter.Listener { args ->
-            val notification = decode<WaitingRoomStatusNotification>( args.firstOrNull()) ?: return@Listener
-            onWaitingRoomStatus?.invoke(notification.message)
+            if (this.socket !== socket) return@Listener
+            val notification = decode<WaitingRoomStatusNotification>(args.firstOrNull()) ?: return@Listener
+            if (!eventRoomIdMatchesActiveOrPending(notification.roomId)) return@Listener
+            onWaitingRoomStatus?.invoke(notification)
         })
 
-        socket.on(SocketEvent.hostAssigned, Emitter.Listener {
-            onHostAssigned?.invoke()
+        socket.on(SocketEvent.hostAssigned, Emitter.Listener { args ->
+            if (this.socket !== socket) return@Listener
+            val notification = decode<HostAssignedNotification>( args.firstOrNull()) ?: return@Listener
+            if (!eventRoomIdMatchesActiveOrPending(notification.roomId)) return@Listener
+            onHostAssigned?.invoke(notification)
+        })
+
+        socket.on(SocketEvent.hostChanged, Emitter.Listener { args ->
+            if (this.socket !== socket) return@Listener
+            val notification = decode<HostChangedNotification>( args.firstOrNull()) ?: return@Listener
+            if (!eventRoomIdMatchesActiveOrPending(notification.roomId)) return@Listener
+            onHostChanged?.invoke(notification)
+        })
+
+        socket.on(SocketEvent.adminUsersChanged, Emitter.Listener { args ->
+            if (this.socket !== socket) return@Listener
+            val notification = decode<AdminUsersChangedNotification>( args.firstOrNull()) ?: return@Listener
+            if (!eventRoomIdMatchesActiveOrPending(notification.roomId)) return@Listener
+            onAdminUsersChanged?.invoke(notification)
         })
 
         socket.on(SocketEvent.participantMuted, Emitter.Listener { args ->
+            if (this.socket !== socket) return@Listener
             val notification = decode<ParticipantMutedNotification>( args.firstOrNull()) ?: return@Listener
+            if (!eventRoomIdMatchesActiveOrPending(notification.roomId)) return@Listener
             onParticipantMuted?.invoke(notification)
         })
 
         socket.on(SocketEvent.participantCameraOff, Emitter.Listener { args ->
+            if (this.socket !== socket) return@Listener
             val notification = decode<ParticipantCameraOffNotification>( args.firstOrNull()) ?: return@Listener
+            if (!eventRoomIdMatchesActiveOrPending(notification.roomId)) return@Listener
             onParticipantCameraOff?.invoke(notification)
         })
 
         socket.on(SocketEvent.setVideoQuality, Emitter.Listener { args ->
+            if (this.socket !== socket) return@Listener
             val notification = decode<SetVideoQualityNotification>( args.firstOrNull()) ?: return@Listener
+            if (!eventRoomIdMatchesActiveOrPending(notification.roomId)) return@Listener
             onSetVideoQuality?.invoke(notification)
         })
 
         socket.on(SocketEvent.redirect, Emitter.Listener { args ->
+            if (this.socket !== socket) return@Listener
             val notification = decode<RedirectNotification>( args.firstOrNull()) ?: return@Listener
+            if (!eventRoomIdMatchesActiveOrPending(notification.roomId)) return@Listener
             onRedirect?.invoke(notification)
         })
 
-        socket.on(SocketEvent.kicked, Emitter.Listener {
-            onKicked?.invoke(null)
+        socket.on(SocketEvent.kicked, Emitter.Listener { args ->
+            if (this.socket !== socket) return@Listener
+            val notification = decode<KickedNotification>(args.firstOrNull())
+                ?: KickedNotification(reason = null, roomId = null)
+            if (!eventRoomIdMatchesActiveOrPending(notification.roomId)) return@Listener
+            onKicked?.invoke(notification)
+        })
+
+        socket.on(SocketEvent.roomClosed, Emitter.Listener { args ->
+            if (this.socket !== socket) return@Listener
+            val notification = decode<RoomClosedNotification>(args.firstOrNull())
+                ?: RoomClosedNotification(roomId = null, reason = null)
+            if (!eventRoomIdMatchesActiveOrPending(notification.roomId)) return@Listener
+            onRoomClosed?.invoke(notification)
         })
 
         socket.on(SocketEvent.roomEnded, Emitter.Listener { args ->
-            val message = (args.firstOrNull() as? org.json.JSONObject)
-                ?.optString("message")
-                ?.takeIf { it.isNotEmpty() }
-            onRoomEnded?.invoke(message)
+            if (this.socket !== socket) return@Listener
+            val notification = decode<RoomEndedNotification>(args.firstOrNull())
+                ?: RoomEndedNotification(roomId = null, message = null, endedBy = null)
+            if (!eventRoomIdMatchesActiveOrPending(notification.roomId)) return@Listener
+            onRoomEnded?.invoke(notification)
+        })
+
+        socket.on(SocketEvent.serverRestarting, Emitter.Listener { args ->
+            if (this.socket !== socket) return@Listener
+            val notification = decode<ServerRestartingNotification>( args.firstOrNull()) ?: return@Listener
+            if (!eventRoomIdMatchesActiveOrPending(notification.roomId)) return@Listener
+            onServerRestarting?.invoke(notification)
+        })
+
+        socket.on(SocketEvent.adminNotice, Emitter.Listener { args ->
+            if (this.socket !== socket) return@Listener
+            val notification = decode<AdminNoticeNotification>( args.firstOrNull()) ?: return@Listener
+            if (!eventRoomIdMatchesActiveOrPending(notification.roomId)) return@Listener
+            onAdminNotice?.invoke(notification)
+        })
+
+        socket.on(SocketEvent.adminHandsCleared, Emitter.Listener { args ->
+            if (this.socket !== socket) return@Listener
+            val notification = decode<AdminHandsClearedNotification>( args.firstOrNull()) ?: return@Listener
+            if (!eventRoomIdMatchesActiveOrPending(notification.roomId)) return@Listener
+            onAdminHandsCleared?.invoke(notification)
+        })
+
+        socket.on(SocketEvent.adminRoomStateChanged, Emitter.Listener { args ->
+            if (this.socket !== socket) return@Listener
+            val notification = decode<AdminRoomStateChangedNotification>(args.firstOrNull()) ?: return@Listener
+            if (!eventRoomIdMatchesActiveOrPending(notification.roomId ?: notification.snapshot.id)) return@Listener
+            onAdminRoomStateChanged?.invoke(notification)
+        })
+
+        socket.on(SocketEvent.meetingConfigChanged, Emitter.Listener { args ->
+            if (this.socket !== socket) return@Listener
+            val snapshot = decode<MeetingConfigSnapshot>( args.firstOrNull()) ?: return@Listener
+            if (!eventRoomIdMatchesActiveOrPending(snapshot.roomId)) return@Listener
+            onMeetingConfigChanged?.invoke(snapshot)
+        })
+
+        socket.on(SocketEvent.webinarConfigChanged, Emitter.Listener { args ->
+            if (this.socket !== socket) return@Listener
+            val snapshot = decode<WebinarConfigSnapshot>( args.firstOrNull()) ?: return@Listener
+            if (!eventRoomIdMatchesActiveOrPending(snapshot.roomId)) return@Listener
+            onWebinarConfigChanged?.invoke(snapshot)
+        })
+
+        socket.on(SocketEvent.webinarAttendeeCountChanged, Emitter.Listener { args ->
+            if (this.socket !== socket) return@Listener
+            val notification = decode<WebinarAttendeeCountChangedNotification>( args.firstOrNull()) ?: return@Listener
+            if (!eventRoomIdMatchesActiveOrPending(notification.roomId)) return@Listener
+            onWebinarAttendeeCountChanged?.invoke(notification)
+        })
+
+        socket.on(SocketEvent.webinarFeedChanged, Emitter.Listener { args ->
+            if (this.socket !== socket) return@Listener
+            val notification = decode<WebinarFeedChangedNotification>( args.firstOrNull()) ?: return@Listener
+            if (!eventRoomIdMatchesActiveOrPending(notification.roomId)) return@Listener
+            onWebinarFeedChanged?.invoke(notification)
+        })
+
+        socket.on(SocketEvent.browserState, Emitter.Listener { args ->
+            if (this.socket !== socket) return@Listener
+            val notification = decode<BrowserStateNotification>(args.firstOrNull()) ?: return@Listener
+            if (!eventRoomIdMatchesActiveOrPending(notification.roomId)) return@Listener
+            onBrowserState?.invoke(notification)
+        })
+
+        socket.on(SocketEvent.browserClosed, Emitter.Listener { args ->
+            if (this.socket !== socket) return@Listener
+            val notification = decode<BrowserClosedNotification>(args.firstOrNull())
+                ?: BrowserClosedNotification(closedBy = null, roomId = null)
+            if (!eventRoomIdMatchesActiveOrPending(notification.roomId)) return@Listener
+            onBrowserClosed?.invoke(notification)
+        })
+
+        socket.on(SocketEvent.appsState, Emitter.Listener { args ->
+            if (this.socket !== socket) return@Listener
+            val notification = decode<AppsStateNotification>(args.firstOrNull()) ?: return@Listener
+            if (!eventRoomIdMatchesActiveOrPending(notification.roomId)) return@Listener
+            onAppsState?.invoke(notification)
+        })
+
+        socket.on(SocketEvent.adminMediaEnforced, Emitter.Listener { args ->
+            if (this.socket !== socket) return@Listener
+            val notification = decode<AdminMediaEnforcedNotification>( args.firstOrNull()) ?: return@Listener
+            if (!eventRoomIdMatchesActiveOrPending(notification.roomId)) return@Listener
+            onAdminMediaEnforced?.invoke(notification)
+        })
+
+        socket.on(SocketEvent.adminBulkMediaEnforced, Emitter.Listener { args ->
+            if (this.socket !== socket) return@Listener
+            val notification = decode<AdminBulkMediaEnforcedNotification>( args.firstOrNull()) ?: return@Listener
+            if (!eventRoomIdMatchesActiveOrPending(notification.roomId)) return@Listener
+            onAdminBulkMediaEnforced?.invoke(notification)
         })
     }
 }

@@ -42,14 +42,27 @@ function DevPlaygroundLayout({
 
   useEffect(() => {
     const video = localVideoRef.current;
-    if (video && localStream) {
-      video.srcObject = localStream;
-      video.play().catch((err) => {
-        if (err.name !== "AbortError") {
-          console.error("[Meets] Dev playground local video play error:", err);
-        }
-      });
+    if (!video) return;
+
+    if (!localStream) {
+      if (video.srcObject) {
+        video.srcObject = null;
+      }
+      return;
     }
+
+    video.srcObject = localStream;
+    video.play().catch((err) => {
+      if (err.name !== "AbortError") {
+        console.error("[Meets] Dev playground local video play error:", err);
+      }
+    });
+
+    return () => {
+      if (video.srcObject === localStream) {
+        video.srcObject = null;
+      }
+    };
   }, [localStream]);
 
   const participantsList = useSmartParticipantOrder(

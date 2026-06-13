@@ -406,6 +406,7 @@ const notifyProducerClosed = (
     targetClient.socket.emit("producerClosed", {
       producerId,
       producerUserId: ownerId,
+      roomId: room.id,
     });
   }
   io.to(room.channelId).emit("admin:producerClosed", {
@@ -612,7 +613,7 @@ export const admitAllPendingUsers = (
       room.allowLockedUser(pending.userKey);
     }
     room.allowUser(pending.userKey);
-    pending.socket.emit("joinApproved");
+    pending.socket.emit("joinApproved", { roomId: room.id });
     admitted.push({ userId: pending.userId, userKey: pending.userKey });
   }
 
@@ -636,7 +637,7 @@ export const rejectAllPendingUsers = (
 
   for (const pending of pendingUsers) {
     room.removePendingClient(pending.userKey);
-    pending.socket.emit("joinRejected");
+    pending.socket.emit("joinRejected", { roomId: room.id });
     rejected.push({ userId: pending.userId, userKey: pending.userKey });
   }
 
@@ -722,7 +723,7 @@ export const forceRemoveClientNow = (options: {
   if (isGhost) {
     emitUserLeft(room, userId, { ghostOnly: true, excludeUserId: userId });
   } else if (!isWebinarAttendee) {
-    io.to(roomChannelId).emit("userLeft", { userId });
+    io.to(roomChannelId).emit("userLeft", { userId, roomId: room.id });
   }
 
   emitWebinarAttendeeCountChanged(io, state, room);

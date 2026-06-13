@@ -7,6 +7,7 @@ import type {
   RtpCapabilities,
   WebRtcTransport,
 } from "mediasoup/types";
+import type { Socket } from "socket.io";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import {
   Awareness,
@@ -79,7 +80,7 @@ export class Room {
   public clients: Map<string, Client> = new Map();
   public pendingClients: Map<
     string,
-    { userKey: string; userId: string; socket: any; displayName?: string }
+    { userKey: string; userId: string; socket: Socket; displayName?: string }
   > = new Map();
   public pendingDisconnects: Map<
     string,
@@ -1037,9 +1038,7 @@ export class Room {
 
     try {
       awareness.destroy();
-    } catch {
-      // ignore
-    }
+    } catch {}
     this.appsAwareness.delete(appId);
     return removalUpdate;
   }
@@ -1097,9 +1096,7 @@ export class Room {
     for (const awareness of this.appsAwareness.values()) {
       try {
         awareness.destroy();
-      } catch {
-        // ignore
-      }
+      } catch {}
     }
     this.appsAwareness.clear();
     this.appAwarenessClientIdsByUser.clear();
@@ -1107,9 +1104,7 @@ export class Room {
     for (const doc of this.appsDocs.values()) {
       try {
         doc.destroy();
-      } catch {
-        // ignore
-      }
+      } catch {}
     }
     this.appsDocs.clear();
     this.appsState.activeAppId = null;
@@ -1130,9 +1125,7 @@ export class Room {
     if (this.webinarAudioLevelObserver) {
       try {
         this.webinarAudioLevelObserver.close();
-      } catch {
-        // ignore
-      }
+      } catch {}
       this.webinarAudioLevelObserver = null;
     }
     this.webinarAudioLevelObserverInit = null;
@@ -1205,7 +1198,7 @@ export class Room {
   addPendingClient(
     userKey: string,
     userId: string,
-    socket: any,
+    socket: Socket,
     displayName?: string,
   ) {
     this.pendingClients.set(userKey, { userKey, userId, socket, displayName });

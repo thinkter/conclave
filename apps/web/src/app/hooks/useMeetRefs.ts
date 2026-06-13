@@ -62,6 +62,13 @@ export function useMeetRefs() {
   });
   const isChatOpenRef = useRef(false);
   const localStreamRef = useRef<MediaStream | null>(null);
+  const prejoinMediaIntentRef = useRef<{
+    streamId: string | null;
+    trackIds: Set<string>;
+    isCameraOn: boolean;
+    isMicOn: boolean;
+  } | null>(null);
+  const processedVideoTrackRef = useRef<MediaStreamTrack | null>(null);
   const sessionIdRef = useRef<string>(getOrCreateSessionId());
   const isHandRaisedRef = useRef(false);
   const producerTransportDisconnectTimeoutRef = useRef<number | null>(null);
@@ -104,6 +111,8 @@ export function useMeetRefs() {
     joinOptionsRef,
     isChatOpenRef,
     localStreamRef,
+    prejoinMediaIntentRef,
+    processedVideoTrackRef,
     sessionIdRef,
     isHandRaisedRef,
     producerTransportDisconnectTimeoutRef,

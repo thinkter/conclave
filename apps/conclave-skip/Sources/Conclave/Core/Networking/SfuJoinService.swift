@@ -1,10 +1,3 @@
-//
-//  SfuJoinService.swift
-//  Conclave
-//
-//  Fetches SFU auth token + URL from backend join endpoint
-//
-
 import Foundation
 #if canImport(FoundationNetworking)
 import FoundationNetworking
@@ -13,6 +6,42 @@ import FoundationNetworking
 struct SfuJoinInfo: Decodable {
     let token: String
     let sfuUrl: String
+    let iceServers: [SfuIceServer]?
+
+    func iceServersJSONString() -> String? {
+        guard let iceServers, !iceServers.isEmpty else { return nil }
+        guard let data = try? JSONEncoder().encode(iceServers) else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+}
+
+struct SfuIceServer: Codable {
+    let urls: [String]
+    let username: String?
+    let credential: String?
+
+    enum CodingKeys: String, CodingKey {
+        case urls
+        case username
+        case credential
+    }
+
+    init(urls: [String], username: String? = nil, credential: String? = nil) {
+        self.urls = urls
+        self.username = username
+        self.credential = credential
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        if let urls = try? container.decode([String].self, forKey: .urls) {
+            self.urls = urls
+        } else {
+            self.urls = [try container.decode(String.self, forKey: .urls)]
+        }
+        self.username = try container.decodeIfPresent(String.self, forKey: .username)
+        self.credential = try container.decodeIfPresent(String.self, forKey: .credential)
+    }
 }
 
 struct SfuJoinUser: Encodable {
@@ -28,17 +57,20 @@ struct SfuJoinRequest: Encodable {
     let isHost: Bool
     let isAdmin: Bool
     let clientId: String
-    // The SFU only mints a room-creation token when this is true. Creating a
-    // NEW meeting (host) must request it or the socket joinRoom finds no room.
     let allowRoomCreation: Bool
+    let joinMode: JoinMode
 }
 
 struct SfuJoinError: Decodable {
     let error: String?
 }
 
-struct SfuJoinErrorResponse: Error {
+struct SfuJoinErrorResponse: LocalizedError {
     let message: String
+
+    var errorDescription: String? {
+        message
+    }
 }
 
 enum SfuJoinService {
@@ -48,12 +80,12 @@ enum SfuJoinService {
         user: SfuJoinUser?,
         isHost: Bool,
         clientId: String,
-        allowRoomCreation: Bool = false
+        allowRoomCreation: Bool = false,
+        joinMode: JoinMode = .meeting
     ) async throws -> SfuJoinInfo {
         var request = URLRequest(url: resolveJoinURL())
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("true", forHTTPHeaderField: "ngrok-skip-browser-warning")  // TEMP rig: bypass ngrok interstitial (DO NOT COMMIT)
         if !clientId.isEmpty {
             request.setValue(clientId, forHTTPHeaderField: "x-sfu-client")
         }
@@ -65,7 +97,8 @@ enum SfuJoinService {
             isHost: isHost,
             isAdmin: isHost,
             clientId: clientId,
-            allowRoomCreation: allowRoomCreation
+            allowRoomCreation: allowRoomCreation,
+            joinMode: joinMode
         )
 
         request.httpBody = try JSONEncoder().encode(payload)
@@ -95,24 +128,115 @@ enum SfuJoinService {
     }
 
     static func resolveJoinURL() -> URL {
-        #if SKIP
-        // TEMP rig: Android device → host :3000 over `adb reverse tcp:3000 tcp:3000`
-        // (the device's localhost is forwarded to the Mac via USB). DO NOT COMMIT.
-        return URL(string: "http://localhost:3000/api/sfu/join")!
-        #endif
-        #if targetEnvironment(simulator)
-        return URL(string: "http://localhost:3000/api/sfu/join")!  // TEMP rig: iOS simulator → host localhost dev backend (DO NOT COMMIT)
-        #endif
         if let envUrl = ProcessInfo.processInfo.environment["SFU_JOIN_URL"],
-           let url = URL(string: envUrl) {
+           let url = configuredJoinURL(from: envUrl, allowProductionHost: true) {
             return url
         }
 
-        if let plistUrl = Bundle.main.object(forInfoDictionaryKey: "SFU_JOIN_URL") as? String,
-           let url = URL(string: plistUrl) {
-            return url
+        #if DEBUG
+        #if SKIP
+        if let bundledUrl = resolveBundledJoinURL(allowProductionHost: false) {
+            return bundledUrl
         }
 
-        return URL(string: "https://conclave.acmvit.in/api/sfu/join")!
+        return URL(string: "http://10.0.2.2:3000/api/sfu/join")!
+        #elseif targetEnvironment(simulator)
+        if let bundledUrl = resolveBundledJoinURL(allowProductionHost: false) {
+            return bundledUrl
+        }
+
+        return URL(string: "http://127.0.0.1:3000/api/sfu/join")!
+        #else
+        if let bundledUrl = resolveBundledJoinURL(allowProductionHost: true) {
+            return bundledUrl
+        }
+
+        return productionJoinURL()
+        #endif
+        #else
+        if let bundledUrl = resolveBundledJoinURL(allowProductionHost: true) {
+            return bundledUrl
+        }
+
+        return productionJoinURL()
+        #endif
+    }
+
+    static func resolveBundledJoinURL(allowProductionHost: Bool) -> URL? {
+        guard let plistUrl = Bundle.main.object(forInfoDictionaryKey: "SFU_JOIN_URL") as? String else {
+            return nil
+        }
+
+        return configuredJoinURL(from: plistUrl, allowProductionHost: allowProductionHost)
+    }
+
+    static func configuredJoinURL(from urlString: String, allowProductionHost: Bool) -> URL? {
+        let trimmed = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              !isUnresolvedBuildSetting(trimmed),
+              allowProductionHost || !isProductionJoinURL(trimmed) else {
+            return nil
+        }
+
+        let reachableURLString = platformReachableURLString(trimmed)
+        guard let url = URL(string: reachableURLString),
+              let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              url.host?.isEmpty == false else {
+            return nil
+        }
+
+        return url
+    }
+
+    static func isUnresolvedBuildSetting(_ value: String) -> Bool {
+        value.contains("$(") || value.contains("${")
+    }
+
+    static func isProductionJoinURL(_ urlString: String) -> Bool {
+        URLComponents(string: urlString)?.host?.lowercased() == "conclave.acmvit.in"
+    }
+
+    static func productionJoinURL() -> URL {
+        URL(string: "https://conclave.acmvit.in/api/sfu/join")!
+    }
+
+    static func platformReachableURLString(_ urlString: String) -> String {
+        #if SKIP
+        return rewriteAndroidLoopbackURLString(urlString)
+        #elseif targetEnvironment(simulator)
+        return rewriteLoopbackURLString(urlString, fallbackHost: "127.0.0.1")
+        #else
+        return urlString
+        #endif
+    }
+
+    static func rewriteAndroidLoopbackURLString(_ urlString: String, fallbackHost: String? = nil) -> String {
+        let fallback = fallbackHost?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let reachableHost = fallback.flatMap { isLoopbackHost($0) ? nil : $0 } ?? "10.0.2.2"
+        return rewriteLoopbackURLString(urlString, fallbackHost: reachableHost)
+    }
+
+    static func rewriteLoopbackURLString(_ urlString: String, fallbackHost: String) -> String {
+        guard var components = URLComponents(string: urlString) else {
+            return urlString
+        }
+
+        let host = components.host?.lowercased()
+        guard let host, isLoopbackHost(host) else {
+            return urlString
+        }
+
+        let fallback = fallbackHost.trimmingCharacters(in: .whitespacesAndNewlines)
+        components.host = fallback.isEmpty ? "127.0.0.1" : fallback
+        return components.string ?? urlString
+    }
+
+    static func isLoopbackHost(_ host: String) -> Bool {
+        let normalized = host.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return normalized == "localhost" ||
+            normalized == "127.0.0.1" ||
+            normalized == "::1" ||
+            normalized == "0.0.0.0"
     }
 }

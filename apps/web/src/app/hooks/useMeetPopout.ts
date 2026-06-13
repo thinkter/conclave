@@ -72,7 +72,6 @@ const POPOUT_CSS = `
     width: 100vw;
   }
 
-  /* ── Video grid (full area, no header) ── */
   .popout-videos {
     flex: 1;
     display: grid;
@@ -185,7 +184,6 @@ const POPOUT_CSS = `
     height: 10px;
   }
 
-  /* ── Controls bar (floating pill at bottom, matches ControlsBar) ── */
   .popout-controls {
     position: absolute;
     bottom: 10px;
@@ -257,7 +255,6 @@ const POPOUT_CSS = `
     transform: rotate(135deg);
   }
 
-  /* ── Count badge (top-left overlay) ── */
   .popout-badge {
     position: absolute;
     top: 12px;
@@ -314,6 +311,7 @@ export function useMeetPopout({
   const popoutWindowRef = useRef<Window | null>(null);
   const updateIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const videoElementsRef = useRef<Map<string, HTMLVideoElement>>(new Map());
+  const popoutListenerCleanupsRef = useRef<Array<() => void>>([]);
 
   const onToggleMuteRef = useRef(onToggleMute);
   const onToggleCameraRef = useRef(onToggleCamera);
@@ -491,12 +489,26 @@ export function useMeetPopout({
 
   useEffect(() => { updatePopoutRef.current = updatePopoutContent; }, [updatePopoutContent]);
 
+  const cleanupPopoutResources = useCallback(() => {
+    popoutListenerCleanupsRef.current.forEach((cleanup) => cleanup());
+    popoutListenerCleanupsRef.current = [];
+    if (updateIntervalRef.current) {
+      clearInterval(updateIntervalRef.current);
+      updateIntervalRef.current = null;
+    }
+    for (const vid of videoElementsRef.current.values()) {
+      vid.srcObject = null;
+    }
+    videoElementsRef.current.clear();
+  }, []);
 
   const openPopout = useCallback(async () => {
     if (!isPopoutSupported || !isJoined || isPopoutActive) return;
 
+    let pipWin: Window | null = null;
     try {
-      const pipWin = await window.documentPictureInPicture!.requestWindow({
+      cleanupPopoutResources();
+      pipWin = await window.documentPictureInPicture!.requestWindow({
         width: 380,
         height: 320,
         disallowReturnToOpener: false,
@@ -558,39 +570,49 @@ export function useMeetPopout({
         </div>
       `;
 
-      pipWin.document.getElementById("btn-mute")?.addEventListener("click", () => {
+      const registerPopoutListener = (
+        target: EventTarget | null,
+        type: string,
+        listener: EventListener,
+      ) => {
+        if (!target) return;
+        target.addEventListener(type, listener);
+        popoutListenerCleanupsRef.current.push(() => {
+          target.removeEventListener(type, listener);
+        });
+      };
+
+      registerPopoutListener(pipWin.document.getElementById("btn-mute"), "click", () => {
         onToggleMuteRef.current();
       });
 
-      pipWin.document.getElementById("btn-cam")?.addEventListener("click", () => {
+      registerPopoutListener(pipWin.document.getElementById("btn-cam"), "click", () => {
         onToggleCameraRef.current();
       });
 
-      pipWin.document.getElementById("btn-leave")?.addEventListener("click", () => {
+      registerPopoutListener(pipWin.document.getElementById("btn-leave"), "click", () => {
         onLeaveRef.current();
-        pipWin.close();
+        pipWin?.close();
       });
 
-      // Initial render
       updatePopoutContent();
 
       updateIntervalRef.current = setInterval(() => {
         updatePopoutRef.current?.();
       }, 250);
 
-      pipWin.addEventListener("pagehide", () => {
+      registerPopoutListener(pipWin, "pagehide", () => {
         setIsPopoutActive(false);
         popoutWindowRef.current = null;
-        if (updateIntervalRef.current) {
-          clearInterval(updateIntervalRef.current);
-          updateIntervalRef.current = null;
-        }
-        for (const vid of videoElementsRef.current.values()) {
-          vid.srcObject = null;
-        }
-        videoElementsRef.current.clear();
+        cleanupPopoutResources();
       });
     } catch (err) {
+      cleanupPopoutResources();
+      if (pipWin && !pipWin.closed) {
+        pipWin.close();
+      }
+      popoutWindowRef.current = null;
+      setIsPopoutActive(false);
       console.warn("[Popout] Failed to open popout:", err);
     }
   }, [
@@ -598,6 +620,7 @@ export function useMeetPopout({
     isJoined,
     isPopoutActive,
     updatePopoutContent,
+    cleanupPopoutResources,
   ]);
 
   const closePopout = useCallback(() => {
@@ -607,11 +630,8 @@ export function useMeetPopout({
     }
     setIsPopoutActive(false);
     popoutWindowRef.current = null;
-    if (updateIntervalRef.current) {
-      clearInterval(updateIntervalRef.current);
-      updateIntervalRef.current = null;
-    }
-  }, []);
+    cleanupPopoutResources();
+  }, [cleanupPopoutResources]);
 
 
   useEffect(() => {
@@ -629,15 +649,13 @@ export function useMeetPopout({
 
   useEffect(() => {
     return () => {
-      if (updateIntervalRef.current) {
-        clearInterval(updateIntervalRef.current);
-      }
+      cleanupPopoutResources();
       const pipWin = popoutWindowRef.current;
       if (pipWin && !pipWin.closed) {
         pipWin.close();
       }
     };
-  }, []);
+  }, [cleanupPopoutResources]);
 
   return {
     isPopoutActive,

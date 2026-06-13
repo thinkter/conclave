@@ -45,14 +45,27 @@ function MobileGridLayout({
 
   useEffect(() => {
     const video = localVideoRef.current;
-    if (video && localStream) {
-      video.srcObject = localStream;
-      video.play().catch((err) => {
-        if (err.name !== "AbortError") {
-          console.error("[Meets] Mobile grid local video play error:", err);
-        }
-      });
+    if (!video) return;
+
+    if (!localStream) {
+      if (video.srcObject) {
+        video.srcObject = null;
+      }
+      return;
     }
+
+    video.srcObject = localStream;
+    video.play().catch((err) => {
+      if (err.name !== "AbortError") {
+        console.error("[Meets] Mobile grid local video play error:", err);
+      }
+    });
+
+    return () => {
+      if (video.srcObject === localStream) {
+        video.srcObject = null;
+      }
+    };
   }, [localStream]);
 
   const orderedRemoteParticipants = useSmartParticipantOrder(
@@ -85,14 +98,13 @@ function MobileGridLayout({
     totalCount <= 2 ? 16 : totalCount <= 4 ? 12 : 10
   );
 
-  // Determine grid layout based on participant count
   const getGridClass = () => {
     if (totalCount === 1) return "grid-cols-1 grid-rows-1";
     if (totalCount === 2) return "grid-cols-1 grid-rows-2";
     if (totalCount <= 4) return "grid-cols-2 grid-rows-2";
     if (totalCount <= 6) return "grid-cols-2 grid-rows-3";
     if (totalCount <= 9) return "grid-cols-3 grid-rows-3";
-    return "grid-cols-3 auto-rows-fr"; // 10+ participants
+    return "grid-cols-3 auto-rows-fr";
   };
 
   const speakerRing = (isActive: boolean) =>
@@ -119,7 +131,6 @@ function MobileGridLayout({
       </div>
 
       <div className={`w-full h-full grid ${getGridClass()} gap-3 p-3 auto-rows-fr`}>
-        {/* Local video tile */}
         <div
           className={`mobile-tile ${speakerRing(isLocalActiveSpeaker)} ${handRaisedRing(
             isHandRaised
@@ -163,7 +174,6 @@ function MobileGridLayout({
               <Hand className="w-3.5 h-3.5" />
             </div>
           )}
-          {/* Name label */}
           <div className="absolute bottom-1.5 left-1.5 right-1.5 flex items-center">
             <div
               className="mobile-name-pill px-2.5 py-1 flex items-center gap-2 backdrop-blur-md"
@@ -180,7 +190,6 @@ function MobileGridLayout({
           </div>
         </div>
 
-        {/* Participant tiles */}
         {visibleParticipants.map((participant) => (
           <ParticipantTile
             key={participant.userId}
@@ -221,7 +230,6 @@ function MobileGridLayout({
   );
 }
 
-// Separate component for participant tiles
 const ParticipantTile = memo(function ParticipantTile({
   participant,
   displayName,
@@ -256,12 +264,19 @@ const ParticipantTile = memo(function ParticipantTile({
 
     playVideo();
 
-    const videoTrack = participant.videoStream.getVideoTracks()[0];
-    if (!videoTrack) return;
-    videoTrack.addEventListener("unmute", playVideo);
+    const videoStream = participant.videoStream;
+    const videoTrack = videoStream.getVideoTracks()[0];
+    if (videoTrack) {
+      videoTrack.addEventListener("unmute", playVideo);
+    }
 
     return () => {
-      videoTrack.removeEventListener("unmute", playVideo);
+      if (videoTrack) {
+        videoTrack.removeEventListener("unmute", playVideo);
+      }
+      if (video.srcObject === videoStream) {
+        video.srcObject = null;
+      }
     };
   }, [participant.videoStream, participant.videoProducerId, participant.isCameraOff]);
 
@@ -312,7 +327,6 @@ const ParticipantTile = memo(function ParticipantTile({
           <Hand className="w-3.5 h-3.5" />
         </div>
       )}
-      {/* Name label */}
       <div className="absolute bottom-1.5 left-1.5 right-1.5 flex items-center">
         <div 
           className="mobile-name-pill px-2.5 py-1 flex items-center gap-2 max-w-full backdrop-blur-md"

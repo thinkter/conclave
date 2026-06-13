@@ -32,8 +32,9 @@ final class WebRTCClient {
     private(set) var localVideoEnabled: Bool = false
     var remoteVideoTracks: [String: VideoTrackWrapper] = [:]
     var isConfigured: Bool { fatalError() }
+    func hasBrokenTransport() -> Bool { fatalError() }
 
-    func configure(socketManager: SocketIOManager, rtpCapabilities: RtpCapabilities) { fatalError() }
+    func configure(socketManager: SocketIOManager, rtpCapabilities: RtpCapabilities, iceServersJSON: String?) { fatalError() }
     func createTransports() async throws { fatalError() }
     func consumeProducer(producerId: String, producerUserId: String, producerType: String = "webcam") async throws { fatalError() }
     func closeConsumer(producerId: String, userId: String) { fatalError() }
@@ -42,9 +43,16 @@ final class WebRTCClient {
     func startProducingVideo() async throws { fatalError() }
     func cleanup(notifyLocalState: Bool = true) async { fatalError() }
     func checkVideoFreezes() async { fatalError() }
+    func sampleConnectionQuality() -> ConnectionQuality { fatalError() }
     func consumerId(forProducer producerId: String) -> String? { fatalError() }
-    func setAudioEnabled(_ enabled: Bool) async { fatalError() }
-    func setVideoEnabled(_ enabled: Bool) async { fatalError() }
+    func closeConsumers(exceptProducerIds producerIds: [String]) { fatalError() }
+    func hasAudioConsumer(userIdPrefix: String) -> Bool { fatalError() }
+    func setAudioConsumersEnabled(userIdPrefix: String, enabled: Bool) { fatalError() }
+    func setAudioEnabled(_ enabled: Bool) async throws { fatalError() }
+    func setVideoEnabled(_ enabled: Bool) async throws { fatalError() }
+    func closeLocalMedia(kind: String, type: String, producerId: String? = nil) async -> Bool { fatalError() }
+    func startScreenSharing() async throws { fatalError() }
+    func stopScreenSharing() async { fatalError() }
 
     func getCaptureSession() -> Any? { nil }
     func getLocalVideoTrack() -> Any? { nil }

@@ -284,7 +284,8 @@ function MobileControlsBar({
   useEffect(() => {
     if (
       typeof navigator === "undefined" ||
-      !navigator.mediaDevices?.addEventListener
+      !navigator.mediaDevices?.addEventListener ||
+      !navigator.mediaDevices.removeEventListener
     ) {
       return;
     }
@@ -295,11 +296,12 @@ function MobileControlsBar({
     };
 
     navigator.mediaDevices.addEventListener("devicechange", handleDeviceChange);
-    return () =>
+    return () => {
       navigator.mediaDevices.removeEventListener(
         "devicechange",
         handleDeviceChange,
       );
+    };
   }, [fetchAudioDevices, isSettingsSheetOpen]);
 
   useEffect(() => {
@@ -1474,12 +1476,10 @@ function MobileControlsBar({
       </div>
       )}
 
-      {/* Main controls bar */}
       <div className="fixed inset-x-0 bottom-0 z-40">
         <div className="absolute inset-x-0 bottom-0 h-32 bg-black/55 pointer-events-none" />
         <div className="relative flex items-center justify-center px-4 pb-[calc(12px+env(safe-area-inset-bottom))] pt-4">
           <div className="mobile-glass mobile-pill flex items-center gap-3 px-4 py-3">
-            {/* Mute button */}
             <button
               onClick={onToggleMute}
               disabled={isGhostMode}
@@ -1501,7 +1501,6 @@ function MobileControlsBar({
               )}
             </button>
 
-            {/* Camera button */}
             <button
               onClick={onToggleCamera}
               disabled={isGhostMode}
@@ -1527,7 +1526,6 @@ function MobileControlsBar({
               )}
             </button>
 
-            {/* Reactions button */}
             <button
               onClick={() => setIsReactionMenuOpen(true)}
               disabled={isGhostMode}
@@ -1537,7 +1535,6 @@ function MobileControlsBar({
               <Smile className="w-5 h-5" />
             </button>
 
-            {/* Chat button */}
             <button
               onClick={onToggleChat}
               className={`relative ${isChatOpen ? activeButtonClass : defaultButtonClass}`}
@@ -1551,7 +1548,6 @@ function MobileControlsBar({
               )}
             </button>
 
-            {/* More button */}
             <button
               onClick={() => setIsMoreMenuOpen(true)}
               className={defaultButtonClass}
@@ -1562,7 +1558,6 @@ function MobileControlsBar({
 
             <div className="w-px h-6 bg-[#fafafa]/10" />
 
-            {/* Leave button */}
             <button
               onClick={onLeave}
               className={leaveButtonClass}

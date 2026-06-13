@@ -13,17 +13,29 @@ final class SocketIOManager {
     var onReconnected: (() -> Void)?
     var onReconnectFailed: (() -> Void)?
 
-    var onJoinedRoom: ((JoinRoomResponse) -> Void)?
-    var onWaitingForAdmission: (() -> Void)?
-    var onWaitingRoomStatus: ((String?) -> Void)?
+    var onWaitingRoomStatus: ((WaitingRoomStatusNotification) -> Void)?
     var onJoinApproved: (() -> Void)?
     var onJoinRejected: (() -> Void)?
-    var onHostAssigned: (() -> Void)?
-    var onKicked: ((String?) -> Void)?
-    var onRoomEnded: ((String?) -> Void)?
+    var onHostAssigned: ((HostAssignedNotification) -> Void)?
+    var onHostChanged: ((HostChangedNotification) -> Void)?
+    var onAdminUsersChanged: ((AdminUsersChangedNotification) -> Void)?
+    var onKicked: ((KickedNotification) -> Void)?
+    var onRoomClosed: ((RoomClosedNotification) -> Void)?
+    var onRoomEnded: ((RoomEndedNotification) -> Void)?
+    var onServerRestarting: ((ServerRestartingNotification) -> Void)?
+    var onAdminNotice: ((AdminNoticeNotification) -> Void)?
+    var onAdminHandsCleared: ((AdminHandsClearedNotification) -> Void)?
+    var onAdminRoomStateChanged: ((AdminRoomStateChangedNotification) -> Void)?
+    var onMeetingConfigChanged: ((MeetingConfigSnapshot) -> Void)?
+    var onWebinarConfigChanged: ((WebinarConfigSnapshot) -> Void)?
+    var onWebinarAttendeeCountChanged: ((WebinarAttendeeCountChangedNotification) -> Void)?
+    var onWebinarFeedChanged: ((WebinarFeedChangedNotification) -> Void)?
+    var onBrowserState: ((BrowserStateNotification) -> Void)?
+    var onBrowserClosed: ((BrowserClosedNotification) -> Void)?
+    var onAppsState: ((AppsStateNotification) -> Void)?
 
     var onUserJoined: ((UserJoinedNotification) -> Void)?
-    var onUserLeft: ((String) -> Void)?
+    var onUserLeft: ((UserLeftNotification) -> Void)?
     var onDisplayNameSnapshot: ((DisplayNameSnapshotNotification) -> Void)?
     var onDisplayNameUpdated: ((DisplayNameUpdatedNotification) -> Void)?
     var onParticipantMuted: ((ParticipantMutedNotification) -> Void)?
@@ -33,29 +45,38 @@ final class SocketIOManager {
     var onProducerClosed: ((ProducerClosedNotification) -> Void)?
 
     var onChatMessage: ((ChatMessage) -> Void)?
-    var onChatHistorySnapshot: (([ChatMessage]) -> Void)?
+    var onChatHistorySnapshot: ((ChatHistorySnapshotNotification) -> Void)?
     var onReaction: ((Reaction) -> Void)?
 
-    var onHandRaised: ((String, Bool) -> Void)?
+    var onHandRaised: ((HandRaisedNotification) -> Void)?
     var onHandRaisedSnapshot: ((HandRaisedSnapshotNotification) -> Void)?
 
-    var onRoomLockChanged: ((Bool) -> Void)?
-    var onChatLockChanged: ((Bool) -> Void)?
-    var onNoGuestsChanged: ((Bool) -> Void)?
-    var onDmStateChanged: ((Bool) -> Void)?
-    var onTtsDisabledChanged: ((Bool) -> Void)?
+    var onRoomLockChanged: ((RoomLockChangedNotification) -> Void)?
+    var onChatLockChanged: ((ChatLockChangedNotification) -> Void)?
+    var onNoGuestsChanged: ((NoGuestsChangedNotification) -> Void)?
+    var onDmStateChanged: ((DmStateChangedNotification) -> Void)?
+    var onTtsDisabledChanged: ((TtsDisabledChangedNotification) -> Void)?
     var onPendingUsersSnapshot: ((PendingUsersSnapshotNotification) -> Void)?
     var onUserRequestedJoin: ((UserRequestedJoinNotification) -> Void)?
     var onPendingUserChanged: ((PendingUserChangedNotification) -> Void)?
     var onRedirect: ((RedirectNotification) -> Void)?
     var onSetVideoQuality: ((SetVideoQualityNotification) -> Void)?
+    var onAdminMediaEnforced: ((AdminMediaEnforcedNotification) -> Void)?
+    var onAdminBulkMediaEnforced: ((AdminBulkMediaEnforcedNotification) -> Void)?
 
     func connect(sfuURL: String, token: String) async throws {
         throw NSError(domain: "Conclave", code: -1, userInfo: [NSLocalizedDescriptionKey: "SocketIO not available on macOS"])
     }
     func disconnect() { }
 
-    func joinRoom(roomId: String, sessionId: String, displayName: String?, isGhost: Bool) async throws -> JoinRoomResponse {
+    func joinRoom(
+        roomId: String,
+        sessionId: String,
+        displayName: String?,
+        isGhost: Bool,
+        meetingInviteCode: String? = nil,
+        webinarInviteCode: String? = nil
+    ) async throws -> JoinRoomResponse {
         throw NSError(domain: "Conclave", code: -1, userInfo: [NSLocalizedDescriptionKey: "SocketIO not available on macOS"])
     }
 
@@ -88,7 +109,9 @@ final class SocketIOManager {
     func toggleCamera(producerId: String, paused: Bool) async throws { }
     func closeProducer(producerId: String) async throws { }
 
-    func sendChat(content: String, recipient: String? = nil) async throws { }
+    func sendChat(content: String, recipient: String? = nil) async throws -> ChatMessage {
+        ChatMessage(userId: "local", displayName: "You", content: content)
+    }
     func sendReaction(emoji: String?, kind: String?, value: String?, label: String?) async throws { }
     func setHandRaised(_ raised: Bool) async throws { }
     func updateDisplayName(_ name: String) async throws { }
@@ -98,13 +121,82 @@ final class SocketIOManager {
     func setNoGuests(_ noGuests: Bool) async throws { }
     func setDmEnabled(_ enabled: Bool) async throws { }
     func setTtsDisabled(_ disabled: Bool) async throws { }
+    func getMeetingConfig() async throws -> MeetingConfigSnapshot { MeetingConfigSnapshot(roomId: nil, requiresInviteCode: nil) }
+    func updateMeetingConfig(inviteCode: String?) async throws -> MeetingConfigSnapshot { MeetingConfigSnapshot(roomId: nil, requiresInviteCode: inviteCode != nil) }
+    func getWebinarConfig() async throws -> WebinarConfigSnapshot {
+        WebinarConfigSnapshot(roomId: nil, enabled: nil, publicAccess: nil, locked: nil, maxAttendees: nil, attendeeCount: nil, requiresInviteCode: nil, linkSlug: nil, feedMode: nil)
+    }
+    func updateWebinarEnabled(_ enabled: Bool) async throws -> WebinarConfigSnapshot {
+        WebinarConfigSnapshot(roomId: nil, enabled: enabled, publicAccess: nil, locked: nil, maxAttendees: nil, attendeeCount: nil, requiresInviteCode: nil, linkSlug: nil, feedMode: nil)
+    }
+    func updateWebinarPublicAccess(_ publicAccess: Bool) async throws -> WebinarConfigSnapshot {
+        WebinarConfigSnapshot(roomId: nil, enabled: nil, publicAccess: publicAccess, locked: nil, maxAttendees: nil, attendeeCount: nil, requiresInviteCode: nil, linkSlug: nil, feedMode: nil)
+    }
+    func updateWebinarLocked(_ locked: Bool) async throws -> WebinarConfigSnapshot {
+        WebinarConfigSnapshot(roomId: nil, enabled: nil, publicAccess: nil, locked: locked, maxAttendees: nil, attendeeCount: nil, requiresInviteCode: nil, linkSlug: nil, feedMode: nil)
+    }
+    func updateWebinarMaxAttendees(_ maxAttendees: Int) async throws -> WebinarConfigSnapshot {
+        WebinarConfigSnapshot(roomId: nil, enabled: nil, publicAccess: nil, locked: nil, maxAttendees: maxAttendees, attendeeCount: nil, requiresInviteCode: nil, linkSlug: nil, feedMode: nil)
+    }
+    func updateWebinarInviteCode(_ inviteCode: String?) async throws -> WebinarConfigSnapshot {
+        WebinarConfigSnapshot(roomId: nil, enabled: nil, publicAccess: nil, locked: nil, maxAttendees: nil, attendeeCount: nil, requiresInviteCode: inviteCode != nil, linkSlug: nil, feedMode: nil)
+    }
+    func updateWebinarLinkSlug(_ linkSlug: String?) async throws -> WebinarConfigSnapshot {
+        WebinarConfigSnapshot(roomId: nil, enabled: nil, publicAccess: nil, locked: nil, maxAttendees: nil, attendeeCount: nil, requiresInviteCode: nil, linkSlug: linkSlug, feedMode: nil)
+    }
+    func generateWebinarLink() async throws -> WebinarLinkResponse {
+        WebinarLinkResponse(slug: "", link: "", publicAccess: false, linkVersion: 0)
+    }
+    func rotateWebinarLink() async throws -> WebinarLinkResponse {
+        WebinarLinkResponse(slug: "", link: "", publicAccess: false, linkVersion: 0)
+    }
+    func getBrowserState() async throws -> BrowserStateNotification {
+        BrowserStateNotification(active: false, url: nil, noVncUrl: nil, controllerUserId: nil, roomId: nil)
+    }
+    func launchBrowser(url: String) async throws -> LaunchBrowserResponse {
+        LaunchBrowserResponse(success: true, noVncUrl: nil, error: nil)
+    }
+    func navigateBrowser(url: String) async throws -> LaunchBrowserResponse {
+        LaunchBrowserResponse(success: true, noVncUrl: nil, error: nil)
+    }
+    func closeBrowser() async throws { }
+    func sendBrowserActivity() { }
+    func getAppsState() async throws -> AppsStateNotification {
+        AppsStateNotification(activeAppId: nil, locked: false, roomId: nil)
+    }
+    func openApp(_ appId: String) async throws -> AppsOpenResponse {
+        AppsOpenResponse(success: true, activeAppId: appId, error: nil)
+    }
+    func closeApp() async throws -> AppsCloseResponse {
+        AppsCloseResponse(success: true, error: nil)
+    }
+    func setAppsLocked(_ locked: Bool) async throws -> AppsLockResponse {
+        AppsLockResponse(success: true, locked: locked, error: nil)
+    }
     func admitUser(userId: String) async throws { }
     func rejectUser(userId: String) async throws { }
     func admitAllPending() async throws { }
     func rejectAllPending() async throws { }
     func kickUser(userId: String) async throws { }
-    func muteUser(userId: String) async throws { }
-    func muteAll() async throws { }
+    func muteUser(userId: String) async throws -> AdminMediaActionResponse {
+        AdminMediaActionResponse(success: true, error: nil, userId: userId, affectedProducers: nil, producers: nil)
+    }
+    func muteAll() async throws -> AdminBulkMediaActionResponse {
+        AdminBulkMediaActionResponse(success: true, error: nil, count: nil, affectedProducers: nil, users: nil)
+    }
+    func closeUserVideo(userId: String) async throws -> AdminMediaActionResponse {
+        AdminMediaActionResponse(success: true, error: nil, userId: userId, affectedProducers: nil, producers: nil)
+    }
+    func stopUserScreenShare(userId: String) async throws -> AdminMediaActionResponse {
+        AdminMediaActionResponse(success: true, error: nil, userId: userId, affectedProducers: nil, producers: nil)
+    }
+    func closeAllVideo() async throws -> AdminBulkMediaActionResponse {
+        AdminBulkMediaActionResponse(success: true, error: nil, count: nil, affectedProducers: nil, users: nil)
+    }
+    func stopAllScreenShares() async throws -> AdminBulkMediaActionResponse {
+        AdminBulkMediaActionResponse(success: true, error: nil, count: nil, affectedProducers: nil, users: nil)
+    }
+    func clearRaisedHands() async throws { }
     func promoteHost(userId: String) async throws { }
 }
 #endif

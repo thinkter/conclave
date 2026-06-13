@@ -41,8 +41,10 @@ struct PresentationLayoutView: View {
 
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
-                        localThumbnail
-                        ForEach(viewModel.state.sortedParticipants) { participant in
+                        if viewModel.state.shouldShowSelfTile {
+                            localThumbnail
+                        }
+                        ForEach(viewModel.state.visibleTileParticipants.prefix(max(0, viewModel.state.viewMaxTiles - (viewModel.state.shouldShowSelfTile ? 1 : 0)))) { participant in
                             remoteThumbnail(participant: participant)
                         }
                     }
@@ -69,8 +71,10 @@ struct PresentationLayoutView: View {
 
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: 8) {
-                    localThumbnail
-                    ForEach(viewModel.state.sortedParticipants) { participant in
+                    if viewModel.state.shouldShowSelfTile {
+                        localThumbnail
+                    }
+                    ForEach(viewModel.state.visibleTileParticipants.prefix(max(0, viewModel.state.viewMaxTiles - (viewModel.state.shouldShowSelfTile ? 1 : 0)))) { participant in
                         remoteThumbnail(participant: participant)
                     }
                 }
@@ -127,6 +131,12 @@ struct PresentationLayoutView: View {
                 }
             }
         }
+        .overlay {
+            if viewModel.state.shouldShowDetachedSelfView {
+                DetachedSelfViewOverlay(viewModel: viewModel)
+                    .padding(16)
+            }
+        }
     }
 
     private var thumbnailWidth: CGFloat { isCompact ? 120.0 : 124.0 }
@@ -139,7 +149,7 @@ struct PresentationLayoutView: View {
             isCameraOff: viewModel.state.isCameraOff,
             isHandRaised: viewModel.state.isHandRaised,
             isGhost: viewModel.state.isGhostMode,
-            isSpeaking: viewModel.state.activeSpeakerId == viewModel.state.userId,
+            isSpeaking: viewModel.state.effectiveActiveSpeakerId == viewModel.state.userId,
             isLocal: true,
             captureSession: viewModel.webRTCClient.getCaptureSession(),
             localVideoTrack: viewModel.webRTCClient.getLocalVideoTrack()
@@ -154,11 +164,10 @@ struct PresentationLayoutView: View {
             isCameraOff: participant.isCameraOff,
             isHandRaised: participant.isHandRaised,
             isGhost: participant.isGhost,
-            isSpeaking: viewModel.state.activeSpeakerId == participant.id,
+            isSpeaking: viewModel.state.effectiveActiveSpeakerId == participant.id,
             isLocal: false,
             trackWrapper: viewModel.webRTCClient.remoteVideoTracks[participant.id]
         )
         .frame(width: thumbnailWidth, height: thumbnailHeight)
     }
 }
-

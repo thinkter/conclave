@@ -36,6 +36,7 @@ final class CallAudioSession {
     func end() {
         isCallActive = false
         stopObserving()
+        deactivateSession()
     }
 
     /// Called by CallKit's didActivate — re-assert our configuration so the
@@ -58,6 +59,14 @@ final class CallAudioSession {
             try session.setActive(true)
         } catch {
             debugLog("[CallAudio] activate failed: \(error.localizedDescription)")
+        }
+    }
+
+    private func deactivateSession() {
+        do {
+            try AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
+        } catch {
+            debugLog("[CallAudio] deactivate failed: \(error.localizedDescription)")
         }
     }
 
@@ -134,7 +143,7 @@ final class CallAudioSession {
     @objc private func handleMediaServicesReset(_ notification: Notification) {
         // The media server crashed and restarted — everything needs re-arming.
         guard isCallActive else { return }
-        Task { @MainActor in self.activateSession() }
+        Task { @MainActor in self.handleCallKitActivation() }
     }
 }
 #endif

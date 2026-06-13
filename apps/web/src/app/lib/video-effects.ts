@@ -1,0 +1,633 @@
+"use client";
+
+import type { LucideIcon } from "lucide-react";
+import {
+  Armchair,
+  Blend,
+  Building2,
+  Coffee,
+  Crown,
+  Flower2,
+  Focus,
+  Glasses,
+  ImagePlus,
+  LampDesk,
+  Layers,
+  Leaf,
+  Lightbulb,
+  LibraryBig,
+  Palette,
+  Plane,
+  Rabbit,
+  Rocket,
+  Sparkles,
+  Sofa,
+  SunMedium,
+  VenetianMask,
+  WandSparkles,
+  Waves,
+} from "lucide-react";
+
+export type BackgroundEffectId =
+  | "none"
+  | "blur-light"
+  | "blur-strong"
+  | "desk-motion"
+  | "loft-motion"
+  | "aurora-motion"
+  | "office"
+  | "lounge"
+  | "beach"
+  | "forest"
+  | "studio"
+  | "bookshelf"
+  | "coffee-shop"
+  | "home-office-bookshelf"
+  | "home-office-sofa"
+  | "living-room-shelf"
+  | "modern-conference-room"
+  | "office-library"
+  | "office-meeting-space"
+  | "office-green-space"
+  | "shelf-with-plants"
+  | "stylish-home-office"
+  | "stylish-living-room-couch"
+  | "gradient"
+  | "custom";
+
+export type FaceFilterId =
+  | "none"
+  | "glasses"
+  | "crown"
+  | "halo"
+  | "idea"
+  | "mustache"
+  | "sparkles"
+  | "aviator"
+  | "cat-eye-beret"
+  | "bunny-ears"
+  | "beach-day"
+  | "butterflies"
+  | "alien";
+
+export type AppearanceStyleId =
+  | "none"
+  | "cloudy"
+  | "ocean"
+  | "mono"
+  | "glow";
+
+export interface VideoEffectsState {
+  background: BackgroundEffectId;
+  filter: FaceFilterId;
+  style: AppearanceStyleId;
+  studioLighting: boolean;
+  studioLook: boolean;
+  framing: boolean;
+  customBackgroundId: string | null;
+  customBackgroundDataUrl: string | null;
+  customBackgroundName: string | null;
+}
+
+export interface VideoEffectOption<T extends string> {
+  id: T;
+  label: string;
+  description?: string;
+  icon: LucideIcon;
+  tone: string;
+  assetPath?: string;
+  motion?: boolean;
+  category?: string;
+}
+
+export const DEFAULT_VIDEO_EFFECTS: VideoEffectsState = {
+  background: "none",
+  filter: "none",
+  style: "none",
+  studioLighting: false,
+  studioLook: false,
+  framing: false,
+  customBackgroundId: null,
+  customBackgroundDataUrl: null,
+  customBackgroundName: null,
+};
+
+const BACKGROUND_EFFECT_IDS = new Set<BackgroundEffectId>([
+  "none",
+  "blur-light",
+  "blur-strong",
+  "desk-motion",
+  "loft-motion",
+  "aurora-motion",
+  "office",
+  "lounge",
+  "beach",
+  "forest",
+  "studio",
+  "bookshelf",
+  "coffee-shop",
+  "home-office-bookshelf",
+  "home-office-sofa",
+  "living-room-shelf",
+  "modern-conference-room",
+  "office-library",
+  "office-meeting-space",
+  "office-green-space",
+  "shelf-with-plants",
+  "stylish-home-office",
+  "stylish-living-room-couch",
+  "gradient",
+  "custom",
+]);
+export const ANIMATED_BACKGROUND_EFFECT_IDS = new Set<BackgroundEffectId>([
+  "desk-motion",
+  "loft-motion",
+  "aurora-motion",
+]);
+const FACE_FILTER_IDS = new Set<FaceFilterId>([
+  "none",
+  "glasses",
+  "crown",
+  "halo",
+  "idea",
+  "mustache",
+  "sparkles",
+  "aviator",
+  "cat-eye-beret",
+  "bunny-ears",
+  "beach-day",
+  "butterflies",
+  "alien",
+]);
+const APPEARANCE_STYLE_IDS = new Set<AppearanceStyleId>([
+  "none",
+  "cloudy",
+  "ocean",
+  "mono",
+  "glow",
+]);
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
+const isBackgroundEffectId = (value: unknown): value is BackgroundEffectId =>
+  typeof value === "string" &&
+  BACKGROUND_EFFECT_IDS.has(value as BackgroundEffectId);
+
+export const isAnimatedBackgroundEffect = (
+  value: BackgroundEffectId,
+): boolean => ANIMATED_BACKGROUND_EFFECT_IDS.has(value);
+
+const isFaceFilterId = (value: unknown): value is FaceFilterId =>
+  typeof value === "string" && FACE_FILTER_IDS.has(value as FaceFilterId);
+
+const isAppearanceStyleId = (value: unknown): value is AppearanceStyleId =>
+  typeof value === "string" &&
+  APPEARANCE_STYLE_IDS.has(value as AppearanceStyleId);
+
+export const CUSTOM_BACKGROUND_MAX_DATA_URL_CHARS = 4_000_000;
+
+const isCustomBackgroundId = (value: unknown): value is string =>
+  typeof value === "string" &&
+  /^custom-[a-z0-9-]{8,80}$/i.test(value);
+
+const isCustomBackgroundDataUrl = (value: unknown): value is string =>
+  typeof value === "string" &&
+  /^data:image\/(png|jpe?g|webp);base64,/i.test(value) &&
+  value.length <= CUSTOM_BACKGROUND_MAX_DATA_URL_CHARS;
+
+const normalizeCustomBackgroundName = (value: unknown) => {
+  if (typeof value !== "string") return null;
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (!normalized) return null;
+  return normalized.slice(0, 80);
+};
+
+export function normalizeVideoEffectsState(value: unknown): VideoEffectsState {
+  if (!isRecord(value)) return DEFAULT_VIDEO_EFFECTS;
+
+  const customBackgroundDataUrl = isCustomBackgroundDataUrl(
+    value.customBackgroundDataUrl,
+  )
+    ? value.customBackgroundDataUrl
+    : null;
+  const customBackgroundId = isCustomBackgroundId(value.customBackgroundId)
+    ? value.customBackgroundId
+    : null;
+  const hasCustomBackground = Boolean(
+    customBackgroundDataUrl || customBackgroundId,
+  );
+  const background =
+    isBackgroundEffectId(value.background) &&
+    (value.background !== "custom" || hasCustomBackground)
+      ? value.background
+      : DEFAULT_VIDEO_EFFECTS.background;
+
+  return {
+    background,
+    filter: isFaceFilterId(value.filter)
+      ? value.filter
+      : DEFAULT_VIDEO_EFFECTS.filter,
+    style: isAppearanceStyleId(value.style)
+      ? value.style
+      : DEFAULT_VIDEO_EFFECTS.style,
+    studioLighting:
+      typeof value.studioLighting === "boolean"
+        ? value.studioLighting
+        : DEFAULT_VIDEO_EFFECTS.studioLighting,
+    studioLook:
+      typeof value.studioLook === "boolean"
+        ? value.studioLook
+        : DEFAULT_VIDEO_EFFECTS.studioLook,
+    framing:
+      typeof value.framing === "boolean"
+        ? value.framing
+        : DEFAULT_VIDEO_EFFECTS.framing,
+    customBackgroundId,
+    customBackgroundDataUrl,
+    customBackgroundName: hasCustomBackground
+      ? normalizeCustomBackgroundName(value.customBackgroundName) ??
+        "Uploaded image"
+      : null,
+  };
+}
+
+export function normalizeVideoEffectsStateForStorage(
+  value: unknown,
+): VideoEffectsState {
+  const normalized = normalizeVideoEffectsState(value);
+  return {
+    ...normalized,
+    customBackgroundDataUrl: normalized.customBackgroundId
+      ? null
+      : normalized.customBackgroundDataUrl,
+  };
+}
+
+export const BACKGROUND_ASSET_PATHS = {
+  office: "/effects/backgrounds/office-shelf.webp",
+  lounge: "/effects/backgrounds/warm-lounge.webp",
+  beach: "/effects/backgrounds/beach-pavilion.webp",
+  forest: "/effects/backgrounds/forest-light.webp",
+  studio: "/effects/backgrounds/conference-wall.webp",
+  bookshelf: "/effects/backgrounds/office-shelf.webp",
+  "coffee-shop": "/effects/backgrounds/warm-lounge.webp",
+  "home-office-bookshelf": "/effects/backgrounds/office-shelf.webp",
+  "home-office-sofa": "/effects/backgrounds/warm-lounge.webp",
+  "living-room-shelf": "/effects/backgrounds/warm-lounge.webp",
+  "modern-conference-room": "/effects/backgrounds/conference-wall.webp",
+  "office-library": "/effects/backgrounds/office-shelf.webp",
+  "office-meeting-space": "/effects/backgrounds/conference-wall.webp",
+  "office-green-space": "/effects/backgrounds/forest-light.webp",
+  "shelf-with-plants": "/effects/backgrounds/office-shelf.webp",
+  "stylish-home-office": "/effects/backgrounds/office-shelf.webp",
+  "stylish-living-room-couch": "/effects/backgrounds/warm-lounge.webp",
+} satisfies Partial<Record<BackgroundEffectId, string>>;
+
+export const BACKGROUND_EFFECTS: VideoEffectOption<BackgroundEffectId>[] = [
+  {
+    id: "none",
+    label: "No background",
+    icon: Layers,
+    tone: "#27272a",
+    category: "Blur and personal",
+  },
+  {
+    id: "blur-light",
+    label: "Slight blur",
+    icon: Blend,
+    tone: "#155e75",
+    category: "Blur and personal",
+  },
+  {
+    id: "blur-strong",
+    label: "Blur",
+    icon: Blend,
+    tone: "#1d4ed8",
+    category: "Blur and personal",
+  },
+  {
+    id: "desk-motion",
+    label: "Desk motion",
+    icon: LampDesk,
+    tone: "#1e3a8a",
+    motion: true,
+    category: "Immersive",
+  },
+  {
+    id: "loft-motion",
+    label: "Loft motion",
+    icon: Building2,
+    tone: "#7c2d12",
+    motion: true,
+    category: "Immersive",
+  },
+  {
+    id: "aurora-motion",
+    label: "Aurora motion",
+    icon: Waves,
+    tone: "#155e75",
+    motion: true,
+    category: "Immersive",
+  },
+  {
+    id: "office",
+    label: "Office shelf",
+    icon: ImagePlus,
+    tone: "#52525b",
+    assetPath: BACKGROUND_ASSET_PATHS.office,
+    category: "Professional",
+  },
+  {
+    id: "studio",
+    label: "Conference wall",
+    icon: ImagePlus,
+    tone: "#475569",
+    assetPath: BACKGROUND_ASSET_PATHS.studio,
+    category: "Professional",
+  },
+  {
+    id: "modern-conference-room",
+    label: "Modern conference room",
+    icon: Building2,
+    tone: "#334155",
+    assetPath: BACKGROUND_ASSET_PATHS["modern-conference-room"],
+    category: "Professional",
+  },
+  {
+    id: "office-library",
+    label: "Office library",
+    icon: LibraryBig,
+    tone: "#365314",
+    assetPath: BACKGROUND_ASSET_PATHS["office-library"],
+    category: "Professional",
+  },
+  {
+    id: "office-meeting-space",
+    label: "Office meeting space",
+    icon: Building2,
+    tone: "#0f766e",
+    assetPath: BACKGROUND_ASSET_PATHS["office-meeting-space"],
+    category: "Professional",
+  },
+  {
+    id: "office-green-space",
+    label: "Office green space",
+    icon: Leaf,
+    tone: "#15803d",
+    assetPath: BACKGROUND_ASSET_PATHS["office-green-space"],
+    category: "Professional",
+  },
+  {
+    id: "bookshelf",
+    label: "Bookshelf",
+    icon: LibraryBig,
+    tone: "#713f12",
+    assetPath: BACKGROUND_ASSET_PATHS.bookshelf,
+    category: "Home office",
+  },
+  {
+    id: "home-office-bookshelf",
+    label: "Home office",
+    icon: LampDesk,
+    tone: "#854d0e",
+    assetPath: BACKGROUND_ASSET_PATHS["home-office-bookshelf"],
+    category: "Home office",
+  },
+  {
+    id: "shelf-with-plants",
+    label: "Shelf with plants",
+    icon: Leaf,
+    tone: "#166534",
+    assetPath: BACKGROUND_ASSET_PATHS["shelf-with-plants"],
+    category: "Home office",
+  },
+  {
+    id: "stylish-home-office",
+    label: "Stylish home office",
+    icon: LampDesk,
+    tone: "#57534e",
+    assetPath: BACKGROUND_ASSET_PATHS["stylish-home-office"],
+    category: "Home office",
+  },
+  {
+    id: "lounge",
+    label: "Warm lounge",
+    icon: ImagePlus,
+    tone: "#7c2d12",
+    assetPath: BACKGROUND_ASSET_PATHS.lounge,
+    category: "Cozy home",
+  },
+  {
+    id: "home-office-sofa",
+    label: "Home sofa",
+    icon: Sofa,
+    tone: "#9a3412",
+    assetPath: BACKGROUND_ASSET_PATHS["home-office-sofa"],
+    category: "Cozy home",
+  },
+  {
+    id: "living-room-shelf",
+    label: "Living room shelf",
+    icon: Armchair,
+    tone: "#92400e",
+    assetPath: BACKGROUND_ASSET_PATHS["living-room-shelf"],
+    category: "Cozy home",
+  },
+  {
+    id: "stylish-living-room-couch",
+    label: "Stylish living room",
+    icon: Sofa,
+    tone: "#7f1d1d",
+    assetPath: BACKGROUND_ASSET_PATHS["stylish-living-room-couch"],
+    category: "Cozy home",
+  },
+  {
+    id: "coffee-shop",
+    label: "Coffee shop",
+    icon: Coffee,
+    tone: "#78350f",
+    assetPath: BACKGROUND_ASSET_PATHS["coffee-shop"],
+    category: "Social",
+  },
+  {
+    id: "beach",
+    label: "Beach pavilion",
+    icon: ImagePlus,
+    tone: "#0e7490",
+    assetPath: BACKGROUND_ASSET_PATHS.beach,
+    category: "Nature",
+  },
+  {
+    id: "forest",
+    label: "Forest light",
+    icon: ImagePlus,
+    tone: "#166534",
+    assetPath: BACKGROUND_ASSET_PATHS.forest,
+    category: "Nature",
+  },
+  {
+    id: "gradient",
+    label: "Color field",
+    icon: Palette,
+    tone: "#6d28d9",
+    category: "Stylized",
+  },
+  {
+    id: "custom",
+    label: "Uploaded image",
+    icon: ImagePlus,
+    tone: "#1a73e8",
+    category: "Personal",
+  },
+];
+
+export const FACE_FILTERS: VideoEffectOption<FaceFilterId>[] = [
+  {
+    id: "none",
+    label: "No filter",
+    icon: Layers,
+    tone: "#27272a",
+    category: "New",
+  },
+  {
+    id: "sparkles",
+    label: "Sparkles",
+    icon: Sparkles,
+    tone: "#7c3aed",
+    category: "New",
+  },
+  {
+    id: "butterflies",
+    label: "Butterflies",
+    icon: Flower2,
+    tone: "#db2777",
+    category: "New",
+  },
+  {
+    id: "beach-day",
+    label: "Beach day",
+    icon: Waves,
+    tone: "#0284c7",
+    category: "New",
+  },
+  {
+    id: "idea",
+    label: "Idea bulb",
+    description: "Open your mouth to light it.",
+    icon: Lightbulb,
+    tone: "#ca8a04",
+    category: "Funny",
+  },
+  {
+    id: "glasses",
+    label: "Glasses",
+    icon: Glasses,
+    tone: "#0369a1",
+    category: "Accessories",
+  },
+  {
+    id: "aviator",
+    label: "Aviator",
+    icon: Plane,
+    tone: "#334155",
+    category: "Accessories",
+  },
+  {
+    id: "cat-eye-beret",
+    label: "Cat-eye beret",
+    icon: VenetianMask,
+    tone: "#be123c",
+    category: "Accessories",
+  },
+  {
+    id: "crown",
+    label: "Gold crown",
+    icon: Crown,
+    tone: "#b45309",
+    category: "Accessories",
+  },
+  {
+    id: "halo",
+    label: "Light halo",
+    icon: SunMedium,
+    tone: "#f59e0b",
+    category: "Accessories",
+  },
+  {
+    id: "bunny-ears",
+    label: "Bunny ears",
+    icon: Rabbit,
+    tone: "#f9a8d4",
+    category: "Costumes",
+  },
+  {
+    id: "alien",
+    label: "Alien ship",
+    icon: Rocket,
+    tone: "#22c55e",
+    category: "Costumes",
+  },
+  {
+    id: "mustache",
+    label: "Mustache",
+    icon: WandSparkles,
+    tone: "#44403c",
+    category: "Costumes",
+  },
+];
+
+export const APPEARANCE_STYLES: VideoEffectOption<AppearanceStyleId>[] = [
+  {
+    id: "none",
+    label: "No style",
+    icon: Layers,
+    tone: "#27272a",
+  },
+  {
+    id: "cloudy",
+    label: "Cloudy day",
+    icon: SunMedium,
+    tone: "#64748b",
+  },
+  {
+    id: "ocean",
+    label: "Ocean",
+    icon: Palette,
+    tone: "#0369a1",
+  },
+  {
+    id: "mono",
+    label: "Black and white",
+    icon: Palette,
+    tone: "#52525b",
+  },
+  {
+    id: "glow",
+    label: "Glowing edges",
+    icon: Focus,
+    tone: "#eab308",
+  },
+];
+
+export function hasActiveVideoEffects(effects: VideoEffectsState): boolean {
+  return (
+    effects.background !== "none" ||
+    effects.filter !== "none" ||
+    effects.style !== "none" ||
+    effects.studioLighting ||
+    effects.studioLook ||
+    effects.framing
+  );
+}
+
+export function countActiveVideoEffects(effects: VideoEffectsState): number {
+  let count = 0;
+  if (effects.background !== "none") count += 1;
+  if (effects.filter !== "none") count += 1;
+  if (effects.style !== "none") count += 1;
+  if (effects.studioLighting) count += 1;
+  if (effects.studioLook) count += 1;
+  if (effects.framing) count += 1;
+  return count;
+}

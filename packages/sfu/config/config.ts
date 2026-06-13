@@ -3,6 +3,7 @@ import path from "path";
 import { existsSync } from "fs";
 import { createHash } from "crypto";
 import { fileURLToPath } from "url";
+import type { RouterRtpCodecCapability } from "mediasoup/types";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const sfuPackageRoot = path.resolve(__dirname, "..");
@@ -49,10 +50,28 @@ if (process.env.SFU_DEBUG_SECRET !== "0") {
   );
 }
 
-const toNumber = (value: string | undefined, fallback: number): number => {
+type NumberOptions = {
+  integer?: boolean;
+  min?: number;
+  max?: number;
+};
+
+const toNumber = (
+  value: string | undefined,
+  fallback: number,
+  options: NumberOptions = {},
+): number => {
   if (!value) return fallback;
   const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : fallback;
+  if (
+    !Number.isFinite(parsed) ||
+    (options.integer && !Number.isInteger(parsed)) ||
+    (typeof options.min === "number" && parsed < options.min) ||
+    (typeof options.max === "number" && parsed > options.max)
+  ) {
+    return fallback;
+  }
+  return parsed;
 };
 
 const toBoolean = (value: string | undefined): boolean => {
@@ -115,11 +134,34 @@ const normalizeClientPolicies = (
 ): Record<string, ClientPolicy> => {
   if (!value) return defaultClientPolicies;
   try {
-    const parsed = JSON.parse(value) as Record<string, Partial<ClientPolicy>>;
+    const parsed = JSON.parse(value) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return defaultClientPolicies;
+    }
+
     const next: Record<string, ClientPolicy> = { ...defaultClientPolicies };
-    for (const [key, policy] of Object.entries(parsed ?? {})) {
+    for (const [key, policy] of Object.entries(parsed)) {
       if (!policy || typeof policy !== "object") continue;
-      next[key] = { ...defaultClientPolicies.default, ...policy };
+      const policyInput = policy as Record<string, unknown>;
+      const base = next[key] ?? defaultClientPolicies.default;
+      next[key] = {
+        allowNonHostRoomCreation:
+          typeof policyInput.allowNonHostRoomCreation === "boolean"
+            ? policyInput.allowNonHostRoomCreation
+            : base.allowNonHostRoomCreation,
+        allowHostJoin:
+          typeof policyInput.allowHostJoin === "boolean"
+            ? policyInput.allowHostJoin
+            : base.allowHostJoin,
+        useWaitingRoom:
+          typeof policyInput.useWaitingRoom === "boolean"
+            ? policyInput.useWaitingRoom
+            : base.useWaitingRoom,
+        allowDisplayNameUpdate:
+          typeof policyInput.allowDisplayNameUpdate === "boolean"
+            ? policyInput.allowDisplayNameUpdate
+            : base.allowDisplayNameUpdate,
+      };
     }
     return next;
   } catch (_error) {
@@ -147,65 +189,97 @@ const resolveAnnouncedIp = (): string => {
 const announcedIp = resolveAnnouncedIp();
 const plainTransportAnnouncedIp =
   process.env.PLAIN_TRANSPORT_ANNOUNCED_IP?.trim() || announcedIp;
+const rtcMinPort = toNumber(process.env.RTC_MIN_PORT, 40000, {
+  integer: true,
+  min: 1,
+  max: 65535,
+});
+const parsedRtcMaxPort = toNumber(process.env.RTC_MAX_PORT, 49999, {
+  integer: true,
+  min: 1,
+  max: 65535,
+});
+const rtcMaxPort = parsedRtcMaxPort >= rtcMinPort ? parsedRtcMaxPort : rtcMinPort;
+if (parsedRtcMaxPort < rtcMinPort) {
+  console.warn("[SFU] RTC_MAX_PORT is lower than RTC_MIN_PORT; using a single-port range.");
+}
+
+const routerMediaCodecs: RouterRtpCodecCapability[] = [
+  {
+    kind: "audio",
+    mimeType: "audio/opus",
+    clockRate: 48000,
+    channels: 2,
+  },
+  {
+    kind: "video",
+    mimeType: "video/H264",
+    clockRate: 90000,
+    parameters: {
+      "packetization-mode": 1,
+      "profile-level-id": "42e01f",
+      "level-asymmetry-allowed": 1,
+    },
+  },
+  {
+    kind: "video",
+    mimeType: "video/VP8",
+    clockRate: 90000,
+    parameters: {},
+  },
+];
 
 export const config = {
-  port: toNumber(process.env.SFU_PORT || process.env.PORT, 3031),
+  port: toNumber(process.env.SFU_PORT || process.env.PORT, 3031, {
+    integer: true,
+    min: 1,
+    max: 65535,
+  }),
   instanceId: process.env.SFU_INSTANCE_ID || `sfu-${process.pid}`,
   version: process.env.SFU_VERSION || "dev",
   draining: toBoolean(process.env.SFU_DRAINING),
   sfuSecret: process.env.SFU_SECRET || "development-secret",
   clientPolicies,
   workerSettings: {
-    rtcMinPort: toNumber(process.env.RTC_MIN_PORT, 40000),
-    rtcMaxPort: toNumber(process.env.RTC_MAX_PORT, 49999),
+    rtcMinPort,
+    rtcMaxPort,
     logLevel: "warn" as WorkerLogLevel,
     logTags: ["info", "ice", "dtls", "rtp", "srtp", "rtcp"] as WorkerLogTag[],
   },
   videoQuality: {
-    lowThreshold: Number(process.env.VIDEO_QUALITY_LOW_THRESHOLD) || 1000,
-    standardThreshold:
-      Number(process.env.VIDEO_QUALITY_STANDARD_THRESHOLD) || 900,
+    lowThreshold: toNumber(process.env.VIDEO_QUALITY_LOW_THRESHOLD, 1000, {
+      min: 1,
+    }),
+    standardThreshold: toNumber(
+      process.env.VIDEO_QUALITY_STANDARD_THRESHOLD,
+      900,
+      { min: 1 },
+    ),
   },
-  adminCleanupTimeout: Number(process.env.ADMIN_CLEANUP_TIMEOUT) || 120000,
+  adminCleanupTimeout: toNumber(process.env.ADMIN_CLEANUP_TIMEOUT, 120000, {
+    min: 1000,
+  }),
   socket: {
     pingIntervalMs: toNumber(
       process.env.SFU_SOCKET_PING_INTERVAL_MS,
       25000,
+      { min: 1000 },
     ),
-    pingTimeoutMs: toNumber(process.env.SFU_SOCKET_PING_TIMEOUT_MS, 60000),
+    pingTimeoutMs: toNumber(process.env.SFU_SOCKET_PING_TIMEOUT_MS, 60000, {
+      min: 1000,
+    }),
     disconnectGraceMs: toNumber(
       process.env.SFU_SOCKET_DISCONNECT_GRACE_MS,
       15000,
+      { min: 0 },
     ),
     recoveryMaxDisconnectionMs: toNumber(
       process.env.SFU_SOCKET_RECOVERY_MAX_MS,
       30000,
+      { min: 0 },
     ),
   },
-  routerMediaCodecs: [
-    {
-      kind: "audio",
-      mimeType: "audio/opus",
-      clockRate: 48000,
-      channels: 2,
-    },
-    {
-      kind: "video",
-      mimeType: "video/H264",
-      clockRate: 90000,
-      parameters: {
-        "packetization-mode": 1,
-        "profile-level-id": "42e01f",
-        "level-asymmetry-allowed": 1,
-      },
-    },
-    {
-      kind: "video",
-      mimeType: "video/VP8",
-      clockRate: 90000,
-      parameters: {},
-    },
-  ],
+  routerMediaCodecs,
   webRtcTransport: {
     listenIps: [
       {
@@ -216,10 +290,12 @@ export const config = {
     maxIncomingBitrate: toNumber(
       process.env.SFU_WEBRTC_MAX_INCOMING_BITRATE,
       25000000,
+      { min: 1 },
     ),
     initialAvailableOutgoingBitrate: toNumber(
       process.env.SFU_WEBRTC_INITIAL_OUTGOING_BITRATE,
       25000000,
+      { min: 1 },
     ),
   },
   plainTransport: {

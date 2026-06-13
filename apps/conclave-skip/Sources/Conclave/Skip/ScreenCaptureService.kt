@@ -23,8 +23,6 @@ class ScreenCaptureService : Service() {
         const val NOTIFICATION_ID = 2
         const val ACTION_START = "conclave.app.action.START_SCREEN_CAPTURE"
         const val ACTION_STOP = "conclave.app.action.STOP_SCREEN_CAPTURE"
-        const val EXTRA_RESULT_CODE = "result_code"
-        const val EXTRA_DATA = "data"
     }
 
     override fun onCreate() {
@@ -35,7 +33,7 @@ class ScreenCaptureService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> {
-                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopForegroundCompat()
                 stopSelf()
                 return START_NOT_STICKY
             }
@@ -61,7 +59,7 @@ class ScreenCaptureService : Service() {
                         startForeground(NOTIFICATION_ID, notification)
                     }
                 } catch (t: Throwable) {
-                    android.util.Log.e("ConclaveScreenCap", "startForeground(mediaProjection) FAILED", t)
+                    debugLog("[ScreenShare] Failed to foreground media projection service: ${t}")
                     // Typed FGS failed to come up — do NOT proceed into the
                     // projection mint. Resume the waiter with false so the VM
                     // skips startScreenSharing() instead of crashing into a
@@ -72,7 +70,11 @@ class ScreenCaptureService : Service() {
                 }
                 // The FGS is live with the mediaProjection type — now the
                 // capturer is allowed to mint the projection. Resume the VM.
-                ScreenCaptureManager.onServiceForegrounded()
+                if (!ScreenCaptureManager.onServiceForegrounded()) {
+                    stopForegroundCompat()
+                    stopSelf()
+                    return START_NOT_STICKY
+                }
                 return START_STICKY
             }
             else -> {
@@ -91,6 +93,9 @@ class ScreenCaptureService : Service() {
     }
 
     private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            return
+        }
         val channel = NotificationChannel(
             CHANNEL_ID,
             "Screen Sharing",
@@ -103,8 +108,22 @@ class ScreenCaptureService : Service() {
         manager.createNotificationChannel(channel)
     }
 
+    private fun stopForegroundCompat() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } else {
+            @Suppress("DEPRECATION")
+            stopForeground(true)
+        }
+    }
+
     private fun createNotification(): Notification {
-        val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
+        val launchIntent = (
+            packageManager.getLaunchIntentForPackage(packageName)
+                ?: Intent().setClassName(packageName, "conclave.module.MainActivity")
+        ).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_NEW_TASK
+        }
         val pendingIntent = PendingIntent.getActivity(
             this,
             0,

@@ -7,6 +7,7 @@ import skip.ui.*
 
 import android.Manifest
 import android.app.Application
+import android.content.Intent
 import android.graphics.Color as AndroidColor
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -32,7 +33,7 @@ internal val logger: SkipLogger = SkipLogger(subsystem = "conclave.module", cate
 private typealias AppRootView = ConclaveRootView
 private typealias AppDelegate = ConclaveAppDelegate
 
-/// AndroidAppMain is the `android.app.Application` entry point, and must match `application android:name` in the AndroidMainfest.xml file.
+/// AndroidAppMain is the `android.app.Application` entry point, and must match `application android:name` in AndroidManifest.xml.
 open class AndroidAppMain: Application {
     constructor() {
     }
@@ -52,7 +53,7 @@ open class AndroidAppMain: Application {
     }
 }
 
-/// AndroidAppMain is initial `androidx.appcompat.app.AppCompatActivity`, and must match `activity android:name` in the AndroidMainfest.xml file.
+/// AndroidAppMain is the initial `androidx.appcompat.app.AppCompatActivity`, and must match `activity android:name` in AndroidManifest.xml.
 open class MainActivity: AppCompatActivity {
     constructor() {
     }
@@ -84,6 +85,7 @@ open class MainActivity: AppCompatActivity {
         }
 
         AppDelegate.shared.onLaunch()
+        handleIncomingDeepLink(intent)
 
         // Request CAMERA + RECORD_AUDIO up front so the in-meeting WebRTC capturer
         // never opens the device without runtime permission (which crashes the
@@ -117,9 +119,25 @@ open class MainActivity: AppCompatActivity {
     /// call stays visible. The foreground service already keeps audio alive.
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
-        if (PipController.isInCall && android.os.Build.VERSION.SDK_INT >= 26) {
+        if (
+            PipController.isInCall &&
+            !ScreenCaptureManager.isRequestingCapture() &&
+            android.os.Build.VERSION.SDK_INT >= 26
+        ) {
             PipManager.enterPip(this, PipController.muted)
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIncomingDeepLink(intent)
+    }
+
+    private fun handleIncomingDeepLink(intent: Intent?) {
+        val urlString = intent?.dataString?.trim() ?: return
+        if (urlString.isEmpty()) return
+        AppDelegate.shared.onOpenURL(urlString)
     }
 
     override fun onPictureInPictureModeChanged(
@@ -149,7 +167,6 @@ open class MainActivity: AppCompatActivity {
     override fun onSaveInstanceState(outState: android.os.Bundle): Unit = super.onSaveInstanceState(outState)
 
     override fun onRestoreInstanceState(bundle: android.os.Bundle) {
-        // Usually you restore your state in onCreate(). It is possible to restore it in onRestoreInstanceState() as well, but not very common. (onRestoreInstanceState() is called after onStart(), whereas onCreate() is called before onStart().
         logger.info("onRestoreInstanceState")
         super.onRestoreInstanceState(bundle)
     }

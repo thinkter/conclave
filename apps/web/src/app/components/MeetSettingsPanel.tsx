@@ -15,7 +15,7 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { color } from "@conclave/ui-tokens";
 import type {
   MeetingConfigSnapshot,
@@ -102,11 +102,7 @@ const copyToClipboard = async (value: string): Promise<boolean> => {
   return false;
 };
 
-/* ------------------------------------------------------------ scoped CSS ---
- * Keyframes + the 4px custom scrollbar live in a single scoped style block so
- * this presentation refactor never has to touch globals.css. Flat surfaces
- * only: the skeleton is a solid placeholder with a <=120ms opacity pulse, the
- * spinner a single rotating arc — no gradient shimmer, no glow. */
+// Keep panel-only keyframes and scrollbar styles out of globals.css.
 const PANEL_STYLES = `
 @keyframes hostpanel-spin { to { transform: rotate(360deg); } }
 @keyframes hostpanel-pulse {
@@ -126,8 +122,6 @@ const PANEL_STYLES = `
 }
 `;
 
-/* -------------------------------------------------------------------- Spinner ---
- * Single rotating arc, no library. */
 function Spinner({ size = 14 }: { size?: number }) {
   return (
     <span
@@ -144,8 +138,6 @@ function Spinner({ size = 14 }: { size?: number }) {
   );
 }
 
-/* ----------------------------------------------------------- SectionHeader ---
- * 11px all-caps faint label with an optional StatusPill accessory. */
 function SectionHeader({
   label,
   accessory,
@@ -170,14 +162,10 @@ function SectionHeader({
   );
 }
 
-/* ---------------------------------------------------------------- Separator ---
- * Full-width 1px hairline flush to the panel edges, between sections. */
 function Separator() {
   return <div className="h-px w-full" style={{ backgroundColor: color.border }} />;
 }
 
-/* --------------------------------------------------------------- ToggleSwitch ---
- * Flat track + knob. Tone-driven fill when on; no glow, no gradient. */
 function ToggleSwitch({ isOn, tone }: { isOn: boolean; tone: ToggleTone }) {
   return (
     <span
@@ -193,9 +181,6 @@ function ToggleSwitch({ isOn, tone }: { isOn: boolean; tone: ToggleTone }) {
   );
 }
 
-/* ------------------------------------------------------------------ SwitchRow ---
- * Icon + label on the left, toggle on the right. The whole row is the hit
- * target. Lean 44px; description omitted by default (host repeats these). */
 function SwitchRow({
   icon: Icon,
   label,
@@ -233,9 +218,6 @@ function SwitchRow({
   );
 }
 
-/* --------------------------------------------------------------- LockedRow ---
- * A webinar subordinate row in its disabled state: a literal Lock icon stands
- * in for the toggle so the disabled *reason* is legible, not just greyed out. */
 function LockedRow({
   icon: Icon,
   label,
@@ -259,8 +241,6 @@ function LockedRow({
   );
 }
 
-/* -------------------------------------------------------------------- Status ---
- * Small flat pill summarising a section's state. */
 function StatusPill({
   label,
   tone,
@@ -296,8 +276,6 @@ function StatusPill({
   );
 }
 
-/* ----------------------------------------------------------------- TextButton ---
- * Inline text action (Remove / confirm). No box, just colored text. */
 function TextButton({
   children,
   onClick,
@@ -322,8 +300,6 @@ function TextButton({
   );
 }
 
-/* ----------------------------------------------------------------- ActionBtn ---
- * Flat 32px button — primary (accent fill) or ghost (1px border). */
 function ActionBtn({
   children,
   onClick,
@@ -365,9 +341,6 @@ function ActionBtn({
   );
 }
 
-/* ----------------------------------------------------------- InviteCodeForm ---
- * Shared by the meeting invite code and the webinar attendee code: a status
- * pill, an inset input, a primary Save and an inline-confirm Remove link. */
 function InviteCodeForm({
   label,
   value,
@@ -498,6 +471,7 @@ export default function MeetSettingsPanel({
   const [isWebinarWorking, setIsWebinarWorking] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
   const [rotateConfirming, setRotateConfirming] = useState(false);
+  const linkCopiedTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     setMaxAttendeesInput(String(webinarConfig?.maxAttendees ?? DEFAULT_WEBINAR_CAP));
@@ -532,6 +506,26 @@ export default function MeetSettingsPanel({
   useEffect(() => {
     void refreshMeetingConfig();
   }, [refreshMeetingConfig]);
+
+  useEffect(() => {
+    return () => {
+      if (linkCopiedTimerRef.current !== null) {
+        window.clearTimeout(linkCopiedTimerRef.current);
+        linkCopiedTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  const showLinkCopied = useCallback(() => {
+    setLinkCopied(true);
+    if (linkCopiedTimerRef.current !== null) {
+      window.clearTimeout(linkCopiedTimerRef.current);
+    }
+    linkCopiedTimerRef.current = window.setTimeout(() => {
+      setLinkCopied(false);
+      linkCopiedTimerRef.current = null;
+    }, 1600);
+  }, []);
 
   const withMeetingTask = useCallback(
     async (task: () => Promise<void>, options?: { clearInviteInput?: boolean }) => {
@@ -639,7 +633,6 @@ export default function MeetSettingsPanel({
         className="fixed right-0 top-0 bottom-0 z-40 flex w-[360px] flex-col overflow-hidden border-l border-white/10 bg-[#18181b] animate-[meet-panel-in_280ms_cubic-bezier(0.22,1,0.36,1)]"
         style={{ fontFamily: SANS }}
       >
-        {/* Header */}
         <div className="flex shrink-0 items-center justify-between border-b border-white/10 px-4 py-3">
           <h2 className="text-[15px] font-semibold text-[#fafafa]">Host controls</h2>
           <button
@@ -653,7 +646,6 @@ export default function MeetSettingsPanel({
         </div>
 
         <div className="hostpanel-scroll min-h-0 flex-1 overflow-y-auto overflow-x-hidden pb-2">
-          {/* ---- Room access ---- */}
           <SectionHeader
             label="Room access"
             first
@@ -678,7 +670,6 @@ export default function MeetSettingsPanel({
 
           <Separator />
 
-          {/* ---- Chat & messaging (positive polarity) ---- */}
           <SectionHeader label="Chat & messaging" />
           <SwitchRow
             icon={MessageSquareLock}
@@ -707,7 +698,6 @@ export default function MeetSettingsPanel({
 
           <Separator />
 
-          {/* ---- Meeting invite code ---- */}
           <SectionHeader label="Meeting invite code" />
           <InviteCodeForm
             label="Invite code"
@@ -738,7 +728,6 @@ export default function MeetSettingsPanel({
             }
           />
 
-          {/* ---- Webinar (inline collapsible peer layer) ---- */}
           {hasWebinar ? (
             <>
               <Separator />
@@ -1012,8 +1001,7 @@ export default function MeetSettingsPanel({
                                 if (!copied) {
                                   throw new Error("Clipboard access failed.");
                                 }
-                                setLinkCopied(true);
-                                window.setTimeout(() => setLinkCopied(false), 1600);
+                                showLinkCopied();
                               })
                             }
                           >

@@ -25,7 +25,7 @@ const DEFAULT_END_ROOM_MESSAGE =
 const MAX_END_ROOM_DELAY_MS = 30000;
 
 const resolveClientId = (context: ConnectionContext): string => {
-  const raw = (context.socket as any).user?.clientId;
+  const raw = context.socket.data.user?.clientId;
   return typeof raw === "string" && raw.trim() ? raw.trim() : "default";
 };
 
@@ -236,7 +236,7 @@ const activatePromotedAdmin = (
   promoted: Admin,
   roomId: string,
 ): void => {
-  const promotedContext = (promoted.socket as any).data?.context as
+  const promotedContext = promoted.socket.data?.context as
     | ConnectionContext
     | undefined;
 
@@ -783,7 +783,7 @@ export const registerAdminHandlers = (
           guard.room.allowLockedUser(userKey);
         }
         if (pending) {
-          pending.socket.emit("joinApproved");
+          pending.socket.emit("joinApproved", { roomId: guard.room.id });
           admitted.push(userKey);
           for (const admin of guard.room.getAdmins()) {
             admin.socket.emit("userAdmitted", {
@@ -847,7 +847,7 @@ export const registerAdminHandlers = (
         guard.room.blockUser(userKey);
 
         if (pending) {
-          pending.socket.emit("joinRejected");
+          pending.socket.emit("joinRejected", { roomId: guard.room.id });
           rejectedPending.push(userKey);
           for (const admin of guard.room.getAdmins()) {
             admin.socket.emit("userRejected", {
@@ -977,7 +977,11 @@ export const registerAdminHandlers = (
       const targetClient = guard.room.getClient(targetId);
       if (targetClient) {
         Logger.info(`Admin redirecting user ${targetId} to ${newRoomId}`);
-        targetClient.socket.emit("redirect", { newRoomId });
+        targetClient.socket.emit("redirect", {
+          roomId: guard.room.id,
+          userId: targetId,
+          newRoomId,
+        });
         respond(cb, { success: true });
       } else {
         respond(cb, { error: "User not found" });
@@ -999,7 +1003,7 @@ export const registerAdminHandlers = (
         guard.room.allowLockedUser(pending.userKey);
       }
       guard.room.allowUser(pending.userKey);
-      pending.socket.emit("joinApproved");
+      pending.socket.emit("joinApproved", { roomId: guard.room.id });
 
       for (const admin of guard.room.getAdmins()) {
         admin.socket.emit("userAdmitted", {
@@ -1027,7 +1031,7 @@ export const registerAdminHandlers = (
         `Admin rejected user ${pending.userKey} from room ${options.roomId}`,
       );
       guard.room.removePendingClient(pending.userKey);
-      pending.socket.emit("joinRejected");
+      pending.socket.emit("joinRejected", { roomId: guard.room.id });
 
       for (const admin of guard.room.getAdmins()) {
         admin.socket.emit("userRejected", {
@@ -1339,18 +1343,10 @@ export const registerAdminHandlers = (
       endedBy: guard.adminId,
     });
 
-    const pendingSockets = Array.from(guard.room.pendingClients.values())
-      .map((pending) => pending.socket)
-      .filter(
-        (
-          pendingSocket,
-        ): pendingSocket is { disconnect: (close?: boolean) => void; emit: (event: string, payload: unknown) => void } =>
-          Boolean(
-            pendingSocket &&
-              typeof pendingSocket.emit === "function" &&
-              typeof pendingSocket.disconnect === "function",
-          ),
-      );
+    const pendingSockets = Array.from(
+      guard.room.pendingClients.values(),
+      (pending) => pending.socket,
+    );
 
     for (const pendingSocket of pendingSockets) {
       pendingSocket.emit("roomEnded", {

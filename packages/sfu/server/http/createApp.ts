@@ -3,7 +3,7 @@ import { timingSafeEqual } from "node:crypto";
 import cors from "cors";
 import express from "express";
 import type { Express, Request, Response } from "express";
-import type { Server as SocketIOServer } from "socket.io";
+import type { Server as SocketIOServer, Socket } from "socket.io";
 import { Admin } from "../../config/classes/Admin.js";
 import type { Room } from "../../config/classes/Room.js";
 import type { ProducerType } from "../../config/classes/Client.js";
@@ -355,10 +355,7 @@ export const createSfuApp = ({
       0,
     );
 
-    const pendingSockets = new Set<{
-      emit: (event: string, payload: unknown) => void;
-      disconnect: (close?: boolean) => void;
-    }>();
+    const pendingSockets = new Set<Socket>();
 
     for (const room of rooms) {
       io.to(room.channelId).emit("serverRestarting", {
@@ -368,15 +365,7 @@ export const createSfuApp = ({
       });
 
       for (const pending of room.pendingClients.values()) {
-        const pendingSocket = pending.socket as
-          | {
-              emit: (event: string, payload: unknown) => void;
-              disconnect: (close?: boolean) => void;
-            }
-          | undefined;
-        if (pendingSocket) {
-          pendingSockets.add(pendingSocket);
-        }
+        pendingSockets.add(pending.socket);
       }
     }
 
@@ -758,7 +747,7 @@ export const createSfuApp = ({
       }
 
       if (pending) {
-        pending.socket.emit("joinApproved");
+        pending.socket.emit("joinApproved", { roomId: lookup.room.id });
         admitted.push(userKey);
         for (const admin of lookup.room.getAdmins()) {
           admin.socket.emit("userAdmitted", {
@@ -851,7 +840,7 @@ export const createSfuApp = ({
       lookup.room.blockUser(userKey);
 
       if (pending) {
-        pending.socket.emit("joinRejected");
+        pending.socket.emit("joinRejected", { roomId: lookup.room.id });
         rejectedPending.push(userKey);
       }
 
@@ -1071,7 +1060,7 @@ export const createSfuApp = ({
       lookup.room.allowLockedUser(userKey);
     }
     lookup.room.allowUser(userKey);
-    pending.socket.emit("joinApproved");
+    pending.socket.emit("joinApproved", { roomId: lookup.room.id });
 
     for (const admin of lookup.room.getAdmins()) {
       admin.socket.emit("userAdmitted", {
@@ -1112,7 +1101,7 @@ export const createSfuApp = ({
     }
 
     lookup.room.removePendingClient(userKey);
-    pending.socket.emit("joinRejected");
+    pending.socket.emit("joinRejected", { roomId: lookup.room.id });
 
     for (const admin of lookup.room.getAdmins()) {
       admin.socket.emit("userRejected", {
@@ -1214,16 +1203,10 @@ export const createSfuApp = ({
     const delayMs = parseEndRoomDelay(req.body?.delayMs);
     const message = parseEndRoomMessage(req.body?.message);
 
-    const pendingSockets = Array.from(room.pendingClients.values())
-      .map((pending) => pending.socket)
-      .filter(
-        (pendingSocket): pendingSocket is { disconnect: (close?: boolean) => void; emit: (event: string, payload: unknown) => void } =>
-          Boolean(
-            pendingSocket &&
-              typeof pendingSocket.disconnect === "function" &&
-              typeof pendingSocket.emit === "function",
-          ),
-      );
+    const pendingSockets = Array.from(
+      room.pendingClients.values(),
+      (pending) => pending.socket,
+    );
 
     markRoomEnded(state, room, {
       message,

@@ -14,17 +14,29 @@ final class SocketIOManager {
     var onReconnected: (() -> Void)?
     var onReconnectFailed: (() -> Void)?
 
-    var onJoinedRoom: ((JoinRoomResponse) -> Void)?
-    var onWaitingForAdmission: (() -> Void)?
-    var onWaitingRoomStatus: ((String?) -> Void)?
+    var onWaitingRoomStatus: ((WaitingRoomStatusNotification) -> Void)?
     var onJoinApproved: (() -> Void)?
     var onJoinRejected: (() -> Void)?
-    var onHostAssigned: (() -> Void)?
-    var onKicked: ((String?) -> Void)?
-    var onRoomEnded: ((String?) -> Void)?
+    var onHostAssigned: ((HostAssignedNotification) -> Void)?
+    var onHostChanged: ((HostChangedNotification) -> Void)?
+    var onAdminUsersChanged: ((AdminUsersChangedNotification) -> Void)?
+    var onKicked: ((KickedNotification) -> Void)?
+    var onRoomClosed: ((RoomClosedNotification) -> Void)?
+    var onRoomEnded: ((RoomEndedNotification) -> Void)?
+    var onServerRestarting: ((ServerRestartingNotification) -> Void)?
+    var onAdminNotice: ((AdminNoticeNotification) -> Void)?
+    var onAdminHandsCleared: ((AdminHandsClearedNotification) -> Void)?
+    var onAdminRoomStateChanged: ((AdminRoomStateChangedNotification) -> Void)?
+    var onMeetingConfigChanged: ((MeetingConfigSnapshot) -> Void)?
+    var onWebinarConfigChanged: ((WebinarConfigSnapshot) -> Void)?
+    var onWebinarAttendeeCountChanged: ((WebinarAttendeeCountChangedNotification) -> Void)?
+    var onWebinarFeedChanged: ((WebinarFeedChangedNotification) -> Void)?
+    var onBrowserState: ((BrowserStateNotification) -> Void)?
+    var onBrowserClosed: ((BrowserClosedNotification) -> Void)?
+    var onAppsState: ((AppsStateNotification) -> Void)?
 
     var onUserJoined: ((UserJoinedNotification) -> Void)?
-    var onUserLeft: ((String) -> Void)?
+    var onUserLeft: ((UserLeftNotification) -> Void)?
     var onDisplayNameSnapshot: ((DisplayNameSnapshotNotification) -> Void)?
     var onDisplayNameUpdated: ((DisplayNameUpdatedNotification) -> Void)?
     var onParticipantMuted: ((ParticipantMutedNotification) -> Void)?
@@ -34,27 +46,36 @@ final class SocketIOManager {
     var onProducerClosed: ((ProducerClosedNotification) -> Void)?
 
     var onChatMessage: ((ChatMessage) -> Void)?
-    var onChatHistorySnapshot: (([ChatMessage]) -> Void)?
+    var onChatHistorySnapshot: ((ChatHistorySnapshotNotification) -> Void)?
     var onReaction: ((Reaction) -> Void)?
 
-    var onHandRaised: ((String, Bool) -> Void)?
+    var onHandRaised: ((HandRaisedNotification) -> Void)?
     var onHandRaisedSnapshot: ((HandRaisedSnapshotNotification) -> Void)?
 
-    var onRoomLockChanged: ((Bool) -> Void)?
-    var onChatLockChanged: ((Bool) -> Void)?
-    var onNoGuestsChanged: ((Bool) -> Void)?
-    var onDmStateChanged: ((Bool) -> Void)?
-    var onTtsDisabledChanged: ((Bool) -> Void)?
+    var onRoomLockChanged: ((RoomLockChangedNotification) -> Void)?
+    var onChatLockChanged: ((ChatLockChangedNotification) -> Void)?
+    var onNoGuestsChanged: ((NoGuestsChangedNotification) -> Void)?
+    var onDmStateChanged: ((DmStateChangedNotification) -> Void)?
+    var onTtsDisabledChanged: ((TtsDisabledChangedNotification) -> Void)?
     var onPendingUsersSnapshot: ((PendingUsersSnapshotNotification) -> Void)?
     var onUserRequestedJoin: ((UserRequestedJoinNotification) -> Void)?
     var onPendingUserChanged: ((PendingUserChangedNotification) -> Void)?
     var onRedirect: ((RedirectNotification) -> Void)?
     var onSetVideoQuality: ((SetVideoQualityNotification) -> Void)?
+    var onAdminMediaEnforced: ((AdminMediaEnforcedNotification) -> Void)?
+    var onAdminBulkMediaEnforced: ((AdminBulkMediaEnforcedNotification) -> Void)?
 
     func connect(sfuURL: String, token: String) async throws { fatalError() }
     func disconnect() { fatalError() }
 
-    func joinRoom(roomId: String, sessionId: String, displayName: String?, isGhost: Bool) async throws -> JoinRoomResponse {
+    func joinRoom(
+        roomId: String,
+        sessionId: String,
+        displayName: String?,
+        isGhost: Bool,
+        meetingInviteCode: String? = nil,
+        webinarInviteCode: String? = nil
+    ) async throws -> JoinRoomResponse {
         fatalError()
     }
 
@@ -81,7 +102,7 @@ final class SocketIOManager {
     func toggleCamera(producerId: String, paused: Bool) async throws { fatalError() }
     func closeProducer(producerId: String) async throws { fatalError() }
 
-    func sendChat(content: String, recipient: String? = nil) async throws { fatalError() }
+    func sendChat(content: String, recipient: String? = nil) async throws -> ChatMessage { fatalError() }
     func sendReaction(emoji: String?, kind: String?, value: String?, label: String?) async throws { fatalError() }
     func setHandRaised(_ raised: Bool) async throws { fatalError() }
     func updateDisplayName(_ name: String) async throws { fatalError() }
@@ -91,13 +112,38 @@ final class SocketIOManager {
     func setNoGuests(_ noGuests: Bool) async throws { fatalError() }
     func setDmEnabled(_ enabled: Bool) async throws { fatalError() }
     func setTtsDisabled(_ disabled: Bool) async throws { fatalError() }
+    func getMeetingConfig() async throws -> MeetingConfigSnapshot { fatalError() }
+    func updateMeetingConfig(inviteCode: String?) async throws -> MeetingConfigSnapshot { fatalError() }
+    func getWebinarConfig() async throws -> WebinarConfigSnapshot { fatalError() }
+    func updateWebinarEnabled(_ enabled: Bool) async throws -> WebinarConfigSnapshot { fatalError() }
+    func updateWebinarPublicAccess(_ publicAccess: Bool) async throws -> WebinarConfigSnapshot { fatalError() }
+    func updateWebinarLocked(_ locked: Bool) async throws -> WebinarConfigSnapshot { fatalError() }
+    func updateWebinarMaxAttendees(_ maxAttendees: Int) async throws -> WebinarConfigSnapshot { fatalError() }
+    func updateWebinarInviteCode(_ inviteCode: String?) async throws -> WebinarConfigSnapshot { fatalError() }
+    func updateWebinarLinkSlug(_ linkSlug: String?) async throws -> WebinarConfigSnapshot { fatalError() }
+    func generateWebinarLink() async throws -> WebinarLinkResponse { fatalError() }
+    func rotateWebinarLink() async throws -> WebinarLinkResponse { fatalError() }
+    func getBrowserState() async throws -> BrowserStateNotification { fatalError() }
+    func launchBrowser(url: String) async throws -> LaunchBrowserResponse { fatalError() }
+    func navigateBrowser(url: String) async throws -> LaunchBrowserResponse { fatalError() }
+    func closeBrowser() async throws { fatalError() }
+    func sendBrowserActivity() { fatalError() }
+    func getAppsState() async throws -> AppsStateNotification { fatalError() }
+    func openApp(_ appId: String) async throws -> AppsOpenResponse { fatalError() }
+    func closeApp() async throws -> AppsCloseResponse { fatalError() }
+    func setAppsLocked(_ locked: Bool) async throws -> AppsLockResponse { fatalError() }
     func admitUser(userId: String) async throws { fatalError() }
     func rejectUser(userId: String) async throws { fatalError() }
     func admitAllPending() async throws { fatalError() }
     func rejectAllPending() async throws { fatalError() }
     func kickUser(userId: String) async throws { fatalError() }
-    func muteUser(userId: String) async throws { fatalError() }
-    func muteAll() async throws { fatalError() }
+    func muteUser(userId: String) async throws -> AdminMediaActionResponse { fatalError() }
+    func muteAll() async throws -> AdminBulkMediaActionResponse { fatalError() }
+    func closeUserVideo(userId: String) async throws -> AdminMediaActionResponse { fatalError() }
+    func stopUserScreenShare(userId: String) async throws -> AdminMediaActionResponse { fatalError() }
+    func closeAllVideo() async throws -> AdminBulkMediaActionResponse { fatalError() }
+    func stopAllScreenShares() async throws -> AdminBulkMediaActionResponse { fatalError() }
+    func clearRaisedHands() async throws { fatalError() }
     func promoteHost(userId: String) async throws { fatalError() }
 }
 #endif

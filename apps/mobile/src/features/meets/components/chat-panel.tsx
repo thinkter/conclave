@@ -433,9 +433,10 @@ export function ChatPanel({
 
     const wasVisible = wasVisibleRef.current;
     wasVisibleRef.current = visible;
-    requestAnimationFrame(() => {
+    const frameId = requestAnimationFrame(() => {
       listRef.current?.scrollToOffset({ offset: 0, animated: wasVisible });
     });
+    return () => cancelAnimationFrame(frameId);
   }, [messages.length, visible]);
 
   useEffect(() => {
@@ -451,9 +452,10 @@ export function ChatPanel({
       return;
     }
     hasAppliedFooterInsetRef.current = true;
-    requestAnimationFrame(() => {
+    const frameId = requestAnimationFrame(() => {
       listRef.current?.scrollToOffset({ offset: 0, animated: false });
     });
+    return () => cancelAnimationFrame(frameId);
   }, [footerHeight, messages.length, visible]);
 
   useEffect(() => {

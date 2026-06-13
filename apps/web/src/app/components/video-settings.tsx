@@ -38,7 +38,6 @@ interface VideoSettingsProps {
   onVideoInputDeviceChange?: (deviceId: string) => void;
 }
 
-// Custom dropdown component
 function DeviceDropdown({
   devices,
   selectedDeviceId,
@@ -151,8 +150,14 @@ export default function VideoSettings({
   const showDisplayNameSettings =
     !!isAdmin && !!onDisplayNameInputChange && !!onDisplayNameSubmit;
 
-  // Fetch available devices
   const fetchDevices = useCallback(async () => {
+    if (!navigator.mediaDevices?.enumerateDevices) {
+      setAudioInputDevices([]);
+      setAudioOutputDevices([]);
+      setVideoInputDevices([]);
+      return;
+    }
+
     try {
       const devices = await navigator.mediaDevices.enumerateDevices();
 
@@ -192,13 +197,13 @@ export default function VideoSettings({
   }, [isOpen, fetchDevices]);
 
   useEffect(() => {
+    if (!navigator.mediaDevices?.addEventListener) return;
     navigator.mediaDevices.addEventListener("devicechange", fetchDevices);
     return () => {
       navigator.mediaDevices.removeEventListener("devicechange", fetchDevices);
     };
   }, [fetchDevices]);
 
-  // Close when clicking outside
   useEffect(() => {
     if (!isOpen) return;
 
@@ -227,7 +232,6 @@ export default function VideoSettings({
 
       {isOpen && (
         <div className="absolute top-full right-0 mt-2 bg-[#131316]/95 backdrop-blur-md border border-[#fafafa]/10 rounded-lg p-2 w-72 z-50 shadow-2xl">
-          {/* Mirror Camera Toggle */}
           <button
             onClick={onToggleMirror}
             className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[#fafafa]/5 rounded-lg text-xs transition-colors text-[#fafafa]"
@@ -297,7 +301,6 @@ export default function VideoSettings({
 
           <div className="border-t border-[#fafafa]/5 my-1" />
 
-          {/* Camera Selection */}
           <div className="px-3 py-2">
             <div
               className="text-[10px] text-[#fafafa]/56 flex items-center gap-1.5 mb-1.5 uppercase tracking-wider"
@@ -314,7 +317,6 @@ export default function VideoSettings({
             />
           </div>
 
-          {/* Microphone Selection */}
           <div className="px-3 py-2">
             <div 
               className="text-[10px] text-[#fafafa]/56 flex items-center gap-1.5 mb-1.5 uppercase tracking-wider"
@@ -331,7 +333,6 @@ export default function VideoSettings({
             />
           </div>
 
-          {/* Speaker Selection */}
           <div className="px-3 py-2">
             <div 
               className="text-[10px] text-[#fafafa]/56 flex items-center gap-1.5 mb-1.5 uppercase tracking-wider"

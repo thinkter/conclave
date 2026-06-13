@@ -1,9 +1,6 @@
 //
 //  MeetingView.swift
 //  Conclave
-//
-//  Main meeting view matching web app exactly
-//
 
 import SwiftUI
 import Observation
@@ -13,12 +10,8 @@ import UIKit
 
 struct MeetingView: View {
     @Bindable var viewModel: MeetingViewModel
-    // One bottom sheet for More / Participants / Settings, switched by page. A
-    // single persistent sheet that swaps content in place avoids the old
-    // dismiss-then-represent chain (which left a blank gap between two Material
-    // sheet animations on Android).
-    @State var showMeetingSheet = false
-    @State var meetingSheetPage: MeetingSheetPage = .more
+    @State private var showMeetingSheet = false
+    @State private var meetingSheetPage: MeetingSheetPage = .more
 
     private func openMeetingSheet(_ page: MeetingSheetPage) {
         meetingSheetPage = page
@@ -30,7 +23,7 @@ struct MeetingView: View {
     }
 
 #if !os(macOS) && !SKIP
-    @Environment(\.horizontalSizeClass) var horizontalSizeClass
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 #endif
 
     private var isRegularSizeClass: Bool {
@@ -54,53 +47,45 @@ struct MeetingView: View {
                         MeetingHeaderView(
                             roomId: viewModel.state.roomId,
                             isRoomLocked: viewModel.state.isRoomLocked,
+                            connectionQuality: viewModel.state.connectionQuality,
                             participantCount: viewModel.state.participantCount,
+                            showsParticipantsButton: !viewModel.state.isWebinarAttendee,
                             onParticipantsPressed: { openMeetingSheet(.participants) }
                         )
 
-                        // Reconnecting status, ambient pending-join host cue, and
-                        // transient recoverable errors (previously written to
-                        // state but read by no view while joined).
                         MeetingBannerOverlay(
                             viewModel: viewModel,
                             onShowParticipants: { openMeetingSheet(.participants) }
                         )
 
-                        if viewModel.state.hasActiveScreenShare {
-                            PresentationLayoutView(
-                                viewModel: viewModel,
-                                isCompact: !isRegularSizeClass,
-                                containerSize: geometry.size
-                            )
-                            .transition(.opacity)
-                        } else if viewModel.state.pinnedUserId != nil {
-                            SpotlightLayoutView(
-                                viewModel: viewModel,
-                                isCompact: !isRegularSizeClass,
-                                containerSize: geometry.size
-                            )
-                            .transition(.opacity)
-                        } else {
-                            GridLayoutView(viewModel: viewModel, isCompact: !isRegularSizeClass)
-                                .transition(.opacity)
-                        }
+                        meetingStage(containerSize: geometry.size)
 
-                        // Controls bar lives in the main column (NOT a full-height
-                        // bottom-anchored overlay): on Android that overlay made
-                        // Skip ghost the bar's ComposeView icons at the top of the
-                        // stage. In-flow at the bottom, it renders once, cleanly.
+                        // Keep this in-flow. On Android, a bottom overlay can
+                        // duplicate Skip's Compose-backed icons at the stage top.
                         ControlsBarView(
                             viewModel: viewModel,
                             availableWidth: geometry.size.width - geometry.safeAreaInsets.leading - geometry.safeAreaInsets.trailing,
-                            onParticipantsPressed: { openMeetingSheet(.participants) },
-                            onSettingsPressed: { openMeetingSheet(.settings) },
-                            onMorePressed: { openMeetingSheet(.more) }
+                            onParticipantsPressed: {
+                                if !viewModel.state.isWebinarAttendee {
+                                    openMeetingSheet(.participants)
+                                }
+                            },
+                            onSettingsPressed: {
+                                if !viewModel.state.isWebinarAttendee {
+                                    openMeetingSheet(.settings)
+                                }
+                            },
+                            onMorePressed: {
+                                if !viewModel.state.isWebinarAttendee {
+                                    openMeetingSheet(.more)
+                                }
+                            }
                         )
                         .padding(.top, 8)
                         .padding(.bottom, max(12.0, geometry.safeAreaInsets.bottom))
                     }
 
-                    if viewModel.state.isChatOpen {
+                    if viewModel.state.isChatOpen && !viewModel.state.isWebinarAttendee {
                         HStack {
                             Spacer()
 
@@ -110,7 +95,37 @@ struct MeetingView: View {
                         }
                     }
 
-                    ReactionOverlayView(reactions: viewModel.state.activeReactions)
+                    if !viewModel.state.isChatOpen &&
+                        !viewModel.state.isWebinarAttendee &&
+                        !viewModel.state.chatOverlayMessages.isEmpty {
+                        VStack {
+                            Spacer()
+
+                            HStack {
+                                ChatPreviewOverlayView(
+                                    messages: viewModel.state.chatOverlayMessages,
+                                    onDismiss: { id in
+                                        viewModel.dismissChatOverlayMessage(id: id)
+                                    }
+                                )
+                                .frame(maxWidth: isRegularSizeClass ? 360.0 : min(340.0, geometry.size.width - 32.0))
+
+                                Spacer()
+                            }
+                            .padding(.leading, 16)
+                            .padding(.bottom, max(84.0, geometry.safeAreaInsets.bottom + 76.0))
+                        }
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
+
+                    if !viewModel.state.isWebinarAttendee {
+                        ReactionOverlayView(
+                            reactions: viewModel.state.activeReactions,
+                            displayNameForUser: { userId in
+                                viewModel.displayNameForUser(userId)
+                            }
+                        )
+                    }
                 }
                 .padding(.leading, max(6.0, geometry.safeAreaInsets.leading))
                 .padding(.trailing, max(6.0, geometry.safeAreaInsets.trailing))
@@ -125,13 +140,65 @@ struct MeetingView: View {
             }
         }
         .preferredColorScheme(.dark)
-        // ≤120ms opacity crossfades (design law). The spatial grid reflow in
-        // GridLayoutView keeps its slightly longer ease — abrupt tile
-        // repositioning reads worse than a fast crossfade (documented exception).
         .animation(.easeInOut(duration: 0.12), value: viewModel.state.isChatOpen)
         .animation(.easeInOut(duration: 0.12), value: viewModel.state.pinnedUserId)
-        // Grid ↔ screen-share presentation crossfades like grid ↔ spotlight.
+        .animation(.easeInOut(duration: 0.12), value: viewModel.state.viewMode)
         .animation(.easeInOut(duration: 0.12), value: viewModel.state.hasActiveScreenShare)
+        .animation(.easeInOut(duration: 0.12), value: viewModel.state.activeAppId)
+        .animation(.easeInOut(duration: 0.12), value: viewModel.state.isBrowserActive)
+    }
+
+    @ViewBuilder
+    private func meetingStage(containerSize: CGSize) -> some View {
+        if viewModel.state.isWebinarAttendee {
+            if viewModel.state.hasActiveScreenShare {
+                PresentationLayoutView(
+                    viewModel: viewModel,
+                    isCompact: !isRegularSizeClass,
+                    containerSize: containerSize
+                )
+                .transition(.opacity)
+            } else if viewModel.state.usesSpotlightLayout {
+                SpotlightLayoutView(
+                    viewModel: viewModel,
+                    isCompact: !isRegularSizeClass,
+                    containerSize: containerSize
+                )
+                .transition(.opacity)
+            } else {
+                GridLayoutView(viewModel: viewModel, isCompact: !isRegularSizeClass)
+                    .transition(.opacity)
+            }
+        } else if viewModel.state.activeAppId != nil {
+            ActiveAppLayoutView(
+                viewModel: viewModel,
+                isCompact: !isRegularSizeClass
+            )
+            .transition(.opacity)
+        } else if viewModel.state.isBrowserActive {
+            SharedBrowserLayoutView(
+                viewModel: viewModel,
+                isCompact: !isRegularSizeClass
+            )
+            .transition(.opacity)
+        } else if viewModel.state.hasActiveScreenShare {
+            PresentationLayoutView(
+                viewModel: viewModel,
+                isCompact: !isRegularSizeClass,
+                containerSize: containerSize
+            )
+            .transition(.opacity)
+        } else if viewModel.state.usesSpotlightLayout {
+            SpotlightLayoutView(
+                viewModel: viewModel,
+                isCompact: !isRegularSizeClass,
+                containerSize: containerSize
+            )
+            .transition(.opacity)
+        } else {
+            GridLayoutView(viewModel: viewModel, isCompact: !isRegularSizeClass)
+                .transition(.opacity)
+        }
     }
 }
 

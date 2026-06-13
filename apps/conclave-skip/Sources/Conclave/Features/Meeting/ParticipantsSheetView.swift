@@ -6,8 +6,6 @@ import UIKit
 
 // MARK: - Participants Sheet
 
-// Styled section header shared by the meeting sheets — Carbon type ramp, and
-// `.textCase(nil)` kills iOS's forced-uppercase system header.
 @ViewBuilder
 func acmListSectionHeader(_ title: String) -> some View {
     Text(title)
@@ -22,8 +20,24 @@ func acmListSectionHeader(_ title: String) -> some View {
 struct ParticipantsSheetView: View {
     @Bindable var viewModel: MeetingViewModel
     var bodyReady: Bool = true
-    @Environment(\.dismiss) var dismiss
+    @Environment(\.dismiss) private var dismiss
     var onBack: (() -> Void)? = nil
+    @State private var pendingHostPromotionUserId: String?
+    @State private var promotingHostUserId: String?
+    @State private var pendingKickUserId: String?
+    @State private var removingUserId: String?
+
+    private var hasRaisedHands: Bool {
+        if viewModel.state.isHandRaised {
+            return true
+        }
+        for participant in viewModel.state.sortedParticipants {
+            if participant.isHandRaised {
+                return true
+            }
+        }
+        return false
+    }
 
     @ViewBuilder
     private func hostActionButton(_ title: String, icon: String, androidIcon: String, tint: Color = ACMColors.text, androidTint: String = "text", action: @escaping () -> Void) -> some View {
@@ -80,7 +94,13 @@ struct ParticipantsSheetView: View {
     }
 
     @ViewBuilder
-    private func statusBadges(isHandRaised: Bool, isMuted: Bool, isGhost: Bool = false) -> some View {
+    private func statusBadges(
+        isHandRaised: Bool,
+        isMuted: Bool,
+        isCameraOff: Bool,
+        isScreenSharing: Bool,
+        isGhost: Bool = false
+    ) -> some View {
         HStack(spacing: ACMSpacing.xs) {
             if isHandRaised {
                 statusBadge(
@@ -90,6 +110,28 @@ struct ParticipantsSheetView: View {
                     androidTint: "amber",
                     background: ACMColors.handRaisedBackground,
                     border: ACMColors.handRaisedBorder
+                )
+            }
+
+            if isScreenSharing {
+                statusBadge(
+                    icon: "rectangle.on.rectangle",
+                    androidIcon: "screen.share",
+                    tint: ACMColors.success,
+                    androidTint: "success",
+                    background: acmColor(red: 34.0, green: 197.0, blue: 94.0, opacity: 0.18),
+                    border: acmColor(red: 34.0, green: 197.0, blue: 94.0, opacity: 0.36)
+                )
+            }
+
+            if isCameraOff {
+                statusBadge(
+                    icon: "video.slash.fill",
+                    androidIcon: "video.off",
+                    tint: ACMColors.error,
+                    androidTint: "danger",
+                    background: ACMColors.surfaceRaised,
+                    border: ACMColors.border
                 )
             }
 
@@ -143,7 +185,9 @@ struct ParticipantsSheetView: View {
             .buttonStyle(.plain)
 
             Button {
-                viewModel.removeUser(userId: userId)
+                Task { @MainActor in
+                    await viewModel.removeUser(userId: userId)
+                }
             } label: {
                 Text("Deny")
                     .font(ACMFont.trial(13, weight: .medium))
@@ -223,7 +267,7 @@ struct ParticipantsSheetView: View {
                     MeetingSheetStatusPill("You")
                 }
 
-                if viewModel.state.isAdmin {
+                if viewModel.state.isHostUser(viewModel.state.userId) {
                     MeetingSheetStatusPill(
                         "Host",
                         tint: ACMColors.primaryOrange,
@@ -237,7 +281,9 @@ struct ParticipantsSheetView: View {
 
             statusBadges(
                 isHandRaised: viewModel.state.isHandRaised,
-                isMuted: viewModel.state.isMuted
+                isMuted: viewModel.state.isMuted,
+                isCameraOff: viewModel.state.isCameraOff,
+                isScreenSharing: viewModel.state.isScreenSharing
             )
         }
         .padding(.horizontal, ACMSpacing.sm)
@@ -247,25 +293,72 @@ struct ParticipantsSheetView: View {
     @ViewBuilder
     private func participantRow(_ participant: Participant) -> some View {
         let displayName = viewModel.displayNameForUser(participant.id)
+        let isScreenSharing = participant.isScreenSharing || viewModel.state.activeScreenShareUserId == participant.id
+        let canPromoteParticipant = viewModel.state.isAdmin
+            && !viewModel.state.isHostUser(participant.id)
+            && !participant.isGhost
+        let isPendingHostPromotion = pendingHostPromotionUserId == participant.id
+        let isPromotingHost = promotingHostUserId == participant.id
+        let isPendingRemoval = pendingKickUserId == participant.id
+        let isRemovingUser = removingUserId == participant.id
 
         HStack(spacing: ACMSpacing.sm) {
             avatarView(displayName)
 
-            Text(displayName)
-                .font(ACMFont.trial(15, weight: .medium))
-                .foregroundStyle(ACMColors.text)
-                .lineLimit(1)
+            HStack(spacing: ACMSpacing.xs) {
+                Text(displayName)
+                    .font(ACMFont.trial(15, weight: .medium))
+                    .foregroundStyle(ACMColors.text)
+                    .lineLimit(1)
+
+                if viewModel.state.isHostUser(participant.id) {
+                    MeetingSheetStatusPill(
+                        "Host",
+                        tint: ACMColors.primaryOrange,
+                        background: ACMColors.primaryOrangeFaint,
+                        border: ACMColors.primaryOrangeGhost
+                    )
+                }
+            }
 
             Spacer()
 
             statusBadges(
                 isHandRaised: participant.isHandRaised,
                 isMuted: participant.isMuted,
+                isCameraOff: participant.isCameraOff,
+                isScreenSharing: isScreenSharing,
                 isGhost: participant.isGhost
             )
 
             if viewModel.state.isAdmin {
                 Menu {
+                    if !participant.isCameraOff {
+                        Button {
+                            viewModel.turnOffParticipantCamera(userId: participant.id)
+                        } label: {
+                            Label {
+                                Text("Turn off camera")
+                            } icon: {
+                                ACMSystemIcon.icon("video.slash.fill", android: "video.off", size: 16, tint: "danger")
+                                    .foregroundStyle(ACMColors.error)
+                            }
+                        }
+                    }
+
+                    if isScreenSharing {
+                        Button {
+                            viewModel.stopParticipantScreenShare(userId: participant.id)
+                        } label: {
+                            Label {
+                                Text("Stop screen share")
+                            } icon: {
+                                ACMSystemIcon.icon("rectangle.on.rectangle.slash", android: "screen.share.off", size: 16, tint: "danger")
+                                    .foregroundStyle(ACMColors.error)
+                            }
+                        }
+                    }
+
                     Button {
                         viewModel.muteParticipant(userId: participant.id)
                     } label: {
@@ -276,25 +369,84 @@ struct ParticipantsSheetView: View {
                                 .foregroundStyle(ACMColors.error)
                         }
                     }
-                    Button {
-                        viewModel.makeHost(userId: participant.id)
-                    } label: {
-                        Label {
-                            Text("Make host")
-                        } icon: {
-                            ACMSystemIcon.icon("crown.fill", android: "host", size: 16, tint: "accent")
-                                .foregroundStyle(ACMColors.primaryOrange)
+                    if canPromoteParticipant {
+                        if isPendingHostPromotion {
+                            Button {
+                                promoteHost(participant.id)
+                            } label: {
+                                Label {
+                                    Text(isPromotingHost ? "Promoting" : "Confirm host")
+                                } icon: {
+                                    ACMSystemIcon.icon("crown.fill", android: "host", size: 16, tint: "accent")
+                                        .foregroundStyle(ACMColors.primaryOrange)
+                                }
+                            }
+                            .disabled(isPromotingHost)
+
+                            Button {
+                                if !isPromotingHost {
+                                    pendingHostPromotionUserId = nil
+                                }
+                            } label: {
+                                Label {
+                                    Text("Cancel host change")
+                                } icon: {
+                                    ACMSystemIcon.icon("xmark", android: "close", size: 16, tint: "muted")
+                                        .foregroundStyle(ACMColors.textMuted)
+                                }
+                            }
+                            .disabled(isPromotingHost)
+                        } else {
+                            Button {
+                                pendingHostPromotionUserId = participant.id
+                            } label: {
+                                Label {
+                                    Text("Make host")
+                                } icon: {
+                                    ACMSystemIcon.icon("crown.fill", android: "host", size: 16, tint: "accent")
+                                        .foregroundStyle(ACMColors.primaryOrange)
+                                }
+                            }
                         }
                     }
-                    Button {
-                        viewModel.removeUser(userId: participant.id)
-                    } label: {
-                        Label {
-                            Text("Remove from call")
-                        } icon: {
-                            ACMSystemIcon.icon("person.fill.xmark", android: "remove.person", size: 16, tint: "danger")
-                                .foregroundStyle(ACMColors.error)
+                    if isPendingRemoval {
+                        Button {
+                            removeParticipant(participant.id)
+                        } label: {
+                            Label {
+                                Text(isRemovingUser ? "Removing" : "Confirm remove")
+                            } icon: {
+                                ACMSystemIcon.icon("person.fill.xmark", android: "remove.person", size: 16, tint: "danger")
+                                    .foregroundStyle(ACMColors.error)
+                            }
                         }
+                        .disabled(isRemovingUser)
+
+                        Button {
+                            if !isRemovingUser {
+                                pendingKickUserId = nil
+                            }
+                        } label: {
+                            Label {
+                                Text("Cancel remove")
+                            } icon: {
+                                ACMSystemIcon.icon("xmark", android: "close", size: 16, tint: "muted")
+                                    .foregroundStyle(ACMColors.textMuted)
+                            }
+                        }
+                        .disabled(isRemovingUser)
+                    } else {
+                        Button {
+                            pendingKickUserId = participant.id
+                        } label: {
+                            Label {
+                                Text("Remove from call")
+                            } icon: {
+                                ACMSystemIcon.icon("person.fill.xmark", android: "remove.person", size: 16, tint: "danger")
+                                    .foregroundStyle(ACMColors.error)
+                            }
+                        }
+                        .disabled(removingUserId != nil)
                     }
                 } label: {
                     ACMSystemIcon.icon("ellipsis", android: "more", size: 18, tint: "muted")
@@ -334,6 +486,22 @@ struct ParticipantsSheetView: View {
                                     viewModel.muteAllParticipants()
                                 }
                                 MeetingSheetRowDivider(inset: ACMSpacing.sm + 32 + ACMSpacing.sm)
+                                hostActionButton("Turn off cameras", icon: "video.slash.fill", androidIcon: "video.off") {
+                                    viewModel.turnOffAllParticipantCameras()
+                                }
+                                MeetingSheetRowDivider(inset: ACMSpacing.sm + 32 + ACMSpacing.sm)
+                                if viewModel.state.activeScreenShareUserId != nil {
+                                    hostActionButton("Stop screen share", icon: "rectangle.on.rectangle.slash", androidIcon: "screen.share.off") {
+                                        viewModel.stopAllScreenShares()
+                                    }
+                                    MeetingSheetRowDivider(inset: ACMSpacing.sm + 32 + ACMSpacing.sm)
+                                }
+                                if hasRaisedHands {
+                                    hostActionButton("Clear raised hands", icon: "hand.raised.slash.fill", androidIcon: "raise.hand.off") {
+                                        viewModel.clearAllRaisedHands()
+                                    }
+                                    MeetingSheetRowDivider(inset: ACMSpacing.sm + 32 + ACMSpacing.sm)
+                                }
                                 hostActionButton(
                                     viewModel.state.isRoomLocked ? "Unlock room" : "Lock room",
                                     icon: viewModel.state.isRoomLocked ? "lock.fill" : "lock.open.fill",
@@ -415,5 +583,33 @@ struct ParticipantsSheetView: View {
         #else
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         #endif
+    }
+
+    private func promoteHost(_ userId: String) {
+        guard promotingHostUserId == nil else { return }
+        promotingHostUserId = userId
+        Task { @MainActor in
+            await viewModel.makeHost(userId: userId)
+            if pendingHostPromotionUserId == userId {
+                pendingHostPromotionUserId = nil
+            }
+            if promotingHostUserId == userId {
+                promotingHostUserId = nil
+            }
+        }
+    }
+
+    private func removeParticipant(_ userId: String) {
+        guard removingUserId == nil else { return }
+        removingUserId = userId
+        Task { @MainActor in
+            await viewModel.removeUser(userId: userId)
+            if pendingKickUserId == userId {
+                pendingKickUserId = nil
+            }
+            if removingUserId == userId {
+                removingUserId = nil
+            }
+        }
     }
 }

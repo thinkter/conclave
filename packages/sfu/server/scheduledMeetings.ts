@@ -337,45 +337,47 @@ const loadNodeSqlite = (): {
   };
 };
 
-const normalizeStoredMeeting = (raw: any): ScheduledMeeting | null => {
-  if (!raw || typeof raw !== "object") return null;
-  if (typeof raw.id !== "string" || !raw.id) return null;
-  if (typeof raw.clientId !== "string" || !raw.clientId) return null;
-  if (typeof raw.roomCode !== "string" || !raw.roomCode) return null;
-  if (typeof raw.hostEmail !== "string" || !raw.hostEmail) return null;
-  const scheduledStartAt = Number(raw.scheduledStartAt);
+const normalizeStoredMeeting = (raw: unknown): ScheduledMeeting | null => {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const record = raw as Record<string, unknown>;
+  if (typeof record.id !== "string" || !record.id) return null;
+  if (typeof record.clientId !== "string" || !record.clientId) return null;
+  if (typeof record.roomCode !== "string" || !record.roomCode) return null;
+  if (typeof record.hostEmail !== "string" || !record.hostEmail) return null;
+  const scheduledStartAt = Number(record.scheduledStartAt);
   if (!Number.isFinite(scheduledStartAt)) return null;
-  const scheduledEndAt = Number.isFinite(Number(raw.scheduledEndAt))
-    ? Number(raw.scheduledEndAt)
+  const scheduledEndAt = Number.isFinite(Number(record.scheduledEndAt))
+    ? Number(record.scheduledEndAt)
     : scheduledStartAt + DEFAULT_DURATION_MS;
+  const rawStatus = record.status;
   const status: ScheduledMeetingStatus =
-    raw.status === "live" ||
-    raw.status === "ended" ||
-    raw.status === "cancelled"
-      ? raw.status
+    rawStatus === "live" ||
+    rawStatus === "ended" ||
+    rawStatus === "cancelled"
+      ? rawStatus
       : "scheduled";
   const now = Date.now();
   return {
-    id: raw.id,
-    clientId: raw.clientId,
-    roomCode: raw.roomCode,
-    title: typeof raw.title === "string" ? raw.title : "Scheduled meeting",
-    hostEmail: raw.hostEmail,
-    hostName: typeof raw.hostName === "string" ? raw.hostName : "",
-    hostUserId: typeof raw.hostUserId === "string" ? raw.hostUserId : null,
+    id: record.id,
+    clientId: record.clientId,
+    roomCode: record.roomCode,
+    title: typeof record.title === "string" ? record.title : "Scheduled meeting",
+    hostEmail: record.hostEmail,
+    hostName: typeof record.hostName === "string" ? record.hostName : "",
+    hostUserId: typeof record.hostUserId === "string" ? record.hostUserId : null,
     scheduledStartAt,
     scheduledEndAt,
     status,
-    startedAt: Number.isFinite(Number(raw.startedAt))
-      ? Number(raw.startedAt)
+    startedAt: Number.isFinite(Number(record.startedAt))
+      ? Number(record.startedAt)
       : null,
-    endedAt: Number.isFinite(Number(raw.endedAt)) ? Number(raw.endedAt) : null,
-    createdAt: Number.isFinite(Number(raw.createdAt))
-      ? Number(raw.createdAt)
+    endedAt: Number.isFinite(Number(record.endedAt)) ? Number(record.endedAt) : null,
+    createdAt: Number.isFinite(Number(record.createdAt))
+      ? Number(record.createdAt)
       : now,
-    createdBy: typeof raw.createdBy === "string" ? raw.createdBy : raw.hostEmail,
-    updatedAt: Number.isFinite(Number(raw.updatedAt))
-      ? Number(raw.updatedAt)
+    createdBy: typeof record.createdBy === "string" ? record.createdBy : record.hostEmail,
+    updatedAt: Number.isFinite(Number(record.updatedAt))
+      ? Number(record.updatedAt)
       : now,
   };
 };
@@ -458,9 +460,7 @@ export const createSqliteScheduledMeetingPersistence = (
       } catch (error) {
         try {
           db.exec("ROLLBACK");
-        } catch {
-          // ignore rollback failures
-        }
+        } catch {}
         Logger.error("Failed to persist scheduled meetings", error);
       }
     },

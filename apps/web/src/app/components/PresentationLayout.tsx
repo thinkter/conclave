@@ -52,8 +52,6 @@ function PresentationLayout({
     const video = localVideoRef.current;
     if (!video) return;
     if (localStream) {
-      // Only (re)assign when the stream actually changed — re-setting srcObject
-      // re-attaches the stream and resets the decoder (flicker).
       if (video.srcObject !== localStream) {
         video.srcObject = localStream;
       }
@@ -66,8 +64,9 @@ function PresentationLayout({
       video.srcObject = null;
     }
     return () => {
-      // Detach on unmount / stream change so the element can't hold a stale stream.
-      if (video) video.srcObject = null;
+      if (video.srcObject === localStream) {
+        video.srcObject = null;
+      }
     };
   }, [localStream]);
 
@@ -138,12 +137,17 @@ function PresentationLayout({
       video.removeEventListener("suspend", scheduleReplay);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       playbackRecovery.clear();
+      if (video.srcObject === presentationStream) {
+        video.srcObject = null;
+      }
     };
   }, [presentationStream]);
 
   const remoteParticipants = useSmartParticipantOrder(
     Array.from(participants.values()).filter(
-      (participant) => !isSystemUserId(participant.userId)
+      (participant) =>
+        participant.userId !== currentUserId &&
+        !isSystemUserId(participant.userId)
     ),
     activeSpeakerId
   );
@@ -157,7 +161,6 @@ function PresentationLayout({
       className="flex min-h-0 flex-1 gap-4 overflow-hidden p-4"
       style={{ fontFamily: FONT_SANS }}
     >
-      {/* Screen-share stage — a clean rounded tile on the Carbon canvas. */}
       <div className="relative flex min-w-0 flex-1 items-center justify-center overflow-hidden rounded-2xl border border-[#fafafa]/10 bg-[#131316]">
         <video
           ref={presentationVideoRef}
@@ -174,7 +177,6 @@ function PresentationLayout({
         </div>
       </div>
 
-      {/* Participant filmstrip — flat tiles consistent with the main grid. */}
       <div className="flex w-64 shrink-0 flex-col gap-3 overflow-y-auto overflow-x-visible px-1">
         <div
           className={`acm-video-tile h-36 shrink-0 ${localSpeakerHighlight} ${localHandRaisedHighlight}`}

@@ -23,7 +23,7 @@ object PipManager {
         try {
             activity.enterPictureInPictureMode(buildParams(activity, muted))
         } catch (t: Throwable) {
-            android.util.Log.e("ConclavePip", "enterPictureInPictureMode failed", t)
+            debugLog("[PiP] Failed to enter picture-in-picture: ${t}")
         }
     }
 
@@ -61,10 +61,10 @@ object PipManager {
                 ?.apply {
                     flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or
                         Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
-                }
+            }
             if (intent != null) activity.startActivity(intent)
         } catch (t: Throwable) {
-            android.util.Log.e("ConclavePip", "exitPip failed", t)
+            debugLog("[PiP] Failed to exit picture-in-picture: ${t}")
         }
     }
 

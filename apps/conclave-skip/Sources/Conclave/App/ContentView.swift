@@ -4,13 +4,6 @@ import Observation
 import UIKit
 #endif
 
-//
-//  ContentView.swift
-//  Conclave
-//
-//  Root navigation view with state-based routing
-//
-
 #if SKIP
 // Carbon → a Compose Material3 Color. So Android's NATIVE Material components
 // (DropdownMenu, Switch, ModalBottomSheet, ripples, TextField) read Carbon
@@ -30,7 +23,8 @@ struct ContentView: View {
     // Retained singleton (NOT a fresh per-view instance) so the call survives
     // backgrounding / Activity recreation / the PiP composition swap — returning
     // to the app lands back in the meeting, not the join screen.
-    @State var meetingViewModel = MeetingViewModel.shared
+    @State private var meetingViewModel = MeetingViewModel.shared
+    @State private var pendingJoinPromptRequestID: Int?
 
     var body: some View {
         Group {
@@ -54,6 +48,18 @@ struct ContentView: View {
                 )
                 .transition(.opacity)
             }
+        }
+        .overlay {
+            pendingJoinPromptOverlay
+        }
+        .onAppear {
+            handlePendingJoinURLIfNeeded()
+        }
+        .onChange(of: appState.pendingJoinRequestID) { _, _ in
+            handlePendingJoinURLIfNeeded()
+        }
+        .onChange(of: meetingViewModel.state.connectionState) { _, _ in
+            handlePendingJoinURLIfNeeded()
         }
         .animation(.easeInOut(duration: 0.3), value: meetingViewModel.state.connectionState)
         .preferredColorScheme(.dark)
@@ -91,6 +97,262 @@ struct ContentView: View {
             )
         }
         #endif
+    }
+
+    @ViewBuilder
+    private var pendingJoinPromptOverlay: some View {
+        if pendingJoinPromptRequestID != nil,
+           appState.pendingJoinURLString != nil,
+           isInMeetingSession {
+            ZStack {
+                Color.black.opacity(0.74)
+                    .ignoresSafeArea()
+
+                VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Join new meeting?")
+                            .font(ACMFont.trial(18, weight: .bold))
+                            .foregroundStyle(ACMColors.text)
+
+                        Text("You are currently in \(currentRoomLabel). Leave it and join \(pendingJoinRoomLabel)?")
+                            .font(ACMFont.trial(13))
+                            .foregroundStyle(ACMColors.textMuted)
+                    }
+
+                    HStack(spacing: 10) {
+                        Spacer()
+
+                        Button {
+                            dismissPendingJoinPrompt()
+                        } label: {
+                            Text("Stay")
+                                .font(ACMFont.trial(12, weight: .semibold))
+                                .textCase(.uppercase)
+                                .tracking(1.4)
+                                .foregroundStyle(ACMColors.textMuted)
+                                .padding(.horizontal, 14)
+                                .frame(height: 38)
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: ACMRadius.sm)
+                                        .strokeBorder(ACMColors.border, lineWidth: 1.0)
+                                }
+                        }
+                        .buttonStyle(.plain)
+
+                        Button {
+                            acceptPendingJoinPrompt()
+                        } label: {
+                            Text("Leave & Join")
+                                .font(ACMFont.trial(12, weight: .semibold))
+                                .textCase(.uppercase)
+                                .tracking(1.4)
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 14)
+                                .frame(height: 38)
+                                .acmColorBackground(ACMColors.primaryOrange)
+                                .clipShape(RoundedRectangle(cornerRadius: ACMRadius.sm))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(20)
+                .frame(maxWidth: 360)
+                .acmColorBackground(ACMColors.surface)
+                .overlay {
+                    RoundedRectangle(cornerRadius: ACMRadius.lg)
+                        .strokeBorder(ACMColors.border, lineWidth: 1.0)
+                }
+                .clipShape(RoundedRectangle(cornerRadius: ACMRadius.lg))
+                .padding(.horizontal, 24)
+            }
+            .transition(.opacity)
+        }
+    }
+
+    private var isInMeetingSession: Bool {
+        switch meetingViewModel.state.connectionState {
+        case .joining, .joined, .reconnecting, .waiting:
+            return true
+        case .disconnected, .connecting, .connected, .error:
+            return false
+        }
+    }
+
+    private var currentRoomLabel: String {
+        let roomId = meetingViewModel.state.roomId.trimmingCharacters(in: .whitespacesAndNewlines)
+        return roomId.isEmpty ? "your current meeting" : roomId
+    }
+
+    private var pendingJoinRoomLabel: String {
+        guard let link = appState.pendingJoinURLString,
+              let roomId = roomIdFromJoinURLString(link),
+              !roomId.isEmpty else {
+            return "another meeting"
+        }
+        return roomId
+    }
+
+    private func handlePendingJoinURLIfNeeded() {
+        guard let pendingURL = appState.pendingJoinURLString else {
+            pendingJoinPromptRequestID = nil
+            return
+        }
+
+        guard let pendingRoomId = roomIdFromJoinURLString(pendingURL),
+              !pendingRoomId.isEmpty else {
+            _ = appState.consumePendingJoinURLString()
+            pendingJoinPromptRequestID = nil
+            return
+        }
+
+        guard isInMeetingSession else {
+            pendingJoinPromptRequestID = nil
+            return
+        }
+
+        let currentRoomId = meetingViewModel.state.roomId.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !currentRoomId.isEmpty && pendingRoomId.lowercased() == currentRoomId.lowercased() {
+            _ = appState.consumePendingJoinURLString()
+            pendingJoinPromptRequestID = nil
+            return
+        }
+
+        pendingJoinPromptRequestID = appState.pendingJoinRequestID
+    }
+
+    private func dismissPendingJoinPrompt() {
+        _ = appState.consumePendingJoinURLString()
+        pendingJoinPromptRequestID = nil
+    }
+
+    private func acceptPendingJoinPrompt() {
+        guard appState.pendingJoinURLString != nil else {
+            pendingJoinPromptRequestID = nil
+            return
+        }
+        pendingJoinPromptRequestID = nil
+        meetingViewModel.leaveRoom()
+    }
+
+    private func roomIdFromJoinURLString(_ input: String) -> String? {
+        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        let normalized = normalizeJoinURLString(trimmed)
+        if let components = URLComponents(string: normalized) {
+            let segments = joinPathSegments(from: components)
+            if let roomId = roomId(fromPathSegments: segments) {
+                return roomId
+            }
+        }
+
+        let parts = trimmed.split(separator: "?", maxSplits: 1, omittingEmptySubsequences: false)
+        let path = parts.isEmpty ? trimmed : String(parts[0])
+        if path.contains("/") {
+            let segments = pathSegments(from: path)
+            if let roomId = roomId(fromPathSegments: segments) {
+                return roomId
+            }
+        }
+
+        let sanitized = sanitizeRoomCode(path)
+        return sanitized.isEmpty ? nil : sanitized
+    }
+
+    private func normalizeJoinURLString(_ input: String) -> String {
+        let lowercased = input.lowercased()
+        if hasURLScheme(input) {
+            return input
+        }
+        if lowercased.hasPrefix("conclave.acmvit.in") || lowercased.hasPrefix("www.conclave.acmvit.in") {
+            return "https://\(input)"
+        }
+        return input
+    }
+
+    private func hasURLScheme(_ input: String) -> Bool {
+        guard let colonIndex = input.firstIndex(of: ":") else { return false }
+        let scheme = String(input[..<colonIndex])
+        guard let first = scheme.first else { return false }
+        let afterColon = input[input.index(after: colonIndex)...]
+        guard afterColon.hasPrefix("//") else { return false }
+        let letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        let allowed = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789+.-"
+        guard letters.contains(first) else { return false }
+        for character in scheme where !allowed.contains(character) {
+            return false
+        }
+        return true
+    }
+
+    private func joinPathSegments(from components: URLComponents) -> [String] {
+        var segments = pathSegments(from: components.path)
+        if components.scheme?.lowercased() == "conclave",
+           let host = components.host,
+           !host.isEmpty {
+            segments.insert(host, at: 0)
+        }
+        return segments
+    }
+
+    private func pathSegments(from path: String) -> [String] {
+        var segments: [String] = []
+        for segment in path.split(separator: "/", omittingEmptySubsequences: true) {
+            segments.append(String(segment))
+        }
+        return segments
+    }
+
+    private func roomId(fromPathSegments segments: [String]) -> String? {
+        guard !segments.isEmpty else { return nil }
+        if segments.count >= 2 && segments[0].lowercased() == "w" {
+            let roomId = sanitizeWebinarLinkCode(segments[1])
+            return roomId.isEmpty ? nil : roomId
+        }
+        guard let rawRoomId = segments.last else { return nil }
+        let roomId = sanitizeRoomCode(rawRoomId)
+        return roomId.isEmpty ? nil : roomId
+    }
+
+    private func sanitizeRoomCode(_ value: String) -> String {
+        let normalized = normalizeRoomCharacters(in: value)
+        return String(normalized.prefix(64))
+    }
+
+    private func sanitizeWebinarLinkCode(_ value: String) -> String {
+        let allowed = "abcdefghijklmnopqrstuvwxyz0123456789-"
+        var sanitized = ""
+        for character in value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+            if allowed.contains(character) {
+                sanitized += String(character)
+                if sanitized.count >= 32 {
+                    break
+                }
+            }
+        }
+        return sanitized
+    }
+
+    private func normalizeRoomCharacters(in input: String) -> String {
+        let separator: Character = "-"
+        var normalized = ""
+        var previousWasSeparator = false
+        let allowed = "abcdefghijklmnopqrstuvwxyz0123456789"
+
+        for character in input.lowercased() {
+            if allowed.contains(character) {
+                normalized += String(character)
+                previousWasSeparator = false
+            } else if !normalized.isEmpty && !previousWasSeparator {
+                normalized += String(separator)
+                previousWasSeparator = true
+            }
+        }
+
+        if previousWasSeparator && !normalized.isEmpty {
+            normalized = String(normalized.dropLast())
+        }
+        return normalized
     }
 }
 
@@ -163,17 +425,8 @@ struct WaitingRoomView: View {
                         .multilineTextAlignment(.center)
                 }
 
-                // Tap the room code to copy it (cross-platform: UIPasteboard on
-                // iOS, the Android system clipboard via ClipboardHelper on Skip).
                 Button {
-                    #if !SKIP
-#if canImport(UIKit)
-                    UIPasteboard.general.string = viewModel.state.roomId
-#endif
-                    HapticManager.shared.trigger(.success)
-                    #else
-                    ClipboardHelper.copyToClipboard(text: viewModel.state.roomId, label: "Meeting code")
-                    #endif
+                    MeetingShare.copyMeetingLink(viewModel.state.meetingLink)
                 } label: {
                     Text(viewModel.state.roomId)
                         .font(ACMFont.trial(14, weight: .medium))
@@ -211,7 +464,7 @@ struct WaitingRoomView: View {
 }
 
 struct RotatingModifier: ViewModifier {
-    @State var isRotating = false
+    @State private var isRotating = false
 
     func body(content: Content) -> some View {
         content

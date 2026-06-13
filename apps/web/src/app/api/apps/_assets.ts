@@ -6,10 +6,11 @@ export const ASSET_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const ASSET_DIR = path.join(process.cwd(), ".tmp", "apps-assets");
-// TODO(s3): Replace local fs storage with S3-compatible object storage for serverless durability.
 
 // Total on-disk cap for the (unauthenticated) asset store. Bounds the disk-fill
 // DoS from repeated anonymous uploads without breaking guest app-asset uploads.
+// This local filesystem store expects a persistent host volume; serverless
+// deployments should route this API to object storage instead.
 const MAX_STORE_BYTES = 1024 * 1024 * 1024; // 1 GB
 
 /** Thrown by saveAppAsset when accepting the upload would exceed MAX_STORE_BYTES. */

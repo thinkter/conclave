@@ -18,20 +18,29 @@ import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Block
 import androidx.compose.material.icons.rounded.CallEnd
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.EmojiEmotions
 import androidx.compose.material.icons.rounded.Forum
 import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.HelpOutline
+import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.Key
+import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.LockOpen
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.MicOff
 import androidx.compose.material.icons.rounded.MoreHoriz
+import androidx.compose.material.icons.rounded.NorthEast
+import androidx.compose.material.icons.rounded.NorthWest
 import androidx.compose.material.icons.rounded.PanTool
 import androidx.compose.material.icons.rounded.PersonRemove
+import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material.icons.rounded.ScreenShare
+import androidx.compose.material.icons.rounded.SouthEast
+import androidx.compose.material.icons.rounded.SouthWest
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.StopScreenShare
 import androidx.compose.material.icons.rounded.Videocam
@@ -74,16 +83,25 @@ internal fun meetingIconVector(name: String): ImageVector = when (name) {
     "pin.off"         -> Icons.Outlined.PushPin
     "ghost"           -> Icons.Rounded.VisibilityOff
     "host"            -> Icons.Rounded.WorkspacePremium
+    "key"             -> Icons.Rounded.Key
+    "link"            -> Icons.Rounded.Link
+    "public"          -> Icons.Rounded.Public
     "remove.person"   -> Icons.Rounded.PersonRemove
     "arrow.forward"   -> Icons.AutoMirrored.Rounded.ArrowForward
     "back"            -> Icons.AutoMirrored.Rounded.ArrowBack
     "account"         -> Icons.Outlined.AccountCircle
     "block"           -> Icons.Rounded.Block
     "forum"           -> Icons.Rounded.Forum
+    "check"           -> Icons.Rounded.CheckCircle
     "volume"          -> Icons.AutoMirrored.Rounded.VolumeUp
     "volume.off"      -> Icons.AutoMirrored.Rounded.VolumeOff
     "add"             -> Icons.Rounded.Add
+    "info"            -> Icons.Rounded.Info
     "warning"         -> Icons.Rounded.Warning
+    "north.east"      -> Icons.Rounded.NorthEast
+    "north.west"      -> Icons.Rounded.NorthWest
+    "south.east"      -> Icons.Rounded.SouthEast
+    "south.west"      -> Icons.Rounded.SouthWest
     else              -> Icons.Rounded.HelpOutline
 }
 
@@ -120,8 +138,9 @@ fun warmMeetingIcons() {
             "hangup", "more", "chat", "chat.outline", "participants", "settings",
             "raise.hand", "raise.hand.off", "reactions", "lock", "lock.open", "send",
             "close", "copy", "pin.off", "ghost", "host", "remove.person",
-            "arrow.forward", "back", "account", "block", "forum", "volume",
-            "volume.off", "add", "warning"
+            "key", "link", "public", "arrow.forward", "back", "account", "block", "forum", "volume",
+            "volume.off", "add", "info", "warning", "check",
+            "north.east", "north.west", "south.east", "south.west"
         )
         for (k in keys) {
             // Touch the vector so its backing field initializes; result unused.

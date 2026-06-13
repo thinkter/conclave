@@ -1,12 +1,8 @@
-/**
- * Descriptor model for the in-call control bar. Collapses the old 128-prop /
- * 896-line flat ControlsBar into typed, zone-assigned descriptors so the JSX
- * just maps over arrays. The external prop contract (ControlsBarProps) is
- * unchanged — only the internal organization moved here.
- */
 import {
+  Blend,
   Globe,
   Hand,
+  LayoutGrid,
   Lock,
   LockOpen,
   MessageSquare,
@@ -51,7 +47,6 @@ export interface ControlsBarProps {
   onToggleHandRaised: () => void;
   onSendReaction: (reaction: ReactionOption) => void;
   onLeave: () => void;
-  // Device pickers surfaced as Meet-style carets beside the mic / camera button.
   selectedAudioInputDeviceId?: string;
   selectedAudioOutputDeviceId?: string;
   selectedVideoInputDeviceId?: string;
@@ -60,11 +55,16 @@ export interface ControlsBarProps {
   onVideoInputDeviceChange?: (deviceId: string) => void;
   isMirrorCamera?: boolean;
   onToggleMirror?: () => void;
+  isVideoEffectsOpen?: boolean;
+  activeVideoEffectsCount?: number;
+  isVideoEffectsPermissionBlocked?: boolean;
+  onToggleVideoEffects?: () => void;
+  isViewPanelOpen?: boolean;
+  onToggleViewPanel?: () => void;
   isAdmin?: boolean | null;
   isGhostMode?: boolean;
   isParticipantsOpen?: boolean;
   onToggleParticipants?: () => void;
-  /** Host-controls side panel (parent-owned, content-shrinking like chat). */
   isHostControlsOpen?: boolean;
   onToggleHostControls?: () => void;
   pendingUsersCount?: number;
@@ -120,7 +120,6 @@ export interface ControlsBarProps {
   onRotateWebinarLink?: () => Promise<WebinarLinkResponse | null>;
 }
 
-/** A circular bar button (left/center zones). */
 export interface ControlDescriptor {
   id: string;
   icon: LucideIcon;
@@ -132,7 +131,6 @@ export interface ControlDescriptor {
   onPress?: () => void;
 }
 
-/** A full-width row inside the overflow "More" menu. */
 export interface OverflowRow {
   id: string;
   icon: LucideIcon;
@@ -151,7 +149,6 @@ export interface ControlsConfig {
   overflow: OverflowRow[];
 }
 
-/** Flat (no-gradient) quick-launch targets for the shared browser. */
 export const BROWSER_APPS: { id: string; name: string; description: string; url: string; icon: LucideIcon }[] = [
   { id: "figma", name: "Figma", description: "Design board", url: "https://www.figma.com", icon: StickyNote },
   { id: "miro", name: "Miro", description: "Whiteboard", url: "https://miro.com", icon: StickyNote },
@@ -173,10 +170,6 @@ export function canManageDevPlayground(p: ControlsBarProps): boolean {
   );
 }
 
-/**
- * Build the zone-assigned descriptor arrays from the raw props. Pure — no JSX,
- * no state. Every onPress is an existing handler from the prop contract.
- */
 export function buildControlsConfig(p: ControlsBarProps): ControlsConfig {
   const ghost = Boolean(p.isGhostMode);
   const canStartScreenShare = !p.activeScreenShareId || p.isScreenSharing;
@@ -256,6 +249,25 @@ export function buildControlsConfig(p: ControlsBarProps): ControlsConfig {
       hotkey: HOTKEYS.toggleMiniView.keys,
       active: p.isPopoutActive,
       onPress: p.isPopoutActive ? p.onClosePopout : p.onOpenPopout,
+    });
+  }
+  if (p.onToggleVideoEffects) {
+    overflow.push({
+      id: "effects",
+      icon: Blend,
+      label: "Backgrounds and effects",
+      active: p.isVideoEffectsOpen || (p.activeVideoEffectsCount ?? 0) > 0,
+      disabled: ghost || p.isVideoEffectsPermissionBlocked,
+      onPress: p.onToggleVideoEffects,
+    });
+  }
+  if (p.onToggleViewPanel) {
+    overflow.push({
+      id: "adjust-view",
+      icon: LayoutGrid,
+      label: "Adjust view",
+      active: p.isViewPanelOpen,
+      onPress: p.onToggleViewPanel,
     });
   }
   if (p.showBrowserControls && p.isAdmin && p.onLaunchBrowser) {

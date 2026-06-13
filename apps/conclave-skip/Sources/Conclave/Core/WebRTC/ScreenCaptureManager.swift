@@ -10,6 +10,16 @@
 //  into the WebRTC screen producer. Mirrors the working react-native-webrtc flow.
 //
 
+#if SKIP
+enum ScreenCaptureManager {
+    static var onProjectionRevoked: (() -> Void)?
+
+    static func requestCapture() async -> Bool { fatalError() }
+    static func isCaptureActive() -> Bool { fatalError() }
+    static func stopCapture() { fatalError() }
+}
+#endif
+
 #if canImport(UIKit) && !SKIP
 import UIKit
 import ReplayKit
@@ -44,14 +54,24 @@ final class ScreenCaptureManager: NSObject {
     private var server: ScreenShareSocketServer?
     private var connected = false
     private var startGeneration = 0
+    private var pendingStartContinuation: CheckedContinuation<Void, Error>?
 
     // MARK: - Public Methods
 
+    var isCaptureActive: Bool {
+        server != nil && connected
+    }
+
     /// Stand up the socket server and present the system broadcast picker. The
     /// share becomes live once the user confirms the picker and the extension
-    /// connects (frames then flow in via the server). Returns after presenting
-    /// — it does not wait for the user to confirm.
+    /// connects (frames then flow in via the server). Returns only after that
+    /// connection is established, so callers do not mark the meeting as
+    /// sharing when the user cancels the system sheet.
     func startCapture(webRTCClient: WebRTCClient) async throws {
+        if server != nil {
+            await stopCapture()
+        }
+
         self.webRTCClient = webRTCClient
         self.connected = false
         startGeneration &+= 1
@@ -67,16 +87,23 @@ final class ScreenCaptureManager: NSObject {
                 // via DispatchQueue.main.async — it preserves FIFO order across
                 // the hop, unlike unstructured Tasks which can reorder frames.
                 DispatchQueue.main.async { [weak self] in
+                    guard self?.startGeneration == generation else { return }
                     self?.webRTCClient?.feedScreenFrame(box.frame)
                 }
             },
             onConnect: { [weak self] in
                 DispatchQueue.main.async { [weak self] in
-                    self?.connected = true
+                    guard let self else { return }
+                    guard self.startGeneration == generation,
+                          self.server != nil else { return }
+                    self.connected = true
+                    self.isCapturing.send(true)
+                    self.finishPendingStart(.success(()))
                 }
             },
             onDisconnect: { [weak self] in
                 DispatchQueue.main.async { [weak self] in
+                    guard self?.startGeneration == generation else { return }
                     self?.handleExternalStop()
                 }
             }
@@ -86,18 +113,32 @@ final class ScreenCaptureManager: NSObject {
         }
         self.server = server
 
-        presentBroadcastPicker()
-        isCapturing.send(true)
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                pendingStartContinuation = continuation
 
-        // If the extension never connects (the user cancelled or dismissed the
-        // system sheet), tear everything back down so the share button doesn't
-        // stay stuck "on" forever with a dead producer.
-        DispatchQueue.main.asyncAfter(deadline: .now() + startTimeout) { [weak self] in
-            guard let self else { return }
-            guard self.startGeneration == generation,
-                  self.server != nil,
-                  !self.connected else { return }
-            self.handleExternalStop()
+                if Task.isCancelled {
+                    cancelPendingStart(generation: generation)
+                    return
+                }
+
+                presentBroadcastPicker()
+
+                // If the extension never connects (the user cancelled or dismissed
+                // the system sheet), tear everything back down so the share button
+                // never flips to a dead producer.
+                DispatchQueue.main.asyncAfter(deadline: .now() + startTimeout) { [weak self] in
+                    guard let self else { return }
+                    guard self.startGeneration == generation,
+                          self.server != nil,
+                          !self.connected else { return }
+                    self.handleExternalStop()
+                }
+            }
+        } onCancel: { [weak self] in
+            Task { @MainActor in
+                self?.cancelPendingStart(generation: generation)
+            }
         }
     }
 
@@ -111,6 +152,7 @@ final class ScreenCaptureManager: NSObject {
         server = nil
         webRTCClient = nil
         isCapturing.send(false)
+        finishPendingStart(.failure(ScreenCaptureError.cancelled))
     }
 
     // MARK: - Private
@@ -123,7 +165,31 @@ final class ScreenCaptureManager: NSObject {
         server = nil
         webRTCClient = nil
         isCapturing.send(false)
+        finishPendingStart(.failure(ScreenCaptureError.cancelled))
         onBroadcastStopped?()
+    }
+
+    private func cancelPendingStart(generation: Int) {
+        guard startGeneration == generation,
+              pendingStartContinuation != nil else { return }
+        startGeneration &+= 1
+        connected = false
+        server?.stop()
+        server = nil
+        webRTCClient = nil
+        isCapturing.send(false)
+        finishPendingStart(.failure(ScreenCaptureError.cancelled))
+    }
+
+    private func finishPendingStart(_ result: Result<Void, Error>) {
+        guard let continuation = pendingStartContinuation else { return }
+        pendingStartContinuation = nil
+        switch result {
+        case .success:
+            continuation.resume()
+        case .failure(let error):
+            continuation.resume(throwing: error)
+        }
     }
 
     private func presentBroadcastPicker() {
@@ -166,9 +232,10 @@ final class ScreenCaptureManager: NSObject {
 }
 
 // MARK: - Errors
-enum ScreenCaptureError: Error, LocalizedError {
+enum ScreenCaptureError: Error, LocalizedError, Equatable {
     case appGroupUnavailable
     case socketUnavailable
+    case cancelled
 
     var errorDescription: String? {
         switch self {
@@ -176,6 +243,8 @@ enum ScreenCaptureError: Error, LocalizedError {
             return "Screen sharing is not configured (App Group unavailable)."
         case .socketUnavailable:
             return "Could not start screen sharing. Please try again."
+        case .cancelled:
+            return "Screen sharing was cancelled."
         }
     }
 }

@@ -68,10 +68,21 @@ final class WebRTCClient: NSObject, ObservableObject {
     // MARK: - Mediasoup Core
 
     var device: Device?
+    private var runtimeIceServersJSON: String?
     /// True once configure() has set up the mediasoup Device for a session and
     /// before cleanup() tears it down. Lets the rejoin path detect a still-live
     /// prior session that must be torn down before reconfiguring.
     var isConfigured: Bool { device != nil }
+
+    func hasBrokenTransport() -> Bool {
+        switch connectionState {
+        case .failed, .disconnected, .closed:
+            return true
+        default:
+            return false
+        }
+    }
+
     var sendTransport: SendTransport?
     var receiveTransport: ReceiveTransport?
     var sendTransportId: String?
@@ -102,6 +113,24 @@ final class WebRTCClient: NSObject, ObservableObject {
             return id
         }
         return nil
+    }
+
+    func closeConsumers(exceptProducerIds producerIds: [String]) {
+        let activeProducerIds = Set(producerIds)
+        let staleConsumers = consumers.filter { _, info in
+            !activeProducerIds.contains(info.producerId)
+        }
+
+        for (consumerId, info) in staleConsumers {
+            info.consumer.close()
+            consumers.removeValue(forKey: consumerId)
+            videoFreezeStats.removeValue(forKey: consumerId)
+
+            let key = info.trackKey.isEmpty ? info.userId : info.trackKey
+            if !key.isEmpty {
+                remoteVideoTracks.removeValue(forKey: key)
+            }
+        }
     }
 
     // MARK: - RTP Capabilities (from server)
@@ -141,9 +170,11 @@ final class WebRTCClient: NSObject, ObservableObject {
 
     // MARK: - Setup
 
-    func configure(socketManager: SocketIOManager, rtpCapabilities: RtpCapabilities) {
+    func configure(socketManager: SocketIOManager, rtpCapabilities: RtpCapabilities, iceServersJSON: String?) {
         self.socketManager = socketManager
         self.serverRtpCapabilities = rtpCapabilities
+        let trimmedIceServers = iceServersJSON?.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.runtimeIceServersJSON = (trimmedIceServers?.isEmpty == false) ? trimmedIceServers : nil
 
         let device = Device(pcFactory: Self.factory)
         do {
@@ -163,7 +194,7 @@ final class WebRTCClient: NSObject, ObservableObject {
             throw WebRTCError.notConfigured
         }
 
-        let iceServers = resolveIceServersJSON()
+        let iceServers = runtimeIceServersJSON ?? resolveIceServersJSON()
 
         let producerTransportParams = try await socket.createProducerTransport()
         let consumerTransportParams = try await socket.createConsumerTransport()
@@ -217,13 +248,13 @@ final class WebRTCClient: NSObject, ObservableObject {
             ]
         )
 
-        audioSource = Self.factory.audioSource(with: audioConstraints)
-        rtcLocalAudioTrack = Self.factory.audioTrack(with: audioSource!, trackId: "audio0")
-        rtcLocalAudioTrack?.isEnabled = true
+        let source = Self.factory.audioSource(with: audioConstraints)
+        let track = Self.factory.audioTrack(with: source, trackId: "audio0")
+        track.isEnabled = true
 
         let appData = try encodeJSONString(ProducerAppData(type: ProducerType.webcam.rawValue, paused: false))
         let producer = try sendTransport.createProducer(
-            for: rtcLocalAudioTrack!,
+            for: track,
             encodings: nil,
             codecOptions: nil,
             codec: nil,
@@ -232,6 +263,8 @@ final class WebRTCClient: NSObject, ObservableObject {
         producer.delegate = self
         producer.resume()
 
+        audioSource = source
+        rtcLocalAudioTrack = track
         audioProducer = producer
         localAudioEnabled = true
 
@@ -253,36 +286,50 @@ final class WebRTCClient: NSObject, ObservableObject {
             throw WebRTCError.permissionDenied
         }
 
-        videoSource = Self.factory.videoSource()
-        videoCapturer = RTCCameraVideoCapturer(delegate: videoSource!)
-        try startCameraCapture()
+        let source = Self.factory.videoSource()
+        let capturer = RTCCameraVideoCapturer(delegate: source)
+        videoSource = source
+        videoCapturer = capturer
 
-        rtcLocalVideoTrack = Self.factory.videoTrack(with: videoSource!, trackId: "video0")
-        rtcLocalVideoTrack?.isEnabled = true
+        do {
+            try startCameraCapture()
 
-        let appData = try encodeJSONString(ProducerAppData(type: ProducerType.webcam.rawValue, paused: false))
-        let producer = try sendTransport.createProducer(
-            for: rtcLocalVideoTrack!,
-            encodings: nil,
-            codecOptions: nil,
-            codec: nil,
-            appData: appData
-        )
-        producer.delegate = self
-        producer.resume()
+            let track = Self.factory.videoTrack(with: source, trackId: "video0")
+            track.isEnabled = true
 
-        videoProducer = producer
-        localVideoEnabled = true
+            let appData = try encodeJSONString(ProducerAppData(type: ProducerType.webcam.rawValue, paused: false))
+            let producer = try sendTransport.createProducer(
+                for: track,
+                encodings: nil,
+                codecOptions: nil,
+                codec: nil,
+                appData: appData
+            )
+            producer.delegate = self
+            producer.resume()
 
-        let trackWrapper = VideoTrackWrapper(
-            id: producer.id,
-            userId: "local",
-            isLocal: true,
-            track: rtcLocalVideoTrack
-        )
-        localVideoTrack = trackWrapper
+            rtcLocalVideoTrack = track
+            videoProducer = producer
+            localVideoEnabled = true
 
-        debugLog("[WebRTC] Video producer created: \(producer.id)")
+            let trackWrapper = VideoTrackWrapper(
+                id: producer.id,
+                userId: "local",
+                isLocal: true,
+                track: track
+            )
+            localVideoTrack = trackWrapper
+
+            debugLog("[WebRTC] Video producer created: \(producer.id)")
+        } catch {
+            await capturer.stopCapture()
+            videoCapturer = nil
+            videoSource = nil
+            rtcLocalVideoTrack = nil
+            localVideoTrack = nil
+            localVideoEnabled = false
+            throw error
+        }
     }
 
     func startCameraCapture() throws {
@@ -409,18 +456,31 @@ final class WebRTCClient: NSObject, ObservableObject {
         }
 
         // User left entirely (empty producerId path) — clear both their slots.
-        if !userId.isEmpty {
+        if producerId.isEmpty, !userId.isEmpty {
             remoteVideoTracks.removeValue(forKey: userId)
             remoteVideoTracks.removeValue(forKey: "\(userId)-screen")
         }
     }
 
+    func hasAudioConsumer(userIdPrefix: String) -> Bool {
+        consumers.values.contains { info in
+            info.kind == "audio" && info.userId.hasPrefix(userIdPrefix)
+        }
+    }
+
+    func setAudioConsumersEnabled(userIdPrefix: String, enabled: Bool) {
+        for info in consumers.values where info.kind == "audio" && info.userId.hasPrefix(userIdPrefix) {
+            (info.consumer.track as? RTCAudioTrack)?.isEnabled = enabled
+        }
+    }
+
     // MARK: - Media Control
 
-    func setAudioEnabled(_ enabled: Bool) async {
-        guard let socket = socketManager,
-              let producer = audioProducer else { return }
+    func setAudioEnabled(_ enabled: Bool) async throws {
+        guard let socket = socketManager else { throw WebRTCError.notConfigured }
+        guard let producer = audioProducer else { throw WebRTCError.noTransport }
 
+        let previous = localAudioEnabled
         do {
             if enabled {
                 producer.resume()
@@ -428,18 +488,33 @@ final class WebRTCClient: NSObject, ObservableObject {
                 producer.pause()
             }
             try await socket.toggleMute(producerId: producer.id, paused: !enabled)
+            rtcLocalAudioTrack?.isEnabled = enabled
             localAudioEnabled = enabled
         } catch {
+            if previous {
+                producer.resume()
+            } else {
+                producer.pause()
+            }
+            rtcLocalAudioTrack?.isEnabled = previous
+            localAudioEnabled = previous
             debugLog("[WebRTC] Failed to toggle audio: \(error)")
+            throw error
         }
     }
 
-    func setVideoEnabled(_ enabled: Bool) async {
-        guard let socket = socketManager,
-              let producer = videoProducer else { return }
+    func setVideoEnabled(_ enabled: Bool) async throws {
+        guard let socket = socketManager else { throw WebRTCError.notConfigured }
+        guard let producer = videoProducer else { throw WebRTCError.noTransport }
 
+        let previous = localVideoEnabled
         do {
             if enabled {
+                let status = AVCaptureDevice.authorizationStatus(for: .video)
+                guard status == .authorized else {
+                    throw WebRTCError.permissionDenied
+                }
+                try startCameraCapture()
                 producer.resume()
             } else {
                 producer.pause()
@@ -449,14 +524,63 @@ final class WebRTCClient: NSObject, ObservableObject {
             localVideoEnabled = enabled
             localVideoTrack?.isEnabled = enabled
 
-            if enabled {
-                try? startCameraCapture()
-            } else {
+            if !enabled {
                 await videoCapturer?.stopCapture()
             }
         } catch {
+            if previous {
+                producer.resume()
+            } else {
+                producer.pause()
+                await videoCapturer?.stopCapture()
+            }
+            rtcLocalVideoTrack?.isEnabled = previous
+            localVideoTrack?.isEnabled = previous
+            localVideoEnabled = previous
             debugLog("[WebRTC] Failed to toggle video: \(error)")
+            throw error
         }
+    }
+
+    func closeLocalMedia(kind: String, type: String, producerId: String?) async -> Bool {
+        let isWebcam = type == ProducerType.webcam.rawValue
+        let isScreen = type == ProducerType.screen.rawValue
+
+        if kind == "audio", isWebcam, matchesProducer(audioProducer, producerId: producerId) {
+            audioProducer?.close()
+            audioProducer = nil
+            rtcLocalAudioTrack?.isEnabled = false
+            rtcLocalAudioTrack = nil
+            audioSource = nil
+            localAudioEnabled = false
+            return true
+        }
+
+        if kind == "video", isWebcam, matchesProducer(videoProducer, producerId: producerId) {
+            videoProducer?.close()
+            videoProducer = nil
+            rtcLocalVideoTrack?.isEnabled = false
+            localVideoTrack?.isEnabled = false
+            localVideoTrack = nil
+            rtcLocalVideoTrack = nil
+            await videoCapturer?.stopCapture()
+            videoCapturer = nil
+            videoSource = nil
+            localVideoEnabled = false
+            return true
+        }
+
+        if kind == "video", isScreen, matchesProducer(screenProducer, producerId: producerId) {
+            await stopScreenSharing()
+            return true
+        }
+
+        return false
+    }
+
+    private func matchesProducer(_ producer: Producer?, producerId: String?) -> Bool {
+        guard let producer else { return false }
+        return producerId == nil || producer.id == producerId
     }
 
     func updateVideoQuality(_ quality: VideoQuality) {
@@ -511,10 +635,12 @@ final class WebRTCClient: NSObject, ObservableObject {
         var best: Double?
         for obj in array {
             guard (obj["type"] as? String) == "inbound-rtp",
-                  let value = obj["audioLevel"] as? Double else {
+                  let value = statsNumber(obj, "audioLevel") else {
                 continue
             }
-            if best == nil || value > best! {
+            if let currentBest = best, value <= currentBest {
+                continue
+            } else {
                 best = value
             }
         }
@@ -531,6 +657,134 @@ final class WebRTCClient: NSObject, ObservableObject {
         if let i = obj[key] as? Int { return Double(i) }
         if let n = obj[key] as? NSNumber { return n.doubleValue }
         return nil
+    }
+
+    // MARK: - Connection quality
+
+    private var previousConnectionLossSample: (packetsLost: Double, packetsReceived: Double)?
+
+    func sampleConnectionQuality() -> ConnectionQuality {
+        var liveTransports: [any Transport] = []
+        if let sendTransport, !sendTransport.closed {
+            liveTransports.append(sendTransport)
+        }
+        if let receiveTransport, !receiveTransport.closed {
+            liveTransports.append(receiveTransport)
+        }
+        guard !liveTransports.isEmpty else {
+            previousConnectionLossSample = nil
+            return .unknown
+        }
+
+        var rttMs: Double?
+        var jitterMs: Double?
+        var packetsLost = 0.0
+        var packetsReceived = 0.0
+        var foundStats = false
+
+        for transport in liveTransports {
+            guard let sample = Self.parseConnectionStats(transport.stats) else { continue }
+            foundStats = true
+            if let sampleRtt = sample.rttMs {
+                rttMs = max(rttMs ?? 0, sampleRtt)
+            }
+            if let sampleJitter = sample.jitterMs {
+                jitterMs = max(jitterMs ?? 0, sampleJitter)
+            }
+            packetsLost += sample.packetsLost
+            packetsReceived += sample.packetsReceived
+        }
+
+        guard foundStats else {
+            previousConnectionLossSample = nil
+            return .unknown
+        }
+
+        var packetLoss: Double?
+        if let previous = previousConnectionLossSample {
+            let deltaLost = max(0, packetsLost - previous.packetsLost)
+            let deltaReceived = max(0, packetsReceived - previous.packetsReceived)
+            let deltaTotal = deltaLost + deltaReceived
+            packetLoss = deltaTotal > 0 ? deltaLost / deltaTotal : 0
+        }
+        previousConnectionLossSample = (packetsLost, packetsReceived)
+
+        return Self.deriveConnectionQuality(rttMs: rttMs, packetLoss: packetLoss, jitterMs: jitterMs)
+    }
+
+    private static func parseConnectionStats(_ statsJson: String) -> (
+        rttMs: Double?,
+        jitterMs: Double?,
+        packetsLost: Double,
+        packetsReceived: Double
+    )? {
+        guard let data = statsJson.data(using: .utf8),
+              let array = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
+            return nil
+        }
+
+        var rttMs: Double?
+        var candidatePairRttMs: Double?
+        var jitterMs: Double?
+        var packetsLost = 0.0
+        var packetsReceived = 0.0
+        var foundMetric = false
+
+        for obj in array {
+            switch obj["type"] as? String {
+            case "candidate-pair":
+                let nominated = (obj["nominated"] as? Bool) == true || (obj["state"] as? String) == "succeeded"
+                if nominated, let rtt = statsNumber(obj, "currentRoundTripTime") {
+                    candidatePairRttMs = max(candidatePairRttMs ?? 0, rtt * 1000)
+                    foundMetric = true
+                }
+            case "inbound-rtp":
+                if let jitter = statsNumber(obj, "jitter") {
+                    jitterMs = max(jitterMs ?? 0, jitter * 1000)
+                    foundMetric = true
+                }
+                if let lost = statsNumber(obj, "packetsLost") {
+                    packetsLost += max(0, lost)
+                    foundMetric = true
+                }
+                if let received = statsNumber(obj, "packetsReceived") {
+                    packetsReceived += max(0, received)
+                    foundMetric = true
+                }
+            case "remote-inbound-rtp":
+                if let rtt = statsNumber(obj, "roundTripTime") {
+                    rttMs = max(rttMs ?? 0, rtt * 1000)
+                    foundMetric = true
+                }
+                if let jitter = statsNumber(obj, "jitter") {
+                    jitterMs = max(jitterMs ?? 0, jitter * 1000)
+                    foundMetric = true
+                }
+            default:
+                continue
+            }
+        }
+
+        if let candidatePairRttMs {
+            rttMs = max(rttMs ?? 0, candidatePairRttMs)
+        }
+
+        guard foundMetric else { return nil }
+        return (rttMs, jitterMs, packetsLost, packetsReceived)
+    }
+
+    private static func deriveConnectionQuality(rttMs: Double?, packetLoss: Double?, jitterMs: Double?) -> ConnectionQuality {
+        if rttMs == nil && packetLoss == nil && jitterMs == nil {
+            return .unknown
+        }
+
+        if (rttMs ?? 0) >= 500 || (packetLoss ?? 0) >= 0.08 || (jitterMs ?? 0) >= 60 {
+            return .poor
+        }
+        if (rttMs ?? 0) >= 250 || (packetLoss ?? 0) >= 0.03 || (jitterMs ?? 0) >= 30 {
+            return .fair
+        }
+        return .good
     }
 
     private static func parseInboundVideoDecode(_ statsJson: String) -> (frames: Double, bytes: Double)? {
@@ -604,6 +858,7 @@ final class WebRTCClient: NSObject, ObservableObject {
         }
         consumers.removeAll()
         videoFreezeStats.removeAll()
+        previousConnectionLossSample = nil
 
         rtcLocalVideoTrack?.isEnabled = false
         rtcLocalAudioTrack?.isEnabled = false
@@ -634,6 +889,7 @@ final class WebRTCClient: NSObject, ObservableObject {
         sendTransport = nil
         receiveTransport = nil
         device = nil
+        runtimeIceServersJSON = nil
 
         try? audioSession.setActive(false)
 
@@ -817,8 +1073,12 @@ extension WebRTCClient: SendTransportDelegate, ReceiveTransportDelegate, Produce
             let entry = self.consumers.first { $0.value.consumer.id == consumer.id }
             if let entry {
                 self.consumers.removeValue(forKey: entry.key)
+                self.videoFreezeStats.removeValue(forKey: entry.key)
                 if entry.value.kind == "video" {
-                    self.remoteVideoTracks.removeValue(forKey: entry.value.userId)
+                    let trackKey = entry.value.trackKey.isEmpty ? entry.value.userId : entry.value.trackKey
+                    if !trackKey.isEmpty {
+                        self.remoteVideoTracks.removeValue(forKey: trackKey)
+                    }
                 }
             }
         }
@@ -998,7 +1258,7 @@ private var screenCapturerKey: UInt8 = 0
 private var screenSourceKey: UInt8 = 0
 private var screenTrackKey: UInt8 = 0
 
-enum WebRTCError: Error {
+enum WebRTCError: LocalizedError {
     case notConfigured
     case noTransport
     case permissionDenied

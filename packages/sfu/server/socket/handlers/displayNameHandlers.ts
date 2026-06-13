@@ -32,7 +32,7 @@ export const registerDisplayNameHandlers = (
           return;
         }
 
-        const user = (socket as any).user;
+        const user = socket.data.user;
         const clientId =
           typeof user?.clientId === "string" ? user.clientId : "default";
         const clientPolicy =

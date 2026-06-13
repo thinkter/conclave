@@ -10,10 +10,6 @@ import type {
 } from "mediasoup/types";
 import type { Socket } from "socket.io";
 
-// ============================================
-// Client & Room Types
-// ============================================
-
 export interface RoomInfo {
   id: string;
   userCount: number;
@@ -28,6 +24,16 @@ export interface RedirectData {
   newRoomId: string;
 }
 
+export interface RedirectNotification {
+  roomId?: string;
+  userId?: string;
+  newRoomId: string;
+}
+
+export interface JoinDecisionNotification {
+  roomId?: string;
+}
+
 export interface ClientOptions {
   id: string;
   socket: Socket;
@@ -37,10 +43,6 @@ export interface RoomOptions {
   id: string;
   router: Router;
 }
-
-// ============================================
-// Socket Event Payloads
-// ============================================
 
 export interface JoinRoomData {
   roomId: string;
@@ -95,7 +97,7 @@ export interface RestartIceResponse {
 export interface ProduceData {
   transportId: string;
   kind: MediaKind;
-  rtpParameters: RtpParameters; // Using RtpParameters from mediasoup/types
+  rtpParameters: RtpParameters;
   appData: { type: "webcam" | "screen"; paused?: boolean };
 }
 
@@ -122,6 +124,7 @@ export interface ProducerInfo {
   kind: MediaKind;
   type: "webcam" | "screen";
   paused?: boolean;
+  roomId?: string;
 }
 
 export type WebinarFeedMode = "active-speaker";
@@ -304,6 +307,7 @@ export type VideoQuality = "low" | "standard";
 
 export interface SetVideoQualityNotification {
   quality: VideoQuality;
+  roomId?: string;
 }
 
 export interface NewProducerNotification {
@@ -311,24 +315,27 @@ export interface NewProducerNotification {
   producerUserId: string;
   kind: MediaKind;
   type: "webcam" | "screen";
+  paused?: boolean;
+  roomId?: string;
 }
 
 export interface ProducerClosedNotification {
   producerId: string;
-  producerUserId: string;
+  producerUserId?: string;
+  roomId?: string;
 }
 
 export interface UserJoinedNotification {
   userId: string;
+  displayName?: string;
+  isGhost?: boolean;
+  roomId?: string;
 }
 
 export interface UserLeftNotification {
   userId: string;
+  roomId?: string;
 }
-
-// ============================================
-// Chat Types
-// ============================================
 
 export interface ChatMessage {
   id: string;
@@ -352,10 +359,6 @@ export interface ChatHistorySnapshot {
   roomId: string;
 }
 
-// ============================================
-// Reactions
-// ============================================
-
 export interface SendReactionData {
   emoji?: string;
   kind?: "emoji" | "asset";
@@ -369,11 +372,8 @@ export interface ReactionNotification {
   value: string;
   label?: string;
   timestamp: number;
+  roomId?: string;
 }
-
-// ============================================
-// Raise Hand
-// ============================================
 
 export interface SetHandRaisedData {
   raised: boolean;
@@ -383,13 +383,13 @@ export interface HandRaisedNotification {
   userId: string;
   raised: boolean;
   timestamp: number;
+  roomId?: string;
 }
 
 export interface HandRaisedSnapshot {
   users: { userId: string; raised: boolean }[];
+  roomId?: string;
 }
-
-// shared browser types
 
 export interface LaunchBrowserData {
   url: string;
@@ -410,19 +410,18 @@ export interface BrowserStateNotification {
   url?: string;
   noVncUrl?: string;
   controllerUserId?: string;
+  roomId?: string;
 }
 
 export interface BrowserClosedNotification {
   closedBy?: string;
+  roomId?: string;
 }
-
-// ============================================
-// Apps (SDK) Types
-// ============================================
 
 export interface AppsState {
   activeAppId: string | null;
   locked: boolean;
+  roomId?: string;
 }
 
 export interface AppsOpenData {
@@ -472,10 +471,6 @@ export interface AppsAwarenessData {
   awarenessUpdate: Uint8Array;
   clientId?: number;
 }
-
-// ============================================
-// Re-exports for convenience
-// ============================================
 
 export type {
   Router,

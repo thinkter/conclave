@@ -1,4 +1,3 @@
-import type { Worker } from "mediasoup/types";
 import { Room } from "../config/classes/Room.js";
 import { config } from "../config/config.js";
 import getWorker from "../utilities/getWorker.js";
@@ -49,10 +48,10 @@ export const getOrCreateRoom = async (
     return room;
   }
 
-  const worker = await getWorker(state.workers as Worker[]);
+  const worker = await getWorker(state.workers);
 
   const router = await worker.createRouter({
-    mediaCodecs: config.routerMediaCodecs as any,
+    mediaCodecs: config.routerMediaCodecs,
   });
 
   room = new Room({ id: roomId, router, clientId });

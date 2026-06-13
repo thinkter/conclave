@@ -42,6 +42,7 @@ function MobileBrowserLayout({
   userEmail,
   isMirrorCamera,
   activeSpeakerId,
+  currentUserId,
   getDisplayName,
   isAdmin,
   isBrowserLaunching = false,
@@ -53,6 +54,7 @@ function MobileBrowserLayout({
   const [navError, setNavError] = useState<string | null>(null);
 
   useEffect(() => {
+    setIsReady(false);
     if (!noVncUrl) return;
     const timer = setTimeout(() => setIsReady(true), 3000);
     return () => clearTimeout(timer);
@@ -60,14 +62,27 @@ function MobileBrowserLayout({
 
   useEffect(() => {
     const video = localVideoRef.current;
-    if (video && localStream) {
-      video.srcObject = localStream;
-      video.play().catch((err) => {
-        if (err.name !== "AbortError") {
-          console.error("[Meets] Mobile browser local video play error:", err);
-        }
-      });
+    if (!video) return;
+
+    if (!localStream) {
+      if (video.srcObject) {
+        video.srcObject = null;
+      }
+      return;
     }
+
+    video.srcObject = localStream;
+    video.play().catch((err) => {
+      if (err.name !== "AbortError") {
+        console.error("[Meets] Mobile browser local video play error:", err);
+      }
+    });
+
+    return () => {
+      if (video.srcObject === localStream) {
+        video.srcObject = null;
+      }
+    };
   }, [localStream]);
 
   useEffect(() => {
@@ -76,7 +91,9 @@ function MobileBrowserLayout({
 
   const participantArray = useSmartParticipantOrder(
     Array.from(participants.values()).filter(
-      (participant) => !isSystemUserId(participant.userId)
+      (participant) =>
+        participant.userId !== currentUserId &&
+        !isSystemUserId(participant.userId)
     ),
     activeSpeakerId
   );
@@ -305,6 +322,7 @@ const VideoThumbnail = memo(function VideoThumbnail({
     if (video.srcObject !== participant.videoStream) {
       video.srcObject = participant.videoStream;
     }
+    const videoStream = participant.videoStream;
 
     const playVideo = () => {
       video.play().catch(() => {});
@@ -313,11 +331,17 @@ const VideoThumbnail = memo(function VideoThumbnail({
     playVideo();
 
     const videoTrack = participant.videoStream.getVideoTracks()[0];
-    if (!videoTrack) return;
-    videoTrack.addEventListener("unmute", playVideo);
+    if (videoTrack) {
+      videoTrack.addEventListener("unmute", playVideo);
+    }
 
     return () => {
-      videoTrack.removeEventListener("unmute", playVideo);
+      if (videoTrack) {
+        videoTrack.removeEventListener("unmute", playVideo);
+      }
+      if (video.srcObject === videoStream) {
+        video.srcObject = null;
+      }
     };
   }, [participant.videoStream, participant.videoProducerId, isCameraOff]);
 
@@ -341,6 +365,11 @@ const AudioPlayer = memo(function AudioPlayer({ stream }: { stream: MediaStream 
       audio.srcObject = stream;
       audio.play().catch(() => {});
     }
+    return () => {
+      if (audio?.srcObject === stream) {
+        audio.srcObject = null;
+      }
+    };
   }, [stream]);
 
   return <audio ref={audioRef} autoPlay />;

@@ -27,6 +27,7 @@ final class CallKitManager: NSObject {
 
     /// The UUID of the call currently reported to CallKit, if any.
     private(set) var activeCallUUID: UUID?
+    private var reportedMuted: Bool?
 
     private override init() {
         let configuration = CXProviderConfiguration()
@@ -48,6 +49,7 @@ final class CallKitManager: NSObject {
         guard activeCallUUID == nil else { return }
         let uuid = UUID()
         activeCallUUID = uuid
+        reportedMuted = nil
 
         let handle = CXHandle(type: .generic, value: title)
         let startCallAction = CXStartCallAction(call: uuid, handle: handle)
@@ -61,7 +63,10 @@ final class CallKitManager: NSObject {
                 // failure is for the call we still think is active (a fast
                 // leave/rejoin could have replaced it).
                 Task { @MainActor in
-                    if self?.activeCallUUID == uuid { self?.activeCallUUID = nil }
+                    if self?.activeCallUUID == uuid {
+                        self?.activeCallUUID = nil
+                        self?.reportedMuted = nil
+                    }
                 }
                 return
             }
@@ -81,17 +86,27 @@ final class CallKitManager: NSObject {
         guard let uuid = activeCallUUID else { return }
         provider.reportCall(with: uuid, endedAt: Date(), reason: .remoteEnded)
         activeCallUUID = nil
+        reportedMuted = nil
     }
 
     /// Reflect the in-app mute state onto the CallKit call UI so the system mute
     /// glyph matches the app (e.g. when the user mutes from the in-app button).
     func updateMuteState(muted: Bool) {
         guard let uuid = activeCallUUID else { return }
+        let previousMuted = reportedMuted
+        guard previousMuted != muted else { return }
+        reportedMuted = muted
+
         let muteAction = CXSetMutedCallAction(call: uuid, muted: muted)
         let transaction = CXTransaction(action: muteAction)
-        callController.request(transaction) { error in
+        callController.request(transaction) { [weak self] error in
             if let error = error {
                 debugLog("[CallKit] setMuted request failed: \(error.localizedDescription)")
+                Task { @MainActor in
+                    if self?.activeCallUUID == uuid, self?.reportedMuted == muted {
+                        self?.reportedMuted = previousMuted
+                    }
+                }
             }
         }
     }
@@ -105,6 +120,7 @@ extension CallKitManager: CXProviderDelegate {
         // leaving the VM + audio session running with no CallKit presence.
         Task { @MainActor in
             self.activeCallUUID = nil
+            self.reportedMuted = nil
             CallSessionCoordinator.shared.leaveCall()
         }
     }
@@ -122,6 +138,7 @@ extension CallKitManager: CXProviderDelegate {
             // loop when WE reported the end).
             if self.activeCallUUID == action.callUUID {
                 self.activeCallUUID = nil
+                self.reportedMuted = nil
                 CallSessionCoordinator.shared.leaveCall()
             }
         }
@@ -131,6 +148,8 @@ extension CallKitManager: CXProviderDelegate {
     nonisolated func provider(_ provider: CXProvider, perform action: CXSetMutedCallAction) {
         let muted = action.isMuted
         Task { @MainActor in
+            guard self.activeCallUUID == action.callUUID else { return }
+            self.reportedMuted = muted
             CallSessionCoordinator.shared.setMuted(muted)
         }
         action.fulfill()

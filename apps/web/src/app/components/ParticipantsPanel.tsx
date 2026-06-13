@@ -38,6 +38,20 @@ interface ParticipantsPanelProps {
 const ICON = 18;
 const STROKE = 1.75;
 
+const getAdminActionError = (
+  response: unknown,
+  fallbackMessage: string,
+): string | null => {
+  if (!response || typeof response !== "object") {
+    return fallbackMessage;
+  }
+  const result = response as { success?: unknown; error?: unknown };
+  if (typeof result.error === "string" && result.error.trim()) {
+    return result.error;
+  }
+  return result.success === true ? null : fallbackMessage;
+};
+
 function ParticipantsPanel({
   participants,
   currentUserId,
@@ -55,11 +69,12 @@ function ParticipantsPanel({
   isAdmin?: boolean | null;
 }) {
   const participantsList = Array.from(participants.values()).filter(
-    (participant) => !isSystemUserId(participant.userId),
+    (participant) =>
+      participant.userId !== currentUserId &&
+      !isSystemUserId(participant.userId),
   );
-  const hasLocalEntry = participants.has(currentUserId);
   const localParticipant: Participant | null =
-    !hasLocalEntry && localState
+    localState
       ? {
           userId: currentUserId,
           videoStream: null,
@@ -107,8 +122,28 @@ function ParticipantsPanel({
 
   const handleCloseProducer = (producerId: string) => {
     if (!socket || !isAdmin) return;
-    socket.emit("closeRemoteProducer", { producerId }, (res: any) => {
-      if (res.error) console.error("Failed to close producer:", res.error);
+    setHostActionError(null);
+    socket.emit("closeRemoteProducer", { producerId }, (res: unknown) => {
+      const error = getAdminActionError(res, "Failed to close producer.");
+      if (error) setHostActionError(error);
+    });
+  };
+
+  const handleMuteAll = () => {
+    if (!socket || !isAdmin) return;
+    setHostActionError(null);
+    socket.emit("muteAll", (res: unknown) => {
+      const error = getAdminActionError(res, "Failed to mute participants.");
+      if (error) setHostActionError(error);
+    });
+  };
+
+  const handleCloseAllVideo = () => {
+    if (!socket || !isAdmin) return;
+    setHostActionError(null);
+    socket.emit("closeAllVideo", (res: unknown) => {
+      const error = getAdminActionError(res, "Failed to stop participant video.");
+      if (error) setHostActionError(error);
     });
   };
 
@@ -197,7 +232,6 @@ function ParticipantsPanel({
     setExpandedUserId((prev) => (prev === userId ? null : userId));
   };
 
-  // Tidy, consistent button recipes (presentation-only).
   const bulkButtonClass =
     "flex flex-1 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-[13px] font-medium text-[#a1a1aa] transition-colors hover:bg-white/[0.07] hover:text-[#fafafa]";
   const actionButtonBase =
@@ -217,7 +251,6 @@ function ParticipantsPanel({
       className="fixed right-0 top-0 bottom-0 z-40 flex w-[360px] flex-col overflow-hidden border-l border-white/10 bg-[#18181b] animate-[meet-panel-in_280ms_cubic-bezier(0.22,1,0.36,1)]"
       style={{ fontFamily: "'PolySans Trial', sans-serif" }}
     >
-      {/* Header */}
       <header className="flex items-center justify-between border-b border-white/10 px-4 py-3">
         <div className="flex items-center gap-2">
           <Users size={ICON} strokeWidth={STROKE} className="text-[#a1a1aa]" />
@@ -238,7 +271,6 @@ function ParticipantsPanel({
         </button>
       </header>
 
-      {/* Host controls */}
       {isAdmin && (
         <section className="border-b border-white/10 px-4 py-3">
           <div className="mb-2.5 flex items-center gap-2">
@@ -255,11 +287,7 @@ function ParticipantsPanel({
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={() =>
-                socket?.emit("muteAll", (res: unknown) =>
-                  console.log("Muted all:", res),
-                )
-              }
+              onClick={handleMuteAll}
               className={bulkButtonClass}
               title="Mute everyone"
             >
@@ -268,11 +296,7 @@ function ParticipantsPanel({
             </button>
             <button
               type="button"
-              onClick={() =>
-                socket?.emit("closeAllVideo", (res: unknown) =>
-                  console.log("Stopped all video:", res),
-                )
-              }
+              onClick={handleCloseAllVideo}
               className={bulkButtonClass}
               title="Turn off everyone's camera"
             >
@@ -283,7 +307,6 @@ function ParticipantsPanel({
         </section>
       )}
 
-      {/* Pending / waiting room */}
       {isAdmin && pendingList.length > 0 && (
         <section className="border-b border-white/10">
           <button

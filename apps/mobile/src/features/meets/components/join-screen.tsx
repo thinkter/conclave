@@ -232,6 +232,7 @@ export function JoinScreen({
   const [isAppleAvailable, setIsAppleAvailable] = useState(false);
   const [isEditingName, setIsEditingName] = useState(false);
   const nameInputRef = useRef<React.ElementRef<typeof TextInput>>(null);
+  const nameFocusFrameRef = useRef<number | null>(null);
   const isAuthLoading = authProvider !== null;
   const phases = useMemo<Phase[]>(
     () => (forceJoinOnly ? ["join"] : ["welcome", "auth", "join"]),
@@ -327,9 +328,22 @@ export function JoinScreen({
 
   const handleNamePress = useCallback(() => {
     setIsEditingName(true);
-    requestAnimationFrame(() => {
+    if (nameFocusFrameRef.current !== null) {
+      cancelAnimationFrame(nameFocusFrameRef.current);
+    }
+    nameFocusFrameRef.current = requestAnimationFrame(() => {
+      nameFocusFrameRef.current = null;
       nameInputRef.current?.focus();
     });
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (nameFocusFrameRef.current !== null) {
+        cancelAnimationFrame(nameFocusFrameRef.current);
+        nameFocusFrameRef.current = null;
+      }
+    };
   }, []);
 
   const handleNameBlur = useCallback(() => {

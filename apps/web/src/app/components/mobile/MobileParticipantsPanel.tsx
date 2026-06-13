@@ -32,7 +32,9 @@ function MobileParticipantsPanel({
   hostUserIds,
 }: MobileParticipantsPanelProps) {
   const participantArray = Array.from(participants.values()).filter(
-    (participant) => !isSystemUserId(participant.userId),
+    (participant) =>
+      participant.userId !== currentUserId &&
+      !isSystemUserId(participant.userId),
   );
   const pendingArray = Array.from(pendingUsers.entries());
   const effectiveHostUserId = hostUserId ?? (isAdmin ? currentUserId : null);
@@ -54,7 +56,6 @@ function MobileParticipantsPanel({
   const [pendingKickUserId, setPendingKickUserId] = useState<string | null>(null);
   const [removingUserId, setRemovingUserId] = useState<string | null>(null);
   const [hostActionError, setHostActionError] = useState<string | null>(null);
-  const localParticipant = participants.get(currentUserId);
   const formatName = (value: string, maxLength = 18) =>
     truncateDisplayName(value, maxLength);
 

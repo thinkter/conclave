@@ -304,7 +304,7 @@ struct ACMPrimaryButtonStyle: ButtonStyle {
 #endif
 
 extension View {
-    func acmControlButtonStyle(
+    public func acmControlButtonStyle(
         isActive: Bool = false,
         isMuted: Bool = false,
         isGhostDisabled: Bool = false,
@@ -353,7 +353,7 @@ extension View {
         #endif
     }
 
-    func acmPrimaryButtonStyle(isLoading: Bool = false) -> some View {
+    public func acmPrimaryButtonStyle(isLoading: Bool = false) -> some View {
         #if SKIP
         return self
             .font(ACMFont.trial(14, weight: .medium))
@@ -371,7 +371,7 @@ extension View {
 // MARK: - Input Field Style
 
 extension View {
-    func acmInputStyle() -> some View {
+    public func acmInputStyle() -> some View {
         self
             .font(ACMFont.trial(14))
             .foregroundStyle(ACMColors.text)
@@ -390,7 +390,7 @@ extension View {
 // MARK: - Video Tile Style (flat — speaking = 2px solid accent, NO glow)
 
 extension View {
-    func acmVideoTile(isSpeaking: Bool = false) -> some View {
+    public func acmVideoTile(isSpeaking: Bool = false) -> some View {
         self
             .clipShape(RoundedRectangle(cornerRadius: 16))
             .overlay {
@@ -404,7 +404,7 @@ extension View {
 // MARK: - Label Style (sans — no monospace, no uppercase tracking gimmick)
 
 extension View {
-    func acmLabel() -> some View {
+    public func acmLabel() -> some View {
         self
             .font(ACMFont.trial(12, weight: .medium))
             .foregroundStyle(ACMColors.textMuted)
@@ -414,7 +414,7 @@ extension View {
 // MARK: - Convenience Extensions
 
 extension View {
-    func acmColorBackground(_ color: Color) -> some View {
+    public func acmColorBackground(_ color: Color) -> some View {
         #if SKIP
         return self.background { color }
         #else
@@ -422,11 +422,11 @@ extension View {
         #endif
     }
 
-    func acmBackground() -> some View {
+    public func acmBackground() -> some View {
         self.acmColorBackground(ACMColors.bg)
     }
 
-    func acmPill() -> some View {
+    public func acmPill() -> some View {
         self
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
@@ -445,7 +445,7 @@ extension View {
     /// Frosted-glass backing. On iOS this is a real material (the closest thing
     /// to Liquid Glass available pre-availability-gating); on Android/Skip it
     /// falls back to a translucent scrim.
-    func acmMaterialBackground(opacity: Double = 0.3) -> some View {
+    public func acmMaterialBackground(opacity: Double = 0.3) -> some View {
         #if SKIP
         return self.acmColorBackground(Color(red: 0, green: 0, blue: 0, opacity: opacity))
         #else

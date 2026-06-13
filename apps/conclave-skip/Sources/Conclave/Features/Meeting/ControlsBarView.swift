@@ -12,10 +12,10 @@ struct ControlsBarView: View {
     let onParticipantsPressed: () -> Void
     let onSettingsPressed: () -> Void
     var onMorePressed: () -> Void = {}
-    @State var showReactionPicker = false
+    @State private var showReactionPicker = false
 
 #if !os(macOS) && !SKIP
-    @Environment(\.horizontalSizeClass) var horizontalSizeClass
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 #endif
 
     private var isRegularSizeClass: Bool {
@@ -102,134 +102,137 @@ struct ControlsBarView: View {
             return "ellipsis"
             #endif
         }()
+        let mediaPublishingDisabled = viewModel.state.mediaPublishingDisabled
+        let isWebinarAttendee = viewModel.state.isWebinarAttendee
+        let isScreenShareDisabled = mediaPublishingDisabled ||
+            (viewModel.state.activeScreenShareUserId != nil && !viewModel.state.isScreenSharing)
 
         HStack(spacing: isCompact ? 12.0 : 4.0) {
-            if !isCompact {
-                ControlButton(
-                    icon: participantsIcon,
-                    isActive: false,
-                    badge: viewModel.state.pendingUsersCount > 0 ? viewModel.state.pendingUsersCount : nil
-                ) {
-                    onParticipantsPressed()
-                }
-
-                if viewModel.state.isAdmin {
+            if !isWebinarAttendee {
+                if !isCompact {
                     ControlButton(
-                        icon: lockIcon,
-                        isActive: viewModel.state.isRoomLocked,
-                        activeColor: ACMColors.primaryOrange
+                        icon: participantsIcon,
+                        isActive: false,
+                        badge: viewModel.state.pendingUsersCount > 0 ? viewModel.state.pendingUsersCount : nil
                     ) {
-                        viewModel.toggleRoomLock()
+                        onParticipantsPressed()
                     }
-                }
-            }
-            
-            ControlButton(
-                icon: micIcon,
-                isMuted: viewModel.state.isMuted,
-                isGhostDisabled: viewModel.state.isGhostMode
-            ) {
-                viewModel.toggleMute()
-            }
-            .disabled(viewModel.state.isGhostMode)
-            
-            ControlButton(
-                icon: cameraIcon,
-                isMuted: viewModel.state.isCameraOff,
-                isGhostDisabled: viewModel.state.isGhostMode
-            ) {
-                viewModel.toggleCamera()
-            }
-            .disabled(viewModel.state.isGhostMode)
-            
-            if viewModel.state.isScreenShareSupported {
-                ControlButton(
-                    icon: screenShareIcon,
-                    isActive: viewModel.state.isScreenSharing,
-                    isGhostDisabled: viewModel.state.isGhostMode
-                ) {
-                    viewModel.toggleScreenShare()
-                }
-                .disabled(viewModel.state.isGhostMode)
-            }
-            
-            if isCompact {
-                // Phone: a single "More" entry holds raise-hand / reactions /
-                // chat / settings (Meet/Apple keep the phone bar to a few slots,
-                // so mic + hangup never clip off-screen).
-                ControlButton(
-                    icon: moreIcon,
-                    isActive: false,
-                    badge: viewModel.state.unreadChatCount > 0 ? viewModel.state.unreadChatCount : nil
-                ) {
-                    onMorePressed()
-                }
-            } else {
-                ControlButton(
-                    icon: handRaiseIcon,
-                    isActive: viewModel.state.isHandRaised,
-                    activeColor: ACMColors.handRaised,
-                    isGhostDisabled: viewModel.state.isGhostMode
-                ) {
-                    viewModel.toggleHandRaise()
-                }
-                .disabled(viewModel.state.isGhostMode)
 
-                // .overlay (not a non-center ZStack) hosts the popover — a
-                // ZStack(alignment: .top) made Skip double-emit the button's
-                // ComposeView icon as a ghost at the stage top on Android.
-                ControlButton(
-                    icon: reactionIcon,
-                    isActive: showReactionPicker,
-                    isGhostDisabled: viewModel.state.isGhostMode
-                ) {
-                    showReactionPicker = !showReactionPicker
-                }
-                .disabled(viewModel.state.isGhostMode)
-                .overlay(alignment: .top) {
-                    if showReactionPicker {
-                        ReactionPickerView { emoji in
-                            viewModel.sendReaction(emoji: emoji)
-                            showReactionPicker = false
+                    if viewModel.state.isAdmin {
+                        ControlButton(
+                            icon: lockIcon,
+                            isActive: viewModel.state.isRoomLocked,
+                            activeColor: ACMColors.primaryOrange
+                        ) {
+                            viewModel.toggleRoomLock()
                         }
-                        .offset(y: -64)
-#if !SKIP
-                        .transition(.scale(scale: 0.9, anchor: UnitPoint.bottom).combined(with: AnyTransition.opacity))
-#else
-                        .transition(AnyTransition.opacity)
-#endif
                     }
                 }
-                .animation(Animation.easeOut(duration: 0.12), value: showReactionPicker)
 
                 ControlButton(
-                    icon: chatIcon,
-                    isActive: viewModel.state.isChatOpen,
-                    badge: viewModel.state.unreadChatCount > 0 ? viewModel.state.unreadChatCount : nil
+                    icon: micIcon,
+                    isMuted: viewModel.state.isMuted,
+                    isGhostDisabled: mediaPublishingDisabled
                 ) {
-                    viewModel.toggleChat()
+                    viewModel.toggleMute()
                 }
+                .disabled(mediaPublishingDisabled)
 
                 ControlButton(
-                    icon: settingsIcon,
-                    isActive: false
+                    icon: cameraIcon,
+                    isMuted: viewModel.state.isCameraOff,
+                    isGhostDisabled: mediaPublishingDisabled
                 ) {
-                    onSettingsPressed()
+                    viewModel.toggleCamera()
                 }
+                .disabled(mediaPublishingDisabled)
+
+                if viewModel.state.isScreenShareSupported {
+                    ControlButton(
+                        icon: screenShareIcon,
+                        isActive: viewModel.state.isScreenSharing,
+                        isGhostDisabled: isScreenShareDisabled
+                    ) {
+                        viewModel.toggleScreenShare()
+                    }
+                    .disabled(isScreenShareDisabled)
+                }
+
+                if isCompact {
+                    ControlButton(
+                        icon: moreIcon,
+                        isActive: false,
+                        badge: viewModel.state.unreadChatCount > 0 ? viewModel.state.unreadChatCount : nil
+                    ) {
+                        onMorePressed()
+                    }
+                } else {
+                    ControlButton(
+                        icon: handRaiseIcon,
+                        isActive: viewModel.state.isHandRaised,
+                        activeColor: ACMColors.handRaised,
+                        isGhostDisabled: viewModel.state.isGhostMode
+                    ) {
+                        viewModel.toggleHandRaise()
+                    }
+                    .disabled(viewModel.state.isGhostMode)
+
+                    ControlButton(
+                        icon: reactionIcon,
+                        isActive: showReactionPicker,
+                        isGhostDisabled: viewModel.state.isGhostMode
+                    ) {
+                        showReactionPicker = !showReactionPicker
+                    }
+                    .disabled(viewModel.state.isGhostMode)
+                    .overlay(alignment: .top) {
+                        if showReactionPicker {
+                            ReactionPickerView { option in
+                                viewModel.sendReaction(option)
+                                showReactionPicker = false
+                            }
+                            .offset(y: -64)
+#if !SKIP
+                            .transition(.scale(scale: 0.9, anchor: UnitPoint.bottom).combined(with: AnyTransition.opacity))
+#else
+                            .transition(AnyTransition.opacity)
+#endif
+                        }
+                    }
+                    .animation(Animation.easeOut(duration: 0.12), value: showReactionPicker)
+
+                    ControlButton(
+                        icon: chatIcon,
+                        isActive: viewModel.state.isChatOpen,
+                        badge: viewModel.state.unreadChatCount > 0 ? viewModel.state.unreadChatCount : nil
+                    ) {
+                        viewModel.toggleChat()
+                    }
+
+                    ControlButton(
+                        icon: settingsIcon,
+                        isActive: false
+                    ) {
+                        onSettingsPressed()
+                    }
+                }
+
+                Rectangle()
+                    .fill(ACMColors.creamFaint)
+                    .frame(width: 1, height: 24)
+                    .padding(.horizontal, isCompact ? 2.0 : 4.0)
+            } else {
+                Text("\(viewModel.state.webinarAttendeeCount) watching")
+                    .font(ACMFont.trial(11, weight: .medium))
+                    .foregroundStyle(ACMColors.textMuted)
+                    .lineLimit(1)
+                    .padding(.leading, 4)
             }
 
-            Rectangle()
-                .fill(ACMColors.creamFaint)
-                .frame(width: 1, height: 24)
-                .padding(.horizontal, isCompact ? 2.0 : 4.0)
-            
             Button {
                 viewModel.leaveRoom()
             } label: {
-                    // White hangup icon on the red danger fill (Meet's end-call
-                    // button). iOS phone.down.fill + Android CallEnd are both
-                    // already hung-up receivers — no rotation hack needed.
-                    ACMSystemIcon.icon("phone.down.fill", android: "hangup", size: 18)
+                ACMSystemIcon.icon("phone.down.fill", android: "hangup", size: 18)
                     .frame(width: 44, height: 44)
             }
             .acmControlButtonStyle(isDanger: true)
@@ -237,9 +240,6 @@ struct ControlsBarView: View {
         .frame(maxWidth: isCompact ? min(360.0, availableWidth - 24.0) : availableWidth - 24.0)
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        // Liquid Glass floating control bar (iOS 26) / frosted material / Compose
-        // translucent surface. The capsule is the single glass element; the
-        // buttons inside stay solid-tinted (Apple's call-UI pattern).
         .acmGlassCapsule()
     }
 }
@@ -284,4 +284,3 @@ struct ControlButton: View {
         #endif
     }
 }
-

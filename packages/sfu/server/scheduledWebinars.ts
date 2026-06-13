@@ -34,7 +34,7 @@ const RANDOM_SLUG_LENGTH = 8;
 const CO_HOST_INVITE_TOKEN_BYTES = 32;
 
 const sanitizeString = (
-  value: string | undefined,
+  value: unknown,
   options: { max: number; allowEmpty?: boolean } = { max: 0 },
 ): string => {
   const normalized = typeof value === "string" ? value.trim() : "";
@@ -70,7 +70,7 @@ const sanitizeEarlyEntry = (value: unknown, fallback: number): number => {
 };
 
 const sanitizeCoHosts = (
-  value: ScheduledWebinarCoHost[] | undefined,
+  value: unknown,
 ): ScheduledWebinarCoHost[] => {
   if (!Array.isArray(value)) return [];
   const seen = new Set<string>();
@@ -407,9 +407,7 @@ export const createSqliteScheduledWebinarPersistence = (
       } catch (error) {
         try {
           db.exec("ROLLBACK");
-        } catch {
-          // ignore rollback failures
-        }
+        } catch {}
         Logger.error("Failed to persist scheduled webinars to SQLite", error);
       }
     },
@@ -482,57 +480,59 @@ export const createScheduledWebinarPersistence = (): ScheduledWebinarPersistence
   }
 };
 
-const normalizeStoredWebinar = (raw: any): ScheduledWebinar | null => {
-  if (!raw || typeof raw !== "object") return null;
-  if (typeof raw.id !== "string" || !raw.id) return null;
-  if (typeof raw.linkSlug !== "string" || !raw.linkSlug) return null;
-  if (typeof raw.roomId !== "string" || !raw.roomId) return null;
-  if (typeof raw.clientId !== "string" || !raw.clientId) return null;
+const normalizeStoredWebinar = (raw: unknown): ScheduledWebinar | null => {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const record = raw as Record<string, unknown>;
+  if (typeof record.id !== "string" || !record.id) return null;
+  if (typeof record.linkSlug !== "string" || !record.linkSlug) return null;
+  if (typeof record.roomId !== "string" || !record.roomId) return null;
+  if (typeof record.clientId !== "string" || !record.clientId) return null;
+  const rawStatus = record.status;
   const status: ScheduledWebinarStatus =
-    raw.status === "live" || raw.status === "ended" || raw.status === "cancelled"
-      ? raw.status
+    rawStatus === "live" || rawStatus === "ended" || rawStatus === "cancelled"
+      ? rawStatus
       : "scheduled";
-  const linkSlug = String(raw.linkSlug);
+  const linkSlug = String(record.linkSlug);
   return {
-    id: raw.id,
-    clientId: raw.clientId,
-    roomId: raw.roomId,
+    id: record.id,
+    clientId: record.clientId,
+    roomId: record.roomId,
     linkSlug,
-    title: sanitizeString(raw.title, { max: MAX_TITLE_LENGTH }) || "Untitled webinar",
-    description: sanitizeString(raw.description, {
+    title: sanitizeString(record.title, { max: MAX_TITLE_LENGTH }) || "Untitled webinar",
+    description: sanitizeString(record.description, {
       max: MAX_DESCRIPTION_LENGTH,
       allowEmpty: true,
     }),
-    hostEmail: normalizeHostEmail(String(raw.hostEmail ?? "")),
-    hostName: sanitizeString(raw.hostName, { max: 120, allowEmpty: true }),
-    hostUserId: raw.hostUserId ? String(raw.hostUserId) : null,
-    coHosts: sanitizeCoHosts(raw.coHosts),
-    scheduledStartAt: Number(raw.scheduledStartAt) || Date.now(),
+    hostEmail: normalizeHostEmail(String(record.hostEmail ?? "")),
+    hostName: sanitizeString(record.hostName, { max: 120, allowEmpty: true }),
+    hostUserId: record.hostUserId ? String(record.hostUserId) : null,
+    coHosts: sanitizeCoHosts(record.coHosts),
+    scheduledStartAt: Number(record.scheduledStartAt) || Date.now(),
     scheduledEndAt:
-      Number(raw.scheduledEndAt) ||
-      (Number(raw.scheduledStartAt) || Date.now()) + DEFAULT_DURATION_MS,
+      Number(record.scheduledEndAt) ||
+      (Number(record.scheduledStartAt) || Date.now()) + DEFAULT_DURATION_MS,
     status,
-    publicAccess: sanitizeBoolean(raw.publicAccess, true),
-    maxAttendees: sanitizeMaxAttendees(raw.maxAttendees, DEFAULT_WEBINAR_MAX_ATTENDEES),
-    requiresInviteCode: Boolean(raw.requiresInviteCode),
-    waitingRoomEnabled: sanitizeBoolean(raw.waitingRoomEnabled, true),
-    earlyEntryMinutes: sanitizeEarlyEntry(raw.earlyEntryMinutes, DEFAULT_EARLY_ENTRY_MINUTES),
-    qaEnabled: sanitizeBoolean(raw.qaEnabled, true),
-    notes: sanitizeString(raw.notes, { max: MAX_NOTES_LENGTH, allowEmpty: true }),
-    createdAt: Number(raw.createdAt) || Date.now(),
-    createdBy: String(raw.createdBy ?? ""),
-    updatedAt: Number(raw.updatedAt) || Date.now(),
-    liveStartedAt: raw.liveStartedAt ? Number(raw.liveStartedAt) : null,
-    endedAt: raw.endedAt ? Number(raw.endedAt) : null,
-    totalJoinCount: Number(raw.totalJoinCount) || 0,
-    peakAttendeeCount: Number(raw.peakAttendeeCount) || 0,
+    publicAccess: sanitizeBoolean(record.publicAccess, true),
+    maxAttendees: sanitizeMaxAttendees(record.maxAttendees, DEFAULT_WEBINAR_MAX_ATTENDEES),
+    requiresInviteCode: Boolean(record.requiresInviteCode),
+    waitingRoomEnabled: sanitizeBoolean(record.waitingRoomEnabled, true),
+    earlyEntryMinutes: sanitizeEarlyEntry(record.earlyEntryMinutes, DEFAULT_EARLY_ENTRY_MINUTES),
+    qaEnabled: sanitizeBoolean(record.qaEnabled, true),
+    notes: sanitizeString(record.notes, { max: MAX_NOTES_LENGTH, allowEmpty: true }),
+    createdAt: Number(record.createdAt) || Date.now(),
+    createdBy: String(record.createdBy ?? ""),
+    updatedAt: Number(record.updatedAt) || Date.now(),
+    liveStartedAt: record.liveStartedAt ? Number(record.liveStartedAt) : null,
+    endedAt: record.endedAt ? Number(record.endedAt) : null,
+    totalJoinCount: Number(record.totalJoinCount) || 0,
+    peakAttendeeCount: Number(record.peakAttendeeCount) || 0,
     webinarLink: buildWebinarLink(linkSlug),
     coHostInviteTokenHash:
-      typeof raw.coHostInviteTokenHash === "string"
-        ? raw.coHostInviteTokenHash
+      typeof record.coHostInviteTokenHash === "string"
+        ? record.coHostInviteTokenHash
         : null,
-    coHostInviteTokenCreatedAt: raw.coHostInviteTokenCreatedAt
-      ? Number(raw.coHostInviteTokenCreatedAt)
+    coHostInviteTokenCreatedAt: record.coHostInviteTokenCreatedAt
+      ? Number(record.coHostInviteTokenCreatedAt)
       : null,
   };
 };

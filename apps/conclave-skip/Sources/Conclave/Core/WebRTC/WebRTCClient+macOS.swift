@@ -31,8 +31,9 @@ final class WebRTCClient {
     private(set) var localVideoEnabled: Bool = false
     var remoteVideoTracks: [String: VideoTrackWrapper] = [:]
     var isConfigured: Bool { false }
+    func hasBrokenTransport() -> Bool { false }
 
-    func configure(socketManager: SocketIOManager, rtpCapabilities: RtpCapabilities) { }
+    func configure(socketManager: SocketIOManager, rtpCapabilities: RtpCapabilities, iceServersJSON: String?) { }
     func createTransports() async throws { }
     func consumeProducer(producerId: String, producerUserId: String, producerType: String = "webcam") async throws { }
     func closeConsumer(producerId: String, userId: String) { }
@@ -41,9 +42,14 @@ final class WebRTCClient {
     func startProducingVideo() async throws { }
     func cleanup(notifyLocalState: Bool = true) async { }
     func checkVideoFreezes() async { }
+    func sampleConnectionQuality() -> ConnectionQuality { .unknown }
     func consumerId(forProducer producerId: String) -> String? { nil }
-    func setAudioEnabled(_ enabled: Bool) async { }
-    func setVideoEnabled(_ enabled: Bool) async { }
+    func closeConsumers(exceptProducerIds producerIds: [String]) { }
+    func hasAudioConsumer(userIdPrefix: String) -> Bool { false }
+    func setAudioConsumersEnabled(userIdPrefix: String, enabled: Bool) { }
+    func setAudioEnabled(_ enabled: Bool) async throws { }
+    func setVideoEnabled(_ enabled: Bool) async throws { }
+    func closeLocalMedia(kind: String, type: String, producerId: String? = nil) async -> Bool { false }
 
     func getCaptureSession() -> Any? { nil }
     func getLocalVideoTrack() -> Any? { nil }

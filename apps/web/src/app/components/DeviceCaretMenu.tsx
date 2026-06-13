@@ -6,16 +6,19 @@ import { color } from "@conclave/ui-tokens";
 
 type DeviceOption = { deviceId: string; label: string };
 
-/**
- * Self-contained device enumeration (mirrors video-settings) — only runs while
- * a caret menu is open + listens for `devicechange`.
- */
 function useEnumeratedDevices(active: boolean) {
   const [audioInput, setAudioInput] = useState<DeviceOption[]>([]);
   const [audioOutput, setAudioOutput] = useState<DeviceOption[]>([]);
   const [videoInput, setVideoInput] = useState<DeviceOption[]>([]);
 
   const fetchDevices = useCallback(async () => {
+    if (!navigator.mediaDevices?.enumerateDevices) {
+      setAudioInput([]);
+      setAudioOutput([]);
+      setVideoInput([]);
+      return;
+    }
+
     try {
       const devices = await navigator.mediaDevices.enumerateDevices();
       setAudioInput(
@@ -43,6 +46,7 @@ function useEnumeratedDevices(active: boolean) {
   }, [active, fetchDevices]);
 
   useEffect(() => {
+    if (!navigator.mediaDevices?.addEventListener) return;
     navigator.mediaDevices.addEventListener("devicechange", fetchDevices);
     return () =>
       navigator.mediaDevices.removeEventListener("devicechange", fetchDevices);
@@ -107,11 +111,6 @@ export interface DeviceCaretMenuProps {
   onToggleMirror?: () => void;
 }
 
-/**
- * The Meet-style caret (^) that sits beside the mic / camera button and opens a
- * device picker popover. Audio caret = mic + speaker; video caret = camera +
- * mirror toggle.
- */
 export function DeviceCaretMenu(props: DeviceCaretMenuProps) {
   const { kind, disabled } = props;
   const [open, setOpen] = useState(false);
@@ -151,9 +150,6 @@ export function DeviceCaretMenu(props: DeviceCaretMenuProps) {
         className="group/caret flex h-12 w-8 items-center justify-center disabled:opacity-40"
         style={{ color: open ? color.accent : color.textMuted }}
       >
-        {/* The hover highlight is a small CIRCLE around the chevron, not the full
-            tall click target — a 48×28 rounded-full target reads as an awkward
-            floating capsule next to the round mic/cam buttons. */}
         <span
           className="flex h-8 w-8 items-center justify-center rounded-full transition-[background-color] duration-[120ms] group-hover/caret:bg-white/[0.09]"
           style={open ? { backgroundColor: "rgba(249, 95, 74, 0.16)" } : undefined}

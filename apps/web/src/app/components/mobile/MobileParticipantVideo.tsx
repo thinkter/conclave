@@ -37,6 +37,7 @@ function MobileParticipantVideo({
     if (video.srcObject !== participant.videoStream) {
       video.srcObject = participant.videoStream;
     }
+    const videoStream = participant.videoStream;
 
     const playVideo = () => {
       video.play().catch((err) => {
@@ -49,11 +50,17 @@ function MobileParticipantVideo({
     playVideo();
 
     const videoTrack = participant.videoStream.getVideoTracks()[0];
-    if (!videoTrack) return;
-    videoTrack.addEventListener("unmute", playVideo);
+    if (videoTrack) {
+      videoTrack.addEventListener("unmute", playVideo);
+    }
 
     return () => {
-      videoTrack.removeEventListener("unmute", playVideo);
+      if (videoTrack) {
+        videoTrack.removeEventListener("unmute", playVideo);
+      }
+      if (video.srcObject === videoStream) {
+        video.srcObject = null;
+      }
     };
   }, [participant.videoStream, participant.videoProducerId, participant.isCameraOff]);
 
@@ -71,6 +78,7 @@ function MobileParticipantVideo({
     if (audio.srcObject !== participant.audioStream) {
       audio.srcObject = participant.audioStream;
     }
+    const audioStream = participant.audioStream;
 
     const playAudio = () => {
       audio.play().catch((err) => {
@@ -94,11 +102,17 @@ function MobileParticipantVideo({
     }
 
     const audioTrack = participant.audioStream.getAudioTracks()[0];
-    if (!audioTrack) return;
-    audioTrack.addEventListener("unmute", playAudio);
+    if (audioTrack) {
+      audioTrack.addEventListener("unmute", playAudio);
+    }
 
     return () => {
-      audioTrack.removeEventListener("unmute", playAudio);
+      if (audioTrack) {
+        audioTrack.removeEventListener("unmute", playAudio);
+      }
+      if (audio.srcObject === audioStream) {
+        audio.srcObject = null;
+      }
     };
   }, [
     participant.audioStream,

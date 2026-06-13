@@ -26,7 +26,6 @@ fun PipContent() {
     val cameraOff = PipController.pipVideoIsCameraOff
     val name = PipController.pipDisplayName
 
-    // Carbon bg (#0a0a0b).
     Box(
         modifier = Modifier
             .fillMaxSize()

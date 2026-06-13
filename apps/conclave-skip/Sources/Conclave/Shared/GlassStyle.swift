@@ -43,7 +43,7 @@ private func acmGlassStyle(tint: Color?, interactive: Bool) -> Glass {
 extension View {
     /// Capsule-shaped liquid-glass surface (floating bars, pills, chips).
     @ViewBuilder
-    func acmGlassCapsule(tint: Color? = nil, interactive: Bool = false) -> some View {
+    public func acmGlassCapsule(tint: Color? = nil, interactive: Bool = false) -> some View {
         #if SKIP
         self
             .acmColorBackground(acmGlassFill)
@@ -66,7 +66,7 @@ extension View {
 
     /// Rounded-rect liquid-glass surface (cards, sheets, overlays).
     @ViewBuilder
-    func acmGlassRoundedRect(cornerRadius: CGFloat, tint: Color? = nil, interactive: Bool = false) -> some View {
+    public func acmGlassRoundedRect(cornerRadius: CGFloat, tint: Color? = nil, interactive: Bool = false) -> some View {
         #if SKIP
         self
             .acmColorBackground(acmGlassFill)

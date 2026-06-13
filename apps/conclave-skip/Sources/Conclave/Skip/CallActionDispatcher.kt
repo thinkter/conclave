@@ -2,6 +2,7 @@ package conclave.module
 
 import android.os.Handler
 import android.os.Looper
+import java.util.concurrent.atomic.AtomicInteger
 
 /// Routes call-control actions originating OUTSIDE the SwiftUI view tree (the
 /// ongoing-call notification's Mute/Leave actions, and the Picture-in-Picture
@@ -16,26 +17,39 @@ object CallActionDispatcher {
 
     @Volatile private var onToggleMute: (() -> Unit)? = null
     @Volatile private var onLeave: (() -> Unit)? = null
+    private val generation = AtomicInteger(0)
 
     /// Registered by the VM when a call becomes active.
     fun register(mute: () -> Unit, leave: () -> Unit) {
+        generation.incrementAndGet()
         onToggleMute = mute
         onLeave = leave
     }
 
     /// Cleared by the VM when the call ends.
     fun clear() {
+        generation.incrementAndGet()
         onToggleMute = null
         onLeave = null
     }
 
     fun toggleMute() {
         val action = onToggleMute ?: return
-        mainHandler.post { action() }
+        val actionGeneration = generation.get()
+        mainHandler.post {
+            if (generation.get() == actionGeneration && onToggleMute === action) {
+                action()
+            }
+        }
     }
 
     fun leave() {
         val action = onLeave ?: return
-        mainHandler.post { action() }
+        val actionGeneration = generation.get()
+        mainHandler.post {
+            if (generation.get() == actionGeneration && onLeave === action) {
+                action()
+            }
+        }
     }
 }

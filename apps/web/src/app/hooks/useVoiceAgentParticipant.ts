@@ -56,6 +56,7 @@ const DEFAULT_INSTRUCTIONS =
   "You are a concise, helpful voice assistant in a live meeting. Keep responses short and practical.";
 const AGENT_DISPLAY_NAME = "Voice Agent";
 const SOCKET_CONNECT_TIMEOUT_MS = 8000;
+const SOCKET_ACK_TIMEOUT_MS = 10000;
 const SFU_CLIENT_ID = process.env.NEXT_PUBLIC_SFU_CLIENT_ID || "public";
 const TURN_URL_PATTERN = /^turns?:/i;
 const ACTIVE_SPEAKER_HOLD_MS = 50;
@@ -340,20 +341,26 @@ const createSocketConnection = async (
   });
 
   return new Promise<Socket>((resolve, reject) => {
+    const cleanup = () => {
+      window.clearTimeout(timeoutId);
+      socket.off("connect", onConnect);
+      socket.off("connect_error", onConnectError);
+    };
+
     const timeoutId = window.setTimeout(() => {
+      cleanup();
       socket.disconnect();
       reject(new Error("Voice agent socket connect timeout."));
     }, SOCKET_CONNECT_TIMEOUT_MS);
 
     const onConnect = () => {
-      window.clearTimeout(timeoutId);
-      socket.off("connect_error", onConnectError);
+      cleanup();
       resolve(socket);
     };
 
     const onConnectError = (error: Error) => {
-      window.clearTimeout(timeoutId);
-      socket.off("connect", onConnect);
+      cleanup();
+      socket.disconnect();
       reject(error);
     };
 
@@ -368,6 +375,12 @@ const joinRoomAsAgent = async (
   sessionId: string,
 ): Promise<JoinRoomResponse> => {
   return new Promise<JoinRoomResponse>((resolve, reject) => {
+    let settled = false;
+    const timeoutId = window.setTimeout(() => {
+      settled = true;
+      reject(new Error("Voice agent joinRoom acknowledgement timeout."));
+    }, SOCKET_ACK_TIMEOUT_MS);
+
     socket.emit(
       "joinRoom",
       {
@@ -377,6 +390,9 @@ const joinRoomAsAgent = async (
         ghost: false,
       },
       (response: JoinRoomResponse | { error: string }) => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timeoutId);
         if ("error" in response) {
           reject(new Error(response.error));
           return;
@@ -397,9 +413,18 @@ const createProducerTransport = async (
   iceServers?: RTCIceServer[],
 ): Promise<Transport> => {
   const transportResponse = await new Promise<TransportResponse>((resolve, reject) => {
+    let settled = false;
+    const timeoutId = window.setTimeout(() => {
+      settled = true;
+      reject(new Error("Voice agent createProducerTransport acknowledgement timeout."));
+    }, SOCKET_ACK_TIMEOUT_MS);
+
     socket.emit(
       "createProducerTransport",
       (response: TransportResponse | { error: string }) => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timeoutId);
         if ("error" in response) {
           reject(new Error(response.error));
           return;
@@ -421,10 +446,21 @@ const createProducerTransport = async (
       callback: () => void,
       errback: (error: Error) => void,
     ) => {
+      let settled = false;
+      const timeoutId = window.setTimeout(() => {
+        settled = true;
+        errback(
+          new Error("Voice agent connectProducerTransport acknowledgement timeout."),
+        );
+      }, SOCKET_ACK_TIMEOUT_MS);
+
       socket.emit(
         "connectProducerTransport",
         { transportId: transport.id, dtlsParameters },
         (response: { success: boolean } | { error: string }) => {
+          if (settled) return;
+          settled = true;
+          window.clearTimeout(timeoutId);
           if ("error" in response) {
             errback(new Error(response.error));
             return;
@@ -450,10 +486,19 @@ const createProducerTransport = async (
       callback: ({ id }: { id: string }) => void,
       errback: (error: Error) => void,
     ) => {
+      let settled = false;
+      const timeoutId = window.setTimeout(() => {
+        settled = true;
+        errback(new Error("Voice agent produce acknowledgement timeout."));
+      }, SOCKET_ACK_TIMEOUT_MS);
+
       socket.emit(
         "produce",
         { kind, rtpParameters, appData },
         (response: { producerId: string } | { error: string }) => {
+          if (settled) return;
+          settled = true;
+          window.clearTimeout(timeoutId);
           if ("error" in response) {
             errback(new Error(response.error));
             return;

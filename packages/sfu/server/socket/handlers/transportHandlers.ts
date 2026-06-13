@@ -55,7 +55,7 @@ export const registerTransportHandlers = (context: ConnectionContext): void => {
         respond(callback, {
           id: transport.id,
           iceParameters: transport.iceParameters,
-          iceCandidates: transport.iceCandidates as any,
+          iceCandidates: transport.iceCandidates,
           dtlsParameters: transport.dtlsParameters,
         });
       } catch (error) {
@@ -108,7 +108,7 @@ export const registerTransportHandlers = (context: ConnectionContext): void => {
         respond(callback, {
           id: transport.id,
           iceParameters: transport.iceParameters,
-          iceCandidates: transport.iceCandidates as any,
+          iceCandidates: transport.iceCandidates,
           dtlsParameters: transport.dtlsParameters,
         });
       } catch (error) {

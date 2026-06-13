@@ -30,15 +30,10 @@ import {
 
 export type { ControlsBarProps } from "./controls-config";
 
-/**
- * Single icon convention so the whole bar reads consistent.
- * Control bar = 20px; popover/menu rows = 18px; always strokeWidth 1.75.
- */
 const ICON = 20;
 const MENU_ICON = 18;
 const STROKE = 1.75;
 
-/** Bottom-left: current time + meeting code (Google Meet pattern). */
 function MeetingClock({ roomId }: { roomId?: string }) {
   const [time, setTime] = useState("");
   useEffect(() => {
@@ -69,7 +64,6 @@ function MeetingClock({ roomId }: { roomId?: string }) {
   );
 }
 
-/** Circular control (center cluster), optionally with a hotkey tooltip. */
 function BarButton({ d, size = 48 }: { d: ControlDescriptor; size?: number }) {
   const button = (
     <ControlButton
@@ -92,7 +86,6 @@ function BarButton({ d, size = 48 }: { d: ControlDescriptor; size?: number }) {
   );
 }
 
-/** Right-side panel toggle: plain icon button, muted -> white on hover. */
 function PanelButton({ d }: { d: ControlDescriptor }) {
   const Icon = d.icon;
   const active = d.variant === "active";
@@ -129,12 +122,7 @@ function PanelButton({ d }: { d: ControlDescriptor }) {
   );
 }
 
-// Popover positioning wrapper (no visual). Keeps the centering transform
-// (`-translate-x-1/2`) OFF the animated panel so the entrance scale/lift doesn't
-// fight it.
 const popoverWrapClass = "absolute bottom-full mb-3 z-50";
-// The visual popover panel: flat rounded surface + a premium scale/lift/fade
-// entrance from the anchor edge (origin-bottom, ~150ms eased).
 const popoverPanelClass =
   "rounded-2xl border p-1.5 origin-bottom will-change-transform " +
   "animate-[meet-popover-in_150ms_cubic-bezier(0.22,1,0.36,1)]";
@@ -176,7 +164,6 @@ function ControlsBar(props: ControlsBarProps) {
     isMirrorCamera,
     onToggleMirror,
   } = props;
-  // Only surface a device caret when there's actually a way to switch devices.
   const hasAudioDevicePicker = Boolean(
     onAudioInputDeviceChange || onAudioOutputDeviceChange,
   );
@@ -229,19 +216,13 @@ function ControlsBar(props: ControlsBarProps) {
 
   return (
     <div className="relative grid w-full grid-cols-[1fr_auto_1fr] items-center gap-2 px-4 py-3">
-      {/* LEFT — time + meeting code. Equal-weight (1fr) with the right zone so
-          the center column stays TRULY centered, but each zone now RESERVES its
-          space (the center used to be absolutely positioned and could overlap
-          the clock / panel icons at narrow widths). */}
+      {/* Equal side columns keep center controls from overlapping side content. */}
       <div className="flex min-w-0 items-center justify-self-start">
         <MeetingClock roomId={roomId} />
       </div>
 
-      {/* CENTER — core call controls (centered via the equal 1fr side columns) */}
       <div className="flex items-center justify-self-center gap-2.5">
         {config.center.map((d) => {
-          // Meet-style: the mic / camera buttons get a caret beside them that
-          // opens a device-picker popover.
           if (d.id === "mic" && hasAudioDevicePicker) {
             return (
               <div key={d.id} className="flex items-center">
@@ -275,7 +256,6 @@ function ControlsBar(props: ControlsBarProps) {
           return <BarButton key={d.id} d={d} />;
         })}
 
-        {/* Reactions */}
         <div ref={reactionRef} className="relative">
           <HotkeyTooltip label="Reactions" hotkey="">
             <ControlButton
@@ -319,7 +299,6 @@ function ControlsBar(props: ControlsBarProps) {
           )}
         </div>
 
-        {/* More / overflow */}
         <div ref={moreRef} className="relative">
           <ControlButton
             icon={MoreHorizontal}
@@ -369,7 +348,6 @@ function ControlsBar(props: ControlsBarProps) {
           )}
         </div>
 
-        {/* Leave — red hangup pill */}
         <HotkeyTooltip label="Leave call" hotkey="">
           <button
             type="button"
@@ -383,7 +361,6 @@ function ControlsBar(props: ControlsBarProps) {
         </HotkeyTooltip>
       </div>
 
-      {/* RIGHT — panels + session */}
       <div className="flex min-w-0 items-center justify-self-end gap-0.5">
         {config.left.map((d) => (
           <PanelButton key={d.id} d={d} />
@@ -416,6 +393,8 @@ function OverflowItem({ row, onActivate }: { row: OverflowRow; onActivate: () =>
   return (
     <button
       type="button"
+      aria-label={row.label}
+      title={row.label}
       disabled={row.disabled}
       onClick={onActivate}
       className="flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left text-[14px] font-medium transition-[background-color] duration-[120ms] hover:bg-white/[0.06] disabled:opacity-40"

@@ -8,6 +8,9 @@
     "packages/*"
   ],
   "scripts": {
+    "debug:video-effects": "node scripts/debug-video-effects-headless.mjs",
+    "debug:video-effects:face": "node scripts/debug-video-effects-face.mjs",
+    "observe:meet-effects": "node scripts/observe-meet-effects-headless.mjs",
     "test": "pnpm -C packages/meeting-core test",
     "typecheck:web": "pnpm -C apps/web exec tsc --noEmit",
     "typecheck:sfu": "pnpm -C packages/sfu exec tsc --noEmit",

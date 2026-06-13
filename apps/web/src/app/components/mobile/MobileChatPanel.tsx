@@ -116,9 +116,10 @@ function MobileChatPanel({
 
   useEffect(() => {
     if (!isOpen || !messages.length) return;
-    requestAnimationFrame(() => {
+    const frameId = requestAnimationFrame(() => {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     });
+    return () => cancelAnimationFrame(frameId);
   }, [isOpen, messages.length]);
 
   useEffect(() => {

@@ -82,10 +82,14 @@ struct GridLayoutView: View {
     // area (~34pt) so the bottom grid row / filmstrip never hides behind it.
     private let controlsOverlap: CGFloat = 8
     @State private var didCopyCode = false
+    @State private var didShareInvite = false
+    @State private var copyFeedbackGeneration = 0
+    @State private var shareFeedbackGeneration = 0
 
     var body: some View {
         GeometryReader { geo in
-            let count = viewModel.state.participantCount
+            let ids = viewModel.state.visibleGridUserIds
+            let count = viewModel.state.visibleGridTileCount
             let visibleHeight = geo.size.height - controlsOverlap
             let layout = computeOptimalTileLayout(
                 participantCount: count,
@@ -113,7 +117,7 @@ struct GridLayoutView: View {
                 .padding(.top, padding)
                 .padding(.bottom, controlsOverlap)
             } else if count <= scrollThreshold {
-                nonScrollingGrid(layout: layout, count: count)
+                nonScrollingGrid(layout: layout, ids: ids)
                     // Top-aligned so the reserved controlsOverlap stays clear at
                     // the bottom (the floating controls bar never covers a tile).
                     .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
@@ -121,21 +125,28 @@ struct GridLayoutView: View {
                     // frame as the grid re-packs on join/leave.
                     .animation(.easeInOut(duration: 0.22), value: count)
             } else {
-                scrollingGrid(containerWidth: geo.size.width)
+                scrollingGrid(containerWidth: geo.size.width, ids: ids)
             }
+        }
+        .overlay {
+            if viewModel.state.shouldShowDetachedSelfView &&
+                !viewModel.state.visibleGridUserIds.contains(viewModel.state.userId) {
+                DetachedSelfViewOverlay(viewModel: viewModel)
+                    .padding(.horizontal, padding)
+                    .padding(.top, padding)
+                    .padding(.bottom, controlsOverlap + padding)
+            }
+        }
+        .onDisappear {
+            copyFeedbackGeneration += 1
+            shareFeedbackGeneration += 1
+            didCopyCode = false
+            didShareInvite = false
         }
     }
 
     @ViewBuilder
-    func nonScrollingGrid(layout: TileLayout, count: Int) -> some View {
-        // Key tiles by STABLE userId (slot 0 = local), not by row/column index.
-        // Keying by index let a surviving view at slot N be rebound to a
-        // different participant's track on a join/leave reflow → the tile would
-        // momentarily show the wrong person's video. Iterating ForEach over the
-        // userIds (mirrors the web grid's key={participant.userId}) makes
-        // SwiftUI/Compose recreate the renderer when a slot's occupant changes
-        // and preserve it when the same participant merely moves position.
-        let ids = slotUserIds(count: count)
+    func nonScrollingGrid(layout: TileLayout, ids: [String]) -> some View {
         VStack(spacing: spacing) {
             ForEach(0..<layout.rows, id: \.self) { row in
                 HStack(spacing: spacing) {
@@ -160,16 +171,6 @@ struct GridLayoutView: View {
         .padding(padding)
     }
 
-    // Ordered userIds for the non-scrolling grid slots: slot 0 = local user,
-    // the rest = sortedParticipants in order. Bounded to `count` tiles.
-    func slotUserIds(count: Int) -> [String] {
-        var ids = [viewModel.state.userId]
-        for participant in viewModel.state.sortedParticipants {
-            ids.append(participant.id)
-        }
-        return Array(ids.prefix(count))
-    }
-
     @ViewBuilder
     func tileFor(userId: String) -> some View {
         if userId == viewModel.state.userId {
@@ -180,7 +181,7 @@ struct GridLayoutView: View {
     }
 
     @ViewBuilder
-    func scrollingGrid(containerWidth: CGFloat) -> some View {
+    func scrollingGrid(containerWidth: CGFloat, ids: [String]) -> some View {
         let colCount = isCompact ? 2 : 3
         let tileW = (containerWidth - 2 * padding - CGFloat(colCount - 1) * spacing) / CGFloat(colCount)
         let tileH = tileW * 9.0 / 16.0
@@ -188,18 +189,11 @@ struct GridLayoutView: View {
 
         ScrollView {
             LazyVGrid(columns: columns, spacing: spacing) {
-                Button {
-                    viewModel.togglePin(viewModel.state.userId)
-                } label: {
-                    localTile().frame(height: tileH)
-                }
-                .buttonStyle(.plain)
-
-                ForEach(viewModel.state.sortedParticipants) { participant in
+                ForEach(ids, id: \.self) { userId in
                     Button {
-                        viewModel.togglePin(participant.id)
+                        viewModel.togglePin(userId)
                     } label: {
-                        remoteTile(participant: participant).frame(height: tileH)
+                        tileFor(userId: userId).frame(height: tileH)
                     }
                     .buttonStyle(.plain)
                 }
@@ -215,7 +209,7 @@ struct GridLayoutView: View {
             isCameraOff: viewModel.state.isCameraOff,
             isHandRaised: viewModel.state.isHandRaised,
             isGhost: viewModel.state.isGhostMode,
-            isSpeaking: viewModel.state.activeSpeakerId == viewModel.state.userId,
+            isSpeaking: viewModel.state.effectiveActiveSpeakerId == viewModel.state.userId,
             isLocal: true,
             fillStage: fill,
             captureSession: viewModel.webRTCClient.getCaptureSession(),
@@ -230,7 +224,7 @@ struct GridLayoutView: View {
             isCameraOff: participant.isCameraOff,
             isHandRaised: participant.isHandRaised,
             isGhost: participant.isGhost,
-            isSpeaking: viewModel.state.activeSpeakerId == participant.id,
+            isSpeaking: viewModel.state.effectiveActiveSpeakerId == participant.id,
             isLocal: false,
             trackWrapper: viewModel.webRTCClient.remoteVideoTracks[participant.id]
         )
@@ -260,32 +254,52 @@ struct GridLayoutView: View {
                     Text("You're the only one here")
                         .font(ACMFont.trial(18, weight: .bold))
                         .foregroundStyle(ACMColors.text)
-                    Text("Share this code to invite others")
+                    Text("Share this link to invite others")
                         .font(ACMFont.trial(14))
                         .foregroundStyle(ACMColors.textMuted)
                 }
 
-                Button {
-                    copyRoomCode()
-                } label: {
-                    HStack(spacing: 8) {
-                        Text(viewModel.state.roomId)
-                            .font(ACMFont.trial(15, weight: .medium))
-                            .foregroundStyle(ACMColors.text)
-                            .lineLimit(1)
-                        ACMSystemIcon.icon("doc.on.doc", android: "copy", size: 13, tint: didCopyCode ? "success" : "muted")
-                            .foregroundStyle(didCopyCode ? ACMColors.success : ACMColors.textMuted)
+                VStack(spacing: ACMSpacing.sm) {
+                    Button {
+                        shareMeetingLink()
+                    } label: {
+                        HStack(spacing: 8) {
+                            ACMSystemIcon.icon("person.badge.plus", android: "link", size: 15, tint: "white")
+                                .foregroundStyle(Color.white)
+                            Text(didShareInvite ? "Invite ready" : "Invite people")
+                                .font(ACMFont.trial(15, weight: .medium))
+                                .foregroundStyle(Color.white)
+                                .lineLimit(1)
+                        }
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 12)
+                        .acmColorBackground(ACMColors.primaryOrange)
+                        .clipShape(RoundedRectangle(cornerRadius: ACMRadius.md))
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-                    .acmColorBackground(ACMColors.surface)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: ACMRadius.md)
-                            .strokeBorder(didCopyCode ? ACMColors.success : ACMColors.border, lineWidth: 1.0)
+                    .buttonStyle(.plain)
+
+                    Button {
+                        copyMeetingLink()
+                    } label: {
+                        HStack(spacing: 8) {
+                            Text(didCopyCode ? "Copied" : viewModel.state.roomId)
+                                .font(ACMFont.trial(15, weight: .medium))
+                                .foregroundStyle(ACMColors.text)
+                                .lineLimit(1)
+                            ACMSystemIcon.icon("doc.on.doc", android: "copy", size: 13, tint: didCopyCode ? "success" : "muted")
+                                .foregroundStyle(didCopyCode ? ACMColors.success : ACMColors.textMuted)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .acmColorBackground(ACMColors.surface)
+                        .overlay {
+                            RoundedRectangle(cornerRadius: ACMRadius.md)
+                                .strokeBorder(didCopyCode ? ACMColors.success : ACMColors.border, lineWidth: 1.0)
+                        }
+                        .clipShape(RoundedRectangle(cornerRadius: ACMRadius.md))
                     }
-                    .clipShape(RoundedRectangle(cornerRadius: ACMRadius.md))
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
             .padding(ACMSpacing.xl)
         }
@@ -295,18 +309,27 @@ struct GridLayoutView: View {
         }
     }
 
-    func copyRoomCode() {
-        #if !SKIP
-#if canImport(UIKit)
-        UIPasteboard.general.string = viewModel.state.roomId
-#endif
-        HapticManager.shared.trigger(.success)
-        #endif
+    func copyMeetingLink() {
+        MeetingShare.copyMeetingLink(viewModel.state.meetingLink)
+        copyFeedbackGeneration += 1
+        let generation = copyFeedbackGeneration
         didCopyCode = true
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 1_500_000_000)
+            guard copyFeedbackGeneration == generation else { return }
             didCopyCode = false
         }
     }
-}
 
+    func shareMeetingLink() {
+        MeetingShare.shareMeetingLink(viewModel.state.meetingLink, roomId: viewModel.state.roomId)
+        shareFeedbackGeneration += 1
+        let generation = shareFeedbackGeneration
+        didShareInvite = true
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_400_000_000)
+            guard shareFeedbackGeneration == generation else { return }
+            didShareInvite = false
+        }
+    }
+}

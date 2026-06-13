@@ -180,6 +180,7 @@ const createBrowserAudioProducer = async (
         kind: "audio",
         type: "webcam",
         paused: producer.paused,
+        roomId: context.currentRoom.id,
     });
 
     const targetIp =
@@ -221,6 +222,7 @@ const cleanupBrowserAudio = async (
         context.io.to(channelId).emit("producerClosed", {
             producerId: audio.producer.id,
             producerUserId: audio.userId,
+            roomId: context.currentRoom?.id,
         });
     }
 
@@ -290,6 +292,7 @@ const createBrowserVideoProducer = async (
         kind: "video",
         type: "screen",
         paused: producer.paused,
+        roomId: context.currentRoom.id,
     });
 
     const targetIp =
@@ -331,6 +334,7 @@ const cleanupBrowserVideo = async (
         context.io.to(channelId).emit("producerClosed", {
             producerId: video.producer.id,
             producerUserId: video.userId,
+            roomId: context.currentRoom?.id,
         });
     }
 
@@ -409,6 +413,7 @@ export const registerSharedBrowserHandlers = (context: ConnectionContext): void 
                     url: data.url,
                     noVncUrl: result.session?.noVncUrl,
                     controllerUserId: userId,
+                    roomId: context.currentRoom.id,
                 } as BrowserStateNotification);
 
                 Logger.success(`Browser launched in room ${context.currentRoom.id}: ${data.url}`);
@@ -483,6 +488,7 @@ export const registerSharedBrowserHandlers = (context: ConnectionContext): void 
                     url: data.url,
                     noVncUrl: result.session?.noVncUrl,
                     controllerUserId: currentState.controllerUserId,
+                    roomId: context.currentRoom.id,
                 } as BrowserStateNotification);
 
                 Logger.info(`Browser navigated in room ${context.currentRoom.id}: ${data.url}`);
@@ -525,7 +531,10 @@ export const registerSharedBrowserHandlers = (context: ConnectionContext): void 
                 await cleanupBrowserAudio(channelId, context);
                 await cleanupBrowserVideo(channelId, context);
 
-                socket.to(channelId).emit("browser:closed", { closedBy: context.currentClient.id });
+                socket.to(channelId).emit("browser:closed", {
+                    closedBy: context.currentClient.id,
+                    roomId: context.currentRoom.id,
+                });
 
                 Logger.info(`Browser closed in room ${context.currentRoom.id}`);
                 respond(callback, { success: true });
@@ -548,6 +557,7 @@ export const registerSharedBrowserHandlers = (context: ConnectionContext): void 
             url: state.url,
             noVncUrl: state.noVncUrl,
             controllerUserId: state.controllerUserId,
+            roomId: context.currentRoom.id,
         });
     });
 

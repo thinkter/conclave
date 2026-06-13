@@ -327,12 +327,11 @@ export function CallScreen({
 
   const baseParticipantList = useMemo(() => {
     const list = Array.from(participants.values()).filter(
-      (participant) => !isSystemUserId(participant.userId),
+      (participant) =>
+        participant.userId !== localParticipant.userId &&
+        !isSystemUserId(participant.userId),
     );
-    const hasLocal = list.some(
-      (participant) => participant.userId === localParticipant.userId,
-    );
-    return hasLocal ? list : [localParticipant, ...list];
+    return [localParticipant, ...list];
   }, [participants, localParticipant]);
 
   const resolvedLocalParticipant = useMemo(
@@ -446,9 +445,11 @@ export function CallScreen({
   const webinarParticipants = useMemo(
     () =>
       Array.from(participants.values()).filter(
-        (participant) => !isSystemUserId(participant.userId),
+        (participant) =>
+          participant.userId !== localParticipant.userId &&
+          !isSystemUserId(participant.userId),
       ),
-    [participants],
+    [localParticipant.userId, participants],
   );
   const screenShareAudioParticipants = useMemo(
     () =>

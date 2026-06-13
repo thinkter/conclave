@@ -45,7 +45,6 @@ import type { ConnectionContext } from "../context.js";
 import { registerAdminHandlers } from "./adminHandlers.js";
 import { respond } from "./ack.js";
 import {
-  cleanupRoomBrowser,
   clearBrowserState,
   getBrowserState,
 } from "./sharedBrowserHandlers.js";
@@ -63,7 +62,7 @@ export const registerJoinRoomHandler = (context: ConnectionContext): void => {
         const requestedRoomId =
           typeof data?.roomId === "string" ? data.roomId.trim() : "";
         const { sessionId } = data;
-        const user = (socket as any).user;
+        const user = socket.data.user;
         if (!requestedRoomId) {
           respond(callback, { error: "Missing room ID" });
           return;
@@ -516,16 +515,17 @@ export const registerJoinRoomHandler = (context: ConnectionContext): void => {
           } else if (!context.currentClient.isWebinarAttendee) {
             socket
               .to(previousChannelId)
-              .emit("userLeft", { userId: previousClientId });
+              .emit("userLeft", {
+                userId: previousClientId,
+                roomId: previousRoom.id,
+              });
           }
 
           emitWebinarAttendeeCountChanged(io, state, previousRoom);
           emitWebinarFeedChanged(io, state, previousRoom);
 
           socket.leave(previousChannelId);
-          if (cleanupRoom(state, previousChannelId)) {
-            void cleanupRoomBrowser(previousChannelId);
-          }
+          cleanupRoom(state, previousChannelId);
 
           context.currentRoom = null;
           context.currentClient = null;
@@ -605,6 +605,7 @@ export const registerJoinRoomHandler = (context: ConnectionContext): void => {
                 userId: clientId,
                 displayName: ghostDisplayName,
                 isGhost: true,
+                roomId: context.currentRoom.id,
               });
             }
           } else if (!context.currentClient.isWebinarAttendee) {
@@ -615,6 +616,7 @@ export const registerJoinRoomHandler = (context: ConnectionContext): void => {
               client.socket.emit("userJoined", {
                 userId,
                 displayName: resolvedDisplayName,
+                roomId: context.currentRoom.id,
               });
             }
           }
@@ -664,13 +666,20 @@ export const registerJoinRoomHandler = (context: ConnectionContext): void => {
         socket.emit("apps:state", {
           activeAppId: context.currentRoom.appsState.activeAppId,
           locked: context.currentRoom.appsState.locked,
+          roomId: context.currentRoom.id,
         });
 
         const newQuality = context.currentRoom.updateVideoQuality();
         if (newQuality) {
-          io.to(roomChannelId).emit("setVideoQuality", { quality: newQuality });
+          io.to(roomChannelId).emit("setVideoQuality", {
+            quality: newQuality,
+            roomId: context.currentRoom.id,
+          });
         } else if (context.currentRoom.currentQuality === "low") {
-          socket.emit("setVideoQuality", { quality: "low" });
+          socket.emit("setVideoQuality", {
+            quality: "low",
+            roomId: context.currentRoom.id,
+          });
         }
 
         const feedSnapshot = context.currentRoom.refreshWebinarFeedSnapshot();
