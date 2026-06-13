@@ -557,27 +557,40 @@ export function useMeetMedia({
           newVideoTrack.onended = () => {
             handleLocalTrackEnded("video", newVideoTrack);
           };
-          const oldVideoTrack = localStream?.getVideoTracks()[0];
+          const previousStream = localStreamRef.current ?? localStream;
+          const oldVideoTrack = previousStream?.getVideoTracks()[0] ?? null;
+          const remainingTracks =
+            previousStream
+              ?.getTracks()
+              .filter((track) => track.kind !== "video") ?? [];
+          const nextStream = new MediaStream([...remainingTracks, newVideoTrack]);
+          localStreamRef.current = nextStream;
+          setLocalStream(nextStream);
 
           if (videoProducerRef.current) {
-            await videoProducerRef.current.replaceTrack({
-              track: newVideoTrack,
-            });
+            const publishTrack = await waitForPreferredVideoPublishTrack(
+              nextStream,
+              newVideoTrack,
+            );
+            try {
+              await videoProducerRef.current.replaceTrack({
+                track: publishTrack,
+              });
+            } catch (err) {
+              if (publishTrack.id === newVideoTrack.id) throw err;
+              console.warn(
+                "[Meets] Processed device-switch track failed; retrying raw camera:",
+                err,
+              );
+              await videoProducerRef.current.replaceTrack({
+                track: newVideoTrack,
+              });
+            }
           }
 
-          setLocalStream((prev) => {
-            if (prev) {
-              if (oldVideoTrack) {
-                prev.removeTrack(oldVideoTrack);
-              }
-              prev.addTrack(newVideoTrack);
-              if (oldVideoTrack) {
-                stopLocalTrack(oldVideoTrack);
-              }
-              return new MediaStream(prev.getTracks());
-            }
-            return newStream;
-          });
+          if (oldVideoTrack && oldVideoTrack !== newVideoTrack) {
+            stopLocalTrack(oldVideoTrack);
+          }
         }
       } catch (err) {
         console.error("[Meets] Failed to switch video input device:", err);
@@ -592,6 +605,8 @@ export function useMeetMedia({
       videoProducerRef,
       setLocalStream,
       buildVideoConstraints,
+      localStreamRef,
+      waitForPreferredVideoPublishTrack,
     ]
   );
 
@@ -662,6 +677,8 @@ export function useMeetMedia({
         }
 
         let nextVideoTrack = localStream.getVideoTracks()[0];
+        let publishStream = localStreamRef.current ?? localStream;
+        let oldVideoTrackToStop: MediaStreamTrack | null = null;
 
         if (!nextVideoTrack || nextVideoTrack.readyState !== "live") {
           const newStream = await navigator.mediaDevices.getUserMedia({
@@ -678,27 +695,60 @@ export function useMeetMedia({
             handleLocalTrackEnded("video", newVideoTrack);
           };
 
-          const oldVideoTrack = localStream.getVideoTracks()[0];
-          if (oldVideoTrack) {
-            stopLocalTrack(oldVideoTrack);
-            localStream.removeTrack(oldVideoTrack);
-          }
-          localStream.addTrack(newVideoTrack);
-          setLocalStream(new MediaStream(localStream.getTracks()));
+          const previousStream = localStreamRef.current ?? localStream;
+          oldVideoTrackToStop = previousStream?.getVideoTracks()[0] ?? null;
+          const remainingTracks = previousStream
+            .getTracks()
+            .filter((track) => track.kind !== "video");
+          publishStream = new MediaStream([...remainingTracks, newVideoTrack]);
+          localStreamRef.current = publishStream;
+          setLocalStream(publishStream);
           nextVideoTrack = newVideoTrack;
         }
 
-        const transport = producerTransportRef.current;
         const previousProducer = videoProducerRef.current;
 
-        if (!transport || !nextVideoTrack) {
+        if (!nextVideoTrack) {
+          return;
+        }
+
+        const publishTrack = await waitForPreferredVideoPublishTrack(
+          publishStream,
+          nextVideoTrack,
+        );
+
+        if (previousProducer && !previousProducer.closed) {
+          if (previousProducer.track?.id !== publishTrack.id) {
+            try {
+              await previousProducer.replaceTrack({ track: publishTrack });
+            } catch (err) {
+              if (publishTrack.id === nextVideoTrack.id) throw err;
+              console.warn(
+                "[Meets] Processed quality-switch track failed; retrying raw camera:",
+                err,
+              );
+              await previousProducer.replaceTrack({ track: nextVideoTrack });
+            }
+          }
+          if (
+            oldVideoTrackToStop &&
+            oldVideoTrackToStop !== nextVideoTrack &&
+            oldVideoTrackToStop !== previousProducer.track
+          ) {
+            stopLocalTrack(oldVideoTrackToStop);
+          }
+          return;
+        }
+
+        const transport = producerTransportRef.current;
+        if (!transport) {
           return;
         }
 
         const preferredWebcamCodec = getPreferredWebcamCodec(deviceRef.current);
         const nextProducer = await produceWebcamTrack({
           transport,
-          track: nextVideoTrack,
+          track: publishTrack,
           quality,
           paused: false,
           preferredCodec: preferredWebcamCodec,
@@ -725,6 +775,9 @@ export function useMeetMedia({
             previousProducer.close();
           } catch {}
         }
+        if (oldVideoTrackToStop && oldVideoTrackToStop !== nextVideoTrack) {
+          stopLocalTrack(oldVideoTrackToStop);
+        }
       } catch (err) {
         console.error("[Meets] Failed to update video quality:", err);
       }
@@ -739,6 +792,8 @@ export function useMeetMedia({
       deviceRef,
       producerTransportRef,
       videoProducerRef,
+      localStreamRef,
+      waitForPreferredVideoPublishTrack,
     ]
   );
 
