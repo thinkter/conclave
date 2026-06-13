@@ -2075,6 +2075,23 @@ const run = async () => {
       })()`,
     );
     let state = await collectState(cdp, "state_after_join");
+    if (
+      state.meetVideoDebug?.isCameraOff !== true ||
+      state.meetVideoDebug?.videoProducer !== null
+    ) {
+      throw new Error(
+        `Hidden autojoin must start with camera off: ${JSON.stringify({
+          isCameraOff: state.meetVideoDebug?.isCameraOff,
+          videoProducer: state.meetVideoDebug?.videoProducer,
+          localStream: state.meetVideoDebug?.localStream,
+        })}`,
+      );
+    }
+    emit("autojoin_camera_off_probe", {
+      isCameraOff: state.meetVideoDebug?.isCameraOff === true,
+      videoProducer: state.meetVideoDebug?.videoProducer ?? null,
+      localStream: state.meetVideoDebug?.localStream ?? null,
+    });
 
     if (state.meetVideoDebug?.isCameraOff === true) {
       const turnedOn = await evalValue(

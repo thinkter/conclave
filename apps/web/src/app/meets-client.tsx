@@ -565,8 +565,25 @@ export default function MeetsClient({
   useEffect(() => {
     if (!autoJoinOnMount) return;
     if (!roomId || roomId.trim().length === 0) return;
+    if (!refs.prejoinMediaIntentRef.current) {
+      const autoJoinStream = refs.localStreamRef.current;
+      refs.prejoinMediaIntentRef.current = {
+        streamId: autoJoinStream?.id ?? null,
+        trackIds: new Set(
+          autoJoinStream?.getTracks().map((track) => track.id) ?? [],
+        ),
+        isCameraOn: false,
+        isMicOn: false,
+      };
+    }
     refs.shouldAutoJoinRef.current = true;
-  }, [autoJoinOnMount, roomId, refs.shouldAutoJoinRef]);
+  }, [
+    autoJoinOnMount,
+    roomId,
+    refs.localStreamRef,
+    refs.prejoinMediaIntentRef,
+    refs.shouldAutoJoinRef,
+  ]);
 
   const {
     videoQuality,

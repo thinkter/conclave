@@ -495,7 +495,8 @@ export default function MeetsMainContent({
     meetError?.code === "PERMISSION_DENIED" ||
     (!hasLiveLocalCamera &&
       !hasLiveDevCamera &&
-      cameraPermissionState === "denied");
+      (cameraPermissionState === "prompt" ||
+        cameraPermissionState === "denied"));
   const effectivePresentationStream =
     presentationStream ?? devPresentationStream;
   const effectivePresenterName = presentationStream

@@ -268,7 +268,9 @@ function JoinScreen({
   );
   const isCameraPermissionBlocked =
     meetError?.code === "PERMISSION_DENIED" ||
-    (!hasLivePreviewCamera && cameraPermissionState === "denied");
+    (!hasLivePreviewCamera &&
+      (cameraPermissionState === "prompt" ||
+        cameraPermissionState === "denied"));
   const isBackgroundBlurActive =
     videoEffects.background === "blur-light" ||
     videoEffects.background === "blur-strong";
