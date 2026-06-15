@@ -341,6 +341,7 @@ export function useMeetSocket({
   onSocketReady,
 }: UseMeetSocketOptions) {
   const participantIdsRef = useRef<Set<string>>(new Set([userId]));
+  const isCameraOffRef = useRef(isCameraOff);
   const serverRoomIdRef = useRef<string | null>(null);
   const foregroundRecoveryTimeoutRef = useRef<number | null>(null);
   const runtimeStunIceServersRef = useRef<RTCIceServer[] | null>(null);
@@ -405,6 +406,10 @@ export function useMeetSocket({
   useEffect(() => {
     participantIdsRef.current = new Set([userId]);
   }, [userId]);
+
+  useEffect(() => {
+    isCameraOffRef.current = isCameraOff;
+  }, [isCameraOff]);
 
   const shouldPlayJoinLeaveSound = useCallback(
     (type: "join" | "leave", targetUserId: string) => {
@@ -1640,6 +1645,8 @@ export function useMeetSocket({
           producerId: videoProducerId,
           track: summarizeTrackForLog(videoTrack),
         });
+        isCameraOffRef.current = false;
+        setIsCameraOff(false);
         return true;
       } catch (err) {
         console.error("[Meets] Failed to republish camera producer:", err);
@@ -1653,6 +1660,7 @@ export function useMeetSocket({
       refs.processedVideoTrackRef,
       videoQualityRef,
       deviceRef,
+      setIsCameraOff,
     ],
   );
 
@@ -2779,17 +2787,32 @@ export function useMeetSocket({
                     if (videoProducerRef.current?.id === producerId) {
                       videoProducerRef.current = null;
                     }
-                    if (!isCameraOff) {
+                    const currentStream = localStreamRef.current;
+                    const requestedTrack =
+                      getVideoPublishTrack?.(currentStream) ?? null;
+                    const liveVideoTrack =
+                      requestedTrack?.readyState === "live"
+                        ? requestedTrack
+                        : getFirstLiveTrack(
+                            currentStream?.getVideoTracks() ?? [],
+                          );
+                    const shouldRecoverCamera =
+                      !isCameraOffRef.current || Boolean(liveVideoTrack);
+                    if (shouldRecoverCamera) {
+                      isCameraOffRef.current = false;
+                      setIsCameraOff(false);
                       void reproduceCameraProducer(
-                        localStreamRef.current,
+                        currentStream,
                         "local video producer closed",
                       ).then((republished) => {
                         if (!republished) {
+                          isCameraOffRef.current = true;
                           setIsCameraOff(true);
                         }
                       });
                       return;
                     }
+                    isCameraOffRef.current = true;
                     setIsCameraOff(true);
                     return;
                   }
@@ -3586,6 +3609,7 @@ export function useMeetSocket({
       handleRedirectRef,
       handleReconnectRef,
       ensureLiveLocalMediaForJoin,
+      getVideoPublishTrack,
       getJoinInfo,
       getJoinMediaNeeds,
       joinMode,

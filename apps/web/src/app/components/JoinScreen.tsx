@@ -218,6 +218,8 @@ function JoinScreen({
   const handedOffTrackIdsRef = useRef<Set<string>>(new Set());
   const moreOptionsRef = useRef<HTMLDivElement>(null);
   const toggleCameraInFlightRef = useRef(false);
+  const cameraIntentRef = useRef(false);
+  const micIntentRef = useRef(false);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [isCameraOn, setIsCameraOn] = useState(false);
   const [isMicOn, setIsMicOn] = useState(false);
@@ -347,6 +349,8 @@ function JoinScreen({
       const nextStream =
         liveTracks.length > 0 ? new MediaStream(liveTracks) : null;
       setLocalStream(nextStream);
+      cameraIntentRef.current = hasVideo;
+      micIntentRef.current = hasAudio;
       setIsMicOn(hasAudio);
       setIsCameraOn(hasVideo);
       if (hasVideo) {
@@ -364,6 +368,8 @@ function JoinScreen({
             ? { name: err.name, message: err.message, stack: err.stack }
             : err,
       });
+      cameraIntentRef.current = false;
+      micIntentRef.current = false;
       setPermissionRequestError("Permission needed");
     } finally {
       setIsRequestingPermissions(false);
@@ -416,6 +422,8 @@ function JoinScreen({
 
   useEffect(() => {
     localStreamRef.current = localStream;
+    cameraIntentRef.current = isCameraOn;
+    micIntentRef.current = isMicOn;
     logJoinMedia("local_stream_changed", {
       localStream: getJoinStreamDebugSnapshot(localStream),
       isCameraOn,
@@ -475,13 +483,15 @@ function JoinScreen({
   const commitPrejoinMedia = () => {
     if (!onPrejoinMediaCommit) return;
     const stream = localStreamRef.current;
+    const shouldCommitCamera = cameraIntentRef.current;
+    const shouldCommitMic = micIntentRef.current;
     const liveTracks =
       stream
         ?.getTracks()
         .filter((track) => {
           if (track.readyState !== "live") return false;
-          if (track.kind === "video") return isCameraOn;
-          if (track.kind === "audio") return isMicOn;
+          if (track.kind === "video") return shouldCommitCamera;
+          if (track.kind === "audio") return shouldCommitMic;
           return true;
         }) ?? [];
     handedOffTrackIdsRef.current = new Set(
@@ -493,13 +503,13 @@ function JoinScreen({
     const hasLiveAudio = liveTracks.some((track) => track.kind === "audio");
     logJoinMedia("commit_prejoin_media", {
       handoffStream: getJoinStreamDebugSnapshot(handoffStream),
-      isCameraOn,
-      isMicOn,
+      isCameraOn: shouldCommitCamera,
+      isMicOn: shouldCommitMic,
     });
     onPrejoinMediaCommit({
       stream: handoffStream,
-      isCameraOn: isCameraOn && hasLiveVideo,
-      isMicOn: isMicOn && hasLiveAudio,
+      isCameraOn: shouldCommitCamera && hasLiveVideo,
+      isMicOn: shouldCommitMic && hasLiveAudio,
     });
   };
 
@@ -514,12 +524,13 @@ function JoinScreen({
 
     toggleCameraInFlightRef.current = true;
     try {
-        logJoinMedia("toggle_camera_start", {
-          isCameraOn,
-          localStream: getJoinStreamDebugSnapshot(localStream),
-          videoEffects,
-        });
+      logJoinMedia("toggle_camera_start", {
+        isCameraOn,
+        localStream: getJoinStreamDebugSnapshot(localStream),
+        videoEffects,
+      });
       if (isCameraOn && localStream) {
+        cameraIntentRef.current = false;
         const track = localStream.getVideoTracks()[0];
         if (track) {
           logJoinMedia("camera_track_stop", {
@@ -565,6 +576,7 @@ function JoinScreen({
           });
           setLocalStream(stream);
         }
+        cameraIntentRef.current = true;
         setIsCameraOn(true);
         prewarmLiveCameraEffects("prejoin-camera-toggle-live");
         logJoinMedia("toggle_camera_on_done", {
@@ -577,6 +589,7 @@ function JoinScreen({
               ? { name: err.name, message: err.message, stack: err.stack }
               : err,
         });
+        cameraIntentRef.current = false;
       }
     } finally {
       toggleCameraInFlightRef.current = false;
@@ -589,6 +602,7 @@ function JoinScreen({
       localStream: getJoinStreamDebugSnapshot(localStream),
     });
     if (isMicOn && localStream) {
+      micIntentRef.current = false;
       const track = localStream.getAudioTracks()[0];
       if (track) {
         logJoinMedia("mic_track_stop", {
@@ -633,6 +647,7 @@ function JoinScreen({
         });
         setLocalStream(stream);
       }
+      micIntentRef.current = true;
       setIsMicOn(true);
       logJoinMedia("toggle_mic_on_done", {
         track: getJoinTrackDebugSnapshot(audioTrack),
@@ -644,6 +659,7 @@ function JoinScreen({
             ? { name: err.name, message: err.message, stack: err.stack }
             : err,
       });
+      micIntentRef.current = false;
     }
   };
 

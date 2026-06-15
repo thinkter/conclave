@@ -862,7 +862,12 @@ export default function MeetsClient({
       const liveTracks =
         handoff.stream
           ?.getTracks()
-          .filter((track) => track.readyState === "live") ?? [];
+          .filter((track) => {
+            if (track.readyState !== "live") return false;
+            if (track.kind === "video") return handoff.isCameraOn;
+            if (track.kind === "audio") return handoff.isMicOn;
+            return true;
+          }) ?? [];
       const liveTrackIds = new Set(liveTracks.map((track) => track.id));
       const nextStream =
         liveTracks.length > 0 ? new MediaStream(liveTracks) : null;
