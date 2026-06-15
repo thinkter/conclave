@@ -137,7 +137,7 @@ const VIDEO_FRAME_CALLBACK_TRANSITION_WATCHDOG_MS = 48;
 const VIDEO_FRAME_CALLBACK_EFFECT_CHANGE_PUMP_MS = 320;
 const VIDEO_FRAME_CALLBACK_EFFECT_CHANGE_DRAIN_FRAMES = 4;
 const OUTPUT_WRITER_STEADY_MAX_PENDING_FRAMES = 1;
-const OUTPUT_WRITER_TRANSITION_MAX_PENDING_FRAMES = 2;
+const OUTPUT_WRITER_TRANSITION_MAX_PENDING_FRAMES = 3;
 const OUTPUT_WRITER_TRANSITION_BURST_MS = 900;
 const OUTPUT_WRITER_BACKPRESSURE_DRAIN_TIMEOUT_MS = 36;
 const OUTPUT_WRITER_PENDING_PRESSURE_MS = 75;
@@ -451,6 +451,7 @@ type OutputWriterStats = {
   workerOldestPendingFrameAgeMs: number | null;
   workerFramesSent: number;
   workerFramesWritten: number;
+  workerFramesDropped: number;
   workerFrameMetadataCount: number;
   workerFirstFrameSeen: boolean;
   workerSkipCount: number;
@@ -852,6 +853,14 @@ type OutputWriterWorkerWrittenMessage = {
   renderer?: OutputWriterRenderer;
   inputMode?: OutputWriterInputMode;
 };
+type OutputWriterWorkerDroppedMessage = {
+  type: "DROPPED";
+  sequence: number;
+  reason: "superseded" | "closing";
+};
+type OutputWriterWorkerCompletionMessage =
+  | OutputWriterWorkerWrittenMessage
+  | OutputWriterWorkerDroppedMessage;
 type OutputWriterWorkerFirstFrameMessage = {
   type: "FIRST_FRAME";
   sequence: number;
@@ -878,14 +887,15 @@ type OutputWriterWorkerErrorMessage = {
 type OutputWriterWorkerMessage =
   | OutputWriterWorkerReadyMessage
   | OutputWriterWorkerWrittenMessage
+  | OutputWriterWorkerDroppedMessage
   | OutputWriterWorkerFirstFrameMessage
   | OutputWriterWorkerFrameMetadataMessage
   | OutputWriterWorkerErrorMessage
   | { type: "CLOSED" };
 type OutputWriterPendingFrame = {
-  resolve: (message: OutputWriterWorkerWrittenMessage) => void;
+  resolve: (message: OutputWriterWorkerCompletionMessage) => void;
   reject: (err: unknown) => void;
-  completion: Promise<OutputWriterWorkerWrittenMessage>;
+  completion: Promise<OutputWriterWorkerCompletionMessage>;
   timeoutId: number;
   sentAt: number;
 };
@@ -2351,6 +2361,7 @@ const createInactiveDebugStats = ({
       workerOldestPendingFrameAgeMs: null,
       workerFramesSent: 0,
       workerFramesWritten: 0,
+      workerFramesDropped: 0,
       workerFrameMetadataCount: 0,
       workerFirstFrameSeen: false,
       workerSkipCount: 0,
@@ -6454,6 +6465,7 @@ export function useVideoEffects({
     let outputWriterLastError: unknown = null;
     let outputWriterFramesSent = 0;
     let outputWriterFramesWritten = 0;
+    let outputWriterFramesDropped = 0;
     let outputWriterSkipCount = 0;
     let outputWriterBackpressureSkipCount = 0;
     let outputWriterCadenceSkipCount = 0;
@@ -7370,6 +7382,23 @@ export function useVideoEffects({
             performance.now() - pending.sentAt,
           );
           latestOutputWriterLatencyAt = performance.now();
+          pending.resolve(message);
+          break;
+        }
+        case "DROPPED": {
+          const pending = outputWriterPendingFrames.get(message.sequence);
+          if (!pending) return;
+          outputWriterPendingFrames.delete(message.sequence);
+          window.clearTimeout(pending.timeoutId);
+          outputWriterAckSequence = Math.max(
+            outputWriterAckSequence,
+            message.sequence,
+          );
+          outputWriterFramesDropped += 1;
+          latestOutputWriterSkipReason =
+            message.reason === "superseded"
+              ? "worker superseded queued frame"
+              : "worker dropped frame while closing";
           pending.resolve(message);
           break;
         }
@@ -8455,10 +8484,10 @@ export function useVideoEffects({
           resource: GeneratedVideoFrame | ImageBitmap,
         ) => {
           let resolveCompletion = (
-            _message: OutputWriterWorkerWrittenMessage,
+            _message: OutputWriterWorkerCompletionMessage,
           ) => {};
           let rejectCompletion = (_err: unknown) => {};
-          const completion = new Promise<OutputWriterWorkerWrittenMessage>(
+          const completion = new Promise<OutputWriterWorkerCompletionMessage>(
             (resolve, reject) => {
               resolveCompletion = resolve;
               rejectCompletion = reject;
@@ -8500,7 +8529,7 @@ export function useVideoEffects({
           }
           return completion;
         };
-        let completion: Promise<OutputWriterWorkerWrittenMessage>;
+        let completion: Promise<OutputWriterWorkerCompletionMessage>;
         try {
           completion = postFrame(inputMode, frame ?? (bitmap as ImageBitmap));
           if (inputMode === "video-frame") {
@@ -8554,6 +8583,7 @@ export function useVideoEffects({
         void completion
           .then((result) => {
             if (cancelled) return;
+            if (result.type === "DROPPED") return;
             consecutiveOutputWriterFailures = 0;
             outputWriterFramesWritten += 1;
             outputFramesWritten += 1;
@@ -11832,6 +11862,7 @@ export function useVideoEffects({
                 : Number(oldestOutputWriterPendingAgeMs.toFixed(2)),
             workerFramesSent: outputWriterFramesSent,
             workerFramesWritten: outputWriterFramesWritten,
+            workerFramesDropped: outputWriterFramesDropped,
             workerFrameMetadataCount: outputWriterFrameMetadataCount,
             workerFirstFrameSeen: outputWriterFirstFrameSeen,
             workerSkipCount: outputWriterSkipCount,
@@ -12103,6 +12134,7 @@ export function useVideoEffects({
               framePipeline.outputWriter.workerOldestPendingFrameAgeMs,
             workerFramesSent: framePipeline.outputWriter.workerFramesSent,
             workerFramesWritten: framePipeline.outputWriter.workerFramesWritten,
+            workerFramesDropped: framePipeline.outputWriter.workerFramesDropped,
             workerSkipCount: framePipeline.outputWriter.workerSkipCount,
             workerBackpressureSkipCount:
               framePipeline.outputWriter.workerBackpressureSkipCount,

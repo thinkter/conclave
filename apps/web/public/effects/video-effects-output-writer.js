@@ -16,6 +16,25 @@ const postWorkerError = (sequence, err) => {
   });
 };
 
+const postWorkerDropped = (sequence, reason) => {
+  self.postMessage({
+    type: "DROPPED",
+    sequence,
+    reason,
+  });
+};
+
+const closeFrameMessagePayload = (message) => {
+  closeResource(message?.bitmap);
+  closeResource(message?.frame);
+};
+
+const dropFrameMessage = (message, reason) => {
+  if (!message) return;
+  closeFrameMessagePayload(message);
+  postWorkerDropped(message.sequence, reason);
+};
+
 const resetRendererState = () => {
   self.__conclaveRendererCanvas = null;
   self.__conclaveRendererCtx = null;
@@ -24,6 +43,8 @@ const resetRendererState = () => {
   self.__conclaveActiveFrames = new Set();
   self.__conclaveActiveBitmaps = new Set();
   self.__conclaveFrameWriteChain = Promise.resolve();
+  self.__conclaveFrameWriteActive = false;
+  self.__conclaveQueuedFrameMessage = null;
   self.__conclaveClosing = false;
 };
 
@@ -38,21 +59,19 @@ const writeFrameMessage = async (message) => {
   const activeBitmaps = self.__conclaveActiveBitmaps;
 
   if (self.__conclaveClosing) {
-    closeResource(bitmap);
-    closeResource(inputFrame);
+    closeFrameMessagePayload(message);
+    postWorkerDropped(sequence, "closing");
     return;
   }
   if (!writer) {
-    closeResource(bitmap);
-    closeResource(inputFrame);
+    closeFrameMessagePayload(message);
     throw new Error("Output writer has not been initialized.");
   }
   if (!bitmap && !inputFrame) {
     throw new Error("Frame payload is missing.");
   }
   if (typeof VideoFrame === "undefined") {
-    closeResource(bitmap);
-    closeResource(inputFrame);
+    closeFrameMessagePayload(message);
     throw new Error("VideoFrame is unavailable in output worker.");
   }
 
@@ -179,14 +198,39 @@ const writeFrameMessage = async (message) => {
   }
 };
 
-const enqueueFrameMessage = (message) => {
-  self.__conclaveFrameWriteChain = (
-    self.__conclaveFrameWriteChain || Promise.resolve()
-  )
-    .then(() => writeFrameMessage(message))
+const drainFrameQueue = () => {
+  if (self.__conclaveFrameWriteActive) return;
+  const message = self.__conclaveQueuedFrameMessage;
+  if (!message) return;
+
+  self.__conclaveQueuedFrameMessage = null;
+  self.__conclaveFrameWriteActive = true;
+  self.__conclaveFrameWriteChain = writeFrameMessage(message)
     .catch((err) => {
       postWorkerError(message.sequence, err);
+    })
+    .finally(() => {
+      self.__conclaveFrameWriteActive = false;
+      if (self.__conclaveQueuedFrameMessage && !self.__conclaveClosing) {
+        drainFrameQueue();
+      } else if (self.__conclaveQueuedFrameMessage) {
+        dropFrameMessage(self.__conclaveQueuedFrameMessage, "closing");
+        self.__conclaveQueuedFrameMessage = null;
+      }
     });
+};
+
+const enqueueFrameMessage = (message) => {
+  if (self.__conclaveClosing) {
+    dropFrameMessage(message, "closing");
+    return;
+  }
+
+  if (self.__conclaveQueuedFrameMessage) {
+    dropFrameMessage(self.__conclaveQueuedFrameMessage, "superseded");
+  }
+  self.__conclaveQueuedFrameMessage = message;
+  drainFrameQueue();
 };
 
 self.onmessage = async (event) => {
@@ -230,6 +274,8 @@ self.onmessage = async (event) => {
         break;
       case "CLOSE": {
         self.__conclaveClosing = true;
+        dropFrameMessage(self.__conclaveQueuedFrameMessage, "closing");
+        self.__conclaveQueuedFrameMessage = null;
         await (self.__conclaveFrameWriteChain || Promise.resolve()).catch(() => {});
         for (const frame of self.__conclaveActiveFrames || []) {
           closeResource(frame);
