@@ -1394,6 +1394,43 @@ const runPrejoinHandoffProbe = async (cdp, prejoinUrl) => {
   );
   await collectState(cdp, "state_prejoin_no_direct_effects_button");
 
+  const quickBlurLogStartIndex = cdp.logs.length;
+  await clickButton(cdp, "Turn on background blur");
+  await waitFor(
+    cdp,
+    "prejoin quick blur selection pending",
+    `(() => {
+      const meetDebug = window.__conclaveGetMeetVideoDebug?.();
+      const liveVideoTracks = Array.from(document.querySelectorAll("video")).flatMap((video) => {
+        const stream = video.srcObject;
+        return stream && typeof stream.getVideoTracks === "function"
+          ? stream.getVideoTracks()
+          : [];
+      }).filter((track) => track.readyState === "live");
+      return meetDebug?.videoEffects?.background === "blur-strong" &&
+        meetDebug?.activeVideoEffectsCount === 1 &&
+        meetDebug?.isCameraOff === true &&
+        meetDebug?.localStream === null &&
+        liveVideoTracks.length === 0;
+    })()`,
+    10000,
+  );
+  const quickBlurPrewarmRequested = cdp.logs
+    .slice(quickBlurLogStartIndex)
+    .some(
+      (log) =>
+        /prewarm_requested/.test(log.text) &&
+        /prejoin-quick-blur:select/.test(log.text) &&
+        /"segmentation":true/.test(log.text),
+    );
+  emit("prejoin_quick_blur_select_prewarm_probe", {
+    ok: quickBlurPrewarmRequested,
+  });
+  if (!quickBlurPrewarmRequested) {
+    throw new Error("Prejoin quick blur click did not request segmentation prewarm");
+  }
+  await collectState(cdp, "state_prejoin_quick_blur_selected_camera_off");
+
   await clickButton(cdp, "More options");
   await waitFor(
     cdp,

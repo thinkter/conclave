@@ -483,6 +483,12 @@ export default function VideoEffectsPanel({
   useEffect(() => refreshCustomBackgrounds(), [refreshCustomBackgrounds]);
 
   const selectCustomBackgroundUpload = () => {
+    if (!cameraPermissionBlocked) {
+      void prewarmVideoEffectsAssets({
+        segmentation: true,
+        reason: "background:custom:upload-picker",
+      });
+    }
     customBackgroundInputRef.current?.click();
   };
 
@@ -1034,10 +1040,10 @@ export default function VideoEffectsPanel({
               />
               <div className="grid grid-cols-2 gap-2">
                 <button
-	                  type="button"
-	                  aria-label="Upload a background image"
-	                  data-testid="custom-background-tile"
-	                  onClick={selectCustomBackgroundUpload}
+                  type="button"
+                  aria-label="Upload a background image"
+                  data-testid="custom-background-tile"
+                  onClick={selectCustomBackgroundUpload}
                   className="group relative min-h-[84px] rounded-[14px] border border-transparent bg-[#dfe8ff] p-2 text-left transition-colors hover:bg-[#d6e3ff] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-[#dfe8ff]"
                 >
                   <span
@@ -1099,11 +1105,15 @@ export default function VideoEffectsPanel({
                     aria-pressed={effects.background === "custom"}
                     aria-label="Use uploaded background"
                     data-testid="custom-background-session-tile"
-                    onClick={() =>
+                    onClick={() => {
+                      void prewarmVideoEffectsAssets({
+                        segmentation: true,
+                        reason: "background:custom:session-select",
+                      });
                       applyEffectsChange(
                         (current) => ({ ...current, background: "custom" }),
-                      )
-                    }
+                      );
+                    }}
                     className={`group relative min-h-[84px] rounded-[14px] border p-2 text-left transition-colors ${
                       effects.background === "custom"
                         ? "border-[#1a73e8] bg-white"

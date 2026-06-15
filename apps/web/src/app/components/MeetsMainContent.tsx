@@ -26,11 +26,11 @@ import ToastQueue from "./ToastQueue";
 import type { BrowserState } from "../hooks/useSharedBrowser";
 import type { ConnectionQuality } from "../hooks/useConnectionQuality";
 import VideoEffectsPanel from "./VideoEffectsPanel";
-import type {
-  VideoEffectsDebugStats,
-  VideoEffectsRuntimeStatus,
+import {
+  prewarmVideoEffectsAssets,
+  type VideoEffectsDebugStats,
+  type VideoEffectsRuntimeStatus,
 } from "../hooks/useVideoEffects";
-
 import type {
   ChatMessage,
   ConnectionState,
@@ -880,6 +880,10 @@ export default function MeetsMainContent({
   }, []);
 
   const handleToggleVideoFraming = useCallback(() => {
+    void prewarmVideoEffectsAssets({
+      face: true,
+      reason: "meeting-framing-toggle:select",
+    });
     onVideoEffectsChange((current) => ({
       ...current,
       framing: !current.framing,

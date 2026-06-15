@@ -295,6 +295,12 @@ function JoinScreen({
   const toggleBackgroundBlur = () => {
     if (isCameraPermissionBlocked) return;
     const nextBackground = isBackgroundBlurActive ? "none" : "blur-strong";
+    if (nextBackground !== "none") {
+      void prewarmVideoEffectsAssets({
+        segmentation: true,
+        reason: "prejoin-quick-blur:select",
+      });
+    }
     onVideoEffectsChange((current) => ({
       ...current,
       background: nextBackground,
