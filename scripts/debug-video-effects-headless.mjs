@@ -1126,9 +1126,10 @@ const assertOutputWriterQuality = (state, label) => {
   return quality;
 };
 
-const parseEffectSwitchLatencyLogs = (logs) => {
+const parseEffectSwitchLatencyLogs = (logs, options = {}) => {
+  const startIndex = Math.max(0, Number(options.fromIndex || 0));
   const samples = [];
-  for (const log of logs) {
+  for (const log of logs.slice(startIndex)) {
     const match = log.text.match(
       /\[VideoEffects#(\d+)\]\s+effect_switch_visible_output\s+(\{.*\})$/,
     );
@@ -1170,8 +1171,8 @@ const percentile = (values, ratio) => {
   return sorted[index];
 };
 
-const getEffectSwitchLatencyQuality = (logs, state, label) => {
-  const samples = parseEffectSwitchLatencyLogs(logs);
+const getEffectSwitchLatencyQuality = (logs, state, label, options = {}) => {
+  const samples = parseEffectSwitchLatencyLogs(logs, options);
   const visibleLatencies = samples
     .map((sample) => sample.firstVisibleLatencyMs)
     .filter((value) => Number.isFinite(value));
@@ -1192,6 +1193,15 @@ const getEffectSwitchLatencyQuality = (logs, state, label) => {
     maxDeliveredLatencyMs === null ||
     maxDeliveredLatencyMs <= maxEffectSwitchDeliveredLatencyMs;
   const enoughSamples = samples.length >= minEffectSwitchLatencySamples;
+  const slowSamples = samples.filter((sample) => {
+    const visibleSlow =
+      Number.isFinite(sample.firstVisibleLatencyMs) &&
+      sample.firstVisibleLatencyMs > maxEffectSwitchVisibleLatencyMs;
+    const deliveredSlow =
+      Number.isFinite(sample.firstDeliveredLatencyMs) &&
+      sample.firstDeliveredLatencyMs > maxEffectSwitchDeliveredLatencyMs;
+    return visibleSlow || deliveredSlow;
+  });
   return {
     label,
     ok:
@@ -1211,12 +1221,14 @@ const getEffectSwitchLatencyQuality = (logs, state, label) => {
     p95DeliveredLatencyMs: percentile(deliveredLatencies, 0.95),
     panelLatency,
     panelPending,
+    sampleLogStartIndex: Math.max(0, Number(options.fromIndex || 0)),
+    slowSamples,
     recentSamples: samples.slice(-8),
   };
 };
 
-const assertEffectSwitchLatencyQuality = (logs, state, label) => {
-  const quality = getEffectSwitchLatencyQuality(logs, state, label);
+const assertEffectSwitchLatencyQuality = (logs, state, label, options = {}) => {
+  const quality = getEffectSwitchLatencyQuality(logs, state, label, options);
   emit("effect_switch_latency_quality_probe", quality);
   if (!quality.ok) {
     throw new Error(
@@ -1928,6 +1940,7 @@ const run = async () => {
   });
 
   let cdp = null;
+  let rapidEffectSwitchLogIndex = 0;
   try {
     const targets = await waitForJson(
       `http://127.0.0.1:${chromePort}/json/list`,
@@ -3114,6 +3127,7 @@ const run = async () => {
     );
 
     await clickButton(cdp, "Backgrounds");
+    rapidEffectSwitchLogIndex = cdp.logs.length;
     for (const label of ["Office shelf", "Color field", "Slight blur", "Blur"]) {
       await clickButton(cdp, label);
       await sleep(75);
@@ -3371,6 +3385,7 @@ const run = async () => {
       cdp.logs,
       state,
       "rapid effect switches",
+      { fromIndex: rapidEffectSwitchLogIndex },
     );
     if (!expectFaceLandmarks) {
       const faceNoResultBackoff = await waitFor(
@@ -4452,6 +4467,7 @@ const run = async () => {
       cdp.logs,
       state,
       "final",
+      { fromIndex: rapidEffectSwitchLogIndex },
     );
     emit("effect_switch_latency_quality_probe", effectSwitchLatencyQuality);
     if (

@@ -456,6 +456,13 @@ export default function VideoEffectsPanel({
   };
 
   const setBackground = (background: BackgroundEffectId) => {
+    if (background !== "none" && background !== "gradient") {
+      void prewarmVideoEffectsAssets({
+        segmentation: true,
+        backgrounds: [background],
+        reason: `background:${background}:select`,
+      });
+    }
     applyEffectsChange((current) => ({ ...current, background }));
   };
 
@@ -491,6 +498,10 @@ export default function VideoEffectsPanel({
       refreshCustomBackgrounds();
       return;
     }
+    void prewarmVideoEffectsAssets({
+      segmentation: true,
+      reason: `background:custom:${asset.id}:select`,
+    });
     refreshCustomBackgrounds();
     applyEffectsChange(
       (current) => ({
@@ -523,6 +534,12 @@ export default function VideoEffectsPanel({
       } catch {
         savedBackground = null;
       }
+      void prewarmVideoEffectsAssets({
+        segmentation: true,
+        reason: savedBackground?.id
+          ? `background:custom:${savedBackground.id}:upload`
+          : "background:custom:upload",
+      });
       applyEffectsChange(
         (current) => ({
           ...current,
@@ -557,6 +574,12 @@ export default function VideoEffectsPanel({
   };
 
   const setFilter = (filter: FaceFilterId) => {
+    if (filter !== "none") {
+      void prewarmVideoEffectsAssets({
+        face: true,
+        reason: `filter:${filter}:select`,
+      });
+    }
     applyEffectsChange((current) => ({ ...current, filter }));
   };
 
@@ -567,6 +590,12 @@ export default function VideoEffectsPanel({
   const setToggle =
     (key: "studioLighting" | "studioLook" | "framing") =>
     (checked: boolean) => {
+      if (key === "framing" && checked) {
+        void prewarmVideoEffectsAssets({
+          face: true,
+          reason: "appearance:framing:select",
+        });
+      }
       applyEffectsChange((current) => ({ ...current, [key]: checked }));
     };
   const activeEffectStack = useMemo<ActiveEffectStackItem[]>(() => {

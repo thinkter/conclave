@@ -510,9 +510,10 @@ export default function MeetsMainContent({
     ? devCameraStream
     : localStream;
   const hasRenderedLocalVideo = Boolean(getLiveVideoStream(effectiveLocalStream));
-  const effectiveIsCameraOff = hasRenderedLocalVideo ? false : isCameraOff;
+  const effectiveIsCameraOff =
+    shouldUseDevCameraStream && hasLiveDevCamera ? false : isCameraOff;
   const effectiveActiveSpeakerId =
-    isCameraOff && hasRenderedLocalVideo
+    shouldUseDevCameraStream && hasLiveDevCamera
       ? currentUserId
       : activeSpeakerId;
   const handleDevCameraStreamChange = useCallback(
