@@ -1069,6 +1069,7 @@ const backgroundImageCache = new Map<
   }
 >();
 const backgroundPrewarmQueuePromises = new Map<string, Promise<void>>();
+const videoEffectsAssetPrewarmPromises = new Map<string, Promise<void>>();
 
 const clamp = (value: number, min: number, max: number) =>
   Math.min(Math.max(value, min), max);
@@ -3681,84 +3682,112 @@ export const prewarmVideoEffectsAssets = async ({
 } = {}) => {
   if (typeof window === "undefined") return;
   const instanceId = 0;
-  logVideoEffects(instanceId, "prewarm_requested", {
+  const requestedBackgrounds = Array.from(new Set(backgrounds));
+  const canonicalBackgrounds = [...requestedBackgrounds].sort();
+  const prewarmKey = JSON.stringify({
     segmentation,
     face,
-    backgrounds,
+    backgrounds: canonicalBackgrounds,
     reason,
   });
+  const existingPrewarm = videoEffectsAssetPrewarmPromises.get(prewarmKey);
+  if (existingPrewarm) {
+    logVideoEffects(instanceId, "prewarm_coalesce_inflight", {
+      segmentation,
+      face,
+      backgrounds: requestedBackgrounds,
+      reason,
+    });
+    return existingPrewarm;
+  }
 
-  const tasksReady = ensureSharedTasksVisionFileset(instanceId)
-    .then(() => undefined)
-    .catch((err) => {
-      warnVideoEffects(instanceId, "tasks_fileset_prewarm_failed", {
-        reason,
-        error: getErrorDebugSnapshot(err),
-      });
+  let prewarmPromise: Promise<void>;
+  prewarmPromise = (async () => {
+    logVideoEffects(instanceId, "prewarm_requested", {
+      segmentation,
+      face,
+      backgrounds: requestedBackgrounds,
+      reason,
     });
 
-  const modelPromises: Promise<void>[] = [tasksReady];
-  if (segmentation || face || backgrounds.length > 0) {
-    modelPromises.push(
-      prewarmOutputWriterWorker(
-        instanceId,
-        outputWriterWorkerPrewarmPromise,
-        (promise) => {
-          outputWriterWorkerPrewarmPromise = promise;
-        },
-      ),
-    );
-  }
-  if (segmentation) {
-    modelPromises.push(
-      prewarmModelAsset(
-        instanceId,
-        "selfie-segmenter",
-        TASKS_SELFIE_SEGMENTER_MODELS,
-        segmentationModelPrewarmPromise,
-        (promise) => {
-          segmentationModelPrewarmPromise = promise;
-        },
-      ),
-      prewarmProcessorWorker(
-        instanceId,
-        "segmentation",
-        segmentationProcessorWorkerPrewarmPromise,
-        (promise) => {
-          segmentationProcessorWorkerPrewarmPromise = promise;
-        },
-      ),
-    );
-  }
-  if (face) {
-    modelPromises.push(
-      prewarmModelAsset(
-        instanceId,
-        "face-landmarker",
-        TASKS_FACE_LANDMARKER_MODELS,
-        faceModelPrewarmPromise,
-        (promise) => {
-          faceModelPrewarmPromise = promise;
-        },
-      ),
-      prewarmProcessorWorker(
-        instanceId,
-        "face",
-        faceProcessorWorkerPrewarmPromise,
-        (promise) => {
-          faceProcessorWorkerPrewarmPromise = promise;
-        },
-      ),
-    );
-  }
-  await Promise.all(modelPromises);
-  await prewarmBackgroundImages(backgrounds, instanceId, reason);
-  logVideoEffects(instanceId, "prewarm_done", {
-    segmentation,
-    face,
-    backgrounds,
-    reason,
+    const tasksReady = ensureSharedTasksVisionFileset(instanceId)
+      .then(() => undefined)
+      .catch((err) => {
+        warnVideoEffects(instanceId, "tasks_fileset_prewarm_failed", {
+          reason,
+          error: getErrorDebugSnapshot(err),
+        });
+      });
+
+    const modelPromises: Promise<void>[] = [tasksReady];
+    if (segmentation || face || requestedBackgrounds.length > 0) {
+      modelPromises.push(
+        prewarmOutputWriterWorker(
+          instanceId,
+          outputWriterWorkerPrewarmPromise,
+          (promise) => {
+            outputWriterWorkerPrewarmPromise = promise;
+          },
+        ),
+      );
+    }
+    if (segmentation) {
+      modelPromises.push(
+        prewarmModelAsset(
+          instanceId,
+          "selfie-segmenter",
+          TASKS_SELFIE_SEGMENTER_MODELS,
+          segmentationModelPrewarmPromise,
+          (promise) => {
+            segmentationModelPrewarmPromise = promise;
+          },
+        ),
+        prewarmProcessorWorker(
+          instanceId,
+          "segmentation",
+          segmentationProcessorWorkerPrewarmPromise,
+          (promise) => {
+            segmentationProcessorWorkerPrewarmPromise = promise;
+          },
+        ),
+      );
+    }
+    if (face) {
+      modelPromises.push(
+        prewarmModelAsset(
+          instanceId,
+          "face-landmarker",
+          TASKS_FACE_LANDMARKER_MODELS,
+          faceModelPrewarmPromise,
+          (promise) => {
+            faceModelPrewarmPromise = promise;
+          },
+        ),
+        prewarmProcessorWorker(
+          instanceId,
+          "face",
+          faceProcessorWorkerPrewarmPromise,
+          (promise) => {
+            faceProcessorWorkerPrewarmPromise = promise;
+          },
+        ),
+      );
+    }
+    await Promise.all(modelPromises);
+    await prewarmBackgroundImages(requestedBackgrounds, instanceId, reason);
+    logVideoEffects(instanceId, "prewarm_done", {
+      segmentation,
+      face,
+      backgrounds: requestedBackgrounds,
+      reason,
+    });
+  })().finally(() => {
+    if (videoEffectsAssetPrewarmPromises.get(prewarmKey) === prewarmPromise) {
+      videoEffectsAssetPrewarmPromises.delete(prewarmKey);
+    }
   });
+  videoEffectsAssetPrewarmPromises.set(prewarmKey, prewarmPromise);
+  return prewarmPromise;
 };
 
 const stopProcessedTrackAfterGrace = (
