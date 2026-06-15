@@ -658,11 +658,11 @@ export function useMeetSocket({
             )),
       );
 
+      // The latest prejoin click is authoritative for the pending join. A stale
+      // local stream from an earlier call can still be present for one tick.
       return {
-        isMicOn: matchesPrejoinIntent ? prejoinIntent!.isMicOn : !isMuted,
-        isCameraOn: matchesPrejoinIntent
-          ? prejoinIntent!.isCameraOn
-          : !isCameraOff,
+        isMicOn: prejoinIntent ? prejoinIntent.isMicOn : !isMuted,
+        isCameraOn: prejoinIntent ? prejoinIntent.isCameraOn : !isCameraOff,
         matchesPrejoinIntent,
       };
     },
