@@ -949,24 +949,41 @@ export default function MeetsClient({
         videoEffectsDebugStats,
         "outputTrack",
       );
+      const processedTrackHasExplicitSourceMismatch = Boolean(
+        processedSourceTrackId &&
+          rawTrack &&
+          processedSourceTrackId !== rawTrack.id,
+      );
+      const processedTrackHasExplicitOutputMismatch = Boolean(
+        processedOutputTrackId &&
+          processedTrack &&
+          processedOutputTrackId !== processedTrack.id,
+      );
       const processedTrackMatchesCurrentSource = Boolean(
         rawTrack &&
-          processedSourceTrackId === rawTrack.id &&
-          (!processedOutputTrackId || processedOutputTrackId === processedTrack?.id),
+          !processedTrackHasExplicitSourceMismatch &&
+          !processedTrackHasExplicitOutputMismatch,
       );
       if (
+        activeVideoEffectsCount > 0 &&
         processedTrackReady &&
         processedTrack &&
         processedTrack.readyState === "live" &&
         processedTrackMatchesCurrentSource
       ) {
-        logMeetVideo("select_publish_track_processed", {
-          processedTrack: getMeetTrackDebugSnapshot(processedTrack),
-          rawStream: getMeetStreamDebugSnapshot(stream ?? null),
-          rawTrack: getMeetTrackDebugSnapshot(rawTrack),
-          processedSourceTrackId,
-          processedOutputTrackId,
-        });
+        const metadataPending = !processedSourceTrackId || !processedOutputTrackId;
+        logMeetVideo(
+          metadataPending
+            ? "select_publish_track_processed_metadata_pending"
+            : "select_publish_track_processed",
+          {
+            processedTrack: getMeetTrackDebugSnapshot(processedTrack),
+            rawStream: getMeetStreamDebugSnapshot(stream ?? null),
+            rawTrack: getMeetTrackDebugSnapshot(rawTrack),
+            processedSourceTrackId,
+            processedOutputTrackId,
+          },
+        );
         return processedTrack;
       }
       if (processedTrack && !processedTrackReady) {
@@ -984,6 +1001,8 @@ export default function MeetsClient({
           rawTrack: getMeetTrackDebugSnapshot(rawTrack),
           processedSourceTrackId,
           processedOutputTrackId,
+          processedTrackHasExplicitSourceMismatch,
+          processedTrackHasExplicitOutputMismatch,
         });
       }
       if (processedTrack && processedTrack.readyState !== "live") {
@@ -1002,6 +1021,7 @@ export default function MeetsClient({
       return rawTrack;
     },
     [
+      activeVideoEffectsCount,
       processedTrackReady,
       refs.localStreamRef,
       refs.processedVideoTrackRef,
@@ -1042,10 +1062,20 @@ export default function MeetsClient({
         videoEffectsDebugStats,
         "outputTrack",
       );
+      const processedTrackHasExplicitSourceMismatch = Boolean(
+        processedSourceTrackId &&
+          rawTrack &&
+          processedSourceTrackId !== rawTrack.id,
+      );
+      const processedTrackHasExplicitOutputMismatch = Boolean(
+        processedOutputTrackId &&
+          processedTrack &&
+          processedOutputTrackId !== processedTrack.id,
+      );
       const processedTrackMatchesCurrentSource = Boolean(
         rawTrack &&
-          processedSourceTrackId === rawTrack.id &&
-          (!processedOutputTrackId || processedOutputTrackId === processedTrack?.id),
+          !processedTrackHasExplicitSourceMismatch &&
+          !processedTrackHasExplicitOutputMismatch,
       );
       const shouldPublishProcessed =
         activeVideoEffectsCount > 0 &&
@@ -1087,6 +1117,10 @@ export default function MeetsClient({
           usingProcessedTrack,
           usingRawTrack,
           processedTrackMatchesCurrentSource,
+          processedTrackHasExplicitSourceMismatch,
+          processedTrackHasExplicitOutputMismatch,
+          processedTrackMetadataPending:
+            !processedSourceTrackId || !processedOutputTrackId,
           processedSourceTrackId,
           processedOutputTrackId,
           producerTrackLive:
