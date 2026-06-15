@@ -38,6 +38,10 @@ import {
 } from "../lib/video-effects-custom-backgrounds";
 
 type EffectsTab = "backgrounds" | "filters" | "appearance";
+type BackgroundEffectGroup = [
+  string,
+  VideoEffectOption<BackgroundEffectId>[],
+];
 type ActiveEffectStackItem = {
   key: keyof VideoEffectsState;
   label: string;
@@ -417,6 +421,21 @@ export default function VideoEffectsPanel({
       ),
     [],
   );
+  const permissionBlockedBackgroundGroups = useMemo<BackgroundEffectGroup[]>(
+    () => [
+      [
+        "Blur",
+        BACKGROUND_EFFECTS.filter(
+          (option) =>
+            option.id === "blur-light" || option.id === "blur-strong",
+        ),
+      ],
+    ],
+    [],
+  );
+  const visibleBackgroundGroups = cameraPermissionBlocked
+    ? permissionBlockedBackgroundGroups
+    : backgroundGroups;
   const filterGroups = useMemo(() => groupOptions(FACE_FILTERS), []);
   const appearanceGroups = useMemo(() => groupOptions(APPEARANCE_STYLES), []);
   const availableTabs = useMemo(
@@ -1035,51 +1054,97 @@ export default function VideoEffectsPanel({
       <div className="min-h-0 flex-1 overflow-y-auto pb-6 [scrollbar-width:thin] [scrollbar-color:rgba(60,64,67,0.28)_transparent]">
         {activeTab === "backgrounds" ? (
           <>
-            <Section label="Personal">
-              <input
-                ref={customBackgroundInputRef}
-                data-testid="custom-background-input"
-                className="sr-only"
-                type="file"
-                accept="image/png,image/jpeg,image/webp"
-                onChange={handleCustomBackgroundUpload}
-              />
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  aria-label="Upload a background image"
-                  data-testid="custom-background-tile"
-                  onClick={selectCustomBackgroundUpload}
-                  className="group relative min-h-[84px] rounded-[14px] border border-transparent bg-[#dfe8ff] p-2 text-left transition-colors hover:bg-[#d6e3ff] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-[#dfe8ff]"
-                >
-                  <span
-                    className="flex h-10 w-10 items-center justify-center rounded-[12px]"
-                    style={{ backgroundColor: "#1a73e8" }}
+            {!cameraPermissionBlocked ? (
+              <Section label="Personal">
+                <input
+                  ref={customBackgroundInputRef}
+                  data-testid="custom-background-input"
+                  className="sr-only"
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  onChange={handleCustomBackgroundUpload}
+                />
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    aria-label="Upload a background image"
+                    data-testid="custom-background-tile"
+                    onClick={selectCustomBackgroundUpload}
+                    className="group relative min-h-[84px] rounded-[14px] border border-transparent bg-[#dfe8ff] p-2 text-left transition-colors hover:bg-[#d6e3ff] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-[#dfe8ff]"
                   >
-                    <ImagePlus
-                      size={18}
-                      strokeWidth={1.75}
-                      className="text-white"
-                    />
-                  </span>
-                  <span className="mt-2 block text-[12px] font-medium leading-tight text-[#202124]">
-                    Upload image
-                  </span>
-                </button>
-                {customBackgrounds.map((background) => {
-                  const selected =
-                    effects.background === "custom" &&
-                    effects.customBackgroundId === background.id;
-                  return (
+                    <span
+                      className="flex h-10 w-10 items-center justify-center rounded-[12px]"
+                      style={{ backgroundColor: "#1a73e8" }}
+                    >
+                      <ImagePlus
+                        size={18}
+                        strokeWidth={1.75}
+                        className="text-white"
+                      />
+                    </span>
+                    <span className="mt-2 block text-[12px] font-medium leading-tight text-[#202124]">
+                      Upload image
+                    </span>
+                  </button>
+                  {customBackgrounds.map((background) => {
+                    const selected =
+                      effects.background === "custom" &&
+                      effects.customBackgroundId === background.id;
+                    return (
+                      <button
+                        key={background.id}
+                        type="button"
+                        aria-pressed={selected}
+                        aria-label={`Use ${background.name}`}
+                        data-testid="custom-background-saved-tile"
+                        onClick={() =>
+                          void selectStoredCustomBackground(background)
+                        }
+                        className={`group relative min-h-[84px] rounded-[14px] border p-2 text-left transition-colors ${
+                          selected
+                            ? "border-[#1a73e8] bg-white"
+                            : "border-transparent bg-[#dfe8ff] hover:bg-[#d6e3ff]"
+                        } disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-[#dfe8ff]`}
+                      >
+                        <span
+                          className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-[12px] bg-cover bg-center"
+                          style={{
+                            backgroundColor: "#1a73e8",
+                            backgroundImage: `url("${background.thumbnailDataUrl}")`,
+                          }}
+                        >
+                          <span className="h-full w-full bg-black/10" />
+                        </span>
+                        <span className="mt-2 block text-[12px] font-medium leading-tight text-[#202124]">
+                          {background.name}
+                        </span>
+                        {selected ? (
+                          <span className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full bg-[#1a73e8] text-white">
+                            <Check size={13} strokeWidth={2} />
+                          </span>
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                  {effects.customBackgroundDataUrl &&
+                  !effects.customBackgroundId ? (
                     <button
-                      key={background.id}
                       type="button"
-                      aria-pressed={selected}
-                      aria-label={`Use ${background.name}`}
-                      data-testid="custom-background-saved-tile"
-                      onClick={() => void selectStoredCustomBackground(background)}
+                      aria-pressed={effects.background === "custom"}
+                      aria-label="Use uploaded background"
+                      data-testid="custom-background-session-tile"
+                      onClick={() => {
+                        void prewarmVideoEffectsAssets({
+                          segmentation: true,
+                          reason: "background:custom:session-select",
+                        });
+                        applyEffectsChange((current) => ({
+                          ...current,
+                          background: "custom",
+                        }));
+                      }}
                       className={`group relative min-h-[84px] rounded-[14px] border p-2 text-left transition-colors ${
-                        selected
+                        effects.background === "custom"
                           ? "border-[#1a73e8] bg-white"
                           : "border-transparent bg-[#dfe8ff] hover:bg-[#d6e3ff]"
                       } disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-[#dfe8ff]`}
@@ -1088,88 +1153,48 @@ export default function VideoEffectsPanel({
                         className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-[12px] bg-cover bg-center"
                         style={{
                           backgroundColor: "#1a73e8",
-                          backgroundImage: `url("${background.thumbnailDataUrl}")`,
+                          backgroundImage: `url("${effects.customBackgroundDataUrl}")`,
                         }}
                       >
                         <span className="h-full w-full bg-black/10" />
                       </span>
                       <span className="mt-2 block text-[12px] font-medium leading-tight text-[#202124]">
-                        {background.name}
+                        {effects.customBackgroundName || "Uploaded image"}
                       </span>
-                      {selected ? (
+                      {effects.background === "custom" ? (
                         <span className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full bg-[#1a73e8] text-white">
                           <Check size={13} strokeWidth={2} />
                         </span>
                       ) : null}
                     </button>
-                  );
-                })}
-                {effects.customBackgroundDataUrl &&
-                !effects.customBackgroundId ? (
-                  <button
-                    type="button"
-                    aria-pressed={effects.background === "custom"}
-                    aria-label="Use uploaded background"
-                    data-testid="custom-background-session-tile"
-                    onClick={() => {
-                      void prewarmVideoEffectsAssets({
-                        segmentation: true,
-                        reason: "background:custom:session-select",
-                      });
-                      applyEffectsChange(
-                        (current) => ({ ...current, background: "custom" }),
-                      );
-                    }}
-                    className={`group relative min-h-[84px] rounded-[14px] border p-2 text-left transition-colors ${
-                      effects.background === "custom"
-                        ? "border-[#1a73e8] bg-white"
-                        : "border-transparent bg-[#dfe8ff] hover:bg-[#d6e3ff]"
-                    } disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-[#dfe8ff]`}
-                  >
-                    <span
-                      className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-[12px] bg-cover bg-center"
-                      style={{
-                        backgroundColor: "#1a73e8",
-                        backgroundImage: `url("${effects.customBackgroundDataUrl}")`,
-                      }}
-                    >
-                      <span className="h-full w-full bg-black/10" />
-                    </span>
-                    <span className="mt-2 block text-[12px] font-medium leading-tight text-[#202124]">
-                      {effects.customBackgroundName || "Uploaded image"}
-                    </span>
-                    {effects.background === "custom" ? (
-                      <span className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full bg-[#1a73e8] text-white">
-                        <Check size={13} strokeWidth={2} />
-                      </span>
-                    ) : null}
-                  </button>
-                ) : null}
-                {effects.customBackgroundDataUrl || effects.customBackgroundId ? (
-                  <div className="grid gap-2">
-                    <button
-                      type="button"
-                      data-testid="custom-background-change"
-                      onClick={() => {
-                        customBackgroundInputRef.current?.click();
-                      }}
-                      className="min-h-[38px] rounded-[12px] bg-[#f1f3f4] px-3 text-left text-[12px] font-medium text-[#202124] transition-colors hover:bg-[#e8eaed] disabled:cursor-not-allowed disabled:text-[#9aa0a6] disabled:hover:bg-[#f1f3f4]"
-                    >
-                      Change image
-                    </button>
-                    <button
-                      type="button"
-                      data-testid="custom-background-remove"
-                      onClick={removeCustomBackground}
-                      className="min-h-[38px] rounded-[12px] bg-[#fce8e6] px-3 text-left text-[12px] font-medium text-[#b3261e] transition-colors hover:bg-[#fad2cf] disabled:cursor-not-allowed disabled:bg-[#f1f3f4] disabled:text-[#9aa0a6]"
-                    >
-                      Remove image
-                    </button>
-                  </div>
-                ) : null}
-              </div>
-            </Section>
-            {backgroundGroups.map(([label, options]) => (
+                  ) : null}
+                  {effects.customBackgroundDataUrl ||
+                  effects.customBackgroundId ? (
+                    <div className="grid gap-2">
+                      <button
+                        type="button"
+                        data-testid="custom-background-change"
+                        onClick={() => {
+                          customBackgroundInputRef.current?.click();
+                        }}
+                        className="min-h-[38px] rounded-[12px] bg-[#f1f3f4] px-3 text-left text-[12px] font-medium text-[#202124] transition-colors hover:bg-[#e8eaed] disabled:cursor-not-allowed disabled:text-[#9aa0a6] disabled:hover:bg-[#f1f3f4]"
+                      >
+                        Change image
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="custom-background-remove"
+                        onClick={removeCustomBackground}
+                        className="min-h-[38px] rounded-[12px] bg-[#fce8e6] px-3 text-left text-[12px] font-medium text-[#b3261e] transition-colors hover:bg-[#fad2cf] disabled:cursor-not-allowed disabled:bg-[#f1f3f4] disabled:text-[#9aa0a6]"
+                      >
+                        Remove image
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              </Section>
+            ) : null}
+            {visibleBackgroundGroups.map(([label, options]) => (
               <Section key={label} label={label}>
                 <div className="grid grid-cols-2 gap-2">
                   {options.map((option) => (

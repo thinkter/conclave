@@ -1928,12 +1928,18 @@ const runPrejoinPermissionDeniedEffectsProbe = async (cdp, prejoinUrl) => {
       const panel = document.querySelector('[data-testid="video-effects-panel"]');
       const meetDebug = window.__conclaveGetMeetVideoDebug?.();
       const bodyText = document.body?.innerText || "";
+      const panelText = panel?.innerText || "";
       return panel?.getAttribute("data-video-effects-status") === "off" &&
         panel?.getAttribute("data-video-effects-active-count") === "0" &&
         panel?.getAttribute("data-video-effects-output-published") === "false" &&
         panel?.getAttribute("data-video-effects-permission-locked") === "true" &&
         panel?.getAttribute("data-video-effects-filters-visible") === "false" &&
         bodyText.includes("Camera is blocked") &&
+        panelText.includes("Slight blur") &&
+        panelText.includes("Blur") &&
+        !panelText.includes("Upload image") &&
+        !panelText.includes("Office shelf") &&
+        !panelText.includes("Conference wall") &&
         (meetDebug?.activeVideoEffectsCount ?? 0) === 0 &&
         meetDebug?.isCameraOff === true &&
         meetDebug?.videoProducer == null &&
@@ -1953,11 +1959,17 @@ const runPrejoinPermissionDeniedEffectsProbe = async (cdp, prejoinUrl) => {
       let stats = null;
       try { stats = raw ? JSON.parse(raw) : null; } catch {}
       const meetDebug = window.__conclaveGetMeetVideoDebug?.();
+      const panelText = panel?.innerText || "";
       return panel?.getAttribute("data-video-effects-status") === "off" &&
         panel?.getAttribute("data-video-effects-active-count") === "1" &&
         panel?.getAttribute("data-video-effects-output-published") === "false" &&
         panel?.getAttribute("data-video-effects-permission-locked") === "true" &&
         panel?.getAttribute("data-video-effects-filters-visible") === "false" &&
+        panelText.includes("Slight blur") &&
+        panelText.includes("Blur") &&
+        !panelText.includes("Upload image") &&
+        !panelText.includes("Office shelf") &&
+        !panelText.includes("Conference wall") &&
         stats?.effects?.background === "blur-strong" &&
         stats?.frameSource === "none" &&
         stats?.outputTrackPublished === false &&
