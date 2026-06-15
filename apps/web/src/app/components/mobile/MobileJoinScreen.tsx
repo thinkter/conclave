@@ -332,8 +332,11 @@ function MobileJoinScreen({
       const track = localStream.getVideoTracks()[0];
       if (track) {
         track.stop();
-        localStream.removeTrack(track);
       }
+      const nextTracks = localStream
+        .getTracks()
+        .filter((candidate) => candidate !== track);
+      setLocalStream(nextTracks.length > 0 ? new MediaStream(nextTracks) : null);
       setIsCameraOn(false);
     } else {
       await navigator.mediaDevices
@@ -349,11 +352,12 @@ function MobileJoinScreen({
           if ("contentHint" in videoTrack) {
             videoTrack.contentHint = "motion";
           }
-          if (localStream) {
-            localStream.addTrack(videoTrack);
-          } else {
-            setLocalStream(stream);
-          }
+          const currentTracks = localStream?.getTracks() ?? [];
+          const nextStream =
+            currentTracks.length > 0
+              ? new MediaStream([...currentTracks, videoTrack])
+              : stream;
+          setLocalStream(nextStream);
           prewarmLiveCameraEffects("mobile-prejoin-camera-toggle-live");
           setIsCameraOn(true);
         })
@@ -368,8 +372,11 @@ function MobileJoinScreen({
       const track = localStream.getAudioTracks()[0];
       if (track) {
         track.stop();
-        localStream.removeTrack(track);
       }
+      const nextTracks = localStream
+        .getTracks()
+        .filter((candidate) => candidate !== track);
+      setLocalStream(nextTracks.length > 0 ? new MediaStream(nextTracks) : null);
       setIsMicOn(false);
     } else {
       await navigator.mediaDevices
@@ -382,11 +389,12 @@ function MobileJoinScreen({
             stream.getTracks().forEach((track) => track.stop());
             return;
           }
-          if (localStream) {
-            localStream.addTrack(audioTrack);
-          } else {
-            setLocalStream(stream);
-          }
+          const currentTracks = localStream?.getTracks() ?? [];
+          const nextStream =
+            currentTracks.length > 0
+              ? new MediaStream([...currentTracks, audioTrack])
+              : stream;
+          setLocalStream(nextStream);
           setIsMicOn(true);
         })
         .catch(() => {

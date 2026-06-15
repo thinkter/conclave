@@ -1585,6 +1585,14 @@ export function useMeetSocket({
 
   const reproduceCameraProducer = useCallback(
     async (stream: MediaStream | null, reason: string): Promise<boolean> => {
+      if (isCameraOffRef.current) {
+        console.warn("[Meets] Skipping camera republish; camera is off:", {
+          reason,
+          stream: summarizeStreamForLog(stream),
+        });
+        return false;
+      }
+
       const transport = producerTransportRef.current;
       if (!transport || transport.closed) {
         console.warn("[Meets] Cannot republish camera; producer transport missing:", {
@@ -2797,7 +2805,7 @@ export function useMeetSocket({
                             currentStream?.getVideoTracks() ?? [],
                           );
                     const shouldRecoverCamera =
-                      !isCameraOffRef.current || Boolean(liveVideoTrack);
+                      !isCameraOffRef.current && Boolean(liveVideoTrack);
                     if (shouldRecoverCamera) {
                       isCameraOffRef.current = false;
                       setIsCameraOff(false);
