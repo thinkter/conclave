@@ -53,7 +53,11 @@ import {
 import { useApps } from "@conclave/apps-sdk";
 import { useCameraPermissionState } from "../hooks/useCameraPermissionState";
 import { useStableSpeakerId } from "../hooks/useStableSpeakerId";
-import type { VideoEffectsState } from "../lib/video-effects";
+import {
+  BACKGROUND_EFFECTS,
+  type BackgroundEffectId,
+  type VideoEffectsState,
+} from "../lib/video-effects";
 import {
   DEFAULT_MEET_VIEW_SETTINGS,
   normalizeMeetViewSettings,
@@ -828,9 +832,34 @@ export default function MeetsMainContent({
     () => setIsHostControlsOpen(false),
     [],
   );
+
+  const effectsPanelBackgroundPrewarmIds = useMemo(
+    () =>
+      BACKGROUND_EFFECTS.filter(
+        (option) =>
+          option.id !== "custom" &&
+          option.id !== "none" &&
+          option.id !== "gradient" &&
+          Boolean(option.assetPath),
+      ).map((option) => option.id as BackgroundEffectId),
+    [],
+  );
+
+  const prewarmEffectsPanelOpen = useCallback(() => {
+    void prewarmVideoEffectsAssets({
+      segmentation: true,
+      face: true,
+      backgrounds: effectsPanelBackgroundPrewarmIds,
+      reason: "effects-panel-open",
+    });
+  }, [effectsPanelBackgroundPrewarmIds]);
+
   const handleToggleVideoEffects = useCallback(() => {
     if (isCameraPermissionBlocked) return;
     const opening = !isVideoEffectsOpen;
+    if (opening) {
+      prewarmEffectsPanelOpen();
+    }
     if (opening && isChatOpenRef.current) {
       toggleChat();
     }
@@ -843,6 +872,7 @@ export default function MeetsMainContent({
   }, [
     isCameraPermissionBlocked,
     isVideoEffectsOpen,
+    prewarmEffectsPanelOpen,
     setIsParticipantsOpen,
     toggleChat,
   ]);
@@ -853,6 +883,7 @@ export default function MeetsMainContent({
   );
   const handleOpenVideoEffects = useCallback(() => {
     if (isCameraPermissionBlocked) return;
+    prewarmEffectsPanelOpen();
     if (isChatOpenRef.current) {
       toggleChat();
     }
@@ -860,7 +891,12 @@ export default function MeetsMainContent({
     setIsHostControlsOpen(false);
     setIsViewPanelOpen(false);
     setIsVideoEffectsOpen(true);
-  }, [isCameraPermissionBlocked, setIsParticipantsOpen, toggleChat]);
+  }, [
+    isCameraPermissionBlocked,
+    prewarmEffectsPanelOpen,
+    setIsParticipantsOpen,
+    toggleChat,
+  ]);
 
   const handleToggleViewPanel = useCallback(() => {
     const opening = !isViewPanelOpen;
