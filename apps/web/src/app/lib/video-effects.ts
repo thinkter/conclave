@@ -372,6 +372,37 @@ export const isAnimatedBackgroundEffect = (
 const isFaceFilterId = (value: unknown): value is FaceFilterId =>
   typeof value === "string" && FACE_FILTER_IDS.has(value as FaceFilterId);
 
+const HIDDEN_FACE_FILTER_IDS = new Set<FaceFilterId>([
+  "sparkles",
+  "idea",
+  "glasses",
+  "cute-glasses",
+  "cyber-glasses",
+  "crown",
+  "halo",
+  "bunny-ears",
+  "cat-on-head",
+  "fuzzy-cat",
+  "halloween-cat",
+  "velvety-dog",
+  "cake",
+  "party-hat",
+  "pilot-hat",
+  "trucker-hat",
+  "glowing-hat",
+  "noogler-hat",
+  "intern-hat",
+  "winter-hat-scarf",
+  "wizard-hat",
+  "dia-de-los-muertos",
+  "dia-de-los-muertos-flower",
+  "mustache",
+  "thin-mustache",
+]);
+
+const isSelectableFaceFilterId = (value: unknown): value is FaceFilterId =>
+  isFaceFilterId(value) && !HIDDEN_FACE_FILTER_IDS.has(value);
+
 const isAppearanceStyleId = (value: unknown): value is AppearanceStyleId =>
   typeof value === "string" &&
   APPEARANCE_STYLE_IDS.has(value as AppearanceStyleId);
@@ -416,7 +447,7 @@ export function normalizeVideoEffectsState(value: unknown): VideoEffectsState {
 
   return {
     background,
-    filter: isFaceFilterId(value.filter)
+    filter: isSelectableFaceFilterId(value.filter)
       ? value.filter
       : DEFAULT_VIDEO_EFFECTS.filter,
     style: isAppearanceStyleId(value.style)
@@ -716,7 +747,7 @@ export const BACKGROUND_EFFECTS: VideoEffectOption<BackgroundEffectId>[] = [
   },
 ];
 
-export const FACE_FILTERS: VideoEffectOption<FaceFilterId>[] = [
+const ALL_FACE_FILTERS: VideoEffectOption<FaceFilterId>[] = [
   {
     id: "none",
     label: "No filter",
@@ -1111,6 +1142,9 @@ export const FACE_FILTERS: VideoEffectOption<FaceFilterId>[] = [
     category: "Costumes",
   },
 ];
+
+export const FACE_FILTERS: VideoEffectOption<FaceFilterId>[] =
+  ALL_FACE_FILTERS.filter((option) => !HIDDEN_FACE_FILTER_IDS.has(option.id));
 
 export const APPEARANCE_STYLES: VideoEffectOption<AppearanceStyleId>[] = [
   {

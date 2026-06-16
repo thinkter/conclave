@@ -8879,6 +8879,112 @@ const drawFaceFilter = (
       bottom: Math.min(faceLocalBottom - faceWidth * 0.06, faceWidth * 0.5),
     };
     beginProbe(localBounds);
+    const lipTopY = upperLipLocal?.y ?? mouthCenterLocal.y - faceWidth * 0.035;
+    const lipBottomY = lowerLipLocal?.y ?? mouthCenterLocal.y + faceWidth * 0.04;
+    const lipY = (lipTopY + lipBottomY) / 2;
+    const lipW = clamp(mouthWidth * 0.72, faceWidth * 0.16, faceWidth * 0.32);
+    const lipH = clamp(
+      Math.max(lipBottomY - lipTopY, faceWidth * 0.035),
+      faceWidth * 0.035,
+      faceWidth * 0.08,
+    );
+    ctx.save();
+    ctx.globalCompositeOperation = "source-over";
+    ctx.fillStyle = "rgba(244,114,182,0.14)";
+    ctx.beginPath();
+    ctx.ellipse(
+      headCenterX,
+      lerp(headTopY, faceBottomY, 0.55),
+      faceWidth * 0.38,
+      Math.max(faceWidth * 0.47, faceHeight * 0.42),
+      0,
+      0,
+      Math.PI * 2,
+    );
+    ctx.fill();
+    ctx.globalCompositeOperation = "screen";
+    ctx.fillStyle = "rgba(255,255,255,0.18)";
+    ctx.beginPath();
+    ctx.ellipse(
+      headCenterX - faceWidth * 0.06,
+      lerp(headTopY, noseLocal.y, 0.62),
+      faceWidth * 0.1,
+      faceWidth * 0.22,
+      -0.08,
+      0,
+      Math.PI * 2,
+    );
+    ctx.fill();
+    ctx.globalCompositeOperation = "source-over";
+    ctx.globalAlpha = 0.28;
+    ctx.fillStyle = "#f9a8d4";
+    [leftEyeLocal, rightEyeLocal].forEach((eye) => {
+      ctx.beginPath();
+      ctx.ellipse(
+        eye.x,
+        eye.y - faceWidth * 0.035,
+        faceWidth * 0.13,
+        faceWidth * 0.045,
+        0,
+        0,
+        Math.PI * 2,
+      );
+      ctx.fill();
+    });
+    ctx.fillStyle = "#ec4899";
+    [-1, 1].forEach((side) => {
+      ctx.beginPath();
+      ctx.ellipse(
+        side * faceWidth * 0.24,
+        lerp(noseLocal.y, mouthCenterLocal.y, 0.68),
+        faceWidth * 0.12,
+        faceWidth * 0.07,
+        side * 0.12,
+        0,
+        Math.PI * 2,
+      );
+      ctx.fill();
+    });
+    ctx.globalAlpha = 0.38;
+    ctx.fillStyle = "#db2777";
+    ctx.beginPath();
+    ctx.ellipse(
+      mouthCenterLocal.x,
+      lipY - lipH * 0.18,
+      lipW * 0.48,
+      lipH * 0.48,
+      0,
+      0,
+      Math.PI * 2,
+    );
+    ctx.ellipse(
+      mouthCenterLocal.x,
+      lipY + lipH * 0.22,
+      lipW * 0.5,
+      lipH * 0.46,
+      0,
+      0,
+      Math.PI * 2,
+    );
+    ctx.fill();
+    ctx.globalAlpha = 0.64;
+    ctx.strokeStyle = "#4a044e";
+    ctx.lineWidth = Math.max(1.5, faceWidth * 0.012);
+    [leftEyeLocal, rightEyeLocal].forEach((eye, index) => {
+      const side = index === 0 ? -1 : 1;
+      const outerX = eye.x + side * faceWidth * 0.1;
+      ctx.beginPath();
+      ctx.moveTo(eye.x - side * faceWidth * 0.04, eye.y - faceWidth * 0.006);
+      ctx.quadraticCurveTo(
+        eye.x,
+        eye.y - faceWidth * 0.025,
+        outerX,
+        eye.y - faceWidth * 0.012,
+      );
+      ctx.lineTo(outerX + side * faceWidth * 0.085, eye.y - faceWidth * 0.055);
+      ctx.stroke();
+    });
+    ctx.restore();
     [
       { x: -faceWidth * 0.38, y: localBounds.top + faceWidth * 0.08, scale: 0.95 },
       { x: faceWidth * 0.34, y: localBounds.top + faceWidth * 0.18, scale: 0.78 },
@@ -8955,6 +9061,13 @@ const renderFrame = (
     effects.studioLook,
     lowLightRenderStats.brighteningStrength / 100,
   );
+  const hasImageBackedBackground =
+    effects.background === "custom" ||
+    Boolean(
+      BACKGROUND_ASSET_PATHS[
+        effects.background as keyof typeof BACKGROUND_ASSET_PATHS
+      ],
+    );
   const customBackgroundReady =
     effects.background !== "custom" || Boolean(backgroundImage);
   const needsSegmentation =
@@ -9010,6 +9123,16 @@ const renderFrame = (
         width,
         height,
         "brightness(0.92) saturate(1.04)",
+      );
+    } else if (hasImageBackedBackground) {
+      drawBlurredVideoBackground(
+        ctx,
+        backgroundBlurScratch,
+        source,
+        crop,
+        width,
+        height,
+        "blur-strong",
       );
     } else {
       drawProceduralBackground(
