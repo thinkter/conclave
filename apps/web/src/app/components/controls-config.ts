@@ -9,7 +9,6 @@ import {
   MicOff,
   Monitor,
   PictureInPicture2,
-  Sparkles,
   StickyNote,
   TerminalSquare,
   Users,
@@ -17,6 +16,7 @@ import {
   VideoOff,
   Volume2,
   VolumeX,
+  WandSparkles,
   type LucideIcon,
 } from "lucide-react";
 import type { ControlButtonVariant } from "@conclave/ui-tokens";
@@ -255,7 +255,7 @@ export function buildControlsConfig(p: ControlsBarProps): ControlsConfig {
     const effectsPermissionBlocked = Boolean(p.isVideoEffectsPermissionBlocked);
     overflow.push({
       id: "effects",
-      icon: Sparkles,
+      icon: WandSparkles,
       label: effectsPermissionBlocked
         ? "Permission needed"
         : "Backgrounds and effects",

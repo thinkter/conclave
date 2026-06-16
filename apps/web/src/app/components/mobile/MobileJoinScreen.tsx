@@ -7,10 +7,10 @@ import {
   Mic,
   MicOff,
   Plus,
-  Sparkles,
   Trash2,
   Video,
   VideoOff,
+  WandSparkles,
 } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
@@ -821,7 +821,7 @@ function MobileJoinScreen({
                   : "text-white"
               }`}
             >
-              <Sparkles className="w-[18px] h-[18px]" />
+              <WandSparkles className="w-[18px] h-[18px]" />
               {activeVideoEffectsCount > 0 ? (
                 <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-white px-1 text-[10px] font-semibold text-[#1a73e8]">
                   {activeVideoEffectsCount}

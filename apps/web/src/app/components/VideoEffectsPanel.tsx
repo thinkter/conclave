@@ -6,6 +6,7 @@ import {
   LoaderCircle,
   Sparkles,
   SlidersHorizontal,
+  WandSparkles,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -922,7 +923,7 @@ export default function VideoEffectsPanel({
                 className="animate-spin"
               />
             ) : (
-              <Sparkles size={13} strokeWidth={1.75} />
+              <WandSparkles size={13} strokeWidth={1.75} />
             )}
             <span>{statusLabel}</span>
           </div>

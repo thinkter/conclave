@@ -1,12 +1,13 @@
 "use client";
 
 import {
+  Blend,
   CircleHelp,
   Loader2,
   MessageSquareWarning,
   MoreVertical,
   Settings,
-  Sparkles,
+  WandSparkles,
   Video,
   VideoOff,
   Mic,
@@ -833,7 +834,7 @@ function JoinScreen({
                   isBackgroundBlurActive ? "bg-[#1a73e8]" : "bg-[#232327]"
                 }`}
               >
-                <Sparkles size={18} />
+                <Blend size={18} />
               </button>
               <div ref={moreOptionsRef} className="relative">
                 <button
@@ -857,7 +858,7 @@ function JoinScreen({
                       aria-label="Backgrounds and effects"
                       className="flex w-full items-center gap-3 px-4 py-3 text-left text-[14px] text-[#f1f3f4] transition-colors duration-150 hover:bg-white/10 disabled:cursor-not-allowed disabled:text-[#f1f3f4]/45 disabled:hover:bg-transparent"
                     >
-                      <Sparkles
+                      <WandSparkles
                         size={18}
                         className="shrink-0 text-[#bdc1c6]"
                       />
