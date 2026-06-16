@@ -192,12 +192,6 @@ export function useSmartParticipantOrder<T extends ParticipantWithMediaHints>(
         return rightIsFeatured - leftIsFeatured;
       }
 
-      const leftPriority = getMediaPriority(left);
-      const rightPriority = getMediaPriority(right);
-      if (leftPriority !== rightPriority) {
-        return rightPriority - leftPriority;
-      }
-
       const leftRaised = Boolean(left.isHandRaised);
       const rightRaised = Boolean(right.isHandRaised);
       if (leftRaised !== rightRaised) {
@@ -212,6 +206,12 @@ export function useSmartParticipantOrder<T extends ParticipantWithMediaHints>(
         if (leftRaisedIndex !== rightRaisedIndex) {
           return leftRaisedIndex - rightRaisedIndex;
         }
+      }
+
+      const leftPriority = getMediaPriority(left);
+      const rightPriority = getMediaPriority(right);
+      if (leftPriority !== rightPriority) {
+        return rightPriority - leftPriority;
       }
 
       const previousLeft = previousOrder.get(left.userId);

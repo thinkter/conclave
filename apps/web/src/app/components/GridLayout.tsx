@@ -90,6 +90,7 @@ interface GridLayoutProps {
 const WARM_BUFFER_TILES = 4;
 const RECENTLY_VISIBLE_WARM_BUFFER_TILES = 4;
 const RECENTLY_VISIBLE_WARM_HOLD_MS = 3500;
+const PRIORITY_WARM_BUFFER_TILES = 4;
 // Spacing of the measured stage. GRID_PADDING mirrors `p-4`; GRID_GAP is the
 // inter-tile gap fed to the Meet packer so it reserves the same gutters we draw.
 const GRID_PADDING = 16;
@@ -114,7 +115,9 @@ type ResolvedSelfViewMode = Exclude<MeetSelfViewMode, "auto">;
 type MeetRoomTilingWarmReason =
   | "boundary"
   | "recently-visible"
-  | "active-speaker";
+  | "active-speaker"
+  | "featured-speaker"
+  | "hand-raised";
 type MeetRoomTilingScore = {
   id: string;
   rank: number;
@@ -234,6 +237,9 @@ type MeetRoomTilingMetadataBase = {
     requestedMaxTiles: number;
     autoTileLimit: number;
     recentlyVisibleWarm: number;
+    priorityWarm: number;
+    handRaisedWarm: number;
+    featuredSpeakerWarm: number;
   };
   stage: {
     mainKind: "presentation" | "local" | "remote" | "none";
@@ -1492,6 +1498,20 @@ function GridLayout({
       );
     }
 
+    if (featuredSpeakerId) {
+      addWarm(
+        overflowParticipants.find(
+          (participant) => participant.userId === featuredSpeakerId,
+        ),
+        "featured-speaker",
+      );
+    }
+
+    overflowParticipants
+      .filter((participant) => participant.isHandRaised)
+      .slice(0, PRIORITY_WARM_BUFFER_TILES)
+      .forEach((participant) => addWarm(participant, "hand-raised"));
+
     return {
       warmParticipants: Array.from(warmById.values()),
       warmReasonById: new Map(
@@ -1503,6 +1523,7 @@ function GridLayout({
     };
   }, [
     activeSpeakerId,
+    featuredSpeakerId,
     isOverflowOpen,
     overflowParticipants,
     recentlyVisibleWarmRevision,
@@ -1822,6 +1843,20 @@ function GridLayout({
         autoTileLimit: autoGridTileLimit,
         recentlyVisibleWarm: Object.values(roomTilingWarmReasons).filter(
           (reasons) => reasons.includes("recently-visible"),
+        ).length,
+        priorityWarm: Object.values(roomTilingWarmReasons).filter((reasons) =>
+          reasons.some(
+            (reason) =>
+              reason === "active-speaker" ||
+              reason === "featured-speaker" ||
+              reason === "hand-raised",
+          ),
+        ).length,
+        handRaisedWarm: Object.values(roomTilingWarmReasons).filter((reasons) =>
+          reasons.includes("hand-raised"),
+        ).length,
+        featuredSpeakerWarm: Object.values(roomTilingWarmReasons).filter(
+          (reasons) => reasons.includes("featured-speaker"),
         ).length,
       },
       stage: {

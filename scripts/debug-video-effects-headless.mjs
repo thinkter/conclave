@@ -776,8 +776,17 @@ const setRangeValue = async (cdp, selector, value) => {
     `(() => {
       const input = document.querySelector(${JSON.stringify(selector)});
       if (!(input instanceof HTMLInputElement)) return false;
-      input.value = ${JSON.stringify(String(value))};
-      input.dispatchEvent(new InputEvent("input", { bubbles: true }));
+      const nextValue = ${JSON.stringify(String(value))};
+      const valueSetter = Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+      )?.set;
+      if (valueSetter) {
+        valueSetter.call(input, nextValue);
+      } else {
+        input.value = nextValue;
+      }
+      input.dispatchEvent(new Event("input", { bubbles: true }));
       input.dispatchEvent(new Event("change", { bubbles: true }));
       return true;
     })()`,
@@ -4369,13 +4378,20 @@ const run = async () => {
 
     await clickButton(cdp, "Close backgrounds and effects");
     await clickButton(cdp, "Dev Tools");
+    await setRangeValue(cdp, '[data-testid="dev-spawn-count"]', 8);
+    await setRangeValue(cdp, '[data-testid="dev-spawn-delay"]', 25);
     await clickButton(cdp, "Spawn");
     await waitFor(
       cdp,
       "dev participants joined",
       `(() => {
         const grid = document.querySelector("[data-meet-view-layout]");
-        return Number(grid?.getAttribute("data-meet-view-ordered-count") || 0) >= 3;
+        const bots = typeof window.__conclaveGetDevHeadlessBots === "function"
+          ? window.__conclaveGetDevHeadlessBots()
+          : [];
+        return Number(grid?.getAttribute("data-meet-view-ordered-count") || 0) >= 8 &&
+          bots.length >= 8 &&
+          bots.every((bot) => bot.connected === true);
       })()`,
       20000,
     );
@@ -5033,6 +5049,92 @@ const run = async () => {
       10000,
     );
     await collectLayoutState(cdp, "layout_after_tiled_overflow");
+
+    const devRaiseHandResult = await evalValue(
+      cdp,
+      `window.__conclaveSetDevHeadlessBotHandRaised?.(-1, true) ?? { success: false, error: "dev helper missing" }`,
+    );
+    emit("dev_headless_raise_hand_result", devRaiseHandResult);
+    if (!devRaiseHandResult?.success) {
+      throw new Error(
+        `Failed to raise dev bot hand: ${JSON.stringify(devRaiseHandResult)}`,
+      );
+    }
+
+    const raisedHandWarmProbe = await waitFor(
+      cdp,
+      "hidden hand-raised participant warmed",
+      `(() => {
+        const grid = document.querySelector("[data-meet-view-layout]");
+        const bots = typeof window.__conclaveGetDevHeadlessBots === "function"
+          ? window.__conclaveGetDevHeadlessBots()
+          : [];
+        const raisedBot = bots.find((bot) => bot.raised === true);
+        const raisedParticipantId = raisedBot?.participantId || raisedBot?.id || "";
+        if (!grid || !raisedBot || !raisedParticipantId) return false;
+        let warmReasons = {};
+        let scores = [];
+        try {
+          warmReasons = JSON.parse(grid.getAttribute("data-meet-room-tiling-warm-reasons") || "{}");
+          scores = JSON.parse(grid.getAttribute("data-meet-room-tiling-scores") || "[]");
+        } catch {}
+        const hiddenIds = (grid.getAttribute("data-meet-room-tiling-hidden-ids") || "")
+          .split(",")
+          .filter(Boolean);
+        const warmIds = (grid.getAttribute("data-meet-room-tiling-warm-ids") || "")
+          .split(",")
+          .filter(Boolean);
+        const roomTilingDebug = typeof window.__conclaveGetMeetRoomTilingDebug === "function"
+          ? window.__conclaveGetMeetRoomTilingDebug()
+          : null;
+        const currentTiling = roomTilingDebug?.current;
+        const attrReasons = Array.isArray(warmReasons[raisedParticipantId])
+          ? warmReasons[raisedParticipantId]
+          : [];
+        const metadataReasons = Array.isArray(
+          currentTiling?.warmReasons?.[raisedParticipantId],
+        )
+          ? currentTiling.warmReasons[raisedParticipantId]
+          : [];
+        const attrScore = scores.find((item) => item.id === raisedParticipantId);
+        const metadataScore = currentTiling?.scores?.find?.(
+          (item) => item.id === raisedParticipantId,
+        );
+        const orderedIndex = currentTiling?.orderedRemoteIds?.indexOf?.(
+          raisedParticipantId,
+        );
+        const ok = hiddenIds.includes(raisedParticipantId) &&
+          warmIds.includes(raisedParticipantId) &&
+          attrReasons.includes("hand-raised") &&
+          metadataReasons.includes("hand-raised") &&
+          attrScore?.raised === true &&
+          attrScore?.hidden === true &&
+          attrScore?.warm === true &&
+          attrScore?.warmReasons?.includes("hand-raised") &&
+          metadataScore?.raised === true &&
+          metadataScore?.hidden === true &&
+          metadataScore?.warm === true &&
+          metadataScore?.warmReasons?.includes("hand-raised") &&
+          Number(currentTiling?.counts?.priorityWarm || 0) >= 1 &&
+          Number(currentTiling?.counts?.handRaisedWarm || 0) >= 1 &&
+          orderedIndex === 0;
+        return ok ? {
+          ok,
+          raisedBot,
+          raisedParticipantId,
+          hiddenIds,
+          warmIds,
+          attrReasons,
+          metadataReasons,
+          attrScore,
+          metadataScore,
+          orderedIndex,
+          counts: currentTiling?.counts ?? null,
+        } : false;
+      })()`,
+      10000,
+    );
+    emit("room_tiling_hidden_hand_raised_warm_probe", raisedHandWarmProbe);
 
     await clickButton(cdp, "Sidebar");
     await waitFor(

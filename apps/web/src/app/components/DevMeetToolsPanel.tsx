@@ -50,6 +50,28 @@ type InlineBot = {
   name: string;
   url: string;
 };
+type DevHeadlessBotSnapshot = {
+  id: string;
+  participantId: string | null;
+  name: string | null;
+  connected: boolean;
+  raised: boolean;
+};
+
+declare global {
+  interface Window {
+    __conclaveGetDevHeadlessBots?: () => DevHeadlessBotSnapshot[];
+    __conclaveSetDevHeadlessBotHandRaised?: (
+      botIdOrIndex: string | number,
+      raised: boolean,
+    ) => Promise<{
+      success: boolean;
+      id?: string;
+      participantId?: string | null;
+      error?: string;
+    }>;
+  }
+}
 
 function DiagnosticVideo({
   stream,
@@ -622,6 +644,9 @@ export default function DevMeetToolsPanel({
   const [headlessCount, setHeadlessCount] = useState(0);
   const openWindowsRef = useRef<Window[]>([]);
   const headlessSocketsRef = useRef<Map<string, Socket>>(new Map());
+  const headlessLabelsRef = useRef<Map<string, string>>(new Map());
+  const headlessParticipantIdsRef = useRef<Map<string, string>>(new Map());
+  const headlessRaisedRef = useRef<Map<string, boolean>>(new Map());
   const headlessTimersRef = useRef<Map<string, number>>(new Map());
   const scheduledTimersRef = useRef<Set<number>>(new Set());
 
@@ -680,6 +705,9 @@ export default function DevMeetToolsPanel({
         }
       }
       headlessSocketsRef.current.delete(id);
+      headlessLabelsRef.current.delete(id);
+      headlessParticipantIdsRef.current.delete(id);
+      headlessRaisedRef.current.delete(id);
       const timer = headlessTimersRef.current.get(id);
       if (timer) {
         window.clearTimeout(timer);
@@ -692,8 +720,17 @@ export default function DevMeetToolsPanel({
   );
 
   const registerHeadlessBot = useCallback(
-    (id: string, socket: Socket, autoCloseMs: number) => {
+    (
+      id: string,
+      label: string,
+      fallbackParticipantId: string,
+      socket: Socket,
+      autoCloseMs: number,
+    ) => {
       headlessSocketsRef.current.set(id, socket);
+      headlessLabelsRef.current.set(id, label);
+      headlessParticipantIdsRef.current.set(id, fallbackParticipantId);
+      headlessRaisedRef.current.set(id, false);
       setHeadlessCount(headlessSocketsRef.current.size);
       socket.on("disconnect", () => removeHeadlessBot(id, false));
       if (autoCloseMs > 0) {
@@ -749,7 +786,8 @@ export default function DevMeetToolsPanel({
         auth: { token: data.token },
       });
 
-      registerHeadlessBot(botId, socket, autoCloseMs);
+      const fallbackParticipantId = `guest-${sessionId}#${sessionId}`;
+      registerHeadlessBot(botId, label, fallbackParticipantId, socket, autoCloseMs);
 
       socket.on("connect", () => {
         socket.emit(
@@ -766,6 +804,29 @@ export default function DevMeetToolsPanel({
           },
         );
       });
+
+      socket.on(
+        "handRaised",
+        ({ userId, raised }: { userId: string; raised: boolean }) => {
+          if (userId === headlessParticipantIdsRef.current.get(botId)) {
+            headlessRaisedRef.current.set(botId, Boolean(raised));
+          }
+        },
+      );
+
+      socket.on(
+        "displayNameSnapshot",
+        ({
+          users,
+        }: {
+          users?: Array<{ userId: string; displayName: string }>;
+        }) => {
+          const match = users?.find((user) => user.displayName === label);
+          if (match?.userId) {
+            headlessParticipantIdsRef.current.set(botId, match.userId);
+          }
+        },
+      );
 
       socket.on("connect_error", (err) => {
         console.warn("[DevBots] Socket error:", err);
@@ -915,6 +976,70 @@ export default function DevMeetToolsPanel({
     headlessIds.forEach((id) => removeHeadlessBot(id));
   }, [clearScheduledTimers, closeAllWindows, removeHeadlessBot]);
 
+  useEffect(() => {
+    window.__conclaveGetDevHeadlessBots = () =>
+      Array.from(headlessSocketsRef.current.entries()).map(([id, socket]) => ({
+        id,
+        participantId: headlessParticipantIdsRef.current.get(id) ?? null,
+        name: headlessLabelsRef.current.get(id) ?? null,
+        connected: socket.connected,
+        raised: headlessRaisedRef.current.get(id) ?? false,
+      }));
+
+    window.__conclaveSetDevHeadlessBotHandRaised = (botIdOrIndex, raised) =>
+      new Promise((resolve) => {
+        const entries = Array.from(headlessSocketsRef.current.entries());
+        const entry =
+          typeof botIdOrIndex === "number"
+            ? entries.at(botIdOrIndex)
+            : entries.find(([id]) => id === botIdOrIndex);
+        if (!entry) {
+          resolve({ success: false, error: "Headless bot not found" });
+          return;
+        }
+
+        const [id, socket] = entry;
+        const participantId = headlessParticipantIdsRef.current.get(id) ?? null;
+        if (!socket.connected) {
+          resolve({
+            success: false,
+            id,
+            participantId,
+            error: "Headless bot disconnected",
+          });
+          return;
+        }
+
+        let settled = false;
+        const timeout = window.setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          resolve({ success: false, id, participantId, error: "Timed out" });
+        }, 3000);
+
+        socket.emit(
+          "setHandRaised",
+          { raised },
+          (response: { success: boolean } | { error: string }) => {
+            if (settled) return;
+            settled = true;
+            window.clearTimeout(timeout);
+            if ("error" in response) {
+              resolve({ success: false, id, participantId, error: response.error });
+              return;
+            }
+            headlessRaisedRef.current.set(id, raised);
+            resolve({ success: true, id, participantId });
+          },
+        );
+      });
+
+    return () => {
+      delete window.__conclaveGetDevHeadlessBots;
+      delete window.__conclaveSetDevHeadlessBotHandRaised;
+    };
+  }, []);
+
   useEffect(
     () => () => {
       clearScheduledTimers();
@@ -967,6 +1092,7 @@ export default function DevMeetToolsPanel({
             <div>
               <div className={labelClass}>Count</div>
               <input
+                data-testid="dev-spawn-count"
                 type="number"
                 min={1}
                 max={50}
@@ -1033,6 +1159,7 @@ export default function DevMeetToolsPanel({
             <div>
               <div className={labelClass}>Delay (ms)</div>
               <input
+                data-testid="dev-spawn-delay"
                 type="number"
                 min={0}
                 max={5000}
