@@ -218,6 +218,15 @@ const minEffectsOutputWidth = Number(
       : 0),
 );
 const headlessProbe = process.env.CONCLAVE_HEADLESS_PROBE ?? "all";
+const allowedHeadlessProbes = new Set([
+  "all",
+  "effects",
+  "permission-blocked-effects",
+]);
+
+if (!allowedHeadlessProbes.has(headlessProbe)) {
+  throw new Error(`Unknown CONCLAVE_HEADLESS_PROBE: ${headlessProbe}`);
+}
 
 const emit = (event, payload = {}) => {
   process.stdout.write(
@@ -2357,10 +2366,6 @@ const run = async () => {
       emit("result", { ok: true, probe: headlessProbe });
       return;
     }
-    if (headlessProbe !== "all") {
-      throw new Error(`Unknown CONCLAVE_HEADLESS_PROBE: ${headlessProbe}`);
-    }
-
     await runPrejoinCameraOffJoinProbe(cdp, prejoinUrl);
     await runPrejoinHandoffProbe(cdp, prejoinUrl);
 
@@ -4019,6 +4024,164 @@ const run = async () => {
       faceFilterRender: state.panelStats?.faceFilterRender ?? null,
       faceLandmarkCount: Number(state.panelStats?.faceLandmarkCount ?? 0),
     });
+
+    const assertEffectsProbeHealthy = (probeLabel) => {
+      const badLogs = cdp.logs.filter((log) =>
+        badLogPatterns.some((pattern) => pattern.test(log.text)),
+      );
+      emit("browser_logs", {
+        count: cdp.logs.length,
+        badLogs,
+        recent: cdp.logs.slice(-40),
+      });
+      const prewarmDoneKinds = new Set(
+        cdp.logs
+          .filter((log) => /processor_worker_prewarm_done/.test(log.text))
+          .map((log) => {
+            const match = log.text.match(/"kind":"([^"]+)"/);
+            return match?.[1] ?? null;
+          })
+          .filter(Boolean),
+      );
+      const prewarmSuppressedKinds = new Set(
+        cdp.logs
+          .filter((log) =>
+            /processor_worker_prewarm_(?:suppressed|cancelled)_busy/.test(
+              log.text,
+            ),
+          )
+          .map((log) => {
+            const match = log.text.match(/"kind":"([^"]+)"/);
+            return match?.[1] ?? null;
+          })
+          .filter(Boolean),
+      );
+      const prewarmFailureLogs = cdp.logs.filter((log) =>
+        /processor_worker_prewarm_failed|output_writer_worker_prewarm_failed/.test(
+          log.text,
+        ),
+      );
+      const outputWriterPrewarmDone = cdp.logs.some((log) =>
+        /output_writer_worker_prewarm_done/.test(log.text),
+      );
+      const outputWriterPrewarmSuppressed = cdp.logs.some((log) =>
+        /output_writer_worker_prewarm_suppressed_busy/.test(log.text),
+      );
+      const cameraLivePrewarmRequested = cdp.logs.some(
+        (log) =>
+          /prewarm_requested/.test(log.text) &&
+          /"reason":"camera-live"/.test(log.text),
+      );
+      const cameraLivePrewarmDone = cdp.logs.some(
+        (log) =>
+          /prewarm_done/.test(log.text) &&
+          /"reason":"camera-live"/.test(log.text),
+      );
+      const missingPrewarmKinds = ["segmentation", "face"].filter(
+        (kind) =>
+          !prewarmDoneKinds.has(kind) && !prewarmSuppressedKinds.has(kind),
+      );
+      const processorPrewarmFailed =
+        missingPrewarmKinds.length > 0 ||
+        (!outputWriterPrewarmDone && !outputWriterPrewarmSuppressed) ||
+        prewarmFailureLogs.length > 0;
+      emit("processor_worker_prewarm_probe", {
+        label: probeLabel,
+        ok: !processorPrewarmFailed,
+        doneKinds: Array.from(prewarmDoneKinds),
+        suppressedKinds: Array.from(prewarmSuppressedKinds),
+        missingKinds: missingPrewarmKinds,
+        outputWriterDone: outputWriterPrewarmDone,
+        outputWriterSuppressed: outputWriterPrewarmSuppressed,
+        failures: prewarmFailureLogs,
+      });
+      emit("camera_live_prewarm_probe", {
+        label: probeLabel,
+        ok: cameraLivePrewarmRequested && cameraLivePrewarmDone,
+        requested: cameraLivePrewarmRequested,
+        done: cameraLivePrewarmDone,
+      });
+
+      const blackOutputCount = Number(
+        state.panelAttrs?.["data-video-effects-black-output-count"] ?? 1,
+      );
+      const faceProbeFailures = expectFaceLandmarks
+        ? faceProbes.filter(
+            (probe) =>
+              probe.faceLandmarkCount <= 0 ||
+              probe.previewMatchesOutput !== true ||
+              probe.render?.filter !== probe.expectedFilterId ||
+              probe.render?.drawn !== true ||
+              Number(probe.render?.changedPixels || 0) <= 0,
+          )
+        : [];
+      const backgroundProbeFailures = backgroundProbes.filter(
+        (probe) =>
+          probe.previewMatchesOutput !== true ||
+          probe.render?.background !== probe.expectedBackgroundId ||
+          probe.render?.active !== true ||
+          Number(probe.render?.changedPixels || 0) <= 0 ||
+          (probe.requiresBackgroundImage &&
+            probe.render?.hasBackgroundImage !== true),
+      );
+      const sourceFrame = state.panelStats?.framePipeline?.sourceFrame ?? null;
+      const darkVideoProbeFallbackFailed =
+        forceDarkVideoProbe &&
+        !(
+          ["track-processor", "image-capture"].includes(sourceFrame?.selection) &&
+          sourceFrame?.fallbackReason === "dark-video" &&
+          Number(sourceFrame?.blackSourceVideoFrameCount || 0) > 0 &&
+          Number(sourceFrame?.fallbackCount || 0) > 0
+        );
+      const effectSwitchLatencyQuality = getEffectSwitchLatencyQuality(
+        cdp.logs,
+        state,
+        probeLabel,
+        { fromIndex: rapidEffectSwitchLogIndex },
+      );
+      emit("effect_switch_latency_quality_probe", effectSwitchLatencyQuality);
+      if (
+        state.panelAttrs?.["data-video-effects-output-published"] !== "true" ||
+        state.panelAttrs?.["data-video-effects-status"] !== "running" ||
+        blackOutputCount !== 0 ||
+        faceProbeFailures.length > 0 ||
+        backgroundProbeFailures.length > 0 ||
+        darkVideoProbeFallbackFailed ||
+        processorPrewarmFailed ||
+        !cameraToggleLivePrewarmRequested ||
+        !cameraToggleLivePrewarmDone ||
+        !cameraLivePrewarmRequested ||
+        !cameraLivePrewarmDone ||
+        !effectSwitchLatencyQuality.ok ||
+        badLogs.length > 0
+      ) {
+        throw new Error(
+          `Video effects headless regression failed: ${JSON.stringify({
+            probe: probeLabel,
+            faceProbeFailures,
+            backgroundProbeFailures,
+            darkVideoProbeFallbackFailed,
+            processorPrewarmFailed,
+            missingPrewarmKinds,
+            prewarmFailureLogs,
+            cameraToggleLivePrewarmRequested,
+            cameraToggleLivePrewarmDone,
+            cameraLivePrewarmRequested,
+            cameraLivePrewarmDone,
+            effectSwitchLatencyQuality,
+            sourceFrame,
+            badLogs,
+            blackOutputCount,
+          })}`,
+        );
+      }
+    };
+
+    if (headlessProbe === "effects") {
+      assertEffectsProbeHealthy(headlessProbe);
+      emit("result", { ok: true, probe: headlessProbe });
+      return;
+    }
 
     await clickButton(cdp, "Close backgrounds and effects");
     await clickButton(cdp, "Dev Tools");
