@@ -4363,6 +4363,8 @@ const run = async () => {
         const roomTilingPrimaryIds = (grid?.getAttribute("data-meet-room-tiling-primary-ids") || "")
           .split(",")
           .filter(Boolean);
+        const roomTilingFeaturedSpeaker =
+          grid?.getAttribute("data-meet-room-tiling-featured-speaker") || "";
         const roomTilingDebug = typeof window.__conclaveGetMeetRoomTilingDebug === "function"
           ? window.__conclaveGetMeetRoomTilingDebug()
           : null;
@@ -4401,6 +4403,7 @@ const run = async () => {
             typeof item.id === "string" &&
             item.rank === index &&
             typeof item.score === "number" &&
+            typeof item.featured === "boolean" &&
             item.visible === true &&
             item.hidden === false
           ) &&
@@ -4411,6 +4414,7 @@ const run = async () => {
           currentTiling?.intervalMs === 200 &&
           currentTiling?.promoteDelayMs === 220 &&
           currentTiling?.minSwitchIntervalMs === 2200 &&
+          (currentTiling?.featuredSpeakerId ?? "") === roomTilingFeaturedSpeaker &&
           currentTiling?.requestedMode === "auto" &&
           currentTiling?.renderedMode === "tiled" &&
           currentTiling?.dynamicCrop === true &&
@@ -4421,6 +4425,7 @@ const run = async () => {
             typeof item.id === "string" &&
             item.rank === index &&
             typeof item.score === "number" &&
+            typeof item.featured === "boolean" &&
             item.visible === true &&
             item.hidden === false
           ) &&

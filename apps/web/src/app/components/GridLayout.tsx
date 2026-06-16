@@ -30,6 +30,7 @@ import {
   useState,
 } from "react";
 import { useSmartParticipantOrder } from "../hooks/useSmartParticipantOrder";
+import { useStableSpeakerId } from "../hooks/useStableSpeakerId";
 import type { Participant } from "../lib/types";
 import { isSystemUserId, truncateDisplayName } from "../lib/utils";
 import ParticipantAudio from "./ParticipantAudio";
@@ -119,6 +120,7 @@ type MeetRoomTilingScore = {
   rank: number;
   score: number;
   active: boolean;
+  featured: boolean;
   raised: boolean;
   video: boolean;
   audio: boolean;
@@ -206,6 +208,7 @@ type MeetRoomTilingMetadataBase = {
   promoteDelayMs: number;
   minSwitchIntervalMs: number;
   activeSpeakerId: string | null;
+  featuredSpeakerId: string | null;
   requestedMode: MeetViewMode;
   renderedMode: EffectiveMeetViewMode;
   effectiveMode: EffectiveMeetViewMode;
@@ -927,6 +930,19 @@ function GridLayout({
       viewSettings.hideTilesWithoutVideo,
     ]
   );
+  const roomSpeakerParticipantIds = useMemo(
+    () => [
+      currentUserId,
+      ...remoteInput.map((participant) => participant.userId),
+    ],
+    [currentUserId, remoteInput],
+  );
+  const featuredSpeakerId = useStableSpeakerId({
+    primarySpeakerId: activeSpeakerId,
+    participantIds: roomSpeakerParticipantIds,
+    promoteDelayMs: ROOM_TILING_PROMOTE_DELAY_MS,
+    minSwitchIntervalMs: ROOM_TILING_MIN_SWITCH_INTERVAL_MS,
+  });
   const requestedSelfViewMode = viewSettings.selfViewMode;
   const requestedSelfViewCorner = viewSettings.selfViewCorner;
   const autoSelfViewMode: ResolvedSelfViewMode =
@@ -941,19 +957,24 @@ function GridLayout({
     : "tile";
   const shouldShowSelfAsTile =
     effectiveSelfViewMode === "tile" || isLocalPinned;
-  const hasActiveVideoSpeaker =
-    activeSpeakerId === currentUserId
+  const isLocalFeaturedSpeaker = featuredSpeakerId === currentUserId;
+  const featuredRemoteParticipant =
+    featuredSpeakerId && featuredSpeakerId !== currentUserId
+      ? remoteInput.find((participant) => participant.userId === featuredSpeakerId) ??
+        null
+      : null;
+  const hasFeaturedVideoSpeaker =
+    isLocalFeaturedSpeaker
       ? shouldShowSelfAsTile && !isCameraOff && hasLiveVideo(localStream)
-      : remoteInput.some(
-          (participant) =>
-            participant.userId === activeSpeakerId &&
-            participantHasLiveVideo(participant),
+      : Boolean(
+          featuredRemoteParticipant &&
+            participantHasLiveVideo(featuredRemoteParticipant),
         );
   const autoStageMode = chooseStageMode({
     count: remoteInput.length + 1,
     presenting: hasPresentation,
     pinned: Boolean(pinnedId),
-    hasActiveVideoSpeaker,
+    hasActiveVideoSpeaker: hasFeaturedVideoSpeaker,
   });
   const effectiveViewMode: EffectiveMeetViewMode =
     viewSettings.mode === "auto"
@@ -1128,12 +1149,6 @@ function GridLayout({
       (participant) => !visibleIds.has(participant.userId)
     );
   }, [orderedRemoteParticipants, visibleParticipants]);
-  const activeRemoteParticipant =
-    activeSpeakerId && activeSpeakerId !== currentUserId
-      ? orderedRemoteParticipants.find(
-          (participant) => participant.userId === activeSpeakerId,
-        ) ?? null
-      : null;
   const stageMainKind: "presentation" | "local" | "remote" | null =
     isLocalPinned
       ? "local"
@@ -1141,15 +1156,15 @@ function GridLayout({
         ? "remote"
         : hasPresentation
           ? "presentation"
-          : isLocalActiveSpeaker && hasActiveVideoSpeaker
+          : isLocalFeaturedSpeaker && hasFeaturedVideoSpeaker
             ? "local"
-            : activeRemoteParticipant || orderedRemoteParticipants[0]
+            : featuredRemoteParticipant || orderedRemoteParticipants[0]
               ? "remote"
               : null;
   const stageMainParticipant =
     stageMainKind === "remote"
       ? pinnedParticipant ??
-        activeRemoteParticipant ??
+        featuredRemoteParticipant ??
         orderedRemoteParticipants[0] ??
         null
       : null;
@@ -1225,9 +1240,9 @@ function GridLayout({
     };
   }, [isCameraOff, localStream, localVideoTrack, usesStageLayout]);
 
-  const sideBySideActiveRemoteParticipant =
-    activeRemoteParticipant && participantHasLiveVideo(activeRemoteParticipant)
-      ? activeRemoteParticipant
+  const sideBySideFeaturedRemoteParticipant =
+    featuredRemoteParticipant && participantHasLiveVideo(featuredRemoteParticipant)
+      ? featuredRemoteParticipant
       : null;
   const sideBySideFirstVideoParticipant =
     orderedRemoteParticipants.find((participant) =>
@@ -1236,17 +1251,17 @@ function GridLayout({
   const sideBySideCompanionKind: "local" | "remote" | null =
     renderedViewMode === "sideBySide" && hasPresentation
       ? shouldShowSelfAsTile &&
-        isLocalActiveSpeaker &&
+        isLocalFeaturedSpeaker &&
         !isCameraOff &&
         hasLiveVideo(localStream)
         ? "local"
-        : sideBySideActiveRemoteParticipant || sideBySideFirstVideoParticipant
+        : sideBySideFeaturedRemoteParticipant || sideBySideFirstVideoParticipant
           ? "remote"
           : null
       : null;
   const sideBySideCompanionParticipant =
     sideBySideCompanionKind === "remote"
-      ? sideBySideActiveRemoteParticipant ?? sideBySideFirstVideoParticipant
+      ? sideBySideFeaturedRemoteParticipant ?? sideBySideFirstVideoParticipant
       : null;
   const sideBySideCompanionParticipantId =
     sideBySideCompanionParticipant?.userId ?? null;
@@ -1588,13 +1603,14 @@ function GridLayout({
       const hasVideo = participantHasLiveVideo(participant);
       const hasAudio = participantHasLiveAudio(participant);
       const active = participant.userId === activeSpeakerId;
+      const featured = participant.userId === featuredSpeakerId;
       const raised = Boolean(participant.isHandRaised);
       const visible = visibleSet.has(participant.userId);
       const hidden = hiddenSet.has(participant.userId);
       const warm = warmSet.has(participant.userId);
       const warmReasons = warmReasonById.get(participant.userId) ?? [];
       const score =
-        (active ? 100 : 0) +
+        (featured ? 100 : active ? 18 : 0) +
         (raised ? 35 : 0) +
         (hasVideo ? 24 : hasAudio ? 12 : 0) +
         (visible ? 8 : 0) +
@@ -1606,6 +1622,7 @@ function GridLayout({
         rank: index,
         score,
         active,
+        featured,
         raised,
         video: hasVideo,
         audio: hasAudio,
@@ -1617,6 +1634,7 @@ function GridLayout({
     });
   }, [
     activeSpeakerId,
+    featuredSpeakerId,
     orderedRemoteParticipants,
     roomTilingHiddenIds,
     roomTilingRemoteVisibleIds,
@@ -1773,6 +1791,7 @@ function GridLayout({
       promoteDelayMs: ROOM_TILING_PROMOTE_DELAY_MS,
       minSwitchIntervalMs: ROOM_TILING_MIN_SWITCH_INTERVAL_MS,
       activeSpeakerId,
+      featuredSpeakerId,
       requestedMode: viewSettings.mode,
       renderedMode: renderedViewMode,
       effectiveMode: effectiveViewMode,
@@ -1846,6 +1865,7 @@ function GridLayout({
     }),
     [
       activeSpeakerId,
+      featuredSpeakerId,
       actualSelfViewPlacement,
       autoGridTileLimit,
       autoStageMode,
@@ -2248,6 +2268,7 @@ function GridLayout({
           ROOM_TILING_MIN_SWITCH_INTERVAL_MS
         }
         data-meet-room-tiling-active-speaker={activeSpeakerId ?? ""}
+        data-meet-room-tiling-featured-speaker={featuredSpeakerId ?? ""}
         data-meet-room-tiling-primary-ids={roomTilingPrimaryIds.join(",")}
         data-meet-room-tiling-visible-ids={roomTilingRemoteVisibleIds.join(",")}
         data-meet-room-tiling-hidden-ids={roomTilingHiddenIds.join(",")}
