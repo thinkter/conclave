@@ -1448,15 +1448,16 @@ const runPrejoinHandoffProbe = async (cdp, prejoinUrl) => {
 
   await waitFor(
     cdp,
-    "prejoin effects quick button removed",
+    "prejoin direct effects button ready",
     `(() => {
-      return !Array.from(document.querySelectorAll("button")).some(
-        (candidate) => candidate.getAttribute("aria-label") === "Backgrounds and effects"
-      );
+      const button = document.querySelector('[data-testid="prejoin-backgrounds-effects"]');
+      return button instanceof HTMLButtonElement &&
+        !button.disabled &&
+        button.getAttribute("aria-label") === "Backgrounds and effects";
     })()`,
     10000,
   );
-  await collectState(cdp, "state_prejoin_no_direct_effects_button");
+  await collectState(cdp, "state_prejoin_direct_effects_button");
 
   const quickBlurLogStartIndex = cdp.logs.length;
   await clickButton(cdp, "Turn on background blur");
@@ -1495,14 +1496,7 @@ const runPrejoinHandoffProbe = async (cdp, prejoinUrl) => {
   }
   await collectState(cdp, "state_prejoin_quick_blur_selected_camera_off");
 
-  await clickButton(cdp, "More options");
-  await waitFor(
-    cdp,
-    "prejoin more options menu",
-    `Boolean(document.querySelector('[data-testid="prejoin-more-options-menu"]'))`,
-    10000,
-  );
-  await clickTestId(cdp, "prejoin-more-backgrounds-effects");
+  await clickTestId(cdp, "prejoin-backgrounds-effects");
   await waitFor(
     cdp,
     "prejoin camera-off effects panel",
@@ -1735,14 +1729,7 @@ const runPrejoinCameraOffJoinProbe = async (cdp, prejoinUrl) => {
     10000,
   );
 
-  await clickButton(cdp, "More options");
-  await waitFor(
-    cdp,
-    "prejoin camera-off more options menu",
-    `Boolean(document.querySelector('[data-testid="prejoin-more-options-menu"]'))`,
-    10000,
-  );
-  await clickTestId(cdp, "prejoin-more-backgrounds-effects");
+  await clickTestId(cdp, "prejoin-backgrounds-effects");
   await waitFor(
     cdp,
     "prejoin camera-off effect panel before join",
@@ -1943,13 +1930,25 @@ const runPrejoinPermissionDeniedEffectsProbe = async (cdp, prejoinUrl) => {
     30000,
   );
 
-  await clickButton(cdp, "More options");
   await waitFor(
     cdp,
-    "prejoin permission-blocked more options menu",
-    `Boolean(document.querySelector('[data-testid="prejoin-more-options-menu"]'))`,
+    "prejoin permission-blocked direct effects button enabled",
+    `(() => {
+      const quickBlurButton = Array.from(document.querySelectorAll("button")).find(
+        (button) => button.getAttribute("aria-label") === "Turn on background blur"
+      );
+      const effectsButton = document.querySelector('[data-testid="prejoin-backgrounds-effects"]');
+      const effectsButtonLabel = (effectsButton?.getAttribute("aria-label") || "")
+        .replace(/\\s+/g, " ")
+        .trim();
+      return Boolean(quickBlurButton && quickBlurButton.disabled) &&
+        Boolean(effectsButton instanceof HTMLButtonElement && !effectsButton.disabled) &&
+        effectsButtonLabel === "Backgrounds and effects" &&
+        !document.querySelector('[data-testid="video-effects-panel"]');
+    })()`,
     10000,
   );
+  await clickButton(cdp, "More options");
   await waitFor(
     cdp,
     "prejoin permission-blocked effects menu entry enabled",
@@ -1976,14 +1975,14 @@ const runPrejoinPermissionDeniedEffectsProbe = async (cdp, prejoinUrl) => {
   const clickedEffectsEntry = await evalValue(
     cdp,
     `(() => {
-      const effectsButton = document.querySelector('[data-testid="prejoin-more-backgrounds-effects"]');
+      const effectsButton = document.querySelector('[data-testid="prejoin-backgrounds-effects"]');
       if (!(effectsButton instanceof HTMLButtonElement)) return false;
       effectsButton.click();
       return true;
     })()`,
   );
   if (!clickedEffectsEntry) {
-    throw new Error("Permission-blocked effects row was not present");
+    throw new Error("Permission-blocked direct effects button was not present");
   }
   await waitFor(
     cdp,

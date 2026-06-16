@@ -831,10 +831,31 @@ function JoinScreen({
                 }
                 aria-pressed={isBackgroundBlurActive}
                 className={`inline-flex h-11 w-11 items-center justify-center rounded-full text-white transition-colors duration-150 hover:bg-[#2e2e33] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-[#232327] ${
-                  isBackgroundBlurActive ? "bg-[#1a73e8]" : "bg-[#232327]"
+                  isBackgroundBlurActive ? "bg-[#F95F4A] hover:bg-[#ff6d5a]" : "bg-[#232327]"
                 }`}
               >
                 <Blend size={18} />
+              </button>
+              <button
+                type="button"
+                data-testid="prejoin-backgrounds-effects"
+                onClick={openEffectsPanel}
+                onFocus={() => prewarmLiveCameraEffects("prejoin-effects-button")}
+                onPointerEnter={() =>
+                  prewarmLiveCameraEffects("prejoin-effects-button")
+                }
+                onTouchStart={() =>
+                  prewarmLiveCameraEffects("prejoin-effects-button")
+                }
+                aria-label="Backgrounds and effects"
+                title="Backgrounds and effects"
+                className={`inline-flex h-11 w-11 items-center justify-center rounded-full text-white transition-colors duration-150 hover:bg-[#2e2e33] ${
+                  activeVideoEffectsCount > 0
+                    ? "bg-[#F95F4A] shadow-[0_0_0_1px_rgba(249,95,74,0.35)] hover:bg-[#ff6d5a]"
+                    : "bg-[#232327]"
+                }`}
+              >
+                <WandSparkles size={18} />
               </button>
               <div ref={moreOptionsRef} className="relative">
                 <button
