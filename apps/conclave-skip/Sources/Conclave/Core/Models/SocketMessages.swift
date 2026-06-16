@@ -56,6 +56,7 @@ struct ProducerAppData: Codable {
 struct ConsumeRequest: Codable {
     let producerId: String
     let rtpCapabilities: RtpCapabilities
+    let transportId: String?
 }
 
 struct ResumeConsumerRequest: Codable {

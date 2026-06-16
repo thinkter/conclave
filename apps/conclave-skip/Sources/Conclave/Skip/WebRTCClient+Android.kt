@@ -504,11 +504,12 @@ internal class WebRTCClient : SendTransport.Listener, RecvTransport.Listener, Pr
         val socket = socketManager ?: throw ErrorException("Socket not configured")
         val rtpCapsJson = socket.routerRtpCapabilitiesJson ?: throw ErrorException("RTP caps missing")
         val receiveTransport = receiveTransport ?: throw ErrorException("Receive transport missing")
+        val receiveTransportId = receiveTransportId ?: throw ErrorException("Receive transport ID missing")
 
         // Raw-JSON path: send the router caps verbatim and feed the server's
         // rtpParameters straight into mediasoup, never touching the Codable
         // structs that Skip's JSONEncoder can't round-trip.
-        val response = socket.consumeRaw(producerId, rtpCapsJson)
+        val response = socket.consumeRaw(producerId, rtpCapsJson, receiveTransportId)
         val consumer = receiveTransport.consume(
             this,
             response.id,

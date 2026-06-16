@@ -454,11 +454,16 @@ final class WebRTCClient: NSObject, ObservableObject {
     func consumeProducer(producerId: String, producerUserId: String, producerType: String = "webcam") async throws {
         guard let socket = socketManager,
               let rtpCaps = serverRtpCapabilities,
-              let receiveTransport = receiveTransport else {
+              let receiveTransport = receiveTransport,
+              let receiveTransportId = receiveTransportId else {
             throw WebRTCError.notConfigured
         }
 
-        let response = try await socket.consume(producerId: producerId, rtpCapabilities: rtpCaps)
+        let response = try await socket.consume(
+            producerId: producerId,
+            rtpCapabilities: rtpCaps,
+            transportId: receiveTransportId
+        )
 
         let kind: MediaKind = response.kind == "video" ? .video : .audio
         let rtpParameters = try encodeJSONString(response.rtpParameters)

@@ -490,8 +490,9 @@ internal class SocketIOManager {
     /// Consume using the router rtpCapabilities verbatim JSON, and return the
     /// server's rtpParameters as raw JSON for mediasoup `RecvTransport.consume()`.
     /// Same rationale as produceRaw: avoid the AnyCodable encode crash.
-    internal suspend fun consumeRaw(producerId: String, rtpCapabilitiesJson: String): ConsumeRawResult {
+    internal suspend fun consumeRaw(producerId: String, rtpCapabilitiesJson: String, transportId: String): ConsumeRawResult {
         val request = JSONObject()
+        request.put("transportId", transportId)
         request.put("producerId", producerId)
         request.put("rtpCapabilities", JSONObject(rtpCapabilitiesJson))
         val data = emit(SocketEvent.consume, request)

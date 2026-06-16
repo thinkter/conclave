@@ -138,6 +138,13 @@ export interface JoinRoomResponse {
   webinarMaxAttendees?: number;
 }
 
+export interface JoinRoomErrorResponse {
+  error: string;
+  roomId?: string;
+  redirectInstanceId?: string;
+  redirectUrl?: string;
+}
+
 export interface WebinarConfigSnapshot {
   enabled: boolean;
   publicAccess: boolean;

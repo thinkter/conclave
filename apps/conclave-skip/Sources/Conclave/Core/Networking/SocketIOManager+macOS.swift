@@ -104,7 +104,7 @@ final class SocketIOManager {
         throw NSError(domain: "Conclave", code: -1, userInfo: [NSLocalizedDescriptionKey: "SocketIO not available on macOS"])
     }
 
-    func consume(producerId: String, rtpCapabilities: RtpCapabilities) async throws -> ConsumeResponse {
+    func consume(producerId: String, rtpCapabilities: RtpCapabilities, transportId: String?) async throws -> ConsumeResponse {
         throw NSError(domain: "Conclave", code: -1, userInfo: [NSLocalizedDescriptionKey: "SocketIO not available on macOS"])
     }
     func resumeConsumer(consumerId: String, requestKeyFrame: Bool = false) async throws { }

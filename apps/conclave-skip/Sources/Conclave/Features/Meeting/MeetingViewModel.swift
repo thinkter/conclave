@@ -1466,12 +1466,11 @@ final class MeetingViewModel {
         }
 
         if let appsState = snapshot.appsState {
-            let activeAppId = appsState.activeAppId?.trimmingCharacters(in: .whitespacesAndNewlines)
-            state.activeAppId = activeAppId?.isEmpty == false ? activeAppId : nil
-            if let locked = appsState.locked {
-                state.isAppsLocked = locked
-            }
-            state.isAppsActionInFlight = false
+            applyAppsState(AppsStateNotification(
+                activeAppId: appsState.activeAppId,
+                locked: appsState.locked ?? state.isAppsLocked,
+                roomId: roomId
+            ))
         }
 
         if let participants = snapshot.participants {

@@ -97,7 +97,7 @@ final class SocketIOManager {
         fatalError()
     }
 
-    func consume(producerId: String, rtpCapabilities: RtpCapabilities) async throws -> ConsumeResponse { fatalError() }
+    func consume(producerId: String, rtpCapabilities: RtpCapabilities, transportId: String?) async throws -> ConsumeResponse { fatalError() }
     func resumeConsumer(consumerId: String, requestKeyFrame: Bool = false) async throws { fatalError() }
     func getProducers() async throws -> GetProducersResponse { fatalError() }
 

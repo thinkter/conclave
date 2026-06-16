@@ -51,6 +51,12 @@ const DEFAULT_PUBLIC_STUN_URLS = [
 const resolveSfuUrl = () =>
   process.env.SFU_URL || process.env.NEXT_PUBLIC_SFU_URL || "http://localhost:3031";
 
+type RoomRoutingResponse = {
+  owner?: {
+    instanceUrl?: string;
+  } | null;
+};
+
 const splitUrls = (value: string | undefined): string[] =>
   (value ?? "")
     .split(",")
@@ -96,6 +102,66 @@ const parseEmailList = (value: string | undefined): Set<string> =>
 
 const isScheduledRoomId = (value: string): boolean =>
   /^sched-[a-f0-9]{8}$/i.test(value);
+
+const normalizeSfuUrl = (value: string): string => value.replace(/\/+$/, "");
+
+const normalizeRoutedSfuUrl = (value: unknown): string | null => {
+  if (typeof value !== "string" || !value.trim()) {
+    return null;
+  }
+
+  try {
+    const url = new URL(value.trim());
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return null;
+    }
+    return normalizeSfuUrl(url.toString());
+  } catch {
+    return null;
+  }
+};
+
+let roomRoutingWarningLogged = false;
+const resolveRoutedSfuUrl = async (options: {
+  baseSfuUrl: string;
+  secret: string;
+  clientId: string;
+  roomId: string;
+}): Promise<string> => {
+  const baseSfuUrl = normalizeSfuUrl(options.baseSfuUrl);
+  try {
+    const routingUrl =
+      `${baseSfuUrl}/routing/rooms/` +
+      `${encodeURIComponent(options.clientId)}/` +
+      encodeURIComponent(options.roomId);
+    const response = await fetch(
+      routingUrl,
+      {
+        method: "GET",
+        headers: {
+          "x-sfu-secret": options.secret,
+          accept: "application/json",
+        },
+        cache: "no-store",
+      },
+    );
+    if (!response.ok) {
+      return baseSfuUrl;
+    }
+
+    const data = (await response.json()) as RoomRoutingResponse;
+    return normalizeRoutedSfuUrl(data.owner?.instanceUrl) ?? baseSfuUrl;
+  } catch (error) {
+    if (!roomRoutingWarningLogged) {
+      console.warn(
+        "[SFU Join] Room routing lookup failed; using default SFU URL.",
+        error,
+      );
+      roomRoutingWarningLogged = true;
+    }
+    return baseSfuUrl;
+  }
+};
 
 const alwaysHostEmails = parseEmailList(
   firstNonEmpty(
@@ -279,6 +345,12 @@ export async function POST(request: Request) {
   });
 
   const secret = process.env.SFU_SECRET || "development-secret";
+  const routedSfuUrl = await resolveRoutedSfuUrl({
+    baseSfuUrl: resolveSfuUrl(),
+    secret,
+    clientId,
+    roomId,
+  });
   logSecretFingerprint(secret);
   const token = jwt.sign(
     {
@@ -301,7 +373,7 @@ export async function POST(request: Request) {
 
   return NextResponse.json({
     token,
-    sfuUrl: resolveSfuUrl(),
+    sfuUrl: routedSfuUrl,
     ...(iceServers.length > 0 ? { iceServers } : {}),
   });
 }

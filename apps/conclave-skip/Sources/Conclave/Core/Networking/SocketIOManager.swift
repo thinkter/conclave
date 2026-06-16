@@ -500,8 +500,16 @@ final class SocketIOManager {
         return response.producerId
     }
 
-    func consume(producerId: String, rtpCapabilities: RtpCapabilities) async throws -> ConsumeResponse {
-        let request = ConsumeRequest(producerId: producerId, rtpCapabilities: rtpCapabilities)
+    func consume(
+        producerId: String,
+        rtpCapabilities: RtpCapabilities,
+        transportId: String?
+    ) async throws -> ConsumeResponse {
+        let request = ConsumeRequest(
+            producerId: producerId,
+            rtpCapabilities: rtpCapabilities,
+            transportId: transportId
+        )
         let data = try await emit(event: SocketEvent.consume, payload: request)
         return try JSONDecoder().decode(ConsumeResponse.self, from: data)
     }
