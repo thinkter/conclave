@@ -50,6 +50,60 @@ const SELF_VIEW_OPTIONS: {
   { id: "minimized", label: "Minimized", icon: Minimize2 },
 ];
 
+function ViewOptionButton<T extends string>({
+  id,
+  label,
+  icon: Icon,
+  selected,
+  testId,
+  dataAttribute,
+  onClick,
+}: {
+  id: T;
+  label: string;
+  icon: typeof Grid3X3;
+  selected: boolean;
+  testId?: string;
+  dataAttribute?: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={selected}
+      data-testid={testId}
+      {...(dataAttribute ? { [dataAttribute]: id } : {})}
+      className={`relative flex min-h-[72px] flex-col items-start justify-between rounded-[14px] border p-3 text-left transition-[background-color,border-color,box-shadow] duration-[120ms] ${
+        selected
+          ? ""
+          : "border-white/[0.10] bg-[#131316] hover:border-white/[0.18] hover:bg-[#1f1f23]"
+      }`}
+      style={
+        selected
+          ? {
+              backgroundColor: "#211817",
+              borderColor: "rgba(249, 95, 74, 0.7)",
+              boxShadow: "0 0 0 1px rgba(249, 95, 74, 0.18)",
+            }
+          : undefined
+      }
+    >
+      <Icon
+        size={19}
+        strokeWidth={1.75}
+        className={selected ? "text-[#F95F4A]" : "text-[#a1a1aa]"}
+      />
+      <span className="text-[13px] font-medium text-[#fafafa]">{label}</span>
+      {selected ? (
+        <span className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full bg-[#F95F4A] text-white shadow-[0_4px_12px_rgba(249,95,74,0.28)]">
+          <Check size={13} strokeWidth={2} />
+        </span>
+      ) : null}
+    </button>
+  );
+}
+
 export default function MeetViewPanel({
   settings,
   onSettingsChange,
@@ -80,13 +134,16 @@ export default function MeetViewPanel({
 
   return (
     <aside
-      className="fixed bottom-24 right-4 top-4 z-40 flex w-[360px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-[28px] border border-[#dadce0] bg-white text-[#202124] shadow-[0_18px_55px_rgba(60,64,67,0.28)] animate-[meet-panel-in_180ms_cubic-bezier(0.22,1,0.36,1)]"
+      data-testid="meet-view-panel"
+      className="fixed bottom-24 right-4 top-4 z-40 flex w-[360px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-[18px] border border-white/[0.10] bg-[#18181b] text-[#fafafa] shadow-[0_18px_60px_rgba(0,0,0,0.42)] animate-[meet-panel-in_180ms_cubic-bezier(0.22,1,0.36,1)]"
       aria-label="Adjust view"
     >
-      <header className="flex items-center justify-between border-b border-[#e8eaed] px-5 py-4">
+      <header className="flex items-center justify-between border-b border-white/[0.08] px-4 py-4">
         <div>
-          <h2 className="text-[17px] font-medium leading-tight">Adjust view</h2>
-          <p className="mt-0.5 text-[12px] text-[#5f6368]">
+          <h2 className="text-[16px] font-semibold leading-tight">
+            Adjust view
+          </h2>
+          <p className="mt-0.5 text-[12px] text-[#a1a1aa]">
             {participantCount} participant{participantCount === 1 ? "" : "s"}
           </p>
         </div>
@@ -94,61 +151,45 @@ export default function MeetViewPanel({
           type="button"
           onClick={onClose}
           aria-label="Close adjust view"
-          className="inline-flex h-9 w-9 items-center justify-center rounded-full text-[#5f6368] transition-colors hover:bg-black/[0.06] hover:text-[#202124]"
+          className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-[#a1a1aa] transition-colors hover:bg-white/[0.06] hover:text-[#fafafa]"
         >
           <X size={18} strokeWidth={1.75} />
         </button>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-        <section className="rounded-[18px] bg-[#f8fafd] p-3">
-          <h3 className="px-1 pb-2 text-[13px] font-medium text-[#3c4043]">
+      <div className="min-h-0 flex-1 overflow-y-auto pb-4 [scrollbar-width:thin] [scrollbar-color:rgba(250,250,250,0.24)_transparent]">
+        <section className="px-4 py-4">
+          <h3 className="mb-2 text-[12px] font-semibold uppercase tracking-[0.14em] text-[#a1a1aa]">
             Layout
           </h3>
           <div className="grid grid-cols-2 gap-2">
             {MODE_OPTIONS.map((option) => {
-              const Icon = option.icon;
               const selected = settings.mode === option.id;
               return (
-                <button
+                <ViewOptionButton
                   key={option.id}
-                  type="button"
+                  id={option.id}
+                  label={option.label}
+                  icon={option.icon}
+                  selected={selected}
+                  testId={`meet-view-mode-${option.id}`}
+                  dataAttribute="data-meet-view-option"
                   onClick={() => setMode(option.id)}
-                  aria-pressed={selected}
-                  className={`relative flex min-h-[76px] flex-col items-start justify-between rounded-[16px] border p-3 text-left transition-colors ${
-                    selected
-                      ? "border-[#1a73e8] bg-white"
-                      : "border-transparent bg-[#edf3ff] hover:bg-[#e6efff]"
-                  }`}
-                >
-                  <Icon
-                    size={19}
-                    strokeWidth={1.75}
-                    className={selected ? "text-[#1a73e8]" : "text-[#5f6368]"}
-                  />
-                  <span className="text-[13px] font-medium text-[#202124]">
-                    {option.label}
-                  </span>
-                  {selected ? (
-                    <span className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full bg-[#1a73e8] text-white">
-                      <Check size={13} strokeWidth={2} />
-                    </span>
-                  ) : null}
-                </button>
+                />
               );
             })}
           </div>
         </section>
 
-        <section className="mt-4 rounded-[18px] bg-[#f8fafd] p-4">
+        <section className="border-t border-white/[0.08] px-4 py-4">
           <div className="flex items-center justify-between gap-3">
             <label
               htmlFor="meet-max-tiles"
-              className="text-[13px] font-medium text-[#3c4043]"
+              className="text-[13px] font-medium text-[#fafafa]"
             >
               Maximum tiles
             </label>
-            <span className="rounded-full bg-white px-2.5 py-1 text-[12px] font-medium text-[#202124]">
+            <span className="rounded-full border border-white/[0.10] bg-white/[0.06] px-2.5 py-1 text-[12px] font-medium text-[#fafafa]">
               {settings.maxTiles}
             </span>
           </div>
@@ -166,11 +207,11 @@ export default function MeetViewPanel({
               commitMaxTilesValue(event.currentTarget.value)
             }
             onKeyUp={(event) => commitMaxTilesValue(event.currentTarget.value)}
-            className="mt-3 w-full accent-[#1a73e8]"
+            className="mt-3 w-full accent-[#F95F4A]"
           />
         </section>
 
-        <section className="mt-4 rounded-[18px] bg-[#f8fafd] p-2">
+        <section className="border-t border-white/[0.08] px-4 py-3">
           <button
             type="button"
             role="switch"
@@ -178,16 +219,16 @@ export default function MeetViewPanel({
             onClick={() =>
               setHideTilesWithoutVideo(!settings.hideTilesWithoutVideo)
             }
-            className="flex w-full items-center justify-between gap-3 rounded-[14px] px-2 py-2 text-left transition-colors hover:bg-black/[0.04]"
+            className="flex w-full items-center justify-between gap-3 rounded-[12px] px-3 py-2.5 text-left transition-colors duration-[120ms] hover:bg-white/[0.06]"
           >
-            <span className="text-[13px] font-medium text-[#202124]">
+            <span className="text-[13px] font-medium text-[#fafafa]">
               Hide tiles without video
             </span>
             <span
               className={`relative h-6 w-10 rounded-full border transition-colors ${
                 settings.hideTilesWithoutVideo
-                  ? "border-[#1a73e8] bg-[#1a73e8]"
-                  : "border-[#dadce0] bg-[#f1f3f4]"
+                  ? "border-[#F95F4A] bg-[#F95F4A]"
+                  : "border-white/[0.16] bg-white/[0.08]"
               }`}
             >
               <span
@@ -201,8 +242,8 @@ export default function MeetViewPanel({
           </button>
         </section>
 
-        <section className="mt-4 rounded-[18px] bg-[#f8fafd] p-3">
-          <h3 className="px-1 pb-2 text-[13px] font-medium text-[#3c4043]">
+        <section className="border-t border-white/[0.08] px-4 py-4">
+          <h3 className="mb-2 text-[12px] font-semibold uppercase tracking-[0.14em] text-[#a1a1aa]">
             Your self-view
           </h3>
           <div
@@ -210,35 +251,18 @@ export default function MeetViewPanel({
             data-meet-self-view-options="true"
           >
             {SELF_VIEW_OPTIONS.map((option) => {
-              const Icon = option.icon;
               const selected = settings.selfViewMode === option.id;
               return (
-                <button
+                <ViewOptionButton
                   key={option.id}
-                  type="button"
+                  id={option.id}
+                  label={option.label}
+                  icon={option.icon}
+                  selected={selected}
+                  testId={`meet-self-view-${option.id}`}
+                  dataAttribute="data-meet-self-view-option"
                   onClick={() => setSelfViewMode(option.id)}
-                  aria-pressed={selected}
-                  data-meet-self-view-option={option.id}
-                  className={`relative flex min-h-[66px] flex-col items-start justify-between rounded-[16px] border p-3 text-left transition-colors ${
-                    selected
-                      ? "border-[#1a73e8] bg-white"
-                      : "border-transparent bg-[#edf3ff] hover:bg-[#e6efff]"
-                  }`}
-                >
-                  <Icon
-                    size={18}
-                    strokeWidth={1.75}
-                    className={selected ? "text-[#1a73e8]" : "text-[#5f6368]"}
-                  />
-                  <span className="text-[13px] font-medium text-[#202124]">
-                    {option.label}
-                  </span>
-                  {selected ? (
-                    <span className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full bg-[#1a73e8] text-white">
-                      <Check size={13} strokeWidth={2} />
-                    </span>
-                  ) : null}
-                </button>
+                />
               );
             })}
           </div>
