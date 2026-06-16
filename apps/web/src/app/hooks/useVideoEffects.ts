@@ -3940,7 +3940,8 @@ const prewarmOutputWriterWorker = (
   setPromise: (promise: Promise<void> | null) => void,
 ) => {
   if (isVideoEffectsPipelineBusyForPrewarm()) {
-    logVideoEffects(instanceId, "output_writer_worker_prewarm_busy_allowed", {
+    logVideoEffects(instanceId, "output_writer_worker_prewarm_suppressed_busy", {
+      phase: "start",
       activePipelineCount: activeVideoEffectsPipelineCount,
       busyForMs:
         typeof performance === "undefined"
@@ -3949,6 +3950,7 @@ const prewarmOutputWriterWorker = (
               Math.max(0, activeVideoEffectsPipelineBusyUntil - performance.now()),
             ),
     });
+    return Promise.resolve();
   }
   if (prewarmedOutputWriterWorker) {
     logVideoEffects(instanceId, "output_writer_worker_prewarm_reuse_stored", {
@@ -4025,6 +4027,22 @@ const prewarmOutputWriterWorker = (
       }
     };
     timeoutId = window.setTimeout(() => {
+      if (isVideoEffectsPipelineBusyForPrewarm()) {
+        logVideoEffects(
+          instanceId,
+          "output_writer_worker_prewarm_suppressed_busy",
+          {
+            phase: "timeout",
+            elapsedMs: Math.round(performance.now() - startedAt),
+            activePipelineCount: activeVideoEffectsPipelineCount,
+            busyForMs: Math.round(
+              Math.max(0, activeVideoEffectsPipelineBusyUntil - performance.now()),
+            ),
+          },
+        );
+        finish();
+        return;
+      }
       finish(new Error("output writer worker prewarm timed out."));
     }, PROCESSOR_PREWARM_TIMEOUT_MS);
 
@@ -4041,6 +4059,23 @@ const prewarmOutputWriterWorker = (
       ) => {
         const message = event.data;
         if (message.type === "READY") {
+          if (isVideoEffectsPipelineBusyForPrewarm()) {
+            logVideoEffects(
+              instanceId,
+              "output_writer_worker_prewarm_suppressed_busy",
+              {
+                phase: "ready",
+                hasVideoFrame: message.hasVideoFrame,
+                hasWritableStream: message.hasWritableStream,
+                hasOffscreenCanvas: message.hasOffscreenCanvas,
+                renderer: message.renderer,
+                elapsedMs: Math.round(performance.now() - startedAt),
+                activePipelineCount: activeVideoEffectsPipelineCount,
+              },
+            );
+            finish();
+            return;
+          }
           if (!message.hasVideoFrame || !worker || !generatorTrack) {
             logVideoEffects(instanceId, "output_writer_worker_prewarm_done", {
               hasVideoFrame: message.hasVideoFrame,
