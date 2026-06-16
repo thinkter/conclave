@@ -427,8 +427,8 @@ struct MoreSheetView: View {
 
     private var browserAudioRow: some View {
         MoreRow(
-            icon: viewModel.state.isBrowserAudioMuted ? "speaker.wave.2.fill" : "speaker.slash.fill",
-            androidIcon: viewModel.state.isBrowserAudioMuted ? "volume" : "volume.off",
+            icon: viewModel.state.isBrowserAudioMuted ? "speaker.slash.fill" : "speaker.wave.2.fill",
+            androidIcon: viewModel.state.isBrowserAudioMuted ? "volume.off" : "volume",
             title: viewModel.state.isBrowserAudioMuted ? "Unmute browser audio" : "Mute browser audio",
             tint: viewModel.state.isBrowserAudioMuted ? ACMColors.primaryOrange : ACMColors.text,
             androidTint: viewModel.state.isBrowserAudioMuted ? "accent" : "text"

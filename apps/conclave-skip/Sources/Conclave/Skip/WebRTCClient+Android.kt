@@ -92,6 +92,7 @@ internal class WebRTCClient : SendTransport.Listener, RecvTransport.Listener, Pr
         val producerId: String,
         val userId: String,
         val kind: String,
+        val type: String,
         // "{userId}" for webcam, "{userId}-screen" for a screen-share, so a
         // user's webcam + screen tracks coexist (mirrors the iOS client).
         val trackKey: String = "",
@@ -523,6 +524,7 @@ internal class WebRTCClient : SendTransport.Listener, RecvTransport.Listener, Pr
             producerId = response.producerId,
             userId = producerUserId,
             kind = response.kind,
+            type = producerType,
             trackKey = trackKey
         )
 
@@ -1136,7 +1138,7 @@ internal class WebRTCClient : SendTransport.Listener, RecvTransport.Listener, Pr
     internal fun sampleAudioLevels(localUserId: String? = null): Dictionary<String, Double> {
         var levels: Dictionary<String, Double> = dictionaryOf()
         for ((_, info) in consumers) {
-            if (info.kind != "audio") {
+            if (info.kind != "audio" || info.type != ProducerType.webcam.rawValue) {
                 continue
             }
             val statsJson = try {

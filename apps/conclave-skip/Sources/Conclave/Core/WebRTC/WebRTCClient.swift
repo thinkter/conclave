@@ -97,6 +97,7 @@ final class WebRTCClient: NSObject, ObservableObject {
         let producerId: String
         let userId: String
         let kind: String
+        let type: String
         // Key under which the video track is stored in remoteVideoTracks:
         // "{userId}" for webcam, "{userId}-screen" for a screen-share — so a
         // user's webcam and screen tracks coexist instead of overwriting.
@@ -482,6 +483,7 @@ final class WebRTCClient: NSObject, ObservableObject {
             producerId: response.producerId,
             userId: producerUserId,
             kind: response.kind,
+            type: producerType,
             trackKey: trackKey
         )
 
@@ -713,7 +715,8 @@ final class WebRTCClient: NSObject, ObservableObject {
     /// consumer WebRTC stats. The shared VM picks the loudest above a threshold.
     func sampleAudioLevels(localUserId: String? = nil) -> [String: Double] {
         var levels: [String: Double] = [:]
-        for (_, info) in consumers where info.kind == "audio" {
+        for (_, info) in consumers
+        where info.kind == "audio" && info.type == ProducerType.webcam.rawValue {
             let statsJson = info.consumer.stats
             if let level = Self.parseInboundAudioLevel(statsJson) {
                 levels[info.userId] = level
