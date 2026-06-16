@@ -148,6 +148,7 @@ struct JoinView: View {
             inputFocusClearGeneration += 1
 #if SKIP
             PermissionHelper.onRecordAudioPermissionResult = nil
+            PermissionHelper.onCameraPermissionResult = nil
 #endif
             stopPreviewCapture()
         }
@@ -1498,7 +1499,12 @@ struct JoinView: View {
     
     private func toggleCamera() {
 #if SKIP
-        isCameraOn = !isCameraOn
+        if isCameraOn {
+            PermissionHelper.onCameraPermissionResult = nil
+            isCameraOn = false
+        } else {
+            requestAndroidCameraPermission()
+        }
 #else
         if isCameraOn {
             stopPreviewCapture()
@@ -1541,6 +1547,18 @@ struct JoinView: View {
     }
     
     #if SKIP
+    private func requestAndroidCameraPermission() {
+        if PermissionHelper.hasCameraPermission() {
+            isCameraOn = true
+            return
+        }
+
+        PermissionHelper.onCameraPermissionResult = { granted in
+            isCameraOn = granted
+        }
+        PermissionHelper.requestCameraPermission()
+    }
+
     private func requestAndroidMicrophonePermission() {
         if PermissionHelper.hasRecordAudioPermission() {
             isMicOn = true

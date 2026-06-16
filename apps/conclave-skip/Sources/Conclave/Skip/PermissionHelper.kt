@@ -16,8 +16,10 @@ import skip.ui.UIApplication
 object PermissionHelper {
     private const val MEDIA_PERMISSIONS_REQUEST_CODE = 1001
     private const val RECORD_AUDIO_REQUEST_CODE = 1002
+    private const val CAMERA_REQUEST_CODE = 1003
 
     var onRecordAudioPermissionResult: ((Boolean) -> Unit)? = null
+    var onCameraPermissionResult: ((Boolean) -> Unit)? = null
 
     fun requestMediaPermissions(activity: Activity) {
         // POST_NOTIFICATIONS (API 33+) is needed so the ongoing-call foreground
@@ -52,17 +54,23 @@ object PermissionHelper {
         ) == PackageManager.PERMISSION_GRANTED
     }
 
+    fun hasCameraPermission(): Boolean {
+        val context = ProcessInfo.processInfo.androidContext
+        return ContextCompat.checkSelfPermission(
+            context,
+            android.Manifest.permission.CAMERA
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+
     fun requestRecordAudioPermission() {
-        val callback = onRecordAudioPermissionResult
         if (hasRecordAudioPermission()) {
-            callback?.invoke(true)
+            finishRecordAudioPermission(true)
             return
         }
 
         val activity = UIApplication.shared.androidActivity
         if (activity == null) {
-            callback?.invoke(false)
-            onRecordAudioPermissionResult = null
+            finishRecordAudioPermission(false)
             return
         }
 
@@ -73,23 +81,90 @@ object PermissionHelper {
         )
     }
 
+    fun requestCameraPermission() {
+        if (hasCameraPermission()) {
+            finishCameraPermission(true)
+            return
+        }
+
+        val activity = UIApplication.shared.androidActivity
+        if (activity == null) {
+            finishCameraPermission(false)
+            return
+        }
+
+        ActivityCompat.requestPermissions(
+            activity,
+            arrayOf(android.Manifest.permission.CAMERA),
+            CAMERA_REQUEST_CODE
+        )
+    }
+
     fun handleRequestPermissionsResult(
         requestCode: Int,
         permissions: Array<String>,
         grantResults: IntArray
     ) {
-        if (requestCode != MEDIA_PERMISSIONS_REQUEST_CODE && requestCode != RECORD_AUDIO_REQUEST_CODE) {
+        if (
+            requestCode != MEDIA_PERMISSIONS_REQUEST_CODE &&
+            requestCode != RECORD_AUDIO_REQUEST_CODE &&
+            requestCode != CAMERA_REQUEST_CODE
+        ) {
             return
         }
 
-        val index = permissions.indexOf(android.Manifest.permission.RECORD_AUDIO)
-        val granted = if (index >= 0 && index < grantResults.size) {
+        if (
+            requestCode == RECORD_AUDIO_REQUEST_CODE ||
+            (requestCode == MEDIA_PERMISSIONS_REQUEST_CODE && onRecordAudioPermissionResult != null)
+        ) {
+            finishRecordAudioPermission(
+                permissionGranted(
+                    permissions,
+                    grantResults,
+                    android.Manifest.permission.RECORD_AUDIO,
+                    ::hasRecordAudioPermission
+                )
+            )
+        }
+
+        if (
+            requestCode == CAMERA_REQUEST_CODE ||
+            (requestCode == MEDIA_PERMISSIONS_REQUEST_CODE && onCameraPermissionResult != null)
+        ) {
+            finishCameraPermission(
+                permissionGranted(
+                    permissions,
+                    grantResults,
+                    android.Manifest.permission.CAMERA,
+                    ::hasCameraPermission
+                )
+            )
+        }
+    }
+
+    private fun permissionGranted(
+        permissions: Array<String>,
+        grantResults: IntArray,
+        permission: String,
+        fallback: () -> Boolean
+    ): Boolean {
+        val index = permissions.indexOf(permission)
+        return if (index >= 0 && index < grantResults.size) {
             grantResults[index] == PackageManager.PERMISSION_GRANTED
         } else {
-            hasRecordAudioPermission()
+            fallback()
         }
+    }
+
+    private fun finishRecordAudioPermission(granted: Boolean) {
         val callback = onRecordAudioPermissionResult
         onRecordAudioPermissionResult = null
+        callback?.invoke(granted)
+    }
+
+    private fun finishCameraPermission(granted: Boolean) {
+        val callback = onCameraPermissionResult
+        onCameraPermissionResult = null
         callback?.invoke(granted)
     }
 }
