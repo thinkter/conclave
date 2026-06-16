@@ -4589,6 +4589,33 @@ const getAveragePoint = (points: Array<CanvasPoint | null>) => {
   return { x: x / count, y: y / count };
 };
 
+const getPointBounds = (points: Array<CanvasPoint | null>) => {
+  let minX = Number.POSITIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+  let count = 0;
+  for (const point of points) {
+    if (!point) continue;
+    minX = Math.min(minX, point.x);
+    minY = Math.min(minY, point.y);
+    maxX = Math.max(maxX, point.x);
+    maxY = Math.max(maxY, point.y);
+    count += 1;
+  }
+  if (count <= 0) return null;
+  return {
+    minX,
+    minY,
+    maxX,
+    maxY,
+    width: maxX - minX,
+    height: maxY - minY,
+    centerX: (minX + maxX) / 2,
+    centerY: (minY + maxY) / 2,
+  };
+};
+
 const sortPointPairByX = <T extends CanvasPoint>(points: [T, T]): [T, T] =>
   points[0].x <= points[1].x ? points : [points[1], points[0]];
 
@@ -5731,6 +5758,7 @@ const drawFaceFilter = (
     getPoint(landmark, crop, sourceWidth, sourceHeight, width, height);
   const mapLandmarks = (indices: number[]) =>
     getAveragePoint(indices.map((index) => mapLandmark(landmarks[index])));
+  const mappedFaceBounds = getPointBounds(landmarks.map(mapLandmark));
   const leftOuterEye = mapLandmark(landmarks[33]);
   const rightOuterEye = mapLandmark(landmarks[263]);
   const outerEyePair =
@@ -5777,10 +5805,15 @@ const drawFaceFilter = (
     outerLeftEye && outerRightEye
       ? getPointDistance(outerLeftEye, outerRightEye)
       : 0;
+  const faceBoundsWidth = mappedFaceBounds?.width ?? 0;
+  const faceWidthEstimate = Math.max(
+    outerEyeDistance > 0 ? outerEyeDistance * 1.56 : 0,
+    eyeDistance * 2.18,
+    faceBoundsWidth > 0 ? faceBoundsWidth * 1.02 : 0,
+  );
   const faceWidth = Math.max(
-    80,
-    outerEyeDistance > 0 ? outerEyeDistance * 1.9 : 0,
-    eyeDistance * 2.65,
+    72,
+    Math.min(faceWidthEstimate, eyeDistance * 2.85),
   );
   const eyeY = (leftEye.y + rightEye.y) / 2;
   const centerX = (leftEye.x + rightEye.x) / 2;
@@ -5811,6 +5844,17 @@ const drawFaceFilter = (
   const lowerLipLocal = lowerLip ? toFaceSpace(lowerLip) : null;
   const foreheadLocal = toFaceSpace(forehead);
   const chinLocal = chin ? toFaceSpace(chin) : null;
+  const localFaceBounds = getPointBounds(
+    landmarks.map((landmark) => {
+      const point = mapLandmark(landmark);
+      return point ? toFaceSpace(point) : null;
+    }),
+  );
+  const faceLocalLeft = localFaceBounds?.minX ?? -faceWidth * 0.44;
+  const faceLocalRight = localFaceBounds?.maxX ?? faceWidth * 0.44;
+  const faceLocalTop = localFaceBounds?.minY ?? foreheadLocal.y;
+  const faceLocalBottom =
+    localFaceBounds?.maxY ?? chinLocal?.y ?? faceWidth * 0.56;
   let bounds: CanvasBounds | null = null;
 
   const beginProbe = (localBounds: {
@@ -5853,7 +5897,7 @@ const drawFaceFilter = (
     const lensH = faceWidth * 0.16;
     const lensY = (leftEyeLocal.y + rightEyeLocal.y) / 2 - lensH / 2;
     const mustacheY = upperLipLocal
-      ? (noseLocal.y + upperLipLocal.y) / 2
+      ? upperLipLocal.y - faceWidth * 0.035
       : noseLocal.y + faceWidth * 0.1;
     beginProbe({
       left: -faceWidth * 0.5,
@@ -5907,7 +5951,7 @@ const drawFaceFilter = (
     const lensW = faceWidth * 0.24;
     const lensH = faceWidth * 0.12;
     const lensY = (leftEyeLocal.y + rightEyeLocal.y) / 2 - lensH / 2;
-    const beretY = foreheadLocal.y - faceWidth * 0.2;
+    const beretY = foreheadLocal.y - faceWidth * 0.12;
     beginProbe({
       left: -faceWidth * 0.5,
       right: faceWidth * 0.5,
@@ -5946,7 +5990,7 @@ const drawFaceFilter = (
       ctx.stroke();
     });
   } else if (filter === "crown") {
-    const baseY = foreheadLocal.y - faceWidth * 0.08;
+    const baseY = foreheadLocal.y - faceWidth * 0.02;
     const crownW = faceWidth * 0.78;
     const crownH = faceWidth * 0.26;
     beginProbe({
@@ -5968,7 +6012,7 @@ const drawFaceFilter = (
     ctx.fill();
     ctx.stroke();
   } else if (filter === "halo") {
-    const haloY = foreheadLocal.y - faceWidth * 0.22;
+    const haloY = foreheadLocal.y - faceWidth * 0.12;
     beginProbe({
       left: -faceWidth * 0.42,
       right: faceWidth * 0.42,
@@ -5989,7 +6033,7 @@ const drawFaceFilter = (
     );
     ctx.stroke();
   } else if (filter === "bunny-ears") {
-    const earBaseY = foreheadLocal.y - faceWidth * 0.08;
+    const earBaseY = foreheadLocal.y - faceWidth * 0.02;
     const earH = faceWidth * 0.58;
     const earW = faceWidth * 0.16;
     beginProbe({
@@ -6022,7 +6066,7 @@ const drawFaceFilter = (
     const lensH = faceWidth * 0.12;
     const lensY = (leftEyeLocal.y + rightEyeLocal.y) / 2 - lensH / 2;
     const sunX = faceWidth * 0.35;
-    const sunY = foreheadLocal.y - faceWidth * 0.2;
+    const sunY = foreheadLocal.y - faceWidth * 0.12;
     beginProbe({
       left: -faceWidth * 0.45,
       right: faceWidth * 0.52,
@@ -6058,7 +6102,7 @@ const drawFaceFilter = (
     ctx.stroke();
   } else if (filter === "mustache") {
     const y = upperLipLocal
-      ? (noseLocal.y + upperLipLocal.y) / 2
+      ? upperLipLocal.y - faceWidth * 0.035
       : noseLocal.y + faceWidth * 0.1;
     beginProbe({
       left: -faceWidth * 0.28,
@@ -6093,7 +6137,7 @@ const drawFaceFilter = (
         ? Math.abs(lowerLipLocal.y - upperLipLocal.y) >
           Math.max(12, faceWidth * 0.08)
         : false;
-    const bulbY = foreheadLocal.y - faceWidth * 0.28;
+    const bulbY = foreheadLocal.y - faceWidth * 0.18;
     beginProbe({
       left: -faceWidth * 0.18,
       right: faceWidth * 0.18,
@@ -6117,7 +6161,7 @@ const drawFaceFilter = (
       3,
     );
   } else if (filter === "alien") {
-    const shipY = foreheadLocal.y - faceWidth * 0.26;
+    const shipY = foreheadLocal.y - faceWidth * 0.18;
     beginProbe({
       left: -faceWidth * 0.46,
       right: faceWidth * 0.46,
@@ -6150,19 +6194,12 @@ const drawFaceFilter = (
       ctx.fill();
     }
   } else if (filter === "sparkles") {
-    const bounds = chinLocal
-      ? {
-          left: -faceWidth * 0.48,
-          right: faceWidth * 0.48,
-          top: foreheadLocal.y - faceWidth * 0.08,
-          bottom: chinLocal.y,
-        }
-      : {
-          left: -faceWidth * 0.48,
-          right: faceWidth * 0.48,
-          top: foreheadLocal.y - faceWidth * 0.08,
-          bottom: faceWidth * 0.56,
-        };
+    const bounds = {
+      left: Math.max(faceLocalLeft - faceWidth * 0.05, -faceWidth * 0.45),
+      right: Math.min(faceLocalRight + faceWidth * 0.05, faceWidth * 0.45),
+      top: Math.max(faceLocalTop + faceWidth * 0.03, foreheadLocal.y),
+      bottom: Math.min(faceLocalBottom - faceWidth * 0.03, faceWidth * 0.56),
+    };
     ctx.fillStyle = "rgba(216,180,254,0.9)";
     beginProbe(bounds);
     const points = [
@@ -6186,19 +6223,12 @@ const drawFaceFilter = (
       ctx.fill();
     });
   } else if (filter === "butterflies") {
-    const localBounds = chinLocal
-      ? {
-          left: -faceWidth * 0.52,
-          right: faceWidth * 0.52,
-          top: foreheadLocal.y - faceWidth * 0.12,
-          bottom: chinLocal.y - faceWidth * 0.05,
-        }
-      : {
-          left: -faceWidth * 0.52,
-          right: faceWidth * 0.52,
-          top: foreheadLocal.y - faceWidth * 0.12,
-          bottom: faceWidth * 0.5,
-        };
+    const localBounds = {
+      left: Math.max(faceLocalLeft - faceWidth * 0.08, -faceWidth * 0.48),
+      right: Math.min(faceLocalRight + faceWidth * 0.08, faceWidth * 0.48),
+      top: Math.max(faceLocalTop, foreheadLocal.y - faceWidth * 0.02),
+      bottom: Math.min(faceLocalBottom - faceWidth * 0.06, faceWidth * 0.5),
+    };
     beginProbe(localBounds);
     [
       { x: -faceWidth * 0.38, y: localBounds.top + faceWidth * 0.08, scale: 0.95 },
