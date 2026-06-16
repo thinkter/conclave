@@ -97,6 +97,7 @@ export interface VideoEffectOption<T extends string> {
   icon: LucideIcon;
   tone: string;
   assetPath?: string;
+  thumbnailPath?: string;
   motion?: boolean;
   category?: string;
 }
@@ -286,6 +287,20 @@ export const BACKGROUND_ASSET_PATHS = {
   "stylish-living-room-couch":
     "/effects/backgrounds/stylish-living-room-couch.webp",
 } satisfies Partial<Record<BackgroundEffectId, string>>;
+
+export const getVideoEffectPreviewPath = <T extends string>(
+  option: VideoEffectOption<T>,
+) => {
+  if (option.thumbnailPath) return option.thumbnailPath;
+  if (!option.assetPath) return null;
+  if (option.assetPath.startsWith("/effects/backgrounds/")) {
+    return option.assetPath.replace(
+      "/effects/backgrounds/",
+      "/effects/background-thumbnails/",
+    );
+  }
+  return option.assetPath;
+};
 
 export const BACKGROUND_EFFECTS: VideoEffectOption<BackgroundEffectId>[] = [
   {

@@ -22,6 +22,7 @@ import {
   CUSTOM_BACKGROUND_MAX_DATA_URL_CHARS,
   DEFAULT_VIDEO_EFFECTS,
   FACE_FILTERS,
+  getVideoEffectPreviewPath,
   type AppearanceStyleId,
   type BackgroundEffectId,
   type FaceFilterId,
@@ -205,6 +206,7 @@ function EffectOptionButton<T extends string>({
 }) {
   const Icon = option.icon;
   const isMotionOption = option.motion === true;
+  const previewPath = getVideoEffectPreviewPath(option);
   return (
     <button
       type="button"
@@ -224,20 +226,20 @@ function EffectOptionButton<T extends string>({
     >
       <span
         className={`relative flex items-center justify-center overflow-hidden rounded-[10px] border border-white/[0.08] ${
-          option.assetPath
+          previewPath
             ? "h-14 w-full bg-cover bg-center"
             : "h-10 w-10"
         }`}
         style={
-          option.assetPath
+          previewPath
             ? {
                 backgroundColor: option.tone,
-                backgroundImage: `url("${option.assetPath}")`,
+                backgroundImage: `url("${previewPath}")`,
               }
             : { backgroundColor: option.tone }
         }
       >
-        {option.assetPath ? (
+        {previewPath ? (
           <span className="h-full w-full bg-gradient-to-t from-black/35 via-black/5 to-transparent" />
         ) : (
           <Icon size={18} strokeWidth={1.75} className="text-white" />
