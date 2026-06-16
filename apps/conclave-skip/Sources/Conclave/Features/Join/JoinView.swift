@@ -733,7 +733,7 @@ struct JoinView: View {
                 .font(ACMFont.trial(13, weight: .medium))
                 .foregroundStyle(ACMColors.textMuted)
 
-            TextField("", text: inviteCodeBinding, prompt: Text("Optional").foregroundStyle(ACMColors.textFaint))
+            TextField("", text: inviteCodeBinding, prompt: Text("Required").foregroundStyle(ACMColors.textFaint))
                 .textFieldStyle(.plain)
                 .font(ACMFont.trial(16))
                 .foregroundStyle(ACMColors.text)
@@ -1505,10 +1505,10 @@ struct JoinView: View {
         roomCode = joinTarget.roomId
         if joinTarget.joinMode == .meeting {
             inviteCode = joinTarget.meetingInviteCode ?? ""
-            shouldShowInviteCodeInput = joinTarget.meetingInviteCode != nil
+            shouldShowInviteCodeInput = false
         } else {
             inviteCode = joinTarget.webinarInviteCode ?? ""
-            shouldShowInviteCodeInput = joinTarget.webinarInviteCode != nil
+            shouldShowInviteCodeInput = false
             isCameraOn = false
             isMicOn = false
             stopPreviewCapture()

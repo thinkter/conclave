@@ -19,6 +19,13 @@ enum MeetingSheetPage: Equatable {
     case participants
     case settings
     case viewSettings
+    case viewModeSettings
+    case gridSettings
+    case selfViewSettings
+    case selfViewPositionSettings
+    case adminControls
+    case sharedBrowser
+    case apps
     case roomSettings
     case webinarSettings
     case profileSettings
@@ -31,9 +38,10 @@ private extension MeetingSheetPage {
         switch self {
         case .more:
             return 0
-        case .participants, .settings, .viewSettings:
+        case .participants, .settings, .viewSettings, .adminControls, .sharedBrowser, .apps:
             return 1
-        case .roomSettings, .webinarSettings, .profileSettings, .audioVideoSettings, .videoQualitySettings:
+        case .viewModeSettings, .gridSettings, .selfViewSettings, .selfViewPositionSettings,
+             .roomSettings, .webinarSettings, .profileSettings, .audioVideoSettings, .videoQualitySettings:
             return 2
         }
     }
@@ -42,8 +50,10 @@ private extension MeetingSheetPage {
         switch self {
         case .more:
             return nil
-        case .participants, .settings, .viewSettings:
+        case .participants, .settings, .viewSettings, .adminControls, .sharedBrowser, .apps:
             return .more
+        case .viewModeSettings, .gridSettings, .selfViewSettings, .selfViewPositionSettings:
+            return .viewSettings
         case .roomSettings, .webinarSettings, .profileSettings, .audioVideoSettings, .videoQualitySettings:
             return .settings
         }
@@ -124,7 +134,10 @@ struct MeetingSheetView: View {
                         bodyReady: bodyReady,
                         onOpenViewSettings: { navigate(to: .viewSettings) },
                         onOpenSettings: { navigate(to: .settings) },
-                        onOpenParticipants: { navigate(to: .participants) }
+                        onOpenParticipants: { navigate(to: .participants) },
+                        onOpenAdminControls: { navigate(to: .adminControls) },
+                        onOpenSharedBrowser: { navigate(to: .sharedBrowser) },
+                        onOpenApps: { navigate(to: .apps) }
                     )
                 )
             case .participants:
@@ -142,7 +155,30 @@ struct MeetingSheetView: View {
                     onOpenVideoQualitySettings: { navigate(to: .videoQualitySettings) }
                 ))
             case .viewSettings:
-                pageView(ViewSettingsSheetView(viewModel: viewModel, bodyReady: bodyReady, onBack: { navigate(to: .more) }))
+                pageView(ViewSettingsSheetView(
+                    viewModel: viewModel,
+                    bodyReady: bodyReady,
+                    page: ViewSettingsSheetPage.overview,
+                    onBack: { navigate(to: .more) },
+                    onOpenViewModeSettings: { navigate(to: .viewModeSettings) },
+                    onOpenGridSettings: { navigate(to: .gridSettings) },
+                    onOpenSelfViewSettings: { navigate(to: .selfViewSettings) },
+                    onOpenSelfViewPositionSettings: { navigate(to: .selfViewPositionSettings) }
+                ))
+            case .viewModeSettings:
+                pageView(ViewSettingsSheetView(viewModel: viewModel, bodyReady: bodyReady, page: ViewSettingsSheetPage.viewMode, onBack: { navigate(to: .viewSettings) }))
+            case .gridSettings:
+                pageView(ViewSettingsSheetView(viewModel: viewModel, bodyReady: bodyReady, page: ViewSettingsSheetPage.grid, onBack: { navigate(to: .viewSettings) }))
+            case .selfViewSettings:
+                pageView(ViewSettingsSheetView(viewModel: viewModel, bodyReady: bodyReady, page: ViewSettingsSheetPage.selfView, onBack: { navigate(to: .viewSettings) }))
+            case .selfViewPositionSettings:
+                pageView(ViewSettingsSheetView(viewModel: viewModel, bodyReady: bodyReady, page: ViewSettingsSheetPage.selfViewPosition, onBack: { navigate(to: .viewSettings) }))
+            case .adminControls:
+                pageView(AdminControlsSheetView(viewModel: viewModel, bodyReady: bodyReady, onBack: { navigate(to: .more) }))
+            case .sharedBrowser:
+                pageView(SharedBrowserSheetView(viewModel: viewModel, bodyReady: bodyReady, onBack: { navigate(to: .more) }))
+            case .apps:
+                pageView(AppsSheetView(viewModel: viewModel, bodyReady: bodyReady, onBack: { navigate(to: .more) }))
             case .roomSettings:
                 pageView(SettingsSheetView(viewModel: viewModel, bodyReady: bodyReady, page: SettingsSheetPage.room, onBack: { navigate(to: .settings) }))
             case .webinarSettings:

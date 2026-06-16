@@ -15,6 +15,8 @@ import skip.foundation.ProcessInfo
 /// into the meeting.
 object CallNotificationBridge {
     fun startCall(muted: Boolean, cameraOff: Boolean) {
+        PermissionHelper.requestNotificationsPermissionIfNeeded()
+
         val ctx = ProcessInfo.processInfo.androidContext
         val intent = Intent(ctx, CallForegroundService::class.java).apply {
             action = CallForegroundService.ACTION_START

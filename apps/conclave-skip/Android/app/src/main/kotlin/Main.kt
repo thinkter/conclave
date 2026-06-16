@@ -84,12 +84,6 @@ open class MainActivity: AppCompatActivity {
 
         AppDelegate.shared.onLaunch()
         handleIncomingDeepLink(intent)
-
-        // Request CAMERA + RECORD_AUDIO up front so the in-meeting WebRTC capturer
-        // never opens the device without runtime permission (which crashes the
-        // process from its async capture thread). In a clean-Kotlin helper because
-        // skip.lib.* shadows the stdlib collection ops in this file.
-        PermissionHelper.requestMediaPermissions(this)
     }
 
     override fun onStart() {

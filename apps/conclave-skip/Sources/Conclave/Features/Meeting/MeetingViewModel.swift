@@ -514,6 +514,10 @@ final class MeetingViewModel {
             let eventContext = self.currentSocketEventContext()
             Task { @MainActor in
                 guard self.isCurrentSocketEvent(eventContext, roomId: producer.roomId) else { return }
+                if self.state.isWebinarAttendee {
+                    await self.syncProducers(context: eventContext)
+                    return
+                }
                 await self.consumeRemoteProducer(producer, context: eventContext)
             }
         }
@@ -1212,14 +1216,12 @@ final class MeetingViewModel {
         guard isCurrentRoomEvent(snapshot.roomId) else { return }
 
         var nextNames: [String: String] = [:]
-        var snapshotRemoteUserIds = Set<String>()
 
         for user in snapshot.users {
             let userId = user.userId.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !userId.isEmpty else { continue }
 
             if state.isRemoteParticipantUserId(userId) {
-                snapshotRemoteUserIds.insert(userId)
                 ensureParticipantPresent(userId)
             }
 
@@ -1230,14 +1232,6 @@ final class MeetingViewModel {
                     state.displayName = displayName
                 }
             }
-        }
-
-        let staleUserIds = state.participants.keys.filter { userId in
-            state.isRemoteParticipantUserId(userId) && !snapshotRemoteUserIds.contains(userId)
-        }
-
-        for userId in staleUserIds {
-            removeRemoteParticipant(userId)
         }
 
         state.displayNames = nextNames

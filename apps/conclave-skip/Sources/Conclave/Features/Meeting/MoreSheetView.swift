@@ -10,146 +10,133 @@ struct MoreSheetView: View {
     let onOpenViewSettings: () -> Void
     let onOpenSettings: () -> Void
     let onOpenParticipants: () -> Void
+    let onOpenAdminControls: () -> Void
+    let onOpenSharedBrowser: () -> Void
+    let onOpenApps: () -> Void
     @Environment(\.dismiss) private var dismiss
 
     private let emojiReactions = MeetingReactionConstants.emojiReactionOptions
     private let assetReactions = MeetingReactionConstants.assetOptions
-    private let browserLaunchOptions = BrowserLaunchOption.defaults
-    private let browserLaunchColumns = [
-        GridItem(.flexible(), spacing: ACMSpacing.xs),
-        GridItem(.flexible(), spacing: ACMSpacing.xs)
-    ]
-    @State private var browserURLInput = ""
 
     var body: some View {
         let canUseParticipantActions = !viewModel.state.isGhostMode && !viewModel.state.isWebinarAttendee
-        let canShowSharedBrowser = !viewModel.state.isWebinarAttendee &&
-            (canManageSharedBrowser || viewModel.state.isBrowserActive || viewModel.state.hasBrowserAudio)
 
         VStack(spacing: 0) {
             MeetingSheetHeader(title: "More", onDone: { dismiss() })
 
             if bodyReady {
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: ACMSpacing.md) {
-                    VStack(alignment: .leading, spacing: ACMSpacing.xs) {
-                        acmListSectionHeader("Quick reactions")
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: ACMSpacing.md) {
+                        VStack(alignment: .leading, spacing: ACMSpacing.xs) {
+                            acmListSectionHeader("Quick reactions")
 
-                        HStack(spacing: 0) {
-                            ForEach(emojiReactions) { option in
-                                Button {
-                                    viewModel.sendReaction(option)
-                                    dismiss()
-                                } label: {
-                                    Text(option.value)
-                                        .font(.system(size: 26))
-                                        .frame(maxWidth: .infinity)
-                                        .frame(height: 48)
-#if !SKIP
-                                        .contentShape(Rectangle())
-#endif
+                            HStack(spacing: 0) {
+                                ForEach(emojiReactions) { option in
+                                    Button {
+                                        viewModel.sendReaction(option)
+                                        dismiss()
+                                    } label: {
+                                        Text(option.value)
+                                            .font(.system(size: 26))
+                                            .frame(maxWidth: .infinity)
+                                            .frame(height: 48)
+                                        #if !SKIP
+                                            .contentShape(Rectangle())
+                                        #endif
+                                    }
+                                    .buttonStyle(.plain)
+                                    .disabled(!canUseParticipantActions)
                                 }
-                                .buttonStyle(.plain)
-                                .disabled(!canUseParticipantActions)
                             }
-                        }
-                        .opacity(canUseParticipantActions ? 1.0 : 0.45)
+                            .opacity(canUseParticipantActions ? 1.0 : 0.45)
 
-                        HStack(spacing: ACMSpacing.xs) {
-                            ForEach(assetReactions) { option in
-                                Button {
-                                    viewModel.sendReaction(option)
-                                    dismiss()
-                                } label: {
-                                    Text(option.label)
-                                        .font(ACMFont.trial(11, weight: .medium))
-                                        .foregroundStyle(ACMColors.text)
-                                        .lineLimit(1)
-                                        .minimumScaleFactor(0.72)
-                                        .frame(maxWidth: .infinity)
-                                        .frame(height: 34)
-                                        .acmColorBackground(ACMColors.surfaceRaised)
-                                        .clipShape(Capsule())
-#if !SKIP
-                                        .contentShape(Rectangle())
-#endif
+                            HStack(spacing: ACMSpacing.xs) {
+                                ForEach(assetReactions) { option in
+                                    Button {
+                                        viewModel.sendReaction(option)
+                                        dismiss()
+                                    } label: {
+                                        Text(option.label)
+                                            .font(ACMFont.trial(11, weight: .medium))
+                                            .foregroundStyle(ACMColors.text)
+                                            .lineLimit(1)
+                                            .minimumScaleFactor(0.72)
+                                            .frame(maxWidth: .infinity)
+                                            .frame(height: 34)
+                                            .acmColorBackground(ACMColors.surfaceRaised)
+                                            .clipShape(Capsule())
+                                        #if !SKIP
+                                            .contentShape(Rectangle())
+                                        #endif
+                                    }
+                                    .buttonStyle(.plain)
+                                    .disabled(!canUseParticipantActions)
                                 }
-                                .buttonStyle(.plain)
-                                .disabled(!canUseParticipantActions)
+                            }
+                            .opacity(canUseParticipantActions ? 1.0 : 0.45)
+                        }
+
+                        VStack(alignment: .leading, spacing: ACMSpacing.xs) {
+                            acmListSectionHeader("Meeting actions")
+
+                            MeetingSheetSectionCard {
+                                MoreRow(
+                                    icon: viewModel.state.isHandRaised ? "hand.raised.fill" : "hand.raised",
+                                    androidIcon: viewModel.state.isHandRaised ? "raise.hand" : "raise.hand.off",
+                                    title: viewModel.state.isHandRaised ? "Lower hand" : "Raise hand",
+                                    tint: canUseParticipantActions
+                                        ? (viewModel.state.isHandRaised ? ACMColors.handRaised : ACMColors.text)
+                                        : ACMColors.textFaint,
+                                    androidTint: canUseParticipantActions
+                                        ? (viewModel.state.isHandRaised ? "amber" : "text")
+                                        : "faint",
+                                    isDisabled: !canUseParticipantActions
+                                ) {
+                                    viewModel.toggleHandRaise()
+                                    dismiss()
+                                }
+                                MoreRowDivider()
+                                MoreRow(icon: "message.fill", androidIcon: "chat", title: "Chat") {
+                                    viewModel.toggleChat()
+                                    dismiss()
+                                }
+                                MoreRowDivider()
+                                MoreRow(icon: "person.2.fill", androidIcon: "participants", title: "Participants", showsChevron: true) {
+                                    onOpenParticipants()
+                                }
+                                MoreRowDivider()
+                                MoreRow(icon: "rectangle.grid.2x2", androidIcon: "participants", title: "Layout", showsChevron: true) {
+                                    onOpenViewSettings()
+                                }
+                                MoreRowDivider()
+                                MoreRow(icon: "person.badge.plus", androidIcon: "link", title: "Invite people") {
+                                    MeetingShare.shareMeetingLink(
+                                        viewModel.state.meetingLink,
+                                        roomId: viewModel.state.roomId
+                                    )
+                                    dismiss()
+                                }
+                                MoreRowDivider()
+                                MoreRow(icon: "doc.on.doc", androidIcon: "copy", title: "Copy meeting link") {
+                                    MeetingShare.copyMeetingLink(viewModel.state.meetingLink)
+                                    dismiss()
+                                }
+                                MoreRowDivider()
+                                MoreRow(icon: "gearshape.fill", androidIcon: "settings", title: "Settings", showsChevron: true) {
+                                    onOpenSettings()
+                                }
                             }
                         }
-                        .opacity(canUseParticipantActions ? 1.0 : 0.45)
-                    }
 
-                    VStack(alignment: .leading, spacing: ACMSpacing.xs) {
-                        acmListSectionHeader("Meeting actions")
-
-                        MeetingSheetSectionCard {
-                            MoreRow(
-                                icon: viewModel.state.isHandRaised ? "hand.raised.fill" : "hand.raised",
-                                androidIcon: viewModel.state.isHandRaised ? "raise.hand" : "raise.hand.off",
-                                title: viewModel.state.isHandRaised ? "Lower hand" : "Raise hand",
-                                tint: canUseParticipantActions
-                                    ? (viewModel.state.isHandRaised ? ACMColors.handRaised : ACMColors.text)
-                                    : ACMColors.textFaint,
-                                androidTint: canUseParticipantActions
-                                    ? (viewModel.state.isHandRaised ? "amber" : "text")
-                                    : "faint",
-                                isDisabled: !canUseParticipantActions
-                            ) {
-                                viewModel.toggleHandRaise()
-                                dismiss()
-                            }
-                            MoreRowDivider()
-                            MoreRow(icon: "message.fill", androidIcon: "chat", title: "Chat") {
-                                viewModel.toggleChat()
-                                dismiss()
-                            }
-                            MoreRowDivider()
-                            MoreRow(icon: "person.2.fill", androidIcon: "participants", title: "Participants", showsChevron: true) {
-                                onOpenParticipants()
-                            }
-                            MoreRowDivider()
-                            MoreRow(icon: "rectangle.grid.2x2", androidIcon: "participants", title: "Layout", showsChevron: true) {
-                                onOpenViewSettings()
-                            }
-                            MoreRowDivider()
-                            MoreRow(icon: "person.badge.plus", androidIcon: "link", title: "Invite people") {
-                                MeetingShare.shareMeetingLink(
-                                    viewModel.state.meetingLink,
-                                    roomId: viewModel.state.roomId
-                                )
-                                dismiss()
-                            }
-                            MoreRowDivider()
-                            MoreRow(icon: "doc.on.doc", androidIcon: "copy", title: "Copy meeting link") {
-                                MeetingShare.copyMeetingLink(viewModel.state.meetingLink)
-                                dismiss()
-                            }
-                            MoreRowDivider()
-                            MoreRow(icon: "gearshape.fill", androidIcon: "settings", title: "Settings", showsChevron: true) {
-                                onOpenSettings()
-                            }
+                        if canShowToolsSection {
+                            toolsSection
                         }
                     }
-
-                    if canShowAdminControls {
-                        adminControlsSection
-                    }
-
-                    if canShowSharedBrowser {
-                        sharedBrowserSection
-                    }
-
-                    if canShowAppsSection {
-                        appsSection
-                    }
+                    .padding(.horizontal, ACMSpacing.lg)
+                    .padding(.top, ACMSpacing.md)
+                    .padding(.bottom, ACMSpacing.lg)
                 }
-                .padding(.horizontal, ACMSpacing.lg)
-                .padding(.top, ACMSpacing.md)
-                .padding(.bottom, ACMSpacing.lg)
-            }
-            .transition(.opacity)
+                .transition(.opacity)
             } else {
                 Spacer()
             }
@@ -162,125 +149,320 @@ struct MoreSheetView: View {
     }
 
     @ViewBuilder
-    private var sharedBrowserSection: some View {
+    private var toolsSection: some View {
         VStack(alignment: .leading, spacing: ACMSpacing.xs) {
-            acmListSectionHeader("Shared browser")
+            acmListSectionHeader("Tools")
 
             MeetingSheetSectionCard {
-                if viewModel.state.isBrowserActive {
-                    HStack(spacing: ACMSpacing.sm) {
-                        MeetingSheetIconBox(
-                            icon: "globe",
-                            androidIcon: "public",
-                            tint: ACMColors.primaryOrange,
-                            androidTint: "accent",
-                            background: ACMColors.surfaceRaised
-                        )
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Shared browser active")
-                                .font(ACMFont.trial(15, weight: .medium))
-                                .foregroundStyle(ACMColors.text)
-                                .lineLimit(1)
-                            Text(viewModel.state.browserURL ?? "Browser session running")
-                                .font(ACMFont.trial(12))
-                                .foregroundStyle(ACMColors.textFaint)
-                                .lineLimit(1)
-                        }
-
-                        Spacer()
+                if canShowAdminControls {
+                    MoreRow(icon: "slider.horizontal.3", androidIcon: "settings", title: "Host controls", showsChevron: true) {
+                        onOpenAdminControls()
                     }
-                    .padding(.horizontal, ACMSpacing.sm)
-                    .frame(height: 56)
+                }
 
-                    if viewModel.state.hasBrowserAudio || viewModel.state.isBrowserActive {
-                        MoreRowDivider()
-                        browserAudioRow
-                    }
-
-                    if canManageSharedBrowser {
-                        MoreRowDivider()
-
-                        MoreRow(
-                            icon: "xmark",
-                            androidIcon: "close",
-                            title: "Close shared browser",
-                            tint: ACMColors.error,
-                            androidTint: "error"
-                        ) {
-                            viewModel.closeSharedBrowser()
-                        }
-                    }
-                } else if canManageSharedBrowser {
-                    HStack(spacing: ACMSpacing.sm) {
-                        MeetingSheetIconBox(
-                            icon: "globe",
-                            androidIcon: "public",
-                            tint: ACMColors.textMuted,
-                            androidTint: "muted",
-                            background: ACMColors.surfaceRaised
-                        )
-
-                        TextField("", text: $browserURLInput, prompt: Text("example.com").foregroundStyle(ACMColors.textFaint))
-                            .textFieldStyle(.plain)
-                            .font(ACMFont.trial(15))
-                            .foregroundStyle(ACMColors.text)
-                            .tint(ACMColors.primaryOrange)
-#if !SKIP
-#if os(iOS)
-                            .textInputAutocapitalization(.never)
-#endif
-#endif
-                            .autocorrectionDisabled(true)
-                    }
-                    .padding(.horizontal, ACMSpacing.sm)
-                    .frame(height: 52)
-
+                if canShowAdminControls && canShowSharedBrowser {
                     MoreRowDivider()
+                }
 
-                    LazyVGrid(columns: browserLaunchColumns, spacing: ACMSpacing.xs) {
-                        ForEach(browserLaunchOptions) { option in
-                            Button {
-                                viewModel.launchSharedBrowser(url: option.url)
-                                dismiss()
-                            } label: {
-                                Text(option.name)
-                                    .font(ACMFont.trial(13, weight: .medium))
-                                    .foregroundStyle(ACMColors.text)
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.78)
-                                    .frame(maxWidth: .infinity)
-                                    .frame(height: 36)
-                                    .acmColorBackground(ACMColors.surfaceRaised)
-                                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                                    #if !SKIP
-                                    .contentShape(Rectangle())
-                                    #endif
-                            }
-                            .buttonStyle(.plain)
-                            .disabled(viewModel.state.isBrowserLaunching)
-                        }
+                if canShowSharedBrowser {
+                    MoreRow(icon: "globe", androidIcon: "public", title: "Shared browser", showsChevron: true) {
+                        onOpenSharedBrowser()
                     }
-                    .padding(.horizontal, ACMSpacing.sm)
-                    .padding(.vertical, ACMSpacing.sm)
-                    .opacity(viewModel.state.isBrowserLaunching ? 0.45 : 1.0)
+                }
 
+                if (canShowAdminControls || canShowSharedBrowser) && canShowAppsSection {
                     MoreRowDivider()
+                }
 
-                    MoreRow(
-                        icon: "play.fill",
-                        androidIcon: "public",
-                        title: viewModel.state.isBrowserLaunching ? "Launching..." : "Launch shared browser",
-                        tint: canLaunchSharedBrowser ? ACMColors.text : ACMColors.textFaint,
-                        androidTint: canLaunchSharedBrowser ? "text" : "faint",
-                        isDisabled: !canLaunchSharedBrowser
-                    ) {
-                        viewModel.launchSharedBrowser(url: browserURLInput)
+                if canShowAppsSection {
+                    MoreRow(icon: "pencil", androidIcon: "forum", title: "Apps", showsChevron: true) {
+                        onOpenApps()
                     }
-                } else if viewModel.state.hasBrowserAudio {
-                    browserAudioRow
                 }
             }
+        }
+    }
+
+    private var canManageSharedBrowser: Bool {
+        viewModel.state.isAdmin && !viewModel.state.isWebinarAttendee
+    }
+
+    private var canShowSharedBrowser: Bool {
+        !viewModel.state.isWebinarAttendee &&
+        (canManageSharedBrowser || viewModel.state.isBrowserActive || viewModel.state.hasBrowserAudio)
+    }
+
+    private var canShowToolsSection: Bool {
+        canShowAdminControls || canShowSharedBrowser || canShowAppsSection
+    }
+
+    private var canShowAdminControls: Bool {
+        viewModel.state.isAdmin && !viewModel.state.isWebinarAttendee
+    }
+
+    private var canShowAppsSection: Bool {
+        (viewModel.state.isAdmin && !viewModel.state.isWebinarAttendee) || viewModel.state.activeAppId != nil
+    }
+}
+
+struct AdminControlsSheetView: View {
+    @Bindable var viewModel: MeetingViewModel
+    var bodyReady: Bool = true
+    var onBack: (() -> Void)? = nil
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(spacing: 0) {
+            MeetingSheetHeader(title: "Host controls", onBack: onBack, onDone: { dismiss() })
+
+            if bodyReady {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: ACMSpacing.md) {
+                        VStack(alignment: .leading, spacing: ACMSpacing.xs) {
+                            acmListSectionHeader("Access and moderation")
+
+                            MeetingSheetSectionCard {
+                                MoreRow(
+                                    icon: viewModel.state.isRoomLocked ? "lock.open.fill" : "lock.fill",
+                                    androidIcon: viewModel.state.isRoomLocked ? "lock.open" : "lock",
+                                    title: viewModel.state.isRoomLocked ? "Unlock meeting" : "Lock meeting",
+                                    tint: viewModel.state.isRoomLocked ? ACMColors.primaryOrange : ACMColors.text,
+                                    androidTint: viewModel.state.isRoomLocked ? "accent" : "text"
+                                ) {
+                                    viewModel.toggleRoomLock()
+                                }
+
+                                MoreRowDivider()
+
+                                MoreRow(
+                                    icon: "nosign",
+                                    androidIcon: "block",
+                                    title: viewModel.state.isNoGuests ? "Allow guests" : "Block guests",
+                                    tint: viewModel.state.isNoGuests ? ACMColors.primaryOrange : ACMColors.text,
+                                    androidTint: viewModel.state.isNoGuests ? "accent" : "text"
+                                ) {
+                                    viewModel.toggleNoGuests()
+                                }
+
+                                MoreRowDivider()
+
+                                MoreRow(
+                                    icon: viewModel.state.isChatLocked ? "message.fill" : "message.badge.fill",
+                                    androidIcon: "chat",
+                                    title: viewModel.state.isChatLocked ? "Enable chat" : "Disable chat",
+                                    tint: viewModel.state.isChatLocked ? ACMColors.primaryOrange : ACMColors.text,
+                                    androidTint: viewModel.state.isChatLocked ? "accent" : "text"
+                                ) {
+                                    viewModel.toggleChatLock()
+                                }
+
+                                MoreRowDivider()
+
+                                MoreRow(
+                                    icon: viewModel.state.isTtsDisabled ? "speaker.wave.2.fill" : "speaker.slash.fill",
+                                    androidIcon: viewModel.state.isTtsDisabled ? "volume" : "volume.off",
+                                    title: viewModel.state.isTtsDisabled ? "Enable TTS" : "Disable TTS",
+                                    tint: viewModel.state.isTtsDisabled ? ACMColors.primaryOrange : ACMColors.text,
+                                    androidTint: viewModel.state.isTtsDisabled ? "accent" : "text"
+                                ) {
+                                    viewModel.toggleTtsDisabled()
+                                }
+
+                                MoreRowDivider()
+
+                                MoreRow(
+                                    icon: viewModel.state.isDmEnabled ? "message.fill" : "message.slash.fill",
+                                    androidIcon: "chat",
+                                    title: viewModel.state.isDmEnabled ? "Disable DMs" : "Enable DMs",
+                                    tint: viewModel.state.isDmEnabled ? ACMColors.text : ACMColors.primaryOrange,
+                                    androidTint: viewModel.state.isDmEnabled ? "text" : "accent"
+                                ) {
+                                    viewModel.toggleDmEnabled()
+                                }
+                            }
+                        }
+                    }
+                    .padding(.horizontal, ACMSpacing.lg)
+                    .padding(.top, ACMSpacing.md)
+                    .padding(.bottom, ACMSpacing.lg)
+                }
+                .transition(.opacity)
+            } else {
+                Spacer()
+            }
+        }
+        #if SKIP
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        #else
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        #endif
+    }
+}
+
+struct SharedBrowserSheetView: View {
+    @Bindable var viewModel: MeetingViewModel
+    var bodyReady: Bool = true
+    var onBack: (() -> Void)? = nil
+    @Environment(\.dismiss) private var dismiss
+    @State private var browserURLInput = ""
+
+    private let browserLaunchOptions = BrowserLaunchOption.defaults
+    private let browserLaunchColumns = [
+        GridItem(.flexible(), spacing: ACMSpacing.xs),
+        GridItem(.flexible(), spacing: ACMSpacing.xs)
+    ]
+
+    var body: some View {
+        VStack(spacing: 0) {
+            MeetingSheetHeader(title: "Shared browser", onBack: onBack, onDone: { dismiss() })
+
+            if bodyReady {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: ACMSpacing.md) {
+                        VStack(alignment: .leading, spacing: ACMSpacing.xs) {
+                            acmListSectionHeader("Session")
+
+                            MeetingSheetSectionCard {
+                                if viewModel.state.isBrowserActive {
+                                    activeBrowserStatusRow
+
+                                    if viewModel.state.hasBrowserAudio || viewModel.state.isBrowserActive {
+                                        MoreRowDivider()
+                                        browserAudioRow
+                                    }
+
+                                    if canManageSharedBrowser {
+                                        MoreRowDivider()
+
+                                        MoreRow(
+                                            icon: "xmark",
+                                            androidIcon: "close",
+                                            title: "Close shared browser",
+                                            tint: ACMColors.error,
+                                            androidTint: "error"
+                                        ) {
+                                            viewModel.closeSharedBrowser()
+                                        }
+                                    }
+                                } else if canManageSharedBrowser {
+                                    browserURLRow
+                                    MoreRowDivider()
+                                    browserQuickLaunchGrid
+                                    MoreRowDivider()
+                                    launchBrowserRow
+                                } else if viewModel.state.hasBrowserAudio {
+                                    browserAudioRow
+                                }
+                            }
+                        }
+                    }
+                    .padding(.horizontal, ACMSpacing.lg)
+                    .padding(.top, ACMSpacing.md)
+                    .padding(.bottom, ACMSpacing.lg)
+                }
+                .transition(.opacity)
+            } else {
+                Spacer()
+            }
+        }
+        #if SKIP
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        #else
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        #endif
+    }
+
+    private var activeBrowserStatusRow: some View {
+        HStack(spacing: ACMSpacing.sm) {
+            MeetingSheetIconBox(
+                icon: "globe",
+                androidIcon: "public",
+                tint: ACMColors.primaryOrange,
+                androidTint: "accent",
+                background: ACMColors.surfaceRaised
+            )
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Browser active")
+                    .font(ACMFont.trial(15, weight: .medium))
+                    .foregroundStyle(ACMColors.text)
+                    .lineLimit(1)
+                Text(viewModel.state.browserURL ?? "Session running")
+                    .font(ACMFont.trial(12))
+                    .foregroundStyle(ACMColors.textFaint)
+                    .lineLimit(1)
+            }
+
+            Spacer()
+        }
+        .padding(.horizontal, ACMSpacing.sm)
+        .frame(height: 56)
+    }
+
+    private var browserURLRow: some View {
+        HStack(spacing: ACMSpacing.sm) {
+            MeetingSheetIconBox(
+                icon: "globe",
+                androidIcon: "public",
+                tint: ACMColors.textMuted,
+                androidTint: "muted",
+                background: ACMColors.surfaceRaised
+            )
+
+            TextField("", text: $browserURLInput, prompt: Text("example.com").foregroundStyle(ACMColors.textFaint))
+                .textFieldStyle(.plain)
+                .font(ACMFont.trial(15))
+                .foregroundStyle(ACMColors.text)
+                .tint(ACMColors.primaryOrange)
+#if !SKIP
+#if os(iOS)
+                .textInputAutocapitalization(.never)
+#endif
+#endif
+                .autocorrectionDisabled(true)
+        }
+        .padding(.horizontal, ACMSpacing.sm)
+        .frame(height: 52)
+    }
+
+    private var browserQuickLaunchGrid: some View {
+        LazyVGrid(columns: browserLaunchColumns, spacing: ACMSpacing.xs) {
+            ForEach(browserLaunchOptions) { option in
+                Button {
+                    viewModel.launchSharedBrowser(url: option.url)
+                } label: {
+                    Text(option.name)
+                        .font(ACMFont.trial(13, weight: .medium))
+                        .foregroundStyle(ACMColors.text)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.78)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 36)
+                        .acmColorBackground(ACMColors.surfaceRaised)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        #if !SKIP
+                        .contentShape(Rectangle())
+                        #endif
+                }
+                .buttonStyle(.plain)
+                .disabled(viewModel.state.isBrowserLaunching)
+            }
+        }
+        .padding(.horizontal, ACMSpacing.sm)
+        .padding(.vertical, ACMSpacing.sm)
+        .opacity(viewModel.state.isBrowserLaunching ? 0.45 : 1.0)
+    }
+
+    private var launchBrowserRow: some View {
+        MoreRow(
+            icon: "play.fill",
+            androidIcon: "public",
+            title: viewModel.state.isBrowserLaunching ? "Launching..." : "Launch shared browser",
+            tint: canLaunchSharedBrowser ? ACMColors.text : ACMColors.textFaint,
+            androidTint: canLaunchSharedBrowser ? "text" : "faint",
+            isDisabled: !canLaunchSharedBrowser
+        ) {
+            viewModel.launchSharedBrowser(url: browserURLInput)
         }
     }
 
@@ -293,7 +475,6 @@ struct MoreSheetView: View {
             androidTint: viewModel.state.isBrowserAudioMuted ? "accent" : "text"
         ) {
             viewModel.toggleBrowserAudio()
-            dismiss()
         }
     }
 
@@ -305,188 +486,156 @@ struct MoreSheetView: View {
     private var canManageSharedBrowser: Bool {
         viewModel.state.isAdmin && !viewModel.state.isWebinarAttendee
     }
+}
 
-    @ViewBuilder
-    private var adminControlsSection: some View {
-        VStack(alignment: .leading, spacing: ACMSpacing.xs) {
-            acmListSectionHeader("Admin controls")
+struct AppsSheetView: View {
+    @Bindable var viewModel: MeetingViewModel
+    var bodyReady: Bool = true
+    var onBack: (() -> Void)? = nil
+    @Environment(\.dismiss) private var dismiss
 
-            MeetingSheetSectionCard {
-                MoreRow(
-                    icon: viewModel.state.isRoomLocked ? "lock.open.fill" : "lock.fill",
-                    androidIcon: viewModel.state.isRoomLocked ? "lock.open" : "lock",
-                    title: viewModel.state.isRoomLocked ? "Unlock meeting" : "Lock meeting",
-                    tint: viewModel.state.isRoomLocked ? ACMColors.primaryOrange : ACMColors.text,
-                    androidTint: viewModel.state.isRoomLocked ? "accent" : "text"
-                ) {
-                    viewModel.toggleRoomLock()
-                    dismiss()
+    var body: some View {
+        VStack(spacing: 0) {
+            MeetingSheetHeader(title: "Apps", onBack: onBack, onDone: { dismiss() })
+
+            if bodyReady {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: ACMSpacing.md) {
+                        VStack(alignment: .leading, spacing: ACMSpacing.xs) {
+                            acmListSectionHeader("Runtime")
+
+                            MeetingSheetSectionCard {
+                                if let activeAppName = viewModel.state.activeAppName {
+                                    activeAppStatusRow(activeAppName)
+
+                                    if canManageApps {
+                                        MoreRowDivider()
+                                    }
+                                }
+
+                                if canManageApps {
+                                    whiteboardRow
+
+                                    #if DEBUG
+                                    if canManageDevPlayground {
+                                        MoreRowDivider()
+                                        devPlaygroundRow
+                                    }
+                                    #endif
+
+                                    if canManageUnknownActiveApp {
+                                        MoreRowDivider()
+                                        closeUnknownAppRow
+                                    }
+
+                                    MoreRowDivider()
+                                    appsLockRow
+                                }
+                            }
+                        }
+                    }
+                    .padding(.horizontal, ACMSpacing.lg)
+                    .padding(.top, ACMSpacing.md)
+                    .padding(.bottom, ACMSpacing.lg)
                 }
+                .transition(.opacity)
+            } else {
+                Spacer()
+            }
+        }
+        #if SKIP
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        #else
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        #endif
+    }
 
-                MoreRowDivider()
+    private func activeAppStatusRow(_ activeAppName: String) -> some View {
+        HStack(spacing: ACMSpacing.sm) {
+            MeetingSheetIconBox(
+                icon: "pencil",
+                androidIcon: "forum",
+                tint: ACMColors.primaryOrange,
+                androidTint: "accent",
+                background: ACMColors.surfaceRaised
+            )
 
-                MoreRow(
-                    icon: "nosign",
-                    androidIcon: "block",
-                    title: viewModel.state.isNoGuests ? "Allow guests" : "Block guests",
-                    tint: viewModel.state.isNoGuests ? ACMColors.primaryOrange : ACMColors.text,
-                    androidTint: viewModel.state.isNoGuests ? "accent" : "text"
-                ) {
-                    viewModel.toggleNoGuests()
-                    dismiss()
-                }
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(activeAppName) active")
+                    .font(ACMFont.trial(15, weight: .medium))
+                    .foregroundStyle(ACMColors.text)
+                    .lineLimit(1)
+                Text(viewModel.state.isAppsLocked ? "Editing locked" : "Editing open")
+                    .font(ACMFont.trial(12))
+                    .foregroundStyle(ACMColors.textFaint)
+                    .lineLimit(1)
+            }
 
-                MoreRowDivider()
+            Spacer()
+        }
+        .padding(.horizontal, ACMSpacing.sm)
+        .frame(height: 56)
+    }
 
-                MoreRow(
-                    icon: viewModel.state.isChatLocked ? "message.fill" : "message.badge.fill",
-                    androidIcon: "chat",
-                    title: viewModel.state.isChatLocked ? "Enable chat" : "Disable chat",
-                    tint: viewModel.state.isChatLocked ? ACMColors.primaryOrange : ACMColors.text,
-                    androidTint: viewModel.state.isChatLocked ? "accent" : "text"
-                ) {
-                    viewModel.toggleChatLock()
-                    dismiss()
-                }
-
-                MoreRowDivider()
-
-                MoreRow(
-                    icon: viewModel.state.isTtsDisabled ? "speaker.wave.2.fill" : "speaker.slash.fill",
-                    androidIcon: viewModel.state.isTtsDisabled ? "volume" : "volume.off",
-                    title: viewModel.state.isTtsDisabled ? "Enable TTS" : "Disable TTS",
-                    tint: viewModel.state.isTtsDisabled ? ACMColors.primaryOrange : ACMColors.text,
-                    androidTint: viewModel.state.isTtsDisabled ? "accent" : "text"
-                ) {
-                    viewModel.toggleTtsDisabled()
-                    dismiss()
-                }
-
-                MoreRowDivider()
-
-                MoreRow(
-                    icon: viewModel.state.isDmEnabled ? "message.fill" : "message.slash.fill",
-                    androidIcon: "chat",
-                    title: viewModel.state.isDmEnabled ? "Disable DMs" : "Enable DMs",
-                    tint: viewModel.state.isDmEnabled ? ACMColors.text : ACMColors.primaryOrange,
-                    androidTint: viewModel.state.isDmEnabled ? "text" : "accent"
-                ) {
-                    viewModel.toggleDmEnabled()
-                    dismiss()
-                }
+    private var whiteboardRow: some View {
+        MoreRow(
+            icon: viewModel.state.isWhiteboardActive ? "xmark" : "pencil",
+            androidIcon: viewModel.state.isWhiteboardActive ? "close" : "forum",
+            title: viewModel.state.isWhiteboardActive ? "Close whiteboard" : "Open whiteboard",
+            tint: viewModel.state.isWhiteboardActive ? ACMColors.error : ACMColors.text,
+            androidTint: viewModel.state.isWhiteboardActive ? "error" : "text",
+            isDisabled: viewModel.state.isAppsActionInFlight
+        ) {
+            if viewModel.state.isWhiteboardActive {
+                viewModel.closeActiveApp()
+            } else {
+                viewModel.openWhiteboard()
             }
         }
     }
 
-    @ViewBuilder
-    private var appsSection: some View {
-        VStack(alignment: .leading, spacing: ACMSpacing.xs) {
-            acmListSectionHeader("Apps")
-
-            MeetingSheetSectionCard {
-                if let activeAppName = viewModel.state.activeAppName {
-                    HStack(spacing: ACMSpacing.sm) {
-                        MeetingSheetIconBox(
-                            icon: "pencil",
-                            androidIcon: "forum",
-                            tint: ACMColors.primaryOrange,
-                            androidTint: "accent",
-                            background: ACMColors.surfaceRaised
-                        )
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("\(activeAppName) active")
-                                .font(ACMFont.trial(15, weight: .medium))
-                                .foregroundStyle(ACMColors.text)
-                                .lineLimit(1)
-                            Text(viewModel.state.isAppsLocked ? "Editing locked" : "Editing open")
-                                .font(ACMFont.trial(12))
-                                .foregroundStyle(ACMColors.textFaint)
-                                .lineLimit(1)
-                        }
-
-                        Spacer()
-                    }
-                    .padding(.horizontal, ACMSpacing.sm)
-                    .frame(height: 56)
-
-                    if canManageActiveApp {
-                        MoreRowDivider()
-                    }
-                }
-
-                if canManageApps {
-                    MoreRow(
-                        icon: viewModel.state.isWhiteboardActive ? "xmark" : "pencil",
-                        androidIcon: viewModel.state.isWhiteboardActive ? "close" : "forum",
-                        title: viewModel.state.isWhiteboardActive ? "Close whiteboard" : "Open whiteboard",
-                        tint: viewModel.state.isWhiteboardActive ? ACMColors.error : ACMColors.text,
-                        androidTint: viewModel.state.isWhiteboardActive ? "error" : "text",
-                        isDisabled: viewModel.state.isAppsActionInFlight
-                    ) {
-                        if viewModel.state.isWhiteboardActive {
-                            viewModel.closeActiveApp()
-                        } else {
-                            viewModel.openWhiteboard()
-                        }
-                        dismiss()
-                    }
-
-                    #if DEBUG
-                    if canManageDevPlayground {
-                        MoreRowDivider()
-
-                        MoreRow(
-                            icon: viewModel.state.activeAppId == "dev-playground" ? "xmark" : "chevron.left.forwardslash.chevron.right",
-                            androidIcon: viewModel.state.activeAppId == "dev-playground" ? "close" : "info",
-                            title: viewModel.state.activeAppId == "dev-playground" ? "Close dev playground" : "Open dev playground",
-                            tint: viewModel.state.activeAppId == "dev-playground" ? ACMColors.error : ACMColors.text,
-                            androidTint: viewModel.state.activeAppId == "dev-playground" ? "error" : "text",
-                            isDisabled: viewModel.state.isAppsActionInFlight
-                        ) {
-                            if viewModel.state.activeAppId == "dev-playground" {
-                                viewModel.closeActiveApp()
-                            } else {
-                                viewModel.openDevPlayground()
-                            }
-                            dismiss()
-                        }
-                    }
-                    #endif
-
-                    if canManageUnknownActiveApp {
-                        MoreRowDivider()
-
-                        MoreRow(
-                            icon: "xmark",
-                            androidIcon: "close",
-                            title: "Close \(viewModel.state.activeAppName ?? "app")",
-                            tint: ACMColors.error,
-                            androidTint: "error",
-                            isDisabled: viewModel.state.isAppsActionInFlight
-                        ) {
-                            viewModel.closeActiveApp()
-                            dismiss()
-                        }
-                    }
-                }
-
-                if canManageApps {
-                    MoreRowDivider()
-
-                    MoreRow(
-                        icon: viewModel.state.isAppsLocked ? "lock.open.fill" : "lock.fill",
-                        androidIcon: viewModel.state.isAppsLocked ? "lock.open" : "lock",
-                        title: viewModel.state.isAppsLocked ? "Unlock app editing" : "Lock app editing",
-                        tint: viewModel.state.isAppsLocked ? ACMColors.primaryOrange : ACMColors.text,
-                        androidTint: viewModel.state.isAppsLocked ? "accent" : "text",
-                        isDisabled: viewModel.state.isAppsActionInFlight
-                    ) {
-                        viewModel.toggleAppsLock()
-                        dismiss()
-                    }
-                }
+    #if DEBUG
+    private var devPlaygroundRow: some View {
+        MoreRow(
+            icon: viewModel.state.activeAppId == "dev-playground" ? "xmark" : "chevron.left.forwardslash.chevron.right",
+            androidIcon: viewModel.state.activeAppId == "dev-playground" ? "close" : "info",
+            title: viewModel.state.activeAppId == "dev-playground" ? "Close dev playground" : "Open dev playground",
+            tint: viewModel.state.activeAppId == "dev-playground" ? ACMColors.error : ACMColors.text,
+            androidTint: viewModel.state.activeAppId == "dev-playground" ? "error" : "text",
+            isDisabled: viewModel.state.isAppsActionInFlight
+        ) {
+            if viewModel.state.activeAppId == "dev-playground" {
+                viewModel.closeActiveApp()
+            } else {
+                viewModel.openDevPlayground()
             }
+        }
+    }
+    #endif
+
+    private var closeUnknownAppRow: some View {
+        MoreRow(
+            icon: "xmark",
+            androidIcon: "close",
+            title: "Close \(viewModel.state.activeAppName ?? "app")",
+            tint: ACMColors.error,
+            androidTint: "error",
+            isDisabled: viewModel.state.isAppsActionInFlight
+        ) {
+            viewModel.closeActiveApp()
+        }
+    }
+
+    private var appsLockRow: some View {
+        MoreRow(
+            icon: viewModel.state.isAppsLocked ? "lock.open.fill" : "lock.fill",
+            androidIcon: viewModel.state.isAppsLocked ? "lock.open" : "lock",
+            title: viewModel.state.isAppsLocked ? "Unlock app editing" : "Lock app editing",
+            tint: viewModel.state.isAppsLocked ? ACMColors.primaryOrange : ACMColors.text,
+            androidTint: viewModel.state.isAppsLocked ? "accent" : "text",
+            isDisabled: viewModel.state.isAppsActionInFlight
+        ) {
+            viewModel.toggleAppsLock()
         }
     }
 
@@ -510,89 +659,49 @@ struct MoreSheetView: View {
         return false
         #endif
     }
+}
 
-    private var canShowAdminControls: Bool {
-        viewModel.state.isAdmin && !viewModel.state.isWebinarAttendee
-    }
-
-    private var canShowAppsSection: Bool {
-        canManageApps || viewModel.state.activeAppId != nil
-    }
+enum ViewSettingsSheetPage {
+    case overview
+    case viewMode
+    case grid
+    case selfView
+    case selfViewPosition
 }
 
 struct ViewSettingsSheetView: View {
     @Bindable var viewModel: MeetingViewModel
     var bodyReady: Bool = true
+    var page: ViewSettingsSheetPage = .overview
     var onBack: (() -> Void)? = nil
+    var onOpenViewModeSettings: (() -> Void)? = nil
+    var onOpenGridSettings: (() -> Void)? = nil
+    var onOpenSelfViewSettings: (() -> Void)? = nil
+    var onOpenSelfViewPositionSettings: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
+
+    private var title: String {
+        switch page {
+        case .overview:
+            return "Layout"
+        case .viewMode:
+            return "View"
+        case .grid:
+            return "Grid"
+        case .selfView:
+            return "Self-view"
+        case .selfViewPosition:
+            return "Position"
+        }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
-            MeetingSheetHeader(title: "Layout", onBack: onBack, onDone: { dismiss() })
+            MeetingSheetHeader(title: title, onBack: onBack, onDone: { dismiss() })
 
             if bodyReady {
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: ACMSpacing.md) {
-                        VStack(alignment: .leading, spacing: ACMSpacing.xs) {
-                            acmListSectionHeader("View")
-
-                            MeetingSheetSectionCard {
-                                viewModeRow(.auto, icon: "rectangle.grid.2x2", androidIcon: "settings")
-                                MoreRowDivider()
-                                viewModeRow(.tiled, icon: "square.grid.2x2", androidIcon: "participants")
-                                MoreRowDivider()
-                                viewModeRow(.spotlight, icon: "rectangle.inset.filled", androidIcon: "pin.off")
-                                MoreRowDivider()
-                                viewModeRow(.sidebar, icon: "sidebar.right", androidIcon: "participants")
-                            }
-                        }
-
-                        VStack(alignment: .leading, spacing: ACMSpacing.xs) {
-                            acmListSectionHeader("Grid")
-
-                            MeetingSheetSectionCard {
-                                maxTilesRow
-                                MoreRowDivider()
-                                MoreRow(
-                                    icon: viewModel.state.hideTilesWithoutVideo ? "video.fill" : "video.slash.fill",
-                                    androidIcon: viewModel.state.hideTilesWithoutVideo ? "video" : "video.off",
-                                    title: viewModel.state.hideTilesWithoutVideo ? "Show video-off tiles" : "Hide tiles without video",
-                                    tint: viewModel.state.hideTilesWithoutVideo ? ACMColors.primaryOrange : ACMColors.text,
-                                    androidTint: viewModel.state.hideTilesWithoutVideo ? "accent" : "text"
-                                ) {
-                                    viewModel.toggleHideTilesWithoutVideo()
-                                }
-                            }
-                        }
-
-                        VStack(alignment: .leading, spacing: ACMSpacing.xs) {
-                            acmListSectionHeader("Self-view")
-
-                            MeetingSheetSectionCard {
-                                selfViewModeRow(.auto, icon: "rectangle.grid.2x2", androidIcon: "settings")
-                                MoreRowDivider()
-                                selfViewModeRow(.tile, icon: "person.crop.rectangle", androidIcon: "account")
-                                MoreRowDivider()
-                                selfViewModeRow(.floating, icon: "pip", androidIcon: "info")
-                                MoreRowDivider()
-                                selfViewModeRow(.minimized, icon: "minus.rectangle", androidIcon: "remove.person")
-                            }
-                        }
-
-                        VStack(alignment: .leading, spacing: ACMSpacing.xs) {
-                            acmListSectionHeader("Self-view position")
-
-                            MeetingSheetSectionCard {
-                                selfViewCornerRow(.topLeft, icon: "arrow.up.left", androidIcon: "north.west")
-                                MoreRowDivider()
-                                selfViewCornerRow(.topRight, icon: "arrow.up.right", androidIcon: "north.east")
-                                MoreRowDivider()
-                                selfViewCornerRow(.bottomLeft, icon: "arrow.down.left", androidIcon: "south.west")
-                                MoreRowDivider()
-                                selfViewCornerRow(.bottomRight, icon: "arrow.down.right", androidIcon: "south.east")
-                            }
-                        }
-                    }
+                    content
                     .padding(.horizontal, ACMSpacing.lg)
                     .padding(.top, ACMSpacing.md)
                     .padding(.bottom, ACMSpacing.lg)
@@ -607,6 +716,124 @@ struct ViewSettingsSheetView: View {
         #else
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         #endif
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch page {
+        case .overview:
+            overviewContent
+        case .viewMode:
+            viewModeContent
+        case .grid:
+            gridContent
+        case .selfView:
+            selfViewContent
+        case .selfViewPosition:
+            selfViewPositionContent
+        }
+    }
+
+    private var overviewContent: some View {
+        LazyVStack(alignment: .leading, spacing: ACMSpacing.md) {
+            VStack(alignment: .leading, spacing: ACMSpacing.xs) {
+                acmListSectionHeader("Layout")
+
+                MeetingSheetSectionCard {
+                    MoreRow(icon: "rectangle.grid.2x2", androidIcon: "settings", title: "\(viewModel.state.viewMode.title) view", showsChevron: true) {
+                        onOpenViewModeSettings?()
+                    }
+                    MoreRowDivider()
+                    MoreRow(icon: "square.grid.2x2", androidIcon: "participants", title: "\(viewModel.state.viewMaxTiles) maximum tiles", showsChevron: true) {
+                        onOpenGridSettings?()
+                    }
+                    MoreRowDivider()
+                    MoreRow(icon: "person.crop.rectangle", androidIcon: "account", title: viewModel.state.selfViewMode.title, showsChevron: true) {
+                        onOpenSelfViewSettings?()
+                    }
+                    MoreRowDivider()
+                    MoreRow(icon: "arrow.up.left.and.arrow.down.right", androidIcon: "open.in.full", title: viewModel.state.selfViewCorner.title, showsChevron: true) {
+                        onOpenSelfViewPositionSettings?()
+                    }
+                }
+            }
+        }
+    }
+
+    private var viewModeContent: some View {
+        LazyVStack(alignment: .leading, spacing: ACMSpacing.md) {
+            VStack(alignment: .leading, spacing: ACMSpacing.xs) {
+                acmListSectionHeader("View")
+
+                MeetingSheetSectionCard {
+                    viewModeRow(.auto, icon: "rectangle.grid.2x2", androidIcon: "settings")
+                    MoreRowDivider()
+                    viewModeRow(.tiled, icon: "square.grid.2x2", androidIcon: "participants")
+                    MoreRowDivider()
+                    viewModeRow(.spotlight, icon: "rectangle.inset.filled", androidIcon: "pin.off")
+                    MoreRowDivider()
+                    viewModeRow(.sidebar, icon: "sidebar.right", androidIcon: "participants")
+                }
+            }
+        }
+    }
+
+    private var gridContent: some View {
+        LazyVStack(alignment: .leading, spacing: ACMSpacing.md) {
+            VStack(alignment: .leading, spacing: ACMSpacing.xs) {
+                acmListSectionHeader("Grid")
+
+                MeetingSheetSectionCard {
+                    maxTilesRow
+                    MoreRowDivider()
+                    MoreRow(
+                        icon: viewModel.state.hideTilesWithoutVideo ? "video.fill" : "video.slash.fill",
+                        androidIcon: viewModel.state.hideTilesWithoutVideo ? "video" : "video.off",
+                        title: viewModel.state.hideTilesWithoutVideo ? "Show video-off tiles" : "Hide tiles without video",
+                        tint: viewModel.state.hideTilesWithoutVideo ? ACMColors.primaryOrange : ACMColors.text,
+                        androidTint: viewModel.state.hideTilesWithoutVideo ? "accent" : "text"
+                    ) {
+                        viewModel.toggleHideTilesWithoutVideo()
+                    }
+                }
+            }
+        }
+    }
+
+    private var selfViewContent: some View {
+        LazyVStack(alignment: .leading, spacing: ACMSpacing.md) {
+            VStack(alignment: .leading, spacing: ACMSpacing.xs) {
+                acmListSectionHeader("Self-view")
+
+                MeetingSheetSectionCard {
+                    selfViewModeRow(.auto, icon: "rectangle.grid.2x2", androidIcon: "settings")
+                    MoreRowDivider()
+                    selfViewModeRow(.tile, icon: "person.crop.rectangle", androidIcon: "account")
+                    MoreRowDivider()
+                    selfViewModeRow(.floating, icon: "pip", androidIcon: "info")
+                    MoreRowDivider()
+                    selfViewModeRow(.minimized, icon: "minus.rectangle", androidIcon: "remove.person")
+                }
+            }
+        }
+    }
+
+    private var selfViewPositionContent: some View {
+        LazyVStack(alignment: .leading, spacing: ACMSpacing.md) {
+            VStack(alignment: .leading, spacing: ACMSpacing.xs) {
+                acmListSectionHeader("Self-view position")
+
+                MeetingSheetSectionCard {
+                    selfViewCornerRow(.topLeft, icon: "arrow.up.left", androidIcon: "north.west")
+                    MoreRowDivider()
+                    selfViewCornerRow(.topRight, icon: "arrow.up.right", androidIcon: "north.east")
+                    MoreRowDivider()
+                    selfViewCornerRow(.bottomLeft, icon: "arrow.down.left", androidIcon: "south.west")
+                    MoreRowDivider()
+                    selfViewCornerRow(.bottomRight, icon: "arrow.down.right", androidIcon: "south.east")
+                }
+            }
+        }
     }
 
     @ViewBuilder

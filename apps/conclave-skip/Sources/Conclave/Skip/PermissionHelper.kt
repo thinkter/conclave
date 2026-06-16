@@ -1,50 +1,21 @@
 package conclave.module
 
-import android.app.Activity
 import android.content.pm.PackageManager
+import android.os.Build
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import skip.foundation.ProcessInfo
 import skip.ui.UIApplication
 
 // Plain-Kotlin permission helper (no `skip.lib.*` import, so the Kotlin stdlib
-// collection ops like `any`/`arrayOf` are NOT shadowed by Skip's Swift-shaped
-// equivalents). CAMERA + RECORD_AUDIO are runtime permissions on Android 6+;
-// the in-meeting WebRTC capturer opens the camera/mic directly and would throw a
-// SecurityException on its async capture thread (crashing the process) if they
-// were not already granted, so we request them up front from the Activity.
+// APIs are not shadowed by Skip's Swift-shaped equivalents).
 object PermissionHelper {
-    private const val MEDIA_PERMISSIONS_REQUEST_CODE = 1001
     private const val RECORD_AUDIO_REQUEST_CODE = 1002
     private const val CAMERA_REQUEST_CODE = 1003
+    private const val NOTIFICATIONS_REQUEST_CODE = 1004
 
     var onRecordAudioPermissionResult: ((Boolean) -> Unit)? = null
     var onCameraPermissionResult: ((Boolean) -> Unit)? = null
-
-    fun requestMediaPermissions(activity: Activity) {
-        // POST_NOTIFICATIONS (API 33+) is needed so the ongoing-call foreground
-        // service can show its Leave + Mute notification; request it alongside
-        // camera/mic up front. It's a no-op string on older OS versions, so it's
-        // only included when running on API 33+.
-        val perms = if (android.os.Build.VERSION.SDK_INT >= 33) {
-            arrayOf(
-                android.Manifest.permission.CAMERA,
-                android.Manifest.permission.RECORD_AUDIO,
-                android.Manifest.permission.POST_NOTIFICATIONS
-            )
-        } else {
-            arrayOf(
-                android.Manifest.permission.CAMERA,
-                android.Manifest.permission.RECORD_AUDIO
-            )
-        }
-        val needsAny = perms.any {
-            ContextCompat.checkSelfPermission(activity, it) != PackageManager.PERMISSION_GRANTED
-        }
-        if (needsAny) {
-            ActivityCompat.requestPermissions(activity, perms, MEDIA_PERMISSIONS_REQUEST_CODE)
-        }
-    }
 
     fun hasRecordAudioPermission(): Boolean {
         val context = ProcessInfo.processInfo.androidContext
@@ -100,23 +71,43 @@ object PermissionHelper {
         )
     }
 
+    fun requestNotificationsPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT < 33) {
+            return
+        }
+
+        val context = ProcessInfo.processInfo.androidContext
+        if (
+            ContextCompat.checkSelfPermission(
+                context,
+                android.Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
+
+        val activity = UIApplication.shared.androidActivity ?: return
+        ActivityCompat.requestPermissions(
+            activity,
+            arrayOf(android.Manifest.permission.POST_NOTIFICATIONS),
+            NOTIFICATIONS_REQUEST_CODE
+        )
+    }
+
     fun handleRequestPermissionsResult(
         requestCode: Int,
         permissions: Array<String>,
         grantResults: IntArray
     ) {
         if (
-            requestCode != MEDIA_PERMISSIONS_REQUEST_CODE &&
             requestCode != RECORD_AUDIO_REQUEST_CODE &&
-            requestCode != CAMERA_REQUEST_CODE
+            requestCode != CAMERA_REQUEST_CODE &&
+            requestCode != NOTIFICATIONS_REQUEST_CODE
         ) {
             return
         }
 
-        if (
-            requestCode == RECORD_AUDIO_REQUEST_CODE ||
-            (requestCode == MEDIA_PERMISSIONS_REQUEST_CODE && onRecordAudioPermissionResult != null)
-        ) {
+        if (requestCode == RECORD_AUDIO_REQUEST_CODE) {
             finishRecordAudioPermission(
                 permissionGranted(
                     permissions,
@@ -127,10 +118,7 @@ object PermissionHelper {
             )
         }
 
-        if (
-            requestCode == CAMERA_REQUEST_CODE ||
-            (requestCode == MEDIA_PERMISSIONS_REQUEST_CODE && onCameraPermissionResult != null)
-        ) {
+        if (requestCode == CAMERA_REQUEST_CODE) {
             finishCameraPermission(
                 permissionGranted(
                     permissions,
