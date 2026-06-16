@@ -37,6 +37,7 @@ struct JoinView: View {
     @State private var isSigningIn = false
     @State private var signingInProvider: AppState.AuthProvider = .none
     @State private var pendingLinkJoinTarget: ParsedJoinTarget?
+    @State private var shouldShowInviteCodeInput = false
     @State private var authTransitionGeneration = 0
     @State private var inputFocusClearGeneration = 0
     @State private var cameraPreviewGeneration = 0
@@ -142,6 +143,11 @@ struct JoinView: View {
         }
         .onChange(of: appState.isAuthenticated) { _, _ in
             applyPendingJoinLinkIfPossible()
+        }
+        .onChange(of: viewModel.state.joinFormErrorMessage) { _, message in
+            if shouldRevealInviteCodeInput(for: message) {
+                shouldShowInviteCodeInput = true
+            }
         }
         .onDisappear {
             authTransitionGeneration += 1
@@ -532,6 +538,7 @@ struct JoinView: View {
         Button {
             activeTab = .new
             viewModel.state.joinFormErrorMessage = nil
+            shouldShowInviteCodeInput = false
         } label: {
             Text("New meeting")
                 .font(ACMFont.trial(14, weight: .medium))
@@ -641,7 +648,9 @@ struct JoinView: View {
     private var joinMeetingForm: some View {
         VStack(spacing: 16) {
             roomNameInputSection
-            inviteCodeInputSection
+            if shouldShowInviteCodeInput {
+                inviteCodeInputSection
+            }
             displayNameInputSection2
             joinFormErrorBanner
             joinMeetingButton
@@ -1403,12 +1412,17 @@ struct JoinView: View {
         Binding(
             get: { roomCode },
             set: { newValue in
+                let previousRoomCode = roomCode
                 viewModel.state.joinFormErrorMessage = nil
                 pendingLinkJoinTarget = nil
                 if newValue.contains("/") || newValue.contains(":") {
                     roomCode = newValue
                 } else {
                     roomCode = sanitizeRoomCodeInput(newValue)
+                }
+                if roomCode != previousRoomCode {
+                    shouldShowInviteCodeInput = false
+                    inviteCode = ""
                 }
             }
         )
@@ -1428,6 +1442,7 @@ struct JoinView: View {
         guard viewModel.state.joinFormErrorMessage != nil else { return }
         phase = .join
         activeTab = .join
+        shouldShowInviteCodeInput = shouldRevealInviteCodeInput(for: viewModel.state.joinFormErrorMessage)
         if !viewModel.state.roomId.isEmpty {
             roomCode = viewModel.state.roomId
         }
@@ -1477,6 +1492,7 @@ struct JoinView: View {
         phase = .join
         activeTab = .join
         viewModel.state.joinFormErrorMessage = nil
+        shouldShowInviteCodeInput = false
 
         guard !joinTarget.roomId.isEmpty else {
             pendingLinkJoinTarget = nil
@@ -1489,12 +1505,19 @@ struct JoinView: View {
         roomCode = joinTarget.roomId
         if joinTarget.joinMode == .meeting {
             inviteCode = joinTarget.meetingInviteCode ?? ""
+            shouldShowInviteCodeInput = joinTarget.meetingInviteCode != nil
         } else {
             inviteCode = joinTarget.webinarInviteCode ?? ""
+            shouldShowInviteCodeInput = joinTarget.webinarInviteCode != nil
             isCameraOn = false
             isMicOn = false
             stopPreviewCapture()
         }
+    }
+
+    private func shouldRevealInviteCodeInput(for message: String?) -> Bool {
+        let normalized = message?.lowercased() ?? ""
+        return normalized.contains("invite code")
     }
     
     private func toggleCamera() {

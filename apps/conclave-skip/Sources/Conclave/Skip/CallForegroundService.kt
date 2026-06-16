@@ -16,8 +16,8 @@ import androidx.core.app.NotificationCompat
 
 /// The ongoing-call foreground service. While the user is in a meeting this is
 /// what keeps the call alive when the app is backgrounded — it runs with
-/// foregroundServiceType `microphone|mediaPlayback` (declared in the manifest)
-/// so the OS does not kill the audio path, and it shows a persistent
+/// foregroundServiceType `microphone|camera|mediaPlayback` (declared in the
+/// manifest) so the OS does not kill the active media path, and it shows a persistent
 /// notification with Leave + Mute/unmute actions that deep-link back into the
 /// meeting (tap the body to return).
 ///
@@ -32,9 +32,11 @@ class CallForegroundService : Service() {
         const val ACTION_STOP = "conclave.app.action.STOP_CALL"
         const val ACTION_UPDATE = "conclave.app.action.UPDATE_CALL"
         const val EXTRA_MUTED = "muted"
+        const val EXTRA_CAMERA_OFF = "cameraOff"
     }
 
     private var currentMuted: Boolean = true
+    private var currentCameraOff: Boolean = true
 
     override fun onCreate() {
         super.onCreate()
@@ -50,44 +52,15 @@ class CallForegroundService : Service() {
             }
             ACTION_UPDATE -> {
                 currentMuted = intent.getBooleanExtra(EXTRA_MUTED, currentMuted)
-                // Re-post the SAME notification id to update the Mute action +
-                // text without re-foregrounding.
-                val manager = getSystemService(NotificationManager::class.java)
-                manager.notify(NOTIFICATION_ID, buildNotification())
+                currentCameraOff = intent.getBooleanExtra(EXTRA_CAMERA_OFF, currentCameraOff)
+                startOrUpdateForeground()
                 return START_STICKY
             }
             ACTION_START -> {
                 currentMuted = intent.getBooleanExtra(EXTRA_MUTED, currentMuted)
-                // Android 14+ throws if a MICROPHONE foreground-service type is
-                // started while RECORD_AUDIO isn't granted. In a call the mic is
-                // normally granted, but guard it: fall back to MEDIA_PLAYBACK-only
-                // so the background-call service + notification still come up
-                // (you can still hear others) instead of the service dying.
-                val micGranted = androidx.core.content.ContextCompat.checkSelfPermission(
-                    this, android.Manifest.permission.RECORD_AUDIO
-                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                currentCameraOff = intent.getBooleanExtra(EXTRA_CAMERA_OFF, currentCameraOff)
                 try {
-                    if (Build.VERSION.SDK_INT >= 30) {
-                        val type = if (micGranted) {
-                            ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE or
-                                ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
-                        } else {
-                            ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
-                        }
-                        startForeground(NOTIFICATION_ID, buildNotification(), type)
-                    } else if (Build.VERSION.SDK_INT >= 29) {
-                        if (micGranted) {
-                            startForeground(
-                                NOTIFICATION_ID,
-                                buildNotification(),
-                                ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
-                            )
-                        } else {
-                            startForeground(NOTIFICATION_ID, buildNotification())
-                        }
-                    } else {
-                        startForeground(NOTIFICATION_ID, buildNotification())
-                    }
+                    startOrUpdateForeground()
                 } catch (t: Throwable) {
                     debugLog("[Call] Failed to foreground call service: ${t}")
                     stopSelf()
@@ -102,6 +75,44 @@ class CallForegroundService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    private fun foregroundServiceTypeMask(): Int {
+        var type = 0
+
+        if (Build.VERSION.SDK_INT >= 29) {
+            val micGranted = androidx.core.content.ContextCompat.checkSelfPermission(
+                this, android.Manifest.permission.RECORD_AUDIO
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            if (micGranted) {
+                type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+            }
+
+            val cameraGranted = androidx.core.content.ContextCompat.checkSelfPermission(
+                this, android.Manifest.permission.CAMERA
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            if (!currentCameraOff && cameraGranted) {
+                type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
+            }
+        }
+
+        if (Build.VERSION.SDK_INT >= 30) {
+            type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+        }
+
+        return type
+    }
+
+    private fun startOrUpdateForeground() {
+        val notification = buildNotification()
+        if (Build.VERSION.SDK_INT >= 29) {
+            val type = foregroundServiceTypeMask()
+            if (type != 0) {
+                startForeground(NOTIFICATION_ID, notification, type)
+                return
+            }
+        }
+        startForeground(NOTIFICATION_ID, notification)
+    }
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {

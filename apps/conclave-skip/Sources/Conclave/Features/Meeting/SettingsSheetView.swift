@@ -6,11 +6,26 @@ import UIKit
 
 // MARK: - Settings Sheet
 
+enum SettingsSheetPage {
+    case overview
+    case room
+    case webinar
+    case profile
+    case audioVideo
+    case videoQuality
+}
+
 struct SettingsSheetView: View {
     @Bindable var viewModel: MeetingViewModel
     var bodyReady: Bool = true
+    var page: SettingsSheetPage = .overview
     @Environment(\.dismiss) private var dismiss
     var onBack: (() -> Void)? = nil
+    var onOpenRoomSettings: (() -> Void)? = nil
+    var onOpenWebinarSettings: (() -> Void)? = nil
+    var onOpenProfileSettings: (() -> Void)? = nil
+    var onOpenAudioVideoSettings: (() -> Void)? = nil
+    var onOpenVideoQualitySettings: (() -> Void)? = nil
     @State private var displayNameInput = ""
     @State private var meetingInviteCodeInput = ""
     @State private var webinarInviteCodeInput = ""
@@ -26,6 +41,23 @@ struct SettingsSheetView: View {
 
     private var isMeetingInviteCodeEmpty: Bool {
         meetingInviteCodeInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var title: String {
+        switch page {
+        case .overview:
+            return "Settings"
+        case .room:
+            return "Room"
+        case .webinar:
+            return "Webinar"
+        case .profile:
+            return "Profile"
+        case .audioVideo:
+            return "Audio and video"
+        case .videoQuality:
+            return "Video"
+        }
     }
 
     private var webinarMaxAttendeesValue: Int? {
@@ -88,6 +120,51 @@ struct SettingsSheetView: View {
         .frame(height: 52)
         .disabled(isDisabled)
         .opacity(isDisabled ? 0.62 : 1.0)
+    }
+
+    @ViewBuilder
+    private func settingsNavigationRow(
+        _ title: String,
+        subtitle: String,
+        icon: String,
+        androidIcon: String,
+        isActive: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: ACMSpacing.sm) {
+                MeetingSheetIconBox(
+                    icon: icon,
+                    androidIcon: androidIcon,
+                    tint: isActive ? ACMColors.primaryOrange : ACMColors.textMuted,
+                    androidTint: isActive ? "accent" : "muted"
+                )
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(ACMFont.trial(15, weight: .medium))
+                        .foregroundStyle(ACMColors.text)
+                        .lineLimit(1)
+                    Text(subtitle)
+                        .font(ACMFont.trial(12))
+                        .foregroundStyle(ACMColors.textFaint)
+                        .lineLimit(1)
+                }
+
+                Spacer()
+
+                ACMSystemIcon.icon("chevron.right", android: "arrow.forward", size: 16, tint: "faint")
+                    .foregroundStyle(ACMColors.textFaint)
+                    .frame(width: 24, height: 24)
+            }
+            .padding(.horizontal, ACMSpacing.sm)
+            .frame(height: 58)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            #if !SKIP
+            .contentShape(Rectangle())
+            #endif
+        }
+        .buttonStyle(.plain)
     }
 
     @ViewBuilder
@@ -776,165 +853,257 @@ struct SettingsSheetView: View {
         .frame(height: 52)
     }
 
+    @ViewBuilder
+    private var settingsContent: some View {
+        switch page {
+        case .overview:
+            overviewContent
+        case .room:
+            roomSettingsContent
+        case .webinar:
+            webinarSection()
+        case .profile:
+            profileSettingsContent
+        case .audioVideo:
+            audioVideoSettingsContent
+        case .videoQuality:
+            videoQualitySettingsContent
+        }
+    }
+
+    @ViewBuilder
+    private var overviewContent: some View {
+        if viewModel.state.isAdmin {
+            VStack(alignment: .leading, spacing: ACMSpacing.xs) {
+                acmListSectionHeader("Host controls")
+
+                MeetingSheetSectionCard {
+                    settingsNavigationRow(
+                        "Room controls",
+                        subtitle: viewModel.state.meetingRequiresInviteCode ? "Invite code required" : "Locks, guests, chat, invite code",
+                        icon: viewModel.state.isRoomLocked ? "lock.fill" : "lock.open.fill",
+                        androidIcon: viewModel.state.isRoomLocked ? "lock" : "lock.open",
+                        isActive: viewModel.state.isRoomLocked || viewModel.state.isChatLocked || viewModel.state.isNoGuests || viewModel.state.meetingRequiresInviteCode
+                    ) {
+                        onOpenRoomSettings?()
+                    }
+                    MoreRowDivider()
+                    settingsNavigationRow(
+                        "Webinar",
+                        subtitle: viewModel.state.isWebinarEnabled ? "\(viewModel.state.webinarAttendeeCount) attendees" : "Mode, access, links",
+                        icon: "person.2.fill",
+                        androidIcon: "participants",
+                        isActive: viewModel.state.isWebinarEnabled
+                    ) {
+                        onOpenWebinarSettings?()
+                    }
+                }
+            }
+        }
+
+        VStack(alignment: .leading, spacing: ACMSpacing.xs) {
+            acmListSectionHeader("Personal")
+
+            MeetingSheetSectionCard {
+                settingsNavigationRow(
+                    "Profile",
+                    subtitle: viewModel.state.displayName.isEmpty ? "Display name" : viewModel.state.displayName,
+                    icon: "person.crop.circle",
+                    androidIcon: "account"
+                ) {
+                    onOpenProfileSettings?()
+                }
+                MoreRowDivider()
+                settingsNavigationRow(
+                    "Audio and video",
+                    subtitle: viewModel.state.mediaPublishingDisabled ? "Publishing disabled" : "Mic, camera, speaker",
+                    icon: viewModel.state.isMuted ? "mic.slash.fill" : "mic.fill",
+                    androidIcon: viewModel.state.isMuted ? "mic.off" : "mic",
+                    isActive: !viewModel.state.isMuted || !viewModel.state.isCameraOff
+                ) {
+                    onOpenAudioVideoSettings?()
+                }
+                MoreRowDivider()
+                settingsNavigationRow(
+                    "Video quality",
+                    subtitle: viewModel.state.videoQuality == .low ? "Low bandwidth" : "Standard",
+                    icon: "video.fill",
+                    androidIcon: "video",
+                    isActive: viewModel.state.videoQuality == .low
+                ) {
+                    onOpenVideoQualitySettings?()
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var roomSettingsContent: some View {
+        VStack(alignment: .leading, spacing: ACMSpacing.xs) {
+            acmListSectionHeader("Access")
+
+            MeetingSheetSectionCard {
+                settingsToggleRow(
+                    "Lock room",
+                    icon: viewModel.state.isRoomLocked ? "lock.fill" : "lock.open.fill",
+                    androidIcon: viewModel.state.isRoomLocked ? "lock" : "lock.open",
+                    isOn: Binding(
+                        get: { viewModel.state.isRoomLocked },
+                        set: { next in
+                            if next != viewModel.state.isRoomLocked {
+                                viewModel.toggleRoomLock()
+                            }
+                        }
+                    ),
+                    isActive: viewModel.state.isRoomLocked
+                )
+                MeetingSheetRowDivider(inset: ACMSpacing.sm + 32 + ACMSpacing.sm)
+                settingsToggleRow(
+                    "Lock chat",
+                    icon: "message.fill",
+                    androidIcon: "chat",
+                    isOn: Binding(
+                        get: { viewModel.state.isChatLocked },
+                        set: { next in
+                            if next != viewModel.state.isChatLocked {
+                                viewModel.toggleChatLock()
+                            }
+                        }
+                    ),
+                    isActive: viewModel.state.isChatLocked
+                )
+                MeetingSheetRowDivider(inset: ACMSpacing.sm + 32 + ACMSpacing.sm)
+                settingsToggleRow(
+                    "Block guests",
+                    icon: "nosign",
+                    androidIcon: "block",
+                    isOn: Binding(
+                        get: { viewModel.state.isNoGuests },
+                        set: { next in
+                            if next != viewModel.state.isNoGuests {
+                                viewModel.toggleNoGuests()
+                            }
+                        }
+                    ),
+                    isActive: viewModel.state.isNoGuests
+                )
+                MeetingSheetRowDivider(inset: ACMSpacing.sm + 32 + ACMSpacing.sm)
+                settingsToggleRow(
+                    "Direct messages",
+                    icon: "bubble.left.and.bubble.right.fill",
+                    androidIcon: "forum",
+                    isOn: Binding(
+                        get: { viewModel.state.isDmEnabled },
+                        set: { next in
+                            if next != viewModel.state.isDmEnabled {
+                                viewModel.toggleDmEnabled()
+                            }
+                        }
+                    ),
+                    isActive: viewModel.state.isDmEnabled
+                )
+                MeetingSheetRowDivider(inset: ACMSpacing.sm + 32 + ACMSpacing.sm)
+                settingsToggleRow(
+                    "Read messages aloud",
+                    icon: viewModel.state.isTtsDisabled ? "speaker.slash.fill" : "speaker.wave.2.fill",
+                    androidIcon: viewModel.state.isTtsDisabled ? "volume.off" : "volume",
+                    isOn: Binding(
+                        get: { !viewModel.state.isTtsDisabled },
+                        set: { next in
+                            if next == viewModel.state.isTtsDisabled {
+                                viewModel.toggleTtsDisabled()
+                            }
+                        }
+                    ),
+                    isActive: !viewModel.state.isTtsDisabled
+                )
+                MeetingSheetRowDivider(inset: ACMSpacing.sm + 32 + ACMSpacing.sm)
+                meetingInviteCodeRow()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var profileSettingsContent: some View {
+        VStack(alignment: .leading, spacing: ACMSpacing.xs) {
+            acmListSectionHeader("Profile")
+
+            MeetingSheetSectionCard {
+                displayNameRow()
+                MeetingSheetRowDivider(inset: ACMSpacing.sm + 32 + ACMSpacing.sm)
+                updateDisplayNameRow()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var audioVideoSettingsContent: some View {
+        VStack(alignment: .leading, spacing: ACMSpacing.xs) {
+            acmListSectionHeader("Audio and video")
+
+            MeetingSheetSectionCard {
+                settingsToggleRow(
+                    "Microphone",
+                    icon: viewModel.state.isMuted ? "mic.slash.fill" : "mic.fill",
+                    androidIcon: viewModel.state.isMuted ? "mic.off" : "mic",
+                    isOn: Binding(
+                        get: { !viewModel.state.isMuted },
+                        set: { next in
+                            let shouldMute = !next
+                            if shouldMute != viewModel.state.isMuted {
+                                viewModel.toggleMute()
+                            }
+                        }
+                    ),
+                    isActive: !viewModel.state.isMuted,
+                    isDisabled: viewModel.state.mediaPublishingDisabled
+                )
+                MeetingSheetRowDivider(inset: ACMSpacing.sm + 32 + ACMSpacing.sm)
+                settingsToggleRow(
+                    "Camera",
+                    icon: viewModel.state.isCameraOff ? "video.slash.fill" : "video.fill",
+                    androidIcon: viewModel.state.isCameraOff ? "video.off" : "video",
+                    isOn: Binding(
+                        get: { !viewModel.state.isCameraOff },
+                        set: { next in
+                            let shouldDisable = !next
+                            if shouldDisable != viewModel.state.isCameraOff {
+                                viewModel.toggleCamera()
+                            }
+                        }
+                    ),
+                    isActive: !viewModel.state.isCameraOff,
+                    isDisabled: viewModel.state.mediaPublishingDisabled
+                )
+                MeetingSheetRowDivider(inset: ACMSpacing.sm + 32 + ACMSpacing.sm)
+                microphoneInputRow()
+                MeetingSheetRowDivider(inset: ACMSpacing.sm + 32 + ACMSpacing.sm)
+                audioOutputRow()
+                MeetingSheetRowDivider(inset: ACMSpacing.sm + 32 + ACMSpacing.sm)
+                testSpeakerRow()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var videoQualitySettingsContent: some View {
+        VStack(alignment: .leading, spacing: ACMSpacing.xs) {
+            acmListSectionHeader("Video")
+
+            MeetingSheetSectionCard {
+                qualityRow()
+            }
+        }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            MeetingSheetHeader(title: "Settings", onBack: onBack, onDone: { dismiss() })
+            MeetingSheetHeader(title: title, onBack: onBack, onDone: { dismiss() })
 
             if bodyReady {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: ACMSpacing.md) {
-                    if viewModel.state.isAdmin {
-                        VStack(alignment: .leading, spacing: ACMSpacing.xs) {
-                            acmListSectionHeader("Room")
-
-                            MeetingSheetSectionCard {
-                                settingsToggleRow(
-                                    "Lock room",
-                                    icon: viewModel.state.isRoomLocked ? "lock.fill" : "lock.open.fill",
-                                    androidIcon: viewModel.state.isRoomLocked ? "lock" : "lock.open",
-                                    isOn: Binding(
-                                        get: { viewModel.state.isRoomLocked },
-                                        set: { next in
-                                            if next != viewModel.state.isRoomLocked {
-                                                viewModel.toggleRoomLock()
-                                            }
-                                        }
-                                    ),
-                                    isActive: viewModel.state.isRoomLocked
-                                )
-                                MeetingSheetRowDivider(inset: ACMSpacing.sm + 32 + ACMSpacing.sm)
-                                settingsToggleRow(
-                                    "Lock chat",
-                                    icon: "message.fill",
-                                    androidIcon: "chat",
-                                    isOn: Binding(
-                                        get: { viewModel.state.isChatLocked },
-                                        set: { next in
-                                            if next != viewModel.state.isChatLocked {
-                                                viewModel.toggleChatLock()
-                                            }
-                                        }
-                                    ),
-                                    isActive: viewModel.state.isChatLocked
-                                )
-                                MeetingSheetRowDivider(inset: ACMSpacing.sm + 32 + ACMSpacing.sm)
-                                settingsToggleRow(
-                                    "Block guests",
-                                    icon: "nosign",
-                                    androidIcon: "block",
-                                    isOn: Binding(
-                                        get: { viewModel.state.isNoGuests },
-                                        set: { next in
-                                            if next != viewModel.state.isNoGuests {
-                                                viewModel.toggleNoGuests()
-                                            }
-                                        }
-                                    ),
-                                    isActive: viewModel.state.isNoGuests
-                                )
-                                MeetingSheetRowDivider(inset: ACMSpacing.sm + 32 + ACMSpacing.sm)
-                                settingsToggleRow(
-                                    "Direct messages",
-                                    icon: "bubble.left.and.bubble.right.fill",
-                                    androidIcon: "forum",
-                                    isOn: Binding(
-                                        get: { viewModel.state.isDmEnabled },
-                                        set: { next in
-                                            if next != viewModel.state.isDmEnabled {
-                                                viewModel.toggleDmEnabled()
-                                            }
-                                        }
-                                    ),
-                                    isActive: viewModel.state.isDmEnabled
-                                )
-                                MeetingSheetRowDivider(inset: ACMSpacing.sm + 32 + ACMSpacing.sm)
-                                settingsToggleRow(
-                                    "Read messages aloud",
-                                    icon: viewModel.state.isTtsDisabled ? "speaker.slash.fill" : "speaker.wave.2.fill",
-                                    androidIcon: viewModel.state.isTtsDisabled ? "volume.off" : "volume",
-                                    isOn: Binding(
-                                        get: { !viewModel.state.isTtsDisabled },
-                                        set: { next in
-                                            if next == viewModel.state.isTtsDisabled {
-                                                viewModel.toggleTtsDisabled()
-                                            }
-                                        }
-                                    ),
-                                    isActive: !viewModel.state.isTtsDisabled
-                                )
-                                MeetingSheetRowDivider(inset: ACMSpacing.sm + 32 + ACMSpacing.sm)
-                                meetingInviteCodeRow()
-                            }
-                        }
-
-                        webinarSection()
-                    }
-
-                    if viewModel.state.isAdmin {
-                        VStack(alignment: .leading, spacing: ACMSpacing.xs) {
-                            acmListSectionHeader("Profile")
-
-                            MeetingSheetSectionCard {
-                                displayNameRow()
-                                MeetingSheetRowDivider(inset: ACMSpacing.sm + 32 + ACMSpacing.sm)
-                                updateDisplayNameRow()
-                            }
-                        }
-                    }
-
-                    VStack(alignment: .leading, spacing: ACMSpacing.xs) {
-                        acmListSectionHeader("Audio and video")
-
-                        MeetingSheetSectionCard {
-                            settingsToggleRow(
-                                "Microphone",
-                                icon: viewModel.state.isMuted ? "mic.slash.fill" : "mic.fill",
-                                androidIcon: viewModel.state.isMuted ? "mic.off" : "mic",
-                                isOn: Binding(
-                                    get: { !viewModel.state.isMuted },
-                                    set: { next in
-                                        let shouldMute = !next
-                                        if shouldMute != viewModel.state.isMuted {
-                                            viewModel.toggleMute()
-                                        }
-                                    }
-                                ),
-                                isActive: !viewModel.state.isMuted,
-                                isDisabled: viewModel.state.mediaPublishingDisabled
-                            )
-                            MeetingSheetRowDivider(inset: ACMSpacing.sm + 32 + ACMSpacing.sm)
-                            settingsToggleRow(
-                                "Camera",
-                                icon: viewModel.state.isCameraOff ? "video.slash.fill" : "video.fill",
-                                androidIcon: viewModel.state.isCameraOff ? "video.off" : "video",
-                                isOn: Binding(
-                                    get: { !viewModel.state.isCameraOff },
-                                    set: { next in
-                                        let shouldDisable = !next
-                                        if shouldDisable != viewModel.state.isCameraOff {
-                                            viewModel.toggleCamera()
-                                        }
-                                    }
-                                ),
-                                isActive: !viewModel.state.isCameraOff,
-                                isDisabled: viewModel.state.mediaPublishingDisabled
-                            )
-                            MeetingSheetRowDivider(inset: ACMSpacing.sm + 32 + ACMSpacing.sm)
-                            microphoneInputRow()
-                            MeetingSheetRowDivider(inset: ACMSpacing.sm + 32 + ACMSpacing.sm)
-                            audioOutputRow()
-                            MeetingSheetRowDivider(inset: ACMSpacing.sm + 32 + ACMSpacing.sm)
-                            testSpeakerRow()
-                        }
-                    }
-
-                    VStack(alignment: .leading, spacing: ACMSpacing.xs) {
-                        acmListSectionHeader("Video")
-
-                        MeetingSheetSectionCard {
-                            qualityRow()
-                        }
-                    }
+                    settingsContent
                 }
                 .padding(.horizontal, ACMSpacing.lg)
                 .padding(.top, ACMSpacing.md)

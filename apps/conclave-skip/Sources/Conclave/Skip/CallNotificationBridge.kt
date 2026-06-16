@@ -10,15 +10,16 @@ import skip.foundation.ProcessInfo
 /// the mute state changes.
 ///
 /// The CallForegroundService is what keeps the call alive while the app is
-/// backgrounded (foregroundServiceType microphone|mediaPlayback) and shows the
-/// persistent Leave + Mute/unmute notification that deep-links back into the
-/// meeting.
+/// backgrounded (foregroundServiceType microphone|camera|mediaPlayback) and
+/// shows the persistent Leave + Mute/unmute notification that deep-links back
+/// into the meeting.
 object CallNotificationBridge {
-    fun startCall(muted: Boolean) {
+    fun startCall(muted: Boolean, cameraOff: Boolean) {
         val ctx = ProcessInfo.processInfo.androidContext
         val intent = Intent(ctx, CallForegroundService::class.java).apply {
             action = CallForegroundService.ACTION_START
             putExtra(CallForegroundService.EXTRA_MUTED, muted)
+            putExtra(CallForegroundService.EXTRA_CAMERA_OFF, cameraOff)
         }
         try {
             ContextCompat.startForegroundService(ctx, intent)
@@ -27,11 +28,12 @@ object CallNotificationBridge {
         }
     }
 
-    fun updateMuted(muted: Boolean) {
+    fun updateCallState(muted: Boolean, cameraOff: Boolean) {
         val ctx = ProcessInfo.processInfo.androidContext
         val intent = Intent(ctx, CallForegroundService::class.java).apply {
             action = CallForegroundService.ACTION_UPDATE
             putExtra(CallForegroundService.EXTRA_MUTED, muted)
+            putExtra(CallForegroundService.EXTRA_CAMERA_OFF, cameraOff)
         }
         try {
             ctx.startService(intent)

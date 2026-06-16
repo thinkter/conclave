@@ -341,6 +341,7 @@ final class MeetingViewModel {
                 if !self.state.hostUserIds.contains(self.state.userId) {
                     self.state.hostUserIds.append(self.state.userId)
                 }
+                self.syncLastJoinContextHostIntent()
                 self.state.waitingMessage = nil
             }
         }
@@ -627,7 +628,7 @@ final class MeetingViewModel {
             Task { @MainActor in
                 guard self.isCurrentSocketEvent(eventContext, roomId: notification.roomId) else { return }
                 if self.state.isLocalParticipantUserId(notification.userId) {
-                    self.state.isCameraOff = notification.cameraOff
+                    self.setLocalCameraOffState(notification.cameraOff)
                     return
                 }
                 self.ensureParticipantPresent(notification.userId)
@@ -814,7 +815,7 @@ final class MeetingViewModel {
         webRTCClient.onLocalVideoEnabledChanged = { [weak self] enabled in
             Task { @MainActor in
                 guard let self = self else { return }
-                self.state.isCameraOff = !enabled
+                self.setLocalCameraOffState(!enabled)
             }
         }
 
@@ -958,6 +959,7 @@ final class MeetingViewModel {
             }
         }
 
+        resetLiveRoomSnapshotStateForJoin()
         applyJoinSnapshot(response)
         applyHostSnapshot(
             hostUserId: response.hostUserId,
@@ -1022,6 +1024,32 @@ final class MeetingViewModel {
                 await finishJoinFailure(error.localizedDescription)
             }
         }
+    }
+
+    private func resetLiveRoomSnapshotStateForJoin() {
+        state.participants.removeAll()
+        state.displayNames.removeAll()
+        state.pendingUsers.removeAll()
+        participantLeaveTokens.removeAll()
+
+        stopActiveSpeakerPoll()
+        pendingProducerRetryTask?.cancel()
+        pendingProducerRetryTask = nil
+        pendingProducers.removeAll()
+        pendingProducerContexts.removeAll()
+        pendingProducerRetryAttempts.removeAll()
+        producerInfosById.removeAll()
+
+        state.activeScreenShareUserId = nil
+        state.activeSpeakerId = nil
+        state.ttsSpeakerId = nil
+        state.pinnedUserId = nil
+        state.isScreenSharing = false
+        state.isHandRaised = false
+        clearBrowserState()
+        clearAppsState()
+        clearReactions()
+        stopTtsPlayback()
     }
 
     private func isCurrentJoinAttempt(_ joinAttemptId: UUID?) -> Bool {
@@ -1271,7 +1299,25 @@ final class MeetingViewModel {
 
         if updateAdminFromSnapshot {
             state.isAdmin = state.isHostUser(state.userId)
+            syncLastJoinContextHostIntent()
         }
+    }
+
+    private func syncLastJoinContextHostIntent() {
+        guard let context = lastJoinContext else { return }
+        guard context.isHost != state.isAdmin else { return }
+
+        lastJoinContext = JoinContext(
+            roomId: context.roomId,
+            displayName: context.displayName,
+            isGhost: context.isGhost,
+            isHost: state.isAdmin,
+            joinMode: context.joinMode,
+            meetingInviteCode: context.meetingInviteCode,
+            webinarInviteCode: context.webinarInviteCode,
+            allowRoomCreation: context.allowRoomCreation,
+            user: context.user
+        )
     }
 
     private func applyJoinSnapshot(_ response: JoinRoomResponse) {
@@ -1406,7 +1452,7 @@ final class MeetingViewModel {
                     syncCallPresenceMute()
                 }
                 if let cameraOff = snapshot.cameraOff {
-                    state.isCameraOff = cameraOff
+                    setLocalCameraOffState(cameraOff)
                 }
                 state.isScreenSharing = activeScreenProducer != nil
                 if activeScreenProducer != nil {
@@ -1518,15 +1564,13 @@ final class MeetingViewModel {
         if let requiresInviteCode = snapshot.requiresInviteCode {
             state.webinarRequiresInviteCode = requiresInviteCode
         }
-        if let rawLinkSlug = snapshot.linkSlug {
-            let linkSlug = rawLinkSlug.trimmingCharacters(in: .whitespacesAndNewlines)
-            if linkSlug.isEmpty {
-                state.webinarLinkSlug = nil
-                state.webinarLinkURL = nil
-            } else {
-                state.webinarLinkSlug = linkSlug
-                state.webinarLinkURL = webinarLinkURL(for: linkSlug)
-            }
+        let linkSlug = snapshot.linkSlug?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if linkSlug.isEmpty {
+            state.webinarLinkSlug = nil
+            state.webinarLinkURL = nil
+        } else {
+            state.webinarLinkSlug = linkSlug
+            state.webinarLinkURL = webinarLinkURL(for: linkSlug)
         }
         if let feedMode = snapshot.feedMode {
             state.webinarFeedMode = feedMode
@@ -1777,11 +1821,26 @@ final class MeetingViewModel {
     private func applyLocalAdminBulkMediaState(_ action: AdminBulkMediaAction) async {
         switch action {
         case .mute:
+            _ = await webRTCClient.closeLocalMedia(
+                kind: "audio",
+                type: ProducerType.webcam.rawValue,
+                producerId: nil
+            )
             state.isMuted = true
             syncCallPresenceMute()
         case .camera:
-            state.isCameraOff = true
+            _ = await webRTCClient.closeLocalMedia(
+                kind: "video",
+                type: ProducerType.webcam.rawValue,
+                producerId: nil
+            )
+            setLocalCameraOffState(true)
         case .screen:
+            _ = await webRTCClient.closeLocalMedia(
+                kind: "video",
+                type: ProducerType.screen.rawValue,
+                producerId: nil
+            )
             state.isScreenSharing = false
             clearLocalActiveScreenShareIfNeeded()
             await stopScreenCaptureManager()
@@ -1832,13 +1891,13 @@ final class MeetingViewModel {
                 do {
                     try await webRTCClient.startProducingVideo()
                     guard isCurrentJoinedCall(actionContext) else { return false }
-                    state.isCameraOff = false
+                    setLocalCameraOffState(false)
                     return true
                 } catch {
                     applyActionError(error, context: actionContext)
                 }
             }
-            state.isCameraOff = true
+            setLocalCameraOffState(true)
             return true
         }
 
@@ -1932,7 +1991,7 @@ final class MeetingViewModel {
             syncCallPresenceMute()
             return true
         } else if producer.kind == "video", producer.type == ProducerType.webcam.rawValue {
-            state.isCameraOff = true
+            setLocalCameraOffState(true)
             return true
         } else if producer.kind == "video", producer.type == ProducerType.screen.rawValue {
             await stopScreenCaptureManager()
@@ -1982,7 +2041,7 @@ final class MeetingViewModel {
                     state.isScreenSharing = !(producer.paused ?? false)
                     state.activeScreenShareUserId = state.isScreenSharing ? state.userId : nil
                 } else {
-                    state.isCameraOff = producer.paused ?? state.isCameraOff
+                    setLocalCameraOffState(producer.paused ?? state.isCameraOff)
                 }
             }
             return
@@ -2206,6 +2265,7 @@ final class MeetingViewModel {
                 }
 
                 if response.status == "waiting" {
+                    resetLiveRoomSnapshotStateForJoin()
                     applyJoinSnapshot(response)
                     applyHostSnapshot(
                         hostUserId: response.hostUserId,
@@ -2463,7 +2523,6 @@ final class MeetingViewModel {
                 continue
             }
             handleProducerState(producer)
-            if producer.paused == true { continue }
             if let consumerId = webRTCClient.consumerId(forProducer: producer.producerId) {
                 try? await socketManager.resumeConsumer(consumerId: consumerId, requestKeyFrame: false)
             } else {
@@ -2696,7 +2755,7 @@ final class MeetingViewModel {
             } catch {
                 guard isCurrentJoinAttempt(joinAttemptId) else { return false }
                 debugLog("[Meeting] Failed to start video: \(error)")
-                state.isCameraOff = true
+                setLocalCameraOffState(true)
                 state.errorMessage = error.localizedDescription
             }
         }
@@ -2710,7 +2769,7 @@ final class MeetingViewModel {
             syncCallPresenceMute()
         }
         if !state.isCameraOff {
-            state.isCameraOff = true
+            setLocalCameraOffState(true)
         }
         if state.isScreenSharing {
             state.isScreenSharing = false
@@ -2799,10 +2858,10 @@ final class MeetingViewModel {
             mute: { self.toggleMute() },
             leave: { self.leaveRoom() }
         )
-        // Start the ongoing-call foreground service (microphone + mediaPlayback)
-        // so the OS keeps the call alive in the background, with a Leave + Mute
-        // notification that deep-links back to the meeting.
-        CallNotificationBridge.startCall(muted: state.isMuted)
+        // Start the ongoing-call foreground service so the OS keeps the active
+        // media path alive in the background, with a Leave + Mute notification
+        // that deep-links back to the meeting.
+        CallNotificationBridge.startCall(muted: state.isMuted, cameraOff: state.isCameraOff)
         // Arm Picture-in-Picture: MainActivity.onUserLeaveHint enters PiP only
         // while a call is active.
         PipController.setInCall(active: true)
@@ -2830,14 +2889,19 @@ final class MeetingViewModel {
         #endif
     }
 
-    /// Reflect the in-app mute state onto the system call surfaces.
+    /// Reflect local call media state onto the system call surfaces.
+    private func setLocalCameraOffState(_ cameraOff: Bool) {
+        state.isCameraOff = cameraOff
+        syncCallPresenceMute()
+    }
+
     private func syncCallPresenceMute() {
         guard CallSessionCoordinator.shared.isInCall else { return }
         #if os(iOS) && !SKIP
         CallKitManager.shared.updateMuteState(muted: state.isMuted)
         #endif
         #if SKIP
-        CallNotificationBridge.updateMuted(muted: state.isMuted)
+        CallNotificationBridge.updateCallState(muted: state.isMuted, cameraOff: state.isCameraOff)
         PipController.setMuted(value: state.isMuted)
         // If we're already in PiP, refresh the Mute/Unmute RemoteAction label.
         if PipController.inPipMode {
@@ -3065,7 +3129,7 @@ final class MeetingViewModel {
         let actionJoinAttemptId = activeJoinAttemptId
         isCameraToggleInFlight = true
         let newState = !state.isCameraOff
-        state.isCameraOff = newState
+        setLocalCameraOffState(newState)
         #if !SKIP
         HapticManager.shared.trigger(.light)
         #endif
@@ -3088,7 +3152,7 @@ final class MeetingViewModel {
                 }
             } catch {
                 guard isCurrentJoinedCall(roomId: actionRoomId, joinAttemptId: actionJoinAttemptId) else { return }
-                state.isCameraOff = !newState
+                setLocalCameraOffState(!newState)
                 state.errorMessage = error.localizedDescription
             }
         }
@@ -3248,6 +3312,9 @@ final class MeetingViewModel {
                 }
                 // granted == false (user cancelled the consent dialog): no-op,
                 // isScreenSharing stays false, no orphan producer.
+                if !granted {
+                    ScreenCaptureManager.onProjectionRevoked = nil
+                }
             }
         }
         #else
@@ -3525,7 +3592,7 @@ final class MeetingViewModel {
         let actionRoomId = state.roomId
         let actionJoinAttemptId = activeJoinAttemptId
         let previousCameraOff = state.isCameraOff
-        state.isCameraOff = cameraOff
+        setLocalCameraOffState(cameraOff)
         guard isCurrentJoinedCall(roomId: actionRoomId, joinAttemptId: actionJoinAttemptId) else { return }
         do {
             if cameraOff {
@@ -3539,7 +3606,7 @@ final class MeetingViewModel {
             }
         } catch {
             guard isCurrentJoinedCall(roomId: actionRoomId, joinAttemptId: actionJoinAttemptId) else { return }
-            state.isCameraOff = previousCameraOff
+            setLocalCameraOffState(previousCameraOff)
             state.errorMessage = error.localizedDescription
         }
     }

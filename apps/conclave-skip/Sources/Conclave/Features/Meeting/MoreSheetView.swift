@@ -7,6 +7,7 @@ import UIKit
 struct MoreSheetView: View {
     @Bindable var viewModel: MeetingViewModel
     var bodyReady: Bool = true
+    let onOpenViewSettings: () -> Void
     let onOpenSettings: () -> Void
     let onOpenParticipants: () -> Void
     @Environment(\.dismiss) private var dismiss
@@ -109,6 +110,10 @@ struct MoreSheetView: View {
                                 onOpenParticipants()
                             }
                             MoreRowDivider()
+                            MoreRow(icon: "rectangle.grid.2x2", androidIcon: "participants", title: "Layout", showsChevron: true) {
+                                onOpenViewSettings()
+                            }
+                            MoreRowDivider()
                             MoreRow(icon: "person.badge.plus", androidIcon: "link", title: "Invite people") {
                                 MeetingShare.shareMeetingLink(
                                     viewModel.state.meetingLink,
@@ -127,8 +132,6 @@ struct MoreSheetView: View {
                             }
                         }
                     }
-
-                    viewSection
 
                     if canShowAdminControls {
                         adminControlsSection
@@ -156,150 +159,6 @@ struct MoreSheetView: View {
         #else
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         #endif
-    }
-
-    @ViewBuilder
-    private var viewSection: some View {
-        VStack(alignment: .leading, spacing: ACMSpacing.xs) {
-            acmListSectionHeader("View")
-
-            MeetingSheetSectionCard {
-                viewModeRow(.auto, icon: "rectangle.grid.2x2", androidIcon: "settings")
-                MoreRowDivider()
-                viewModeRow(.tiled, icon: "square.grid.2x2", androidIcon: "participants")
-                MoreRowDivider()
-                viewModeRow(.spotlight, icon: "rectangle.inset.filled", androidIcon: "pin.off")
-                MoreRowDivider()
-                viewModeRow(.sidebar, icon: "sidebar.right", androidIcon: "participants")
-            }
-
-            MeetingSheetSectionCard {
-                maxTilesRow
-                MoreRowDivider()
-                MoreRow(
-                    icon: viewModel.state.hideTilesWithoutVideo ? "video.fill" : "video.slash.fill",
-                    androidIcon: viewModel.state.hideTilesWithoutVideo ? "video" : "video.off",
-                    title: viewModel.state.hideTilesWithoutVideo ? "Show video-off tiles" : "Hide tiles without video",
-                    tint: viewModel.state.hideTilesWithoutVideo ? ACMColors.primaryOrange : ACMColors.text,
-                    androidTint: viewModel.state.hideTilesWithoutVideo ? "accent" : "text"
-                ) {
-                    viewModel.toggleHideTilesWithoutVideo()
-                }
-            }
-
-            acmListSectionHeader("Self-view")
-
-            MeetingSheetSectionCard {
-                selfViewModeRow(.auto, icon: "rectangle.grid.2x2", androidIcon: "settings")
-                MoreRowDivider()
-                selfViewModeRow(.tile, icon: "person.crop.rectangle", androidIcon: "account")
-                MoreRowDivider()
-                selfViewModeRow(.floating, icon: "pip", androidIcon: "info")
-                MoreRowDivider()
-                selfViewModeRow(.minimized, icon: "minus.rectangle", androidIcon: "remove.person")
-            }
-
-            acmListSectionHeader("Self-view position")
-
-            MeetingSheetSectionCard {
-                selfViewCornerRow(.topLeft, icon: "arrow.up.left", androidIcon: "north.west")
-                MoreRowDivider()
-                selfViewCornerRow(.topRight, icon: "arrow.up.right", androidIcon: "north.east")
-                MoreRowDivider()
-                selfViewCornerRow(.bottomLeft, icon: "arrow.down.left", androidIcon: "south.west")
-                MoreRowDivider()
-                selfViewCornerRow(.bottomRight, icon: "arrow.down.right", androidIcon: "south.east")
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func viewModeRow(_ mode: MeetingViewMode, icon: String, androidIcon: String) -> some View {
-        let isSelected = viewModel.state.viewMode == mode
-        MoreRow(
-            icon: isSelected ? "checkmark.circle.fill" : icon,
-            androidIcon: isSelected ? "check" : androidIcon,
-            title: "\(mode.title) view",
-            tint: isSelected ? ACMColors.primaryOrange : ACMColors.text,
-            androidTint: isSelected ? "accent" : "text"
-        ) {
-            viewModel.setViewMode(mode)
-        }
-    }
-
-    private var maxTilesRow: some View {
-        HStack(spacing: ACMSpacing.sm) {
-            MeetingSheetIconBox(
-                icon: "square.grid.2x2",
-                androidIcon: "participants",
-                tint: ACMColors.text,
-                androidTint: "text",
-                background: ACMColors.surfaceRaised
-            )
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Maximum tiles")
-                    .font(ACMFont.trial(15, weight: .medium))
-                    .foregroundStyle(ACMColors.text)
-                    .lineLimit(1)
-                Text("\(viewModel.state.viewMaxTiles) visible")
-                    .font(ACMFont.trial(12))
-                    .foregroundStyle(ACMColors.textFaint)
-                    .lineLimit(1)
-            }
-
-            Spacer()
-
-            tileLimitButton(icon: "minus", androidIcon: "close", delta: -1)
-            Text("\(viewModel.state.viewMaxTiles)")
-                .font(ACMFont.trial(13, weight: .semibold))
-                .foregroundStyle(ACMColors.text)
-                .frame(minWidth: 28)
-            tileLimitButton(icon: "plus", androidIcon: "add", delta: 1)
-        }
-        .padding(.horizontal, ACMSpacing.sm)
-        .frame(height: 58)
-    }
-
-    private func tileLimitButton(icon: String, androidIcon: String, delta: Int) -> some View {
-        Button {
-            viewModel.adjustViewMaxTiles(by: delta)
-        } label: {
-            ACMSystemIcon.icon(icon, android: androidIcon, size: 14, tint: "text")
-                .foregroundStyle(ACMColors.text)
-                .frame(width: 30, height: 30)
-                .acmColorBackground(ACMColors.surfaceRaised)
-                .clipShape(Circle())
-        }
-        .buttonStyle(.plain)
-    }
-
-    @ViewBuilder
-    private func selfViewModeRow(_ mode: MeetingSelfViewMode, icon: String, androidIcon: String) -> some View {
-        let isSelected = viewModel.state.selfViewMode == mode
-        MoreRow(
-            icon: isSelected ? "checkmark.circle.fill" : icon,
-            androidIcon: isSelected ? "check" : androidIcon,
-            title: mode.title,
-            tint: isSelected ? ACMColors.primaryOrange : ACMColors.text,
-            androidTint: isSelected ? "accent" : "text"
-        ) {
-            viewModel.setSelfViewMode(mode)
-        }
-    }
-
-    @ViewBuilder
-    private func selfViewCornerRow(_ corner: MeetingSelfViewCorner, icon: String, androidIcon: String) -> some View {
-        let isSelected = viewModel.state.selfViewCorner == corner
-        MoreRow(
-            icon: isSelected ? "checkmark.circle.fill" : icon,
-            androidIcon: isSelected ? "check" : androidIcon,
-            title: corner.title,
-            tint: isSelected ? ACMColors.primaryOrange : ACMColors.text,
-            androidTint: isSelected ? "accent" : "text"
-        ) {
-            viewModel.setSelfViewCorner(corner)
-        }
     }
 
     @ViewBuilder
@@ -658,6 +517,185 @@ struct MoreSheetView: View {
 
     private var canShowAppsSection: Bool {
         canManageApps || viewModel.state.activeAppId != nil
+    }
+}
+
+struct ViewSettingsSheetView: View {
+    @Bindable var viewModel: MeetingViewModel
+    var bodyReady: Bool = true
+    var onBack: (() -> Void)? = nil
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(spacing: 0) {
+            MeetingSheetHeader(title: "Layout", onBack: onBack, onDone: { dismiss() })
+
+            if bodyReady {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: ACMSpacing.md) {
+                        VStack(alignment: .leading, spacing: ACMSpacing.xs) {
+                            acmListSectionHeader("View")
+
+                            MeetingSheetSectionCard {
+                                viewModeRow(.auto, icon: "rectangle.grid.2x2", androidIcon: "settings")
+                                MoreRowDivider()
+                                viewModeRow(.tiled, icon: "square.grid.2x2", androidIcon: "participants")
+                                MoreRowDivider()
+                                viewModeRow(.spotlight, icon: "rectangle.inset.filled", androidIcon: "pin.off")
+                                MoreRowDivider()
+                                viewModeRow(.sidebar, icon: "sidebar.right", androidIcon: "participants")
+                            }
+                        }
+
+                        VStack(alignment: .leading, spacing: ACMSpacing.xs) {
+                            acmListSectionHeader("Grid")
+
+                            MeetingSheetSectionCard {
+                                maxTilesRow
+                                MoreRowDivider()
+                                MoreRow(
+                                    icon: viewModel.state.hideTilesWithoutVideo ? "video.fill" : "video.slash.fill",
+                                    androidIcon: viewModel.state.hideTilesWithoutVideo ? "video" : "video.off",
+                                    title: viewModel.state.hideTilesWithoutVideo ? "Show video-off tiles" : "Hide tiles without video",
+                                    tint: viewModel.state.hideTilesWithoutVideo ? ACMColors.primaryOrange : ACMColors.text,
+                                    androidTint: viewModel.state.hideTilesWithoutVideo ? "accent" : "text"
+                                ) {
+                                    viewModel.toggleHideTilesWithoutVideo()
+                                }
+                            }
+                        }
+
+                        VStack(alignment: .leading, spacing: ACMSpacing.xs) {
+                            acmListSectionHeader("Self-view")
+
+                            MeetingSheetSectionCard {
+                                selfViewModeRow(.auto, icon: "rectangle.grid.2x2", androidIcon: "settings")
+                                MoreRowDivider()
+                                selfViewModeRow(.tile, icon: "person.crop.rectangle", androidIcon: "account")
+                                MoreRowDivider()
+                                selfViewModeRow(.floating, icon: "pip", androidIcon: "info")
+                                MoreRowDivider()
+                                selfViewModeRow(.minimized, icon: "minus.rectangle", androidIcon: "remove.person")
+                            }
+                        }
+
+                        VStack(alignment: .leading, spacing: ACMSpacing.xs) {
+                            acmListSectionHeader("Self-view position")
+
+                            MeetingSheetSectionCard {
+                                selfViewCornerRow(.topLeft, icon: "arrow.up.left", androidIcon: "north.west")
+                                MoreRowDivider()
+                                selfViewCornerRow(.topRight, icon: "arrow.up.right", androidIcon: "north.east")
+                                MoreRowDivider()
+                                selfViewCornerRow(.bottomLeft, icon: "arrow.down.left", androidIcon: "south.west")
+                                MoreRowDivider()
+                                selfViewCornerRow(.bottomRight, icon: "arrow.down.right", androidIcon: "south.east")
+                            }
+                        }
+                    }
+                    .padding(.horizontal, ACMSpacing.lg)
+                    .padding(.top, ACMSpacing.md)
+                    .padding(.bottom, ACMSpacing.lg)
+                }
+                .transition(.opacity)
+            } else {
+                Spacer()
+            }
+        }
+        #if SKIP
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        #else
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        #endif
+    }
+
+    @ViewBuilder
+    private func viewModeRow(_ mode: MeetingViewMode, icon: String, androidIcon: String) -> some View {
+        let isSelected = viewModel.state.viewMode == mode
+        MoreRow(
+            icon: isSelected ? "checkmark.circle.fill" : icon,
+            androidIcon: isSelected ? "check" : androidIcon,
+            title: "\(mode.title) view",
+            tint: isSelected ? ACMColors.primaryOrange : ACMColors.text,
+            androidTint: isSelected ? "accent" : "text"
+        ) {
+            viewModel.setViewMode(mode)
+        }
+    }
+
+    private var maxTilesRow: some View {
+        HStack(spacing: ACMSpacing.sm) {
+            MeetingSheetIconBox(
+                icon: "square.grid.2x2",
+                androidIcon: "participants",
+                tint: ACMColors.text,
+                androidTint: "text",
+                background: ACMColors.surfaceRaised
+            )
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Maximum tiles")
+                    .font(ACMFont.trial(15, weight: .medium))
+                    .foregroundStyle(ACMColors.text)
+                    .lineLimit(1)
+                Text("\(viewModel.state.viewMaxTiles) visible")
+                    .font(ACMFont.trial(12))
+                    .foregroundStyle(ACMColors.textFaint)
+                    .lineLimit(1)
+            }
+
+            Spacer()
+
+            tileLimitButton(icon: "minus", androidIcon: "close", delta: -1)
+            Text("\(viewModel.state.viewMaxTiles)")
+                .font(ACMFont.trial(13, weight: .semibold))
+                .foregroundStyle(ACMColors.text)
+                .frame(minWidth: 28)
+            tileLimitButton(icon: "plus", androidIcon: "add", delta: 1)
+        }
+        .padding(.horizontal, ACMSpacing.sm)
+        .frame(height: 58)
+    }
+
+    private func tileLimitButton(icon: String, androidIcon: String, delta: Int) -> some View {
+        Button {
+            viewModel.adjustViewMaxTiles(by: delta)
+        } label: {
+            ACMSystemIcon.icon(icon, android: androidIcon, size: 14, tint: "text")
+                .foregroundStyle(ACMColors.text)
+                .frame(width: 30, height: 30)
+                .acmColorBackground(ACMColors.surfaceRaised)
+                .clipShape(Circle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private func selfViewModeRow(_ mode: MeetingSelfViewMode, icon: String, androidIcon: String) -> some View {
+        let isSelected = viewModel.state.selfViewMode == mode
+        MoreRow(
+            icon: isSelected ? "checkmark.circle.fill" : icon,
+            androidIcon: isSelected ? "check" : androidIcon,
+            title: mode.title,
+            tint: isSelected ? ACMColors.primaryOrange : ACMColors.text,
+            androidTint: isSelected ? "accent" : "text"
+        ) {
+            viewModel.setSelfViewMode(mode)
+        }
+    }
+
+    @ViewBuilder
+    private func selfViewCornerRow(_ corner: MeetingSelfViewCorner, icon: String, androidIcon: String) -> some View {
+        let isSelected = viewModel.state.selfViewCorner == corner
+        MoreRow(
+            icon: isSelected ? "checkmark.circle.fill" : icon,
+            androidIcon: isSelected ? "check" : androidIcon,
+            title: corner.title,
+            tint: isSelected ? ACMColors.primaryOrange : ACMColors.text,
+            androidTint: isSelected ? "accent" : "text"
+        ) {
+            viewModel.setSelfViewCorner(corner)
+        }
     }
 }
 

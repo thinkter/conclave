@@ -18,6 +18,36 @@ enum MeetingSheetPage: Equatable {
     case more
     case participants
     case settings
+    case viewSettings
+    case roomSettings
+    case webinarSettings
+    case profileSettings
+    case audioVideoSettings
+    case videoQualitySettings
+}
+
+private extension MeetingSheetPage {
+    var depth: Int {
+        switch self {
+        case .more:
+            return 0
+        case .participants, .settings, .viewSettings:
+            return 1
+        case .roomSettings, .webinarSettings, .profileSettings, .audioVideoSettings, .videoQualitySettings:
+            return 2
+        }
+    }
+
+    var parent: MeetingSheetPage? {
+        switch self {
+        case .more:
+            return nil
+        case .participants, .settings, .viewSettings:
+            return .more
+        case .roomSettings, .webinarSettings, .profileSettings, .audioVideoSettings, .videoQualitySettings:
+            return .settings
+        }
+    }
 }
 
 private enum MeetingSheetNavigationDirection {
@@ -64,7 +94,7 @@ struct MeetingSheetView: View {
     private func navigate(to nextPage: MeetingSheetPage) {
         guard page != nextPage else { return }
 
-        navigationDirection = nextPage == .more ? .pop : .push
+        navigationDirection = nextPage.depth <= page.depth ? .pop : .push
         guard pageTransitionsEnabled else {
             page = nextPage
             return
@@ -92,6 +122,7 @@ struct MeetingSheetView: View {
                     MoreSheetView(
                         viewModel: viewModel,
                         bodyReady: bodyReady,
+                        onOpenViewSettings: { navigate(to: .viewSettings) },
                         onOpenSettings: { navigate(to: .settings) },
                         onOpenParticipants: { navigate(to: .participants) }
                     )
@@ -99,7 +130,29 @@ struct MeetingSheetView: View {
             case .participants:
                 pageView(ParticipantsSheetView(viewModel: viewModel, bodyReady: bodyReady, onBack: { navigate(to: .more) }))
             case .settings:
-                pageView(SettingsSheetView(viewModel: viewModel, bodyReady: bodyReady, onBack: { navigate(to: .more) }))
+                pageView(SettingsSheetView(
+                    viewModel: viewModel,
+                    bodyReady: bodyReady,
+                    page: SettingsSheetPage.overview,
+                    onBack: { navigate(to: .more) },
+                    onOpenRoomSettings: { navigate(to: .roomSettings) },
+                    onOpenWebinarSettings: { navigate(to: .webinarSettings) },
+                    onOpenProfileSettings: { navigate(to: .profileSettings) },
+                    onOpenAudioVideoSettings: { navigate(to: .audioVideoSettings) },
+                    onOpenVideoQualitySettings: { navigate(to: .videoQualitySettings) }
+                ))
+            case .viewSettings:
+                pageView(ViewSettingsSheetView(viewModel: viewModel, bodyReady: bodyReady, onBack: { navigate(to: .more) }))
+            case .roomSettings:
+                pageView(SettingsSheetView(viewModel: viewModel, bodyReady: bodyReady, page: SettingsSheetPage.room, onBack: { navigate(to: .settings) }))
+            case .webinarSettings:
+                pageView(SettingsSheetView(viewModel: viewModel, bodyReady: bodyReady, page: SettingsSheetPage.webinar, onBack: { navigate(to: .settings) }))
+            case .profileSettings:
+                pageView(SettingsSheetView(viewModel: viewModel, bodyReady: bodyReady, page: SettingsSheetPage.profile, onBack: { navigate(to: .settings) }))
+            case .audioVideoSettings:
+                pageView(SettingsSheetView(viewModel: viewModel, bodyReady: bodyReady, page: SettingsSheetPage.audioVideo, onBack: { navigate(to: .settings) }))
+            case .videoQualitySettings:
+                pageView(SettingsSheetView(viewModel: viewModel, bodyReady: bodyReady, page: SettingsSheetPage.videoQuality, onBack: { navigate(to: .settings) }))
             }
         }
         // Android system / gesture BACK: on a sub-page (.participants/.settings)
@@ -110,8 +163,10 @@ struct MeetingSheetView: View {
         #if SKIP
         .overlay(alignment: .top) {
             ComposeView { _ in
-                MeetingSheetBackHandler(enabled: page != .more) {
-                    navigate(to: .more)
+                MeetingSheetBackHandler(enabled: page.parent != nil) {
+                    if let parent = page.parent {
+                        navigate(to: parent)
+                    }
                 }
             }
             .frame(width: 0, height: 0)

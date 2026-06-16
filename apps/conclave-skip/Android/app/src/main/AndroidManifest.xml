@@ -53,7 +53,7 @@
         
         <service
             android:name="conclave.module.CallForegroundService"
-            android:foregroundServiceType="microphone|mediaPlayback"
+            android:foregroundServiceType="microphone|camera|mediaPlayback"
             android:exported="false" />
 
         <service
