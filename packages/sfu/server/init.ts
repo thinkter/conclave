@@ -10,7 +10,7 @@ import {
   type ScheduledWebinarPersistence,
 } from "./scheduledWebinars.js";
 import {
-  createSqliteScheduledMeetingPersistence,
+  createScheduledMeetingPersistence,
   loadPersistedMeetings,
   type ScheduledMeetingPersistence,
 } from "./scheduledMeetings.js";
@@ -109,7 +109,7 @@ export const initScheduledWebinars = (
 
 export const initScheduledMeetings = (
   state: SfuState,
-  persistence: ScheduledMeetingPersistence = createSqliteScheduledMeetingPersistence(),
+  persistence: ScheduledMeetingPersistence = createScheduledMeetingPersistence(),
 ): void => {
   state.scheduledMeetingPersistence = persistence;
   const loaded = loadPersistedMeetings(state.scheduledMeetings, persistence);

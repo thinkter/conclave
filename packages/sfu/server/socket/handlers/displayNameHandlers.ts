@@ -3,6 +3,7 @@ import { config } from "../../../config/config.js";
 import { MAX_DISPLAY_NAME_LENGTH } from "../../constants.js";
 import { normalizeDisplayName } from "../../identity.js";
 import type { ConnectionContext } from "../context.js";
+import { RATE_LIMITS, takeToken } from "../rateLimit.js";
 import { respond } from "./ack.js";
 
 export const registerDisplayNameHandlers = (
@@ -28,6 +29,13 @@ export const registerDisplayNameHandlers = (
         if (context.currentClient.isObserver) {
           respond(callback, {
             error: "Watch-only attendees cannot update display names",
+          });
+          return;
+        }
+
+        if (!takeToken(socket, "updateDisplayName", RATE_LIMITS.displayName)) {
+          respond(callback, {
+            error: "You are changing your display name too quickly",
           });
           return;
         }

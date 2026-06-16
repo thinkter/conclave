@@ -3,6 +3,7 @@ import type { Server as SocketIOServer } from "socket.io";
 import { Admin } from "../../config/classes/Admin.js";
 import type {
   Client,
+  ConsumerTelemetrySnapshot,
   ProducerKey,
   ProducerType,
 } from "../../config/classes/Client.js";
@@ -40,6 +41,7 @@ export type ParticipantSnapshot = {
     paused: boolean;
   }>;
   consumerCount: number;
+  consumers: ConsumerTelemetrySnapshot[];
 };
 
 export type PendingUserSnapshot = {
@@ -261,6 +263,7 @@ export const toParticipantSnapshot = (
   client: Client,
 ): ParticipantSnapshot => {
   const producers = client.getProducerInfos();
+  const consumers = client.getConsumerTelemetrySnapshot();
   return {
     userId: client.id,
     userKey: room.userKeysById.get(client.id) ?? null,
@@ -274,7 +277,8 @@ export const toParticipantSnapshot = (
     consumerTransportConnected: Boolean(client.consumerTransport),
     pendingDisconnect: room.hasPendingDisconnect(client.id),
     producers,
-    consumerCount: client.consumers.size,
+    consumerCount: consumers.length,
+    consumers,
   };
 };
 
@@ -527,36 +531,44 @@ export const closeProducerById = (
   kind?: MediaKind;
   type?: ProducerType;
 } => {
-  for (const client of room.clients.values()) {
-    const removed = client.removeProducerById(producerId);
-    if (!removed) {
-      continue;
-    }
-
-    if (removed.kind === "video" && removed.type === "screen") {
-      room.clearScreenShareProducer(producerId);
-    }
-    notifyProducerClosed(io, room, client.id, producerId);
-    emitWebinarFeedChanged(io, state, room);
-
-    client.socket.emit("admin:mediaEnforced", {
-      roomId: room.id,
-      userId: client.id,
-      producerId,
-      kind: removed.kind,
-      type: removed.type,
-      action: "closed",
-    });
-
-    return {
-      closed: true,
-      userId: client.id,
-      kind: removed.kind,
-      type: removed.type,
-    };
+  const producerInfo = room.getProducerInfoById(producerId);
+  if (!producerInfo) {
+    return { closed: false };
   }
 
-  return { closed: false };
+  const client = room.getClient(producerInfo.producerUserId);
+  if (!client) {
+    return { closed: false };
+  }
+
+  const removed = client.removeProducerById(producerId);
+  if (!removed) {
+    room.removeProducerIndexById(producerId);
+    return { closed: false };
+  }
+
+  room.removeProducerIndexById(producerId);
+  if (removed.kind === "video" && removed.type === "screen") {
+    room.clearScreenShareProducer(producerId);
+  }
+  notifyProducerClosed(io, room, client.id, producerId);
+  emitWebinarFeedChanged(io, state, room);
+
+  client.socket.emit("admin:mediaEnforced", {
+    roomId: room.id,
+    userId: client.id,
+    producerId,
+    kind: removed.kind,
+    type: removed.type,
+    action: "closed",
+  });
+
+  return {
+    closed: true,
+    userId: client.id,
+    kind: removed.kind,
+    type: removed.type,
+  };
 };
 
 const shouldCloseProducer = (
@@ -609,6 +621,7 @@ export const closeClientProducers = (options: {
   for (const info of infos) {
     const removed = target.removeProducerById(info.producerId);
     if (!removed) continue;
+    room.removeProducerIndexById(info.producerId);
 
     if (removed.kind === "video" && removed.type === "screen") {
       room.clearScreenShareProducer(info.producerId);
@@ -778,7 +791,7 @@ export const clearAllRaisedHands = (io: SocketIOServer, room: Room): number => {
  * (Room.scheduleDisconnect / disconnectHandlers) during which the client's
  * producers keep flowing. If a host kicks/blocks that user concurrently, calling
  * `socket.disconnect(true)` on the already-dead socket is a no-op and does NOT
- * cancel the pending grace — so media would keep flowing for the full grace
+ * cancel the pending grace, so media would keep flowing for the full grace
  * window. Here we explicitly clear any pending grace and close the client's
  * producers/transports immediately so media stops at once, then emit the same
  * userLeft / awareness / webinar updates the normal disconnect finalize would.
@@ -894,6 +907,7 @@ export const closeProducerForMediaKey = (options: {
   if (!removed) {
     return { closed: false };
   }
+  room.removeProducerIndexById(producerId);
   if (kind === "video" && type === "screen") {
     room.clearScreenShareProducer(producerId);
   }

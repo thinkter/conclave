@@ -6,7 +6,7 @@ import {
   getScheduledWebinarById,
   hasWebinarEnded,
   isWithinEarlyEntryWindow,
-  persistScheduledWebinars,
+  persistScheduledWebinarChanges,
 } from "./scheduledWebinars.js";
 import type { SfuState } from "./state.js";
 import {
@@ -88,6 +88,7 @@ export const advanceScheduledWebinars = (
   now = Date.now(),
 ): number => {
   let changed = 0;
+  const changedWebinars: ScheduledWebinar[] = [];
   for (const webinar of state.scheduledWebinars.byId.values()) {
     if (webinar.status === "cancelled") continue;
 
@@ -99,12 +100,14 @@ export const advanceScheduledWebinars = (
           webinar.liveStartedAt = now;
         }
         webinar.updatedAt = now;
+        changedWebinars.push(webinar);
         changed += 1;
       }
     } else if (webinar.status === "live" && hasWebinarEnded(webinar, now)) {
       webinar.status = "ended";
       webinar.endedAt = now;
       webinar.updatedAt = now;
+      changedWebinars.push(webinar);
       const channelId = getRoomChannelId(webinar.clientId, webinar.roomId);
       const cfg = state.webinarConfigs.get(channelId);
       if (cfg) {
@@ -116,9 +119,10 @@ export const advanceScheduledWebinars = (
   }
 
   if (changed > 0 && state.scheduledWebinarPersistence) {
-    persistScheduledWebinars(
+    persistScheduledWebinarChanges(
       state.scheduledWebinars,
       state.scheduledWebinarPersistence,
+      changedWebinars,
     );
   }
 

@@ -5,6 +5,19 @@ import type { ConnectionContext } from "../context.js";
 import { respond } from "./ack.js";
 import { RATE_LIMITS, takeToken } from "../rateLimit.js";
 
+const MAX_REACTION_LABEL_LENGTH = 64;
+
+const normalizeReactionLabel = (value: unknown): string | undefined => {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const label = value.trim();
+  if (!label) {
+    return undefined;
+  }
+  return label.slice(0, MAX_REACTION_LABEL_LENGTH);
+};
+
 export const registerReactionHandlers = (
   context: ConnectionContext,
 ): void => {
@@ -44,7 +57,7 @@ export const registerReactionHandlers = (
             userId: context.currentClient.id,
             kind: "asset",
             value: data.value,
-            label: data.label,
+            label: normalizeReactionLabel(data.label),
             timestamp: Date.now(),
             roomId: context.currentRoom.id,
           };
@@ -68,7 +81,7 @@ export const registerReactionHandlers = (
           userId: context.currentClient.id,
           kind: "emoji",
           value: emoji,
-          label: data.label,
+          label: normalizeReactionLabel(data.label),
           timestamp: Date.now(),
           roomId: context.currentRoom.id,
         };

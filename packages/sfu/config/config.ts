@@ -11,7 +11,7 @@ const repoRoot = path.resolve(sfuPackageRoot, "..", "..");
 const webAppRoot = path.resolve(repoRoot, "apps", "web");
 
 // First match wins (dotenv default does not override existing process.env vars).
-// Order: most-specific (sfu package) → shared web app (matches Next.js) → repo root.
+// Order: most-specific (sfu package) -> shared web app (matches Next.js) -> repo root.
 // This keeps local dev in sync without forcing the user to maintain duplicate secrets.
 const envCandidates = [
   path.join(sfuPackageRoot, ".env.local"),
@@ -39,8 +39,9 @@ for (const envPath of envCandidates) {
   }
 }
 
+const sfuSecret = resolveSfuSecret();
 const sfuSecretFingerprint = (() => {
-  const value = process.env.SFU_SECRET || "development-secret";
+  const value = sfuSecret;
   return createHash("sha256").update(value).digest("hex").slice(0, 12);
 })();
 
@@ -78,6 +79,21 @@ const toBoolean = (value: string | undefined): boolean => {
   if (!value) return false;
   return value === "1" || value.toLowerCase() === "true";
 };
+
+function resolveSfuSecret(): string {
+  const configured = process.env.SFU_SECRET?.trim();
+  if (configured && configured !== "development-secret") {
+    return configured;
+  }
+
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "SFU_SECRET must be set to a non-default value when NODE_ENV=production.",
+    );
+  }
+
+  return configured || "development-secret";
+}
 
 type WorkerLogLevel = "debug" | "warn" | "error" | "none";
 
@@ -189,6 +205,19 @@ const resolveAnnouncedIp = (): string => {
 const announcedIp = resolveAnnouncedIp();
 const plainTransportAnnouncedIp =
   process.env.PLAIN_TRANSPORT_ANNOUNCED_IP?.trim() || announcedIp;
+const socketRedisUrl =
+  process.env.SFU_REDIS_URL?.trim() || process.env.REDIS_URL?.trim() || "";
+const requireRedisAdapter = toBoolean(process.env.SFU_REQUIRE_REDIS_ADAPTER);
+if (requireRedisAdapter && !socketRedisUrl) {
+  throw new Error(
+    "SFU_REQUIRE_REDIS_ADAPTER=1 requires SFU_REDIS_URL or REDIS_URL.",
+  );
+}
+const instancePublicUrl =
+  process.env.SFU_PUBLIC_URL?.trim() ||
+  process.env.SFU_INSTANCE_URL?.trim() ||
+  process.env.SFU_URL?.trim() ||
+  "";
 const rtcMinPort = toNumber(process.env.RTC_MIN_PORT, 40000, {
   integer: true,
   min: 1,
@@ -236,11 +265,16 @@ export const config = {
     max: 65535,
   }),
   instanceId: process.env.SFU_INSTANCE_ID || `sfu-${process.pid}`,
+  instancePublicUrl,
   version: process.env.SFU_VERSION || "dev",
   draining: toBoolean(process.env.SFU_DRAINING),
-  sfuSecret: process.env.SFU_SECRET || "development-secret",
+  sfuSecret,
   clientPolicies,
   workerSettings: {
+    workerCount: toNumber(process.env.SFU_WORKER_COUNT, 0, {
+      integer: true,
+      min: 0,
+    }),
     rtcMinPort,
     rtcMaxPort,
     logLevel: "warn" as WorkerLogLevel,
@@ -278,6 +312,27 @@ export const config = {
       30000,
       { min: 0 },
     ),
+    redisUrl: socketRedisUrl,
+    redisConnectTimeoutMs: toNumber(
+      process.env.SFU_REDIS_CONNECT_TIMEOUT_MS,
+      5000,
+      { min: 100 },
+    ),
+    requireRedisAdapter,
+  },
+  roomRegistry: {
+    ttlMs: toNumber(process.env.SFU_ROOM_REGISTRY_TTL_MS, 45000, {
+      integer: true,
+      min: 5000,
+    }),
+    renewIntervalMs: toNumber(
+      process.env.SFU_ROOM_REGISTRY_RENEW_INTERVAL_MS,
+      15000,
+      { integer: true, min: 1000 },
+    ),
+    keyPrefix:
+      process.env.SFU_ROOM_REGISTRY_KEY_PREFIX?.trim() ||
+      "conclave:sfu:rooms",
   },
   routerMediaCodecs,
   webRtcTransport: {

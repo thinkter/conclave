@@ -238,6 +238,8 @@ export const listScheduledWebinars = (
 
 export type ScheduledWebinarPersistence = {
   save: (snapshot: ScheduledWebinar[]) => void;
+  saveChanged?: (webinars: ScheduledWebinar[]) => void;
+  deleteIds?: (ids: string[]) => void;
   load: () => ScheduledWebinar[];
   close?: () => void;
 };
@@ -379,23 +381,27 @@ export const createSqliteScheduledWebinarPersistence = (
   const deleteById = db.prepare("DELETE FROM scheduled_webinars WHERE id = ?");
   let knownIds = new Set<string>();
 
+  const upsertWebinar = (webinar: ScheduledWebinar): void => {
+    insert.run(
+      webinar.id,
+      webinar.clientId,
+      webinar.roomId,
+      webinar.linkSlug,
+      webinar.status,
+      webinar.scheduledStartAt,
+      webinar.scheduledEndAt,
+      webinar.updatedAt,
+      JSON.stringify(webinar),
+    );
+  };
+
   return {
     save: (snapshot) => {
       try {
         const snapshotIds = new Set(snapshot.map((webinar) => webinar.id));
         db.exec("BEGIN IMMEDIATE");
         for (const webinar of snapshot) {
-          insert.run(
-            webinar.id,
-            webinar.clientId,
-            webinar.roomId,
-            webinar.linkSlug,
-            webinar.status,
-            webinar.scheduledStartAt,
-            webinar.scheduledEndAt,
-            webinar.updatedAt,
-            JSON.stringify(webinar),
-          );
+          upsertWebinar(webinar);
         }
         for (const id of knownIds) {
           if (!snapshotIds.has(id)) {
@@ -409,6 +415,38 @@ export const createSqliteScheduledWebinarPersistence = (
           db.exec("ROLLBACK");
         } catch {}
         Logger.error("Failed to persist scheduled webinars to SQLite", error);
+      }
+    },
+    saveChanged: (webinars) => {
+      if (webinars.length === 0) return;
+      try {
+        db.exec("BEGIN IMMEDIATE");
+        for (const webinar of webinars) {
+          upsertWebinar(webinar);
+          knownIds.add(webinar.id);
+        }
+        db.exec("COMMIT");
+      } catch (error) {
+        try {
+          db.exec("ROLLBACK");
+        } catch {}
+        Logger.error("Failed to persist changed scheduled webinars", error);
+      }
+    },
+    deleteIds: (ids) => {
+      if (ids.length === 0) return;
+      try {
+        db.exec("BEGIN IMMEDIATE");
+        for (const id of ids) {
+          deleteById.run(id);
+          knownIds.delete(id);
+        }
+        db.exec("COMMIT");
+      } catch (error) {
+        try {
+          db.exec("ROLLBACK");
+        } catch {}
+        Logger.error("Failed to delete scheduled webinars", error);
       }
     },
     load: () => {
@@ -553,6 +591,32 @@ export const persistScheduledWebinars = (
   persistence: ScheduledWebinarPersistence,
 ): void => {
   persistence.save(Array.from(store.byId.values()));
+};
+
+export const persistScheduledWebinarChanges = (
+  store: ScheduledWebinarStore,
+  persistence: ScheduledWebinarPersistence,
+  webinars: ScheduledWebinar[],
+): void => {
+  if (webinars.length === 0) return;
+  if (persistence.saveChanged) {
+    persistence.saveChanged(webinars);
+    return;
+  }
+  persistScheduledWebinars(store, persistence);
+};
+
+export const persistScheduledWebinarDeletes = (
+  store: ScheduledWebinarStore,
+  persistence: ScheduledWebinarPersistence,
+  ids: string[],
+): void => {
+  if (ids.length === 0) return;
+  if (persistence.deleteIds) {
+    persistence.deleteIds(ids);
+    return;
+  }
+  persistScheduledWebinars(store, persistence);
 };
 
 export type CreateScheduledWebinarOptions = {
@@ -820,14 +884,15 @@ export const recordWebinarJoin = (
   store: ScheduledWebinarStore,
   id: string,
   currentAttendeeCount: number,
-): void => {
+): ScheduledWebinar | null => {
   const webinar = store.byId.get(id);
-  if (!webinar) return;
+  if (!webinar) return null;
   webinar.totalJoinCount += 1;
   if (currentAttendeeCount > webinar.peakAttendeeCount) {
     webinar.peakAttendeeCount = currentAttendeeCount;
   }
   webinar.updatedAt = Date.now();
+  return webinar;
 };
 
 export const createScheduledWebinarCoHostInvite = (

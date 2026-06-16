@@ -6,10 +6,9 @@ import { Logger } from "../utilities/loggers.js";
  * SFU_CORS_ORIGINS is a comma-separated allow-list, e.g.
  *   SFU_CORS_ORIGINS="https://app.example.com,https://admin.example.com"
  *
- * When unset (the DEFAULT), we fall back to "*" so local dev is unchanged. This
- * lets production lock origins down purely via configuration — no code change
- * required. We log a warning when defaulting to "*" while NODE_ENV=production so
- * the loose policy is at least visible in prod logs.
+ * When unset in development, we fall back to "*" so local dev is unchanged.
+ * In production, wildcard CORS must be an explicit operator choice via
+ * SFU_ALLOW_OPEN_CORS=1; otherwise startup fails fast.
  *
  * Returns either the literal "*" (allow any origin) or an explicit list of
  * origins. The shape is compatible with both the `cors` express middleware and
@@ -17,13 +16,17 @@ import { Logger } from "../utilities/loggers.js";
  */
 export const resolveCorsOrigins = (): "*" | string[] => {
   const raw = process.env.SFU_CORS_ORIGINS?.trim();
+  const isProduction = process.env.NODE_ENV === "production";
+  const allowOpenCors = process.env.SFU_ALLOW_OPEN_CORS === "1";
 
   if (!raw) {
-    if (process.env.NODE_ENV === "production") {
-      Logger.warn(
-        "[SFU] SFU_CORS_ORIGINS is not set; defaulting CORS origin to \"*\" in production. " +
-          "Set SFU_CORS_ORIGINS to a comma-separated allow-list to lock this down.",
+    if (isProduction && !allowOpenCors) {
+      throw new Error(
+        "SFU_CORS_ORIGINS must be set in production, or set SFU_ALLOW_OPEN_CORS=1 to explicitly allow wildcard CORS.",
       );
+    }
+    if (isProduction) {
+      Logger.warn("[SFU] SFU_ALLOW_OPEN_CORS=1; allowing wildcard CORS.");
     }
     return "*";
   }
@@ -36,8 +39,32 @@ export const resolveCorsOrigins = (): "*" | string[] => {
   // A list that explicitly contains "*" (or collapses to empty) is treated as
   // allow-any so an operator can intentionally opt back into the open policy.
   if (origins.length === 0 || origins.includes("*")) {
+    if (isProduction && !allowOpenCors) {
+      throw new Error(
+        "Wildcard SFU_CORS_ORIGINS is not allowed in production unless SFU_ALLOW_OPEN_CORS=1.",
+      );
+    }
+    if (isProduction) {
+      Logger.warn("[SFU] SFU_ALLOW_OPEN_CORS=1; allowing wildcard CORS.");
+    }
     return "*";
   }
 
-  return origins;
+  const normalizedOrigins: string[] = [];
+  for (const origin of origins) {
+    try {
+      const parsed = new URL(origin);
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+        throw new Error("unsupported protocol");
+      }
+      parsed.pathname = "";
+      parsed.search = "";
+      parsed.hash = "";
+      normalizedOrigins.push(parsed.toString().replace(/\/$/, ""));
+    } catch {
+      throw new Error(`Invalid SFU_CORS_ORIGINS entry: ${origin}`);
+    }
+  }
+
+  return Array.from(new Set(normalizedOrigins));
 };

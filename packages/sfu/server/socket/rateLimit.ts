@@ -6,7 +6,7 @@ import type { Socket } from "socket.io";
  * Each named bucket refills continuously at `refillPerSec` tokens/second up to a
  * `capacity` ceiling, and each accepted event consumes one token. When the
  * bucket is empty, `take()` returns false and the caller is expected to DROP /
- * IGNORE the event (optionally acking an error) — never throw or crash.
+ * IGNORE the event (optionally acking an error); never throw or crash.
  *
  * Buckets are lazily created and stored on the socket itself, so they are
  * garbage-collected together with the socket on disconnect (no global registry,
@@ -97,6 +97,8 @@ export const takeToken = (
 export const RATE_LIMITS = {
   // Awareness updates are the chattiest (cursor moves, presence). ~20/s sustained.
   appsAwareness: { capacity: 40, refillPerSec: 20 },
+  // Full Yjs sync can encode a large document; keep request bursts modest.
+  appsYjsSync: { capacity: 10, refillPerSec: 2 },
   // Yjs document updates: bursty while typing, so allow a generous burst.
   appsYjsUpdate: { capacity: 60, refillPerSec: 30 },
   // Chat messages: ~5/s sustained, small burst.
@@ -105,6 +107,19 @@ export const RATE_LIMITS = {
   reaction: { capacity: 10, refillPerSec: 5 },
   // Hand raise toggles: low frequency.
   hand: { capacity: 5, refillPerSec: 2 },
+  // Display-name changes broadcast room-wide and should be rare.
+  displayName: { capacity: 5, refillPerSec: 1 },
+  // Admin socket actions can snapshot or mutate many room members.
+  adminAction: { capacity: 40, refillPerSec: 8 },
+  adminBulkAction: { capacity: 8, refillPerSec: 1 },
   // Transport creation: roughly once per kind, allow a small retry burst.
   transportCreate: { capacity: 3, refillPerSec: 1 },
+  // Producer allocation is expensive enough to reject rapid churn.
+  mediaProduce: { capacity: 12, refillPerSec: 2 },
+  // ICE restarts are useful for recovery but allocate new ICE credentials.
+  iceRestart: { capacity: 6, refillPerSec: 0.5 },
+  // Consumer resume/preference/keyframe controls: recovery can be bursty.
+  consumerControl: { capacity: 30, refillPerSec: 10 },
+  // Shared browser controls proxy to a separate service; keep them coalesced.
+  sharedBrowserControl: { capacity: 10, refillPerSec: 2 },
 } as const satisfies Record<string, TokenBucketOptions>;

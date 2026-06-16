@@ -4,7 +4,15 @@ import os from "os";
 import { config } from "../config/config.js";
 import { Logger } from "./loggers.js";
 
-const totalThreads = os.cpus().length;
+const getAutoWorkerCount = (): number => {
+  if (typeof os.availableParallelism === "function") {
+    return os.availableParallelism();
+  }
+  return os.cpus().length;
+};
+
+const getWorkerCount = (): number =>
+  Math.max(1, config.workerSettings.workerCount || getAutoWorkerCount());
 
 type CreateWorkersOptions = {
   onWorkerDied?: (worker: Worker, label: string) => void | Promise<void>;
@@ -23,7 +31,7 @@ const createWorkers = async (
 ): Promise<Worker[]> => {
   const workers: Worker[] = [];
 
-  // A dead mediasoup worker takes its routers — and the rooms running on them —
+  // A dead mediasoup worker takes its routers - and the rooms running on them -
   // with it. Previously the handler did `process.exit(1)`, which killed the
   // WHOLE instance and every healthy room on the other workers too. Instead we
   // recreate a replacement worker IN PLACE so the pool stays full and new rooms
@@ -33,7 +41,7 @@ const createWorkers = async (
   // clients rejoin via the normal reconnect path, landing on a healthy worker.
   const attachDiedHandler = (worker: Worker, label: string): void => {
     worker.on("died", () => {
-      Logger.error(`Worker ${label} has died — recreating a replacement`);
+      Logger.error(`Worker ${label} has died; recreating a replacement`);
       void Promise.resolve(options.onWorkerDied?.(worker, label)).catch(
         (error) => {
           Logger.error(
@@ -60,7 +68,9 @@ const createWorkers = async (
     });
   };
 
-  for (let i = 0; i < totalThreads; i++) {
+  const workerCount = getWorkerCount();
+  Logger.info(`Creating ${workerCount} mediasoup worker(s)`);
+  for (let i = 0; i < workerCount; i++) {
     const worker = await spawnWorker();
     attachDiedHandler(worker, String(i));
     workers.push(worker);

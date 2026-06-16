@@ -2,6 +2,8 @@ import type {
   Router,
   Producer,
   Consumer,
+  ConsumerLayers,
+  ConsumerScore,
   WebRtcTransport,
   RtpCapabilities,
   RtpParameters,
@@ -73,6 +75,13 @@ export interface JoinRoomResponse {
   webinarMaxAttendees?: number;
 }
 
+export interface JoinRoomErrorResponse {
+  error: string;
+  roomId?: string;
+  redirectInstanceId?: string;
+  redirectUrl?: string;
+}
+
 export interface CreateTransportResponse {
   id: string;
   iceParameters: object;
@@ -109,6 +118,8 @@ export interface ConsumeData {
   transportId?: string;
   producerId: string;
   rtpCapabilities: RtpCapabilities;
+  preferredLayers?: ConsumerLayerPreference;
+  priority?: number;
 }
 
 export interface ConsumeResponse {
@@ -116,6 +127,32 @@ export interface ConsumeResponse {
   producerId: string;
   kind: MediaKind;
   rtpParameters: RtpParameters;
+  producerPaused?: boolean;
+  score?: ConsumerScore;
+  preferredLayers?: ConsumerLayerPreference;
+  currentLayers?: ConsumerLayerPreference;
+  priority?: number;
+}
+
+export type ConsumerLayerPreference = ConsumerLayers;
+
+export interface SetConsumerPreferencesData {
+  consumerId: string;
+  preferredLayers?: ConsumerLayerPreference;
+  priority?: number | null;
+  paused?: boolean;
+  requestKeyFrame?: boolean;
+}
+
+export interface SetConsumerPreferencesResponse {
+  success: boolean;
+  consumerId: string;
+  producerId: string;
+  paused: boolean;
+  producerPaused: boolean;
+  priority: number;
+  preferredLayers?: ConsumerLayerPreference;
+  currentLayers?: ConsumerLayerPreference;
 }
 
 export interface ProducerInfo {
@@ -310,6 +347,31 @@ export interface SetVideoQualityNotification {
   roomId?: string;
 }
 
+export interface ConsumerTelemetryNotification {
+  event:
+    | "created"
+    | "score"
+    | "layerschange"
+    | "preferences"
+    | "pause"
+    | "resume"
+    | "producerpause"
+    | "producerresume"
+    | "closed";
+  roomId: string;
+  userId: string;
+  consumerId: string;
+  producerId: string;
+  kind: MediaKind;
+  score: ConsumerScore;
+  paused: boolean;
+  producerPaused: boolean;
+  priority: number;
+  preferredLayers?: ConsumerLayerPreference;
+  currentLayers?: ConsumerLayerPreference;
+  timestamp: number;
+}
+
 export interface NewProducerNotification {
   producerId: string;
   producerUserId: string;
@@ -476,6 +538,8 @@ export type {
   Router,
   Producer,
   Consumer,
+  ConsumerLayers,
+  ConsumerScore,
   WebRtcTransport,
   RtpCapabilities,
   RtpParameters,

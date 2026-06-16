@@ -30,7 +30,12 @@ export const registerHandHandlers = (context: ConnectionContext): void => {
           return;
         }
 
-        const raised = Boolean(data?.raised);
+        if (typeof data?.raised !== "boolean") {
+          respond(callback, { error: "Invalid hand state" });
+          return;
+        }
+
+        const raised = data.raised;
         context.currentRoom.setHandRaised(context.currentClient.id, raised);
 
         const notification: HandRaisedNotification = {

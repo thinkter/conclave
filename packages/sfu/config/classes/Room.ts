@@ -35,9 +35,33 @@ type AppAwarenessRemoval = {
   awarenessUpdate: Uint8Array;
 };
 
+type ProducerIndexEntry = {
+  producer: Producer;
+  userId: string;
+  type: ProducerType;
+  system: boolean;
+};
+
 const WEBINAR_AUDIO_LEVEL_THRESHOLD = -70;
 const WEBINAR_AUDIO_LEVEL_INTERVAL_MS = 350;
 const CHAT_HISTORY_LIMIT = 100;
+const MAX_INVITE_CODE_LENGTH = 256;
+const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f]/;
+
+const normalizeInviteCode = (value: unknown): string => {
+  if (typeof value !== "string") {
+    return "";
+  }
+  const normalized = value.trim();
+  if (
+    !normalized ||
+    normalized.length > MAX_INVITE_CODE_LENGTH ||
+    CONTROL_CHARACTER_PATTERN.test(normalized)
+  ) {
+    return "";
+  }
+  return normalized;
+};
 
 const getAwarenessStateUserId = (state: unknown): string | null => {
   if (!state || typeof state !== "object" || Array.isArray(state)) {
@@ -118,6 +142,7 @@ export class Room {
     string,
     { producer: Producer; userId: string; type: ProducerType }
   > = new Map();
+  private producerIndex: Map<string, ProducerIndexEntry> = new Map();
   private webinarActiveSpeakerUserId: string | null = null;
   private webinarDominantSpeakerUserId: string | null = null;
   private webinarFeedProducerIds: string[] = [];
@@ -125,6 +150,8 @@ export class Room {
   private webinarAudioLevelObserverInit: Promise<void> | null = null;
   private webinarWebcamAudioProducerOwners: Map<string, string> = new Map();
   private webinarFeedRefreshNotifier: ((room: Room) => void) | null = null;
+  private webinarAttendeeCount = 0;
+  private meetingParticipantCount = 0;
 
   constructor(options: RoomOptions) {
     this.id = options.id;
@@ -138,8 +165,23 @@ export class Room {
     return this.router.rtpCapabilities;
   }
 
+  private updateClientModeCounts(client: Client, delta: 1 | -1): void {
+    if (client.isWebinarAttendee) {
+      this.webinarAttendeeCount += delta;
+      return;
+    }
+    if (!client.isObserver) {
+      this.meetingParticipantCount += delta;
+    }
+  }
+
   addClient(client: Client): void {
+    const existing = this.clients.get(client.id);
+    if (existing) {
+      this.updateClientModeCounts(existing, -1);
+    }
     this.clients.set(client.id, client);
+    this.updateClientModeCounts(client, 1);
   }
 
   setUserIdentity(
@@ -195,7 +237,9 @@ export class Room {
       this.pendingDisconnects.delete(clientId);
     }
     if (client) {
+      this.updateClientModeCounts(client, -1);
       this.clearWebinarAudioProducersForUser(clientId);
+      this.removeClientProducerIndexes(clientId);
       client.close();
       this.clients.delete(clientId);
     }
@@ -206,7 +250,7 @@ export class Room {
     // (a user may be joined from two tabs under one key). Without this,
     // displayNamesByKey is only cleared on full room teardown, so a long-lived
     // room accumulates an entry for every rotating client-minted guest identity
-    // that ever joined → unbounded heap growth / eventual OOM.
+    // that ever joined, causing unbounded heap growth and eventual OOM.
     if (departingUserKey !== undefined) {
       let stillPresent = false;
       for (const key of this.userKeysById.values()) {
@@ -284,24 +328,11 @@ export class Room {
   }
 
   getWebinarAttendeeCount(): number {
-    let count = 0;
-    for (const client of this.clients.values()) {
-      if (client.isWebinarAttendee) {
-        count += 1;
-      }
-    }
-    return count;
+    return this.webinarAttendeeCount;
   }
 
   getMeetingParticipantCount(): number {
-    let count = 0;
-    for (const client of this.clients.values()) {
-      if (client.isObserver) {
-        continue;
-      }
-      count += 1;
-    }
-    return count;
+    return this.meetingParticipantCount;
   }
 
   async createWebRtcTransport(): Promise<WebRtcTransport> {
@@ -530,38 +561,106 @@ export class Room {
     }
   }
 
+  private producerInfoFromIndexEntry(entry: ProducerIndexEntry): ProducerInfo {
+    return {
+      producerId: entry.producer.id,
+      producerUserId: entry.userId,
+      kind: entry.producer.kind,
+      type: entry.type,
+      paused: entry.producer.paused,
+    };
+  }
+
+  private isProducerIndexEntryActive(
+    producerId: string,
+    entry: ProducerIndexEntry,
+  ): boolean {
+    if (entry.producer.id !== producerId || entry.producer.closed) {
+      return false;
+    }
+    if (entry.system) {
+      return this.systemProducers.get(producerId)?.producer.id === producerId;
+    }
+    const owner = this.clients.get(entry.userId);
+    return Boolean(owner && !owner.isObserver);
+  }
+
+  private indexProducer(entry: ProducerIndexEntry): void {
+    this.producerIndex.set(entry.producer.id, entry);
+
+    const cleanup = () => {
+      this.removeProducerIndexById(entry.producer.id, entry.producer);
+    };
+
+    entry.producer.on("transportclose", cleanup);
+    entry.producer.observer.on("close", cleanup);
+  }
+
+  removeProducerIndexById(producerId: string, producer?: Producer): void {
+    const activeEntry = this.producerIndex.get(producerId);
+    if (!activeEntry) {
+      return;
+    }
+    if (producer && activeEntry.producer.id !== producer.id) {
+      return;
+    }
+    this.producerIndex.delete(producerId);
+  }
+
+  private removeClientProducerIndexes(userId: string): void {
+    for (const [producerId, entry] of this.producerIndex) {
+      if (!entry.system && entry.userId === userId) {
+        this.producerIndex.delete(producerId);
+      }
+    }
+  }
+
   getAllProducers(excludeClientId?: string): ProducerInfo[] {
     const producers: ProducerInfo[] = [];
 
-    for (const [clientId, client] of this.clients) {
-      if (excludeClientId && clientId === excludeClientId) {
+    for (const [producerId, entry] of this.producerIndex) {
+      if (!this.isProducerIndexEntryActive(producerId, entry)) {
+        this.producerIndex.delete(producerId);
         continue;
       }
-      if (client.isObserver) {
+      if (excludeClientId && entry.userId === excludeClientId) {
         continue;
       }
-      for (const info of client.getProducerInfos()) {
-        producers.push({
-          producerId: info.producerId,
-          producerUserId: clientId,
-          kind: info.kind,
-          type: info.type,
-          paused: info.paused,
-        });
-      }
-    }
-
-    for (const { producer, userId, type } of this.systemProducers.values()) {
-      producers.push({
-        producerId: producer.id,
-        producerUserId: userId,
-        kind: producer.kind,
-        type,
-        paused: producer.paused,
-      });
+      producers.push(this.producerInfoFromIndexEntry(entry));
     }
 
     return producers;
+  }
+
+  getProducerInfoById(producerId: string): ProducerInfo | null {
+    const entry = this.producerIndex.get(producerId);
+    if (!entry) {
+      return null;
+    }
+    if (!this.isProducerIndexEntryActive(producerId, entry)) {
+      this.producerIndex.delete(producerId);
+      return null;
+    }
+    return this.producerInfoFromIndexEntry(entry);
+  }
+
+  indexClientProducer(
+    userId: string,
+    producer: Producer,
+    type: ProducerType,
+  ): void {
+    for (const [producerId, entry] of this.producerIndex) {
+      if (
+        !entry.system &&
+        entry.userId === userId &&
+        entry.type === type &&
+        entry.producer.kind === producer.kind &&
+        producerId !== producer.id
+      ) {
+        this.producerIndex.delete(producerId);
+      }
+    }
+    this.indexProducer({ producer, userId, type, system: false });
   }
 
   addSystemProducer(
@@ -570,9 +669,11 @@ export class Room {
     type: ProducerType,
   ): void {
     this.systemProducers.set(producer.id, { producer, userId, type });
+    this.indexProducer({ producer, userId, type, system: true });
 
     const cleanup = () => {
       this.systemProducers.delete(producer.id);
+      this.removeProducerIndexById(producer.id, producer);
     };
 
     producer.on("transportclose", cleanup);
@@ -581,6 +682,7 @@ export class Room {
 
   removeSystemProducerById(producerId: string): void {
     this.systemProducers.delete(producerId);
+    this.removeProducerIndexById(producerId);
   }
 
   canConsume(producerId: string, rtpCapabilities: RtpCapabilities): boolean {
@@ -639,8 +741,7 @@ export class Room {
   }
 
   setMeetingInviteCode(inviteCode: string | null): boolean {
-    const normalizedInviteCode =
-      typeof inviteCode === "string" ? inviteCode.trim() : "";
+    const normalizedInviteCode = normalizeInviteCode(inviteCode);
     const nextHash = normalizedInviteCode
       ? hashInviteCode(normalizedInviteCode)
       : null;
@@ -657,6 +758,12 @@ export class Room {
     }
     const normalizedInviteCode = inviteCode.trim();
     if (!normalizedInviteCode) {
+      return false;
+    }
+    if (
+      normalizedInviteCode.length > MAX_INVITE_CODE_LENGTH ||
+      CONTROL_CHARACTER_PATTERN.test(normalizedInviteCode)
+    ) {
       return false;
     }
     return verifyInviteCodeHash(
@@ -783,23 +890,16 @@ export class Room {
       return null;
     }
 
-    for (const [userId, client] of this.clients.entries()) {
-      if (client.isObserver) {
-        continue;
-      }
-
-      const ownsScreenShare = client
-        .getProducerInfos()
-        .some(
-          (info) => info.producerId === screenShareProducerId && info.type === "screen",
-        );
-
-      if (ownsScreenShare) {
-        return userId;
-      }
+    const entry = this.producerIndex.get(screenShareProducerId);
+    if (!entry || entry.system || entry.type !== "screen") {
+      return null;
     }
 
-    return null;
+    const owner = this.clients.get(entry.userId);
+    if (!owner || owner.isObserver) {
+      return null;
+    }
+    return entry.userId;
   }
 
   private selectWebinarActiveSpeakerUserId(): string | null {
@@ -1046,6 +1146,22 @@ export class Room {
     return removalUpdate;
   }
 
+  clearAppState(appId: string): Uint8Array | null {
+    const awarenessUpdate = this.clearAppAwareness(appId);
+    const doc = this.appsDocs.get(appId);
+    if (doc) {
+      try {
+        doc.destroy();
+      } catch {}
+      this.appsDocs.delete(appId);
+    }
+    if (this.appsState.activeAppId === appId) {
+      this.appsState.activeAppId = null;
+      this.appsState.locked = false;
+    }
+    return awarenessUpdate;
+  }
+
   clearUserAwareness(userId: string): AppAwarenessRemoval[] {
     const removals: AppAwarenessRemoval[] = [];
 
@@ -1124,6 +1240,9 @@ export class Room {
       client.close();
     }
     this.clients.clear();
+    this.producerIndex.clear();
+    this.webinarAttendeeCount = 0;
+    this.meetingParticipantCount = 0;
     this.clearApps();
     if (this.webinarAudioLevelObserver) {
       try {
@@ -1134,7 +1253,9 @@ export class Room {
     this.webinarAudioLevelObserverInit = null;
     this.webinarWebcamAudioProducerOwners.clear();
     this.webinarFeedRefreshNotifier = null;
-    this.router.close();
+    if (!this.router.closed) {
+      this.router.close();
+    }
     this.userKeysById.clear();
     this.adminUserKeys.clear();
     this.displayNamesByKey.clear();
