@@ -5,6 +5,7 @@ import {
   Armchair,
   Blend,
   Building2,
+  CakeSlice,
   Coffee,
   Crown,
   Flower2,
@@ -21,6 +22,7 @@ import {
   Plane,
   Rabbit,
   Rocket,
+  Scissors,
   Snowflake,
   Sparkles,
   Sofa,
@@ -104,12 +106,14 @@ export type FaceFilterId =
   | "fuzzy-cat"
   | "halloween-cat"
   | "velvety-dog"
+  | "long-wavy-hair"
   | "bunny"
   | "working-bunny"
   | "bunny-ears"
   | "beach-day"
   | "cute-astronaut"
   | "pirate"
+  | "cake"
   | "party-hat"
   | "pilot-hat"
   | "trucker-hat"
@@ -263,12 +267,14 @@ const FACE_FILTER_IDS = new Set<FaceFilterId>([
   "fuzzy-cat",
   "halloween-cat",
   "velvety-dog",
+  "long-wavy-hair",
   "bunny",
   "working-bunny",
   "bunny-ears",
   "beach-day",
   "cute-astronaut",
   "pirate",
+  "cake",
   "party-hat",
   "pilot-hat",
   "trucker-hat",
@@ -1165,6 +1171,13 @@ export const FACE_FILTERS: VideoEffectOption<FaceFilterId>[] = [
     category: "Costumes",
   },
   {
+    id: "long-wavy-hair",
+    label: "Long wavy hair",
+    icon: Scissors,
+    tone: "#7c2d12",
+    category: "Costumes",
+  },
+  {
     id: "cute-astronaut",
     label: "Cute astronaut",
     icon: Rocket,
@@ -1176,6 +1189,13 @@ export const FACE_FILTERS: VideoEffectOption<FaceFilterId>[] = [
     label: "Pirate",
     icon: HatGlasses,
     tone: "#111827",
+    category: "Costumes",
+  },
+  {
+    id: "cake",
+    label: "Cake",
+    icon: CakeSlice,
+    tone: "#ec4899",
     category: "Costumes",
   },
   {

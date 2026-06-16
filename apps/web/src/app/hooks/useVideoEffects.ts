@@ -7638,6 +7638,100 @@ const drawFaceFilter = (
     ctx.moveTo(noseX, noseY + faceWidth * 0.02);
     ctx.quadraticCurveTo(noseX + faceWidth * 0.05, noseY + faceWidth * 0.08, noseX + faceWidth * 0.1, noseY + faceWidth * 0.04);
     ctx.stroke();
+  } else if (filter === "long-wavy-hair") {
+    const hairTopY = headTopY - faceWidth * 0.08;
+    const hairBottomY = faceBottomY + faceWidth * 0.3;
+    const hairColor = ctx.createLinearGradient(
+      headCenterX - faceWidth * 0.5,
+      hairTopY,
+      headCenterX + faceWidth * 0.5,
+      hairBottomY,
+    );
+    hairColor.addColorStop(0, "rgba(92,48,18,0.98)");
+    hairColor.addColorStop(0.5, "rgba(67,34,16,0.96)");
+    hairColor.addColorStop(1, "rgba(28,25,23,0.95)");
+    beginProbe({
+      left: headCenterX - faceWidth * 0.62,
+      right: headCenterX + faceWidth * 0.62,
+      top: hairTopY - faceWidth * 0.08,
+      bottom: hairBottomY + faceWidth * 0.04,
+    });
+    ctx.fillStyle = hairColor;
+    ctx.beginPath();
+    ctx.moveTo(headCenterX - faceWidth * 0.34, headTopY + faceWidth * 0.08);
+    ctx.bezierCurveTo(
+      headCenterX - faceWidth * 0.56,
+      headTopY + faceWidth * 0.2,
+      headCenterX - faceWidth * 0.58,
+      hairBottomY - faceWidth * 0.18,
+      headCenterX - faceWidth * 0.28,
+      hairBottomY,
+    );
+    ctx.bezierCurveTo(
+      headCenterX - faceWidth * 0.42,
+      faceBottomY - faceWidth * 0.08,
+      headCenterX - faceWidth * 0.38,
+      headTopY + faceWidth * 0.28,
+      headCenterX - faceWidth * 0.18,
+      hairTopY + faceWidth * 0.12,
+    );
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(headCenterX + faceWidth * 0.34, headTopY + faceWidth * 0.08);
+    ctx.bezierCurveTo(
+      headCenterX + faceWidth * 0.56,
+      headTopY + faceWidth * 0.2,
+      headCenterX + faceWidth * 0.58,
+      hairBottomY - faceWidth * 0.18,
+      headCenterX + faceWidth * 0.28,
+      hairBottomY,
+    );
+    ctx.bezierCurveTo(
+      headCenterX + faceWidth * 0.42,
+      faceBottomY - faceWidth * 0.08,
+      headCenterX + faceWidth * 0.38,
+      headTopY + faceWidth * 0.28,
+      headCenterX + faceWidth * 0.18,
+      hairTopY + faceWidth * 0.12,
+    );
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(
+      headCenterX,
+      hairTopY + faceWidth * 0.16,
+      faceWidth * 0.43,
+      faceWidth * 0.22,
+      -0.04,
+      Math.PI,
+      Math.PI * 2,
+    );
+    ctx.lineTo(headCenterX + faceWidth * 0.28, headTopY + faceWidth * 0.16);
+    ctx.quadraticCurveTo(headCenterX, headTopY + faceWidth * 0.26, headCenterX - faceWidth * 0.28, headTopY + faceWidth * 0.16);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = "rgba(251,191,36,0.34)";
+    ctx.lineWidth = Math.max(2, faceWidth * 0.012);
+    [
+      { side: -1, x: headCenterX - faceWidth * 0.36 },
+      { side: 1, x: headCenterX + faceWidth * 0.36 },
+    ].forEach((lock) => {
+      for (let wave = 0; wave < 3; wave += 1) {
+        const offset = wave * faceWidth * 0.045 * -lock.side;
+        ctx.beginPath();
+        ctx.moveTo(lock.x + offset, headTopY + faceWidth * 0.1);
+        ctx.bezierCurveTo(
+          lock.x + lock.side * faceWidth * 0.08 + offset,
+          headTopY + faceWidth * 0.34,
+          lock.x - lock.side * faceWidth * 0.1 + offset,
+          faceBottomY + faceWidth * 0.04,
+          lock.x + lock.side * faceWidth * 0.06 + offset,
+          hairBottomY - faceWidth * 0.04,
+        );
+        ctx.stroke();
+      }
+    });
   } else if (filter === "beach-day") {
     const lensW = clamp(eyewearLensW * 1.02, faceWidth * 0.19, faceWidth * 0.3);
     const lensH = clamp(eyewearLensH * 0.96, faceWidth * 0.1, faceWidth * 0.16);
@@ -7733,6 +7827,83 @@ const drawFaceFilter = (
     ctx.moveTo(mouthCenterLocal.x - faceWidth * 0.18, beardY - faceWidth * 0.04);
     ctx.quadraticCurveTo(mouthCenterLocal.x, beardY + faceWidth * 0.16, mouthCenterLocal.x + faceWidth * 0.18, beardY - faceWidth * 0.04);
     ctx.quadraticCurveTo(mouthCenterLocal.x, beardY + faceWidth * 0.04, mouthCenterLocal.x - faceWidth * 0.18, beardY - faceWidth * 0.04);
+    ctx.fill();
+  } else if (filter === "cake") {
+    const cakeBaseY = headTopY + faceWidth * 0.02;
+    const cakeW = faceWidth * 0.6;
+    const layerH = faceWidth * 0.13;
+    const candleH = faceWidth * 0.2;
+    beginProbe({
+      left: headCenterX - cakeW * 0.6,
+      right: headCenterX + cakeW * 0.6,
+      top: cakeBaseY - layerH * 2 - candleH - faceWidth * 0.08,
+      bottom: cakeBaseY + faceWidth * 0.08,
+    });
+    ctx.fillStyle = "rgba(236,72,153,0.96)";
+    fillRoundRect(
+      ctx,
+      headCenterX - cakeW * 0.45,
+      cakeBaseY - layerH,
+      cakeW * 0.9,
+      layerH,
+      faceWidth * 0.035,
+    );
+    ctx.fillStyle = "rgba(254,205,211,0.98)";
+    fillRoundRect(
+      ctx,
+      headCenterX - cakeW * 0.34,
+      cakeBaseY - layerH * 1.9,
+      cakeW * 0.68,
+      layerH * 0.95,
+      faceWidth * 0.035,
+    );
+    ctx.fillStyle = "rgba(255,255,255,0.94)";
+    for (let drip = 0; drip < 4; drip += 1) {
+      const x = headCenterX - cakeW * 0.3 + drip * cakeW * 0.2;
+      ctx.beginPath();
+      ctx.arc(x, cakeBaseY - layerH * 0.92, faceWidth * 0.026, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    [
+      { x: headCenterX - cakeW * 0.18, color: "#22c55e" },
+      { x: headCenterX, color: "#3b82f6" },
+      { x: headCenterX + cakeW * 0.18, color: "#f97316" },
+    ].forEach((candle) => {
+      ctx.fillStyle = candle.color;
+      fillRoundRect(
+        ctx,
+        candle.x - faceWidth * 0.012,
+        cakeBaseY - layerH * 1.9 - candleH,
+        faceWidth * 0.024,
+        candleH,
+        faceWidth * 0.008,
+      );
+      const flameY = cakeBaseY - layerH * 1.9 - candleH - faceWidth * 0.035;
+      ctx.fillStyle = "rgba(250,204,21,0.96)";
+      ctx.beginPath();
+      ctx.moveTo(candle.x, flameY - faceWidth * 0.04);
+      ctx.bezierCurveTo(
+        candle.x - faceWidth * 0.035,
+        flameY,
+        candle.x - faceWidth * 0.018,
+        flameY + faceWidth * 0.035,
+        candle.x,
+        flameY + faceWidth * 0.04,
+      );
+      ctx.bezierCurveTo(
+        candle.x + faceWidth * 0.018,
+        flameY + faceWidth * 0.035,
+        candle.x + faceWidth * 0.035,
+        flameY,
+        candle.x,
+        flameY - faceWidth * 0.04,
+      );
+      ctx.closePath();
+      ctx.fill();
+    });
+    ctx.fillStyle = "rgba(248,250,252,0.88)";
+    ctx.beginPath();
+    ctx.ellipse(headCenterX, cakeBaseY + faceWidth * 0.02, cakeW * 0.52, faceWidth * 0.045, 0, 0, Math.PI * 2);
     ctx.fill();
   } else if (filter === "party-hat") {
     const hatBaseY = headTopY + faceWidth * 0.03;
