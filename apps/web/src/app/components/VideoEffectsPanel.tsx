@@ -445,6 +445,7 @@ export default function VideoEffectsPanel({
   initialTab = "backgrounds",
   showFilters = true,
 }: VideoEffectsPanelProps) {
+  const isDialogVariant = variant === "dialog";
   const [activeTab, setActiveTab] = useState<EffectsTab>(initialTab);
   const [showActiveEffectStack, setShowActiveEffectStack] = useState(false);
   const [customBackgroundError, setCustomBackgroundError] = useState<string | null>(
@@ -900,13 +901,14 @@ export default function VideoEffectsPanel({
   }, [debugStats]);
 
   const panelClassName =
-    variant === "dialog"
-      ? "fixed inset-x-3 bottom-3 z-50 flex max-h-[calc(100dvh-24px)] flex-col overflow-hidden rounded-2xl border border-white/[0.14] bg-[#18181b] text-[#fafafa] sm:left-1/2 sm:right-auto sm:top-1/2 sm:bottom-auto sm:h-[min(780px,calc(100dvh-48px))] sm:max-h-none sm:w-[min(500px,calc(100vw-32px))] sm:-translate-x-1/2 sm:-translate-y-1/2"
+    isDialogVariant
+      ? "video-effects-panel-dialog fixed z-50 flex flex-col overflow-hidden text-[#fafafa]"
       : "fixed right-0 top-0 bottom-0 z-40 flex w-[380px] flex-col overflow-hidden border-l border-white/[0.14] bg-[#18181b] text-[#fafafa] animate-[meet-panel-in_120ms_cubic-bezier(0.22,1,0.36,1)]";
 
   const panel = (
     <aside
       data-testid="video-effects-panel"
+      data-video-effects-variant={variant}
       data-video-effects-status={status}
       data-video-effects-active-count={displayedActiveCount}
       data-video-effects-output-published={
@@ -942,12 +944,20 @@ export default function VideoEffectsPanel({
       data-video-effects-stats={compactDebugStats}
       className={panelClassName}
       style={{
-        backgroundColor: color.surface,
+        backgroundColor: isDialogVariant ? undefined : color.surface,
         color: color.text,
         fontFamily: PANEL_FONT,
       }}
     >
       <style>{PANEL_STYLES}</style>
+      {isDialogVariant ? (
+        <div
+          aria-hidden
+          className="video-effects-panel-grabber-wrap sm:hidden"
+        >
+          <div className="mx-auto mobile-sheet-grabber" />
+        </div>
+      ) : null}
       <header className="flex items-center justify-between border-b border-white/[0.14] px-4 py-3">
         <div className="flex min-w-0 items-center gap-2">
           <div className="min-w-0">
@@ -1384,7 +1394,7 @@ export default function VideoEffectsPanel({
         <button
           type="button"
           aria-label="Close backgrounds and effects"
-          className="fixed inset-0 z-40 cursor-default bg-black/65 backdrop-blur-sm"
+          className="video-effects-panel-overlay fixed inset-0 z-40 cursor-default bg-black/65 backdrop-blur-sm"
           onClick={onClose}
         />
         {panel}
