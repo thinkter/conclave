@@ -76,6 +76,12 @@ export type BackgroundEffectId =
   | "italian-terrace-countryside"
   | "physics-lab"
   | "lakeside-tent"
+  | "camper-vacation"
+  | "dog-office"
+  | "indian-balcony"
+  | "arabian-cafe-terrace"
+  | "ocean-terrace"
+  | "snowy-cafe"
   | "gradient"
   | "custom";
 
@@ -224,6 +230,12 @@ const BACKGROUND_EFFECT_IDS = new Set<BackgroundEffectId>([
   "italian-terrace-countryside",
   "physics-lab",
   "lakeside-tent",
+  "camper-vacation",
+  "dog-office",
+  "indian-balcony",
+  "arabian-cafe-terrace",
+  "ocean-terrace",
+  "snowy-cafe",
   "gradient",
   "custom",
 ]);
@@ -437,6 +449,13 @@ export const BACKGROUND_ASSET_PATHS = {
     "/effects/backgrounds/italian-terrace-countryside.webp",
   "physics-lab": "/effects/backgrounds/physics-lab.webp",
   "lakeside-tent": "/effects/backgrounds/lakeside-tent.webp",
+  "camper-vacation": "/effects/backgrounds/camper-vacation.webp",
+  "dog-office": "/effects/backgrounds/dog-office.webp",
+  "indian-balcony": "/effects/backgrounds/indian-balcony.webp",
+  "arabian-cafe-terrace":
+    "/effects/backgrounds/arabian-cafe-terrace.webp",
+  "ocean-terrace": "/effects/backgrounds/ocean-terrace.webp",
+  "snowy-cafe": "/effects/backgrounds/snowy-cafe.webp",
 } satisfies Partial<Record<BackgroundEffectId, string>>;
 
 export const getVideoEffectPreviewPath = <T extends string>(
@@ -619,6 +638,54 @@ export const BACKGROUND_EFFECTS: VideoEffectOption<BackgroundEffectId>[] = [
     icon: Waves,
     tone: "#0f766e",
     assetPath: BACKGROUND_ASSET_PATHS["lakeside-tent"],
+    category: "Immersive",
+  },
+  {
+    id: "camper-vacation",
+    label: "Camper vacation",
+    icon: Plane,
+    tone: "#b45309",
+    assetPath: BACKGROUND_ASSET_PATHS["camper-vacation"],
+    category: "Immersive",
+  },
+  {
+    id: "dog-office",
+    label: "Dog office",
+    icon: LampDesk,
+    tone: "#57534e",
+    assetPath: BACKGROUND_ASSET_PATHS["dog-office"],
+    category: "Immersive",
+  },
+  {
+    id: "indian-balcony",
+    label: "Indian balcony",
+    icon: Building2,
+    tone: "#c2410c",
+    assetPath: BACKGROUND_ASSET_PATHS["indian-balcony"],
+    category: "Immersive",
+  },
+  {
+    id: "arabian-cafe-terrace",
+    label: "Arabian cafe terrace",
+    icon: Coffee,
+    tone: "#92400e",
+    assetPath: BACKGROUND_ASSET_PATHS["arabian-cafe-terrace"],
+    category: "Immersive",
+  },
+  {
+    id: "ocean-terrace",
+    label: "Ocean terrace",
+    icon: Waves,
+    tone: "#0284c7",
+    assetPath: BACKGROUND_ASSET_PATHS["ocean-terrace"],
+    category: "Immersive",
+  },
+  {
+    id: "snowy-cafe",
+    label: "Snowy cafe",
+    icon: Snowflake,
+    tone: "#0ea5e9",
+    assetPath: BACKGROUND_ASSET_PATHS["snowy-cafe"],
     category: "Immersive",
   },
   {
