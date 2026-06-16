@@ -2087,7 +2087,7 @@ final class MeetingViewModel {
             || previousConnectionState == .joined
             || previousConnectionState == .joining
         activeJoinAttemptId = joinAttemptId
-        if !isRecoveryJoin && !reuseExistingSocket {
+        if !reuseExistingSocket && (!isRecoveryJoin || socketManager.isConnected) {
             socketManager.disconnect()
             cancelPendingIceRestartTasks()
         }
