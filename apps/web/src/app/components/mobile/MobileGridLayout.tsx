@@ -16,7 +16,7 @@ import {
   computeGridLayout,
   type GridTilePosition,
 } from "@conclave/meeting-core";
-import { useSmartParticipantOrder } from "../../hooks/useSmartParticipantOrder";
+import { useSmartParticipantOrderWithMetadata } from "../../hooks/useSmartParticipantOrder";
 import type { Participant } from "../../lib/types";
 import { isSystemUserId, truncateDisplayName } from "../../lib/utils";
 import ParticipantAudio from "../ParticipantAudio";
@@ -66,6 +66,7 @@ type MobileRoomTilingWarmReason =
   | "boundary"
   | "recently-visible"
   | "active-speaker"
+  | "featured-speaker"
   | "hand-raised";
 
 type MobileRoomTilingScore = {
@@ -264,7 +265,10 @@ function MobileGridLayout({
     };
   }, [localStream]);
 
-  const orderedRemoteParticipants = useSmartParticipantOrder(
+  const {
+    orderedParticipants: orderedRemoteParticipants,
+    featuredSpeakerId,
+  } = useSmartParticipantOrderWithMetadata(
     Array.from(participants.values()).filter(
       (participant) =>
         !isSystemUserId(participant.userId) &&
@@ -302,9 +306,10 @@ function MobileGridLayout({
       (tile): tile is Extract<MobileTileDescriptor, { kind: "remote" }> =>
         tile.kind === "remote",
     );
+    const stableSpeakerId = featuredSpeakerId ?? activeSpeakerId;
     const primaryRemote =
       remoteTileList.find(
-        (tile) => tile.participant.userId === activeSpeakerId,
+        (tile) => tile.participant.userId === stableSpeakerId,
       ) ??
       remoteTileList.find((tile) => hasLiveVideo(tile.participant)) ??
       remoteTileList.find((tile) => hasLiveAudio(tile.participant)) ??
@@ -339,7 +344,7 @@ function MobileGridLayout({
       hiddenParticipantsCount: hiddenCount,
       showOverflowTile: true,
     };
-  }, [activeSpeakerId, remoteTiles]);
+  }, [activeSpeakerId, featuredSpeakerId, remoteTiles]);
 
   const totalPeople = orderedRemoteParticipants.length + 1;
   const layoutMode = visibleTiles.length <= 1 ? "solo" : "tiled";
@@ -497,6 +502,13 @@ function MobileGridLayout({
       );
     }
 
+    if (featuredSpeakerId) {
+      addWarm(
+        hiddenRemoteTiles.find((tile) => tile.key === featuredSpeakerId),
+        "featured-speaker",
+      );
+    }
+
     hiddenRemoteTiles
       .filter((tile) => tile.participant.isHandRaised)
       .slice(0, MOBILE_PRIORITY_WARM_BUFFER_TILES)
@@ -513,6 +525,7 @@ function MobileGridLayout({
     };
   }, [
     activeSpeakerId,
+    featuredSpeakerId,
     hiddenTiles,
     recentlyVisibleWarmRevision,
     visibleRemoteIds,
@@ -540,6 +553,7 @@ function MobileGridLayout({
       )
       .map((tile, rank) => {
         const active = tile.participant.userId === activeSpeakerId;
+        const featured = tile.participant.userId === featuredSpeakerId;
         const video = hasLiveVideo(tile.participant);
         const audio = hasLiveAudio(tile.participant);
         const raised = tile.participant.isHandRaised;
@@ -548,12 +562,13 @@ function MobileGridLayout({
           rank,
           score:
             (active ? 1000 : 0) +
+            (featured ? 500 : 0) +
             (raised ? 80 : 0) +
             (video ? 40 : 0) +
             (audio ? 20 : 0) -
             rank,
           active,
-          featured: false,
+          featured,
           raised,
           video,
           audio,
@@ -565,6 +580,7 @@ function MobileGridLayout({
       });
   }, [
     activeSpeakerId,
+    featuredSpeakerId,
     hiddenRemoteIds,
     remoteTiles,
     visibleRemoteIds,
@@ -634,6 +650,7 @@ function MobileGridLayout({
   const mobileRoomTilingBase = useMemo(
     () => ({
       activeSpeakerId,
+      featuredSpeakerId,
       renderedMode: renderedRoomMode,
       primaryIds,
       visibleRemoteIds,
@@ -659,6 +676,7 @@ function MobileGridLayout({
     }),
     [
       activeSpeakerId,
+      featuredSpeakerId,
       hiddenParticipantsCount,
       hiddenRemoteIds,
       orderedRemoteParticipants,
@@ -717,7 +735,7 @@ function MobileGridLayout({
         promoteDelayMs: MOBILE_ROOM_TILING_PROMOTE_DELAY_MS,
         minSwitchIntervalMs: MOBILE_ROOM_TILING_MIN_SWITCH_INTERVAL_MS,
         activeSpeakerId: mobileRoomTilingBase.activeSpeakerId,
-        featuredSpeakerId: null,
+        featuredSpeakerId: mobileRoomTilingBase.featuredSpeakerId,
         requestedMode: "auto" as const,
         renderedMode: mobileRoomTilingBase.renderedMode,
         effectiveMode: mobileRoomTilingBase.renderedMode,
@@ -753,13 +771,17 @@ function MobileGridLayout({
           ).filter((reasons) =>
             reasons.some(
               (reason) =>
-                reason === "active-speaker" || reason === "hand-raised",
+                reason === "active-speaker" ||
+                reason === "featured-speaker" ||
+                reason === "hand-raised",
             ),
           ).length,
           handRaisedWarm: Object.values(
             mobileRoomTilingBase.roomTilingWarmReasons,
           ).filter((reasons) => reasons.includes("hand-raised")).length,
-          featuredSpeakerWarm: 0,
+          featuredSpeakerWarm: Object.values(
+            mobileRoomTilingBase.roomTilingWarmReasons,
+          ).filter((reasons) => reasons.includes("featured-speaker")).length,
         },
         stage: {
           mainKind: mobileRoomTilingBase.primaryKind,

@@ -16,6 +16,11 @@ interface UseSmartParticipantOrderOptions {
   minSwitchIntervalMs?: number;
 }
 
+interface SmartParticipantOrderResult<T extends ParticipantWithMediaHints> {
+  orderedParticipants: T[];
+  featuredSpeakerId: string | null;
+}
+
 const hasLiveTrack = (
   stream: MediaStream | null | undefined,
   kind: "audio" | "video"
@@ -36,11 +41,13 @@ const getMediaPriority = (participant: ParticipantWithMediaHints): number => {
   return 0;
 };
 
-export function useSmartParticipantOrder<T extends ParticipantWithMediaHints>(
+export function useSmartParticipantOrderWithMetadata<
+  T extends ParticipantWithMediaHints,
+>(
   participants: readonly T[],
   activeSpeakerId: string | null,
   options: UseSmartParticipantOrderOptions = {}
-): T[] {
+): SmartParticipantOrderResult<T> {
   const { promoteDelayMs = 700, minSwitchIntervalMs = 2200 } = options;
   const participantIdsKey = useMemo(
     () => participants.map((participant) => participant.userId).join("|"),
@@ -254,5 +261,23 @@ export function useSmartParticipantOrder<T extends ParticipantWithMediaHints>(
     );
   }, [stableOrdered]);
 
-  return stableOrdered;
+  return useMemo(
+    () => ({
+      orderedParticipants: stableOrdered,
+      featuredSpeakerId,
+    }),
+    [featuredSpeakerId, stableOrdered],
+  );
+}
+
+export function useSmartParticipantOrder<T extends ParticipantWithMediaHints>(
+  participants: readonly T[],
+  activeSpeakerId: string | null,
+  options: UseSmartParticipantOrderOptions = {}
+): T[] {
+  return useSmartParticipantOrderWithMetadata(
+    participants,
+    activeSpeakerId,
+    options,
+  ).orderedParticipants;
 }
