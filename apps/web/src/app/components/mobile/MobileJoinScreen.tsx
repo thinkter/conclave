@@ -3,6 +3,7 @@
 import {
   AlertCircle,
   ArrowRight,
+  Blend,
   Loader2,
   Mic,
   MicOff,
@@ -211,6 +212,10 @@ function MobileJoinScreen({
     (!hasLivePreviewCamera &&
       (cameraPermissionState === "prompt" ||
         cameraPermissionState === "denied"));
+  const isBackgroundBlurActive =
+    !isCameraPermissionBlocked &&
+    (videoEffects.background === "blur-light" ||
+      videoEffects.background === "blur-strong");
   const shouldShowPermissionCta =
     !hasLivePreviewCamera &&
     !isCameraOn &&
@@ -225,6 +230,33 @@ function MobileJoinScreen({
       reason,
     });
   }, []);
+
+  const prewarmBackgroundBlur = useCallback(() => {
+    if (isCameraPermissionBlocked) return;
+    void prewarmVideoEffectsAssets({
+      segmentation: true,
+      reason: "mobile-prejoin-quick-blur",
+    });
+  }, [isCameraPermissionBlocked]);
+
+  const toggleBackgroundBlur = useCallback(() => {
+    if (isCameraPermissionBlocked) return;
+    const nextBackground = isBackgroundBlurActive ? "none" : "blur-strong";
+    if (nextBackground !== "none") {
+      void prewarmVideoEffectsAssets({
+        segmentation: true,
+        reason: "mobile-prejoin-quick-blur:select",
+      });
+    }
+    onVideoEffectsChange((current) => ({
+      ...current,
+      background: nextBackground,
+    }));
+  }, [
+    isBackgroundBlurActive,
+    isCameraPermissionBlocked,
+    onVideoEffectsChange,
+  ]);
 
   const openEffectsPanel = useCallback(() => {
     if (isCameraPermissionBlocked) return;
@@ -888,6 +920,34 @@ function MobileJoinScreen({
               ) : (
                 <VideoOff className="w-[18px] h-[18px]" />
               )}
+            </button>
+            <button
+              type="button"
+              onClick={toggleBackgroundBlur}
+              onFocus={prewarmBackgroundBlur}
+              onPointerEnter={prewarmBackgroundBlur}
+              onTouchStart={prewarmBackgroundBlur}
+              disabled={isCameraPermissionBlocked}
+              aria-label={
+                isBackgroundBlurActive
+                  ? "Turn off background blur"
+                  : "Turn on background blur"
+              }
+              aria-pressed={isBackgroundBlurActive}
+              title={
+                isCameraPermissionBlocked
+                  ? "Permission needed"
+                  : isBackgroundBlurActive
+                    ? "Turn off background blur"
+                    : "Turn on background blur"
+              }
+              className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${
+                isBackgroundBlurActive
+                  ? "bg-[#F95F4A] text-white"
+                  : "text-white"
+              }`}
+            >
+              <Blend className="w-[18px] h-[18px]" />
             </button>
             <button
               onClick={openEffectsPanel}
