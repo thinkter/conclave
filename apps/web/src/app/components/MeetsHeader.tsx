@@ -2,7 +2,6 @@
 
 import Image from "next/image";
 import { memo } from "react";
-import VideoSettings from "./video-settings";
 
 interface MeetsHeaderProps {
   isJoined: boolean;
@@ -31,60 +30,9 @@ interface MeetsHeaderProps {
   onSignOut: () => void;
 }
 
-function MeetsHeader({
-  isJoined,
-  isAdmin,
-  roomId,
-  isMirrorCamera,
-  isVideoSettingsOpen,
-  onToggleVideoSettings,
-  onToggleMirror,
-  isCameraOff,
-  displayNameInput,
-  displayNameStatus,
-  isDisplayNameUpdating,
-  canUpdateDisplayName,
-  onDisplayNameInputChange,
-  onDisplayNameSubmit,
-  selectedAudioInputDeviceId,
-  selectedAudioOutputDeviceId,
-  selectedVideoInputDeviceId,
-  onAudioInputDeviceChange,
-  onAudioOutputDeviceChange,
-  onVideoInputDeviceChange,
-  canSignOut,
-  isSigningOut,
-  onSignOut,
-}: MeetsHeaderProps) {
+function MeetsHeader({ isJoined }: MeetsHeaderProps) {
   if (isJoined) {
-    return (
-      <header className="fixed top-0 left-0 right-0 z-[100] pointer-events-none">
-        <div className="flex items-center justify-center px-4 pt-0 pointer-events-auto">
-          <div className="flex items-center gap-3">
-            <VideoSettings
-              isMirrorCamera={isMirrorCamera}
-              isOpen={isVideoSettingsOpen}
-              onToggleOpen={onToggleVideoSettings}
-              onToggleMirror={onToggleMirror}
-              isCameraOff={isCameraOff}
-              isAdmin={isAdmin}
-              displayNameInput={displayNameInput}
-              displayNameStatus={displayNameStatus}
-              isDisplayNameUpdating={isDisplayNameUpdating}
-              canUpdateDisplayName={canUpdateDisplayName}
-              onDisplayNameInputChange={onDisplayNameInputChange}
-              onDisplayNameSubmit={onDisplayNameSubmit}
-              selectedAudioInputDeviceId={selectedAudioInputDeviceId}
-              selectedAudioOutputDeviceId={selectedAudioOutputDeviceId}
-              selectedVideoInputDeviceId={selectedVideoInputDeviceId}
-              onAudioInputDeviceChange={onAudioInputDeviceChange}
-              onAudioOutputDeviceChange={onAudioOutputDeviceChange}
-              onVideoInputDeviceChange={onVideoInputDeviceChange}
-            />
-          </div>
-        </div>
-      </header>
-    );
+    return null;
   }
 
   // Pre-join: a single quiet brand mark, top-left. Account actions live on the

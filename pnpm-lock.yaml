@@ -246,6 +246,9 @@ importers:
 
   packages/ui-tokens:
     dependencies:
+      facehash:
+        specifier: ^0.1.0
+        version: 0.1.0(@types/react@19.2.15)(next@16.2.6(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       lucide-react:
         specifier: '*'
         version: 0.548.0(react@19.2.6)
@@ -2205,6 +2208,19 @@ packages:
     resolution: {integrity: sha512-GDhU9ntwuKyGXdZBUgTIe+vXnWj0fppUEtMDL0+idd5Sta8TGpHssn/eusA9mrPr9qNDym6SxAYZjNvCn/9RBg==}
     engines: {node: '>= 10.17.0'}
     hasBin: true
+
+  facehash@0.1.0:
+    resolution: {integrity: sha512-tv/QVZjLvEXHssqBaJECq+kRLFwwhd017PKk8ucT7aLingL2OZ5zEqKwPMHmT9+YQO92MVFWGZQP6vxV+P5vrQ==}
+    peerDependencies:
+      '@types/react': ''
+      next: '>=15'
+      react: '>=18 <20'
+      react-dom: '>=18 <20'
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+      next:
+        optional: true
 
   fake-mediastreamtrack@2.2.1:
     resolution: {integrity: sha512-SITLc7UTDirSdgLGORrlmqjWLJtbtfIz/xO7DwVbJH3f0ds+NQok4ccl/WEzz49NSgiUlXf2wDW0+y5C+TO6EA==}
@@ -5455,6 +5471,14 @@ snapshots:
       '@types/yauzl': 2.10.3
     transitivePeerDependencies:
       - supports-color
+
+  facehash@0.1.0(@types/react@19.2.15)(next@16.2.6(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(react-dom@19.2.6(react@19.2.6))(react@19.2.6):
+    dependencies:
+      react: 19.2.6
+      react-dom: 19.2.6(react@19.2.6)
+    optionalDependencies:
+      '@types/react': 19.2.15
+      next: 16.2.6(@babel/core@7.29.0)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
 
   fake-mediastreamtrack@2.2.1:
     dependencies:

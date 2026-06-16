@@ -76,16 +76,6 @@ export const registerTransportHandlers = (context: ConnectionContext): void => {
           return;
         }
 
-        // Reject a duplicate consumer-transport request from the same client: a
-        // client should allocate its consumer transport exactly once. Re-requesting
-        // would orphan/replace a working transport and waste server resources.
-        if (context.currentClient.consumerTransport) {
-          respond(callback, {
-            error: "Consumer transport already exists",
-          });
-          return;
-        }
-
         // Throttle transport allocation (roughly once per kind, small retry burst).
         if (
           !takeToken(
@@ -101,8 +91,18 @@ export const registerTransportHandlers = (context: ConnectionContext): void => {
         }
 
         const transport = await context.currentRoom.createWebRtcTransport();
-        // The duplicate guard above already rejected when a consumer transport
-        // exists, so this is the client's single allocation.
+        const previousTransport = context.currentClient.consumerTransport;
+        if (previousTransport && previousTransport.id !== transport.id) {
+          for (const consumer of context.currentClient.consumers.values()) {
+            try {
+              consumer.close();
+            } catch {}
+          }
+          context.currentClient.consumers.clear();
+          try {
+            previousTransport.close();
+          } catch {}
+        }
         context.currentClient.consumerTransport = transport;
 
         respond(callback, {

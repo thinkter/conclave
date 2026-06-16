@@ -8,6 +8,7 @@ interface MeetsErrorBannerProps {
   onDismiss: () => void;
   primaryActionLabel?: string;
   onPrimaryAction?: () => void;
+  variant?: "strip" | "inline";
 }
 
 export default function MeetsErrorBanner({
@@ -15,6 +16,7 @@ export default function MeetsErrorBanner({
   onDismiss,
   primaryActionLabel,
   onPrimaryAction,
+  variant = "strip",
 }: MeetsErrorBannerProps) {
   const isGuestBlockedError =
     meetError.message === "Guests are not allowed in this meeting.";
@@ -26,23 +28,32 @@ export default function MeetsErrorBanner({
       : meetError.code === "MEDIA_ERROR"
       ? "Make sure your camera/mic are available."
       : null;
+  const shellClass =
+    variant === "inline"
+      ? "w-full min-w-0 rounded-xl border border-[#F95F4A]/25 bg-[#F95F4A]/10 px-4 py-3 flex items-start justify-between gap-3 backdrop-blur-sm"
+      : "w-full min-w-0 px-6 py-4 bg-[#F95F4A]/10 border-b border-[#F95F4A]/30 flex items-start justify-between gap-4 backdrop-blur-sm";
+
   return (
     <div
-      className="px-6 py-4 bg-[#F95F4A]/10 border-b border-[#F95F4A]/30 flex items-center justify-between backdrop-blur-sm"
+      className={shellClass}
       style={{ fontFamily: "'PolySans Trial', sans-serif" }}
     >
-      <div className="flex items-start gap-3 text-[#F95F4A]">
-        <div className="p-1.5 rounded-full bg-[#F95F4A]/20">
+      <div className="flex min-w-0 flex-1 items-start gap-3 text-[#F95F4A]">
+        <div className="shrink-0 p-1.5 rounded-full bg-[#F95F4A]/20">
           <AlertCircle className="w-4 h-4" />
         </div>
-        <div className="flex flex-col">
-          <span className="text-sm">{meetError.message}</span>
+        <div className="flex min-w-0 flex-col">
+          <span className="break-words text-sm leading-5">
+            {meetError.message}
+          </span>
           {helperText && (
-            <span className="text-[11px] text-[#fafafa]/75">{helperText}</span>
+            <span className="break-words text-[11px] leading-4 text-[#fafafa]/75">
+              {helperText}
+            </span>
           )}
         </div>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex shrink-0 items-center gap-2">
         {primaryActionLabel && onPrimaryAction && (
           <button
             onClick={onPrimaryAction}
@@ -54,7 +65,7 @@ export default function MeetsErrorBanner({
         )}
         <button
           onClick={onDismiss}
-          className="acm-control-btn !w-8 !h-8 !bg-[#F95F4A]/10 !border-[#F95F4A]/30 !text-[#F95F4A]"
+          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#F95F4A]/30 bg-[#F95F4A]/10 text-[#F95F4A] transition-colors hover:bg-[#F95F4A]/20"
           title="Dismiss error"
         >
           <X className="w-4 h-4" />

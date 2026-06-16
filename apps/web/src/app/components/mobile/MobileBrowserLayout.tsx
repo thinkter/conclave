@@ -2,6 +2,7 @@
 
 import { Globe, Loader2, MicOff, VenetianMask } from "lucide-react";
 import { memo, useEffect, useRef, useState, type FormEvent } from "react";
+import { Avatar } from "@conclave/ui-tokens/web";
 import { useSmartParticipantOrder } from "../../hooks/useSmartParticipantOrder";
 import type { Participant } from "../../lib/types";
 import {
@@ -210,12 +211,7 @@ function MobileBrowserLayout({
           {isCameraOff && (
             <div className="absolute inset-0 flex items-center justify-center bg-[#131316]">
               <div className="absolute inset-0 bg-[rgba(249,95,74,0.15)]" />
-              <div
-                className="relative w-10 h-10 rounded-full mobile-avatar flex items-center justify-center text-lg text-[#fafafa] font-bold"
-                style={{ fontFamily: "'PolySans Bulky Wide', sans-serif" }}
-              >
-                {userEmail[0]?.toUpperCase() || "?"}
-              </div>
+              <Avatar className="relative mobile-avatar" id={userEmail} name={userEmail} size={40} />
             </div>
           )}
           {isGhost && (
@@ -259,12 +255,12 @@ function MobileBrowserLayout({
             ) : (
               <div className="absolute inset-0 flex items-center justify-center bg-[#131316]">
                 <div className="absolute inset-0 bg-[rgba(249,95,74,0.15)]" />
-                <div
-                  className="relative w-10 h-10 rounded-full mobile-avatar flex items-center justify-center text-lg text-[#fafafa] font-bold"
-                  style={{ fontFamily: "'PolySans Bulky Wide', sans-serif" }}
-                >
-                  {getDisplayName(participant.userId)[0]?.toUpperCase() || "?"}
-                </div>
+                <Avatar
+                  className="relative mobile-avatar"
+                  id={participant.userId}
+                  name={getDisplayName(participant.userId)}
+                  size={40}
+                />
               </div>
             )}
             {participant.isGhost && (

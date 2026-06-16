@@ -2,6 +2,7 @@
 
 import { Hand, MicOff, VenetianMask } from "lucide-react";
 import { memo, useEffect, useRef } from "react";
+import { Avatar } from "@conclave/ui-tokens/web";
 import type { Participant } from "../../lib/types";
 import { truncateDisplayName } from "../../lib/utils";
 
@@ -131,10 +132,10 @@ function MobileParticipantVideo({
   };
 
   const avatarSizes = {
-    small: "w-8 h-8 text-sm",
-    medium: "w-12 h-12 text-lg",
-    large: "w-16 h-16 text-2xl",
-    featured: "w-20 h-20 text-3xl",
+    small: 32,
+    medium: 48,
+    large: 64,
+    featured: 80,
   };
 
   const speakerRing = isActiveSpeaker ? "mobile-tile-active" : "";
@@ -156,12 +157,12 @@ function MobileParticipantVideo({
       {showPlaceholder && (
         <div className="absolute inset-0 flex items-center justify-center bg-[#131316]">
           <div className="absolute inset-0 bg-[rgba(249,95,74,0.15)]" />
-          <div
-            className={`relative rounded-full mobile-avatar flex items-center justify-center text-[#fafafa] font-bold ${avatarSizes[size]}`}
-            style={{ fontFamily: "'PolySans Bulky Wide', sans-serif" }}
-          >
-            {displayName[0]?.toUpperCase() || "?"}
-          </div>
+          <Avatar
+            className="relative mobile-avatar"
+            id={participant.userId}
+            name={displayName}
+            size={avatarSizes[size]}
+          />
         </div>
       )}
       {participant.isGhost && (

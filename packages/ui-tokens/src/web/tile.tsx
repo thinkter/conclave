@@ -1,8 +1,21 @@
 "use client";
 import React from "react";
+import { Facehash } from "facehash";
 import { MicOff } from "lucide-react";
-import { avatarColor, initials } from "../core";
 import { color } from "../tokens";
+
+const FACEHASH_COLORS = [
+  "#F95F4A",
+  "#FF007A",
+  "#7C5CFF",
+  "#2DA8A8",
+  "#4F86F7",
+  "#3FA66A",
+  "#F59E0B",
+  "#14B8A6",
+  "#E879F9",
+  "#38BDF8",
+] as const;
 
 /* -------------------------------------------------------------------- Tile ---
  * Flat video-tile frame. Active speaker = a 2px solid accent border (NO glow,
@@ -30,31 +43,113 @@ export function Tile({ speaking = false, children, className = "", style }: Tile
 }
 
 /* ------------------------------------------------------------------ Avatar ---
- * Solid-fill circular avatar (NO gradient). Color derived from a stable id. */
+ * Deterministic Facehash avatar. Seed includes the stable id when available. */
 export interface AvatarProps {
   name: string;
-  /** Stable id for color hashing (falls back to name). */
+  /** Stable id for face hashing (falls back to name). */
   id?: string;
-  size?: number;
+  size?: number | string;
   className?: string;
 }
 
 export function Avatar({ name, id, size = 64, className = "" }: AvatarProps) {
+  const trimmedName = name.trim();
+  const faceName = trimmedName || id?.trim() || "?";
+  const seed = id?.trim() ? `${faceName}:${id.trim()}` : faceName;
+  const hash = avatarHash(seed);
+  const mouthVariant = hash % 4;
+  const numericSize = typeof size === "number" ? size : 64;
+
   return (
-    <div
-      className={"inline-flex items-center justify-center rounded-full " + className}
+    <Facehash
+      aria-label={`${faceName} avatar`}
+      className={"inline-flex shrink-0 rounded-full text-white " + className}
+      colors={[...FACEHASH_COLORS]}
+      enableBlink={numericSize >= 40}
+      intensity3d="dramatic"
+      name={seed}
+      onRenderMouth={() => (
+        <FacehashMouth size={numericSize} variant={mouthVariant} />
+      )}
+      role="img"
+      showInitial={false}
+      size={size}
       style={{
-        width: size,
-        height: size,
-        backgroundColor: avatarColor(id ?? name),
-        color: "#ffffff",
+        borderRadius: "9999px",
+        boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.18)",
         fontFamily: "var(--font-display)",
-        fontSize: Math.round(size * 0.4),
         fontWeight: 700,
       }}
-    >
-      {initials(name)}
-    </div>
+      variant="gradient"
+    />
+  );
+}
+
+function avatarHash(seed: string) {
+  let hash = 0;
+  for (let index = 0; index < seed.length; index++) {
+    hash = (hash << 5) - hash + seed.charCodeAt(index);
+    hash |= 0;
+  }
+  return Math.abs(hash);
+}
+
+function FacehashMouth({ size, variant }: { size: number; variant: number }) {
+  const stroke = Math.max(2, Math.round(size * 0.035));
+
+  if (variant === 0) {
+    return (
+      <span
+        aria-hidden="true"
+        style={{
+          borderBottom: `${stroke}px solid currentColor`,
+          borderRadius: "0 0 999px 999px",
+          height: Math.max(5, Math.round(size * 0.11)),
+          width: Math.round(size * 0.28),
+        }}
+      />
+    );
+  }
+
+  if (variant === 1) {
+    return (
+      <span
+        aria-hidden="true"
+        style={{
+          backgroundColor: "currentColor",
+          borderRadius: "999px",
+          height: Math.max(3, Math.round(size * 0.06)),
+          width: Math.round(size * 0.24),
+        }}
+      />
+    );
+  }
+
+  if (variant === 2) {
+    return (
+      <span
+        aria-hidden="true"
+        style={{
+          borderTop: `${stroke}px solid currentColor`,
+          borderRadius: "999px 999px 0 0",
+          height: Math.max(5, Math.round(size * 0.1)),
+          width: Math.round(size * 0.22),
+        }}
+      />
+    );
+  }
+
+  return (
+    <span
+      aria-hidden="true"
+      style={{
+        backgroundColor: "currentColor",
+        borderRadius: "999px",
+        height: Math.max(4, Math.round(size * 0.08)),
+        opacity: 0.9,
+        width: Math.max(4, Math.round(size * 0.08)),
+      }}
+    />
   );
 }
 

@@ -6,7 +6,7 @@ import { createPlaybackRecoveryScheduler } from "../lib/playback-recovery";
 import { useSmartParticipantOrder } from "../hooks/useSmartParticipantOrder";
 import type { Participant } from "../lib/types";
 import { isSystemUserId } from "../lib/utils";
-import { avatarColor } from "@conclave/ui-tokens";
+import { Avatar } from "@conclave/ui-tokens/web";
 import ParticipantVideo from "./ParticipantVideo";
 
 interface PresentationLayoutProps {
@@ -192,12 +192,7 @@ function PresentationLayout({
           />
           {isCameraOff && (
             <div className="absolute inset-0 flex items-center justify-center bg-[#18181b]">
-              <div
-                className="flex h-12 w-12 items-center justify-center rounded-full text-lg font-bold text-white"
-                style={{ backgroundColor: avatarColor(userEmail) }}
-              >
-                {(localDisplayName[0] || userEmail[0] || "?").toUpperCase()}
-              </div>
+              <Avatar id={userEmail} name={localDisplayName || userEmail} size={48} />
             </div>
           )}
           {isGhost && (

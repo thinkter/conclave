@@ -15,7 +15,8 @@ import {
 } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
-import { signIn, signOut, useSession } from "@/lib/auth-client";
+import { Avatar } from "@conclave/ui-tokens/web";
+import { signOut, useSession } from "@/lib/auth-client";
 import type {
   ConnectionState,
   MeetError,
@@ -34,6 +35,7 @@ import {
   sanitizeRoomCode,
 } from "../../lib/utils";
 import MeetsErrorBanner from "../MeetsErrorBanner";
+import ScheduledMeetingsPanel from "../ScheduledMeetingsPanel";
 import VideoEffectsPanel from "../VideoEffectsPanel";
 import AndroidUpsellSheet from "./AndroidUpsellSheet";
 import {
@@ -49,6 +51,12 @@ import {
 const normalizeGuestName = (value: string): string =>
   value.trim().replace(/\s+/g, " ");
 const GUEST_USER_STORAGE_KEY = "conclave:guest-user";
+
+const getSignInHref = (): string => {
+  if (typeof window === "undefined") return "/sign-in";
+  const next = `${window.location.pathname}${window.location.search}`;
+  return `/sign-in?next=${encodeURIComponent(next || "/")}`;
+};
 
 const createGuestId = (): string => {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -162,6 +170,13 @@ function MobileJoinScreen({
   const hasUserIdentity = Boolean(user?.id || user?.email);
   const phase = hasUserIdentity ? "join" : (manualPhase ?? "welcome");
   const [guestName, setGuestName] = useState("");
+  const nameInputValue = guestName || displayNameInput;
+  const liveDisplayName = normalizeGuestName(nameInputValue);
+  const previewName =
+    liveDisplayName ||
+    normalizeGuestName(user?.name || "") ||
+    (userEmail ? userEmail.split("@")[0] : "") ||
+    "You";
   const [customRoomCode, setCustomRoomCode] = useState("");
   const normalizedSegments = useMemo(
     () => normalizedRoomId.split("-"),
@@ -181,12 +196,6 @@ function MobileJoinScreen({
       inlineSuggestion.startsWith(currentSegment)
       ? inlineSuggestion.slice(currentSegment.length)
       : "";
-  const [signInProvider, setSignInProvider] = useState<
-    "google" | "apple" | "roblox" | "vercel" | null
-  >(
-    null
-  );
-  const isSigningIn = signInProvider !== null;
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [showAndroidUpsell, setShowAndroidUpsell] = useState(false);
   const {
@@ -346,7 +355,8 @@ function MobileJoinScreen({
     const nextName = normalizeGuestName(user.name || "");
     if (!nextName) return;
     setGuestName(nextName);
-  }, [guestName, user]);
+    onDisplayNameInputChange(nextName);
+  }, [guestName, onDisplayNameInputChange, user]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -526,21 +536,6 @@ function MobileJoinScreen({
     onJoinRoom(id);
   };
 
-  const handleSocialSignIn = async (
-    provider: "google" | "apple" | "roblox" | "vercel"
-  ) => {
-    setSignInProvider(provider);
-    await signIn
-      .social({
-        provider,
-        callbackURL: window.location.href,
-      })
-      .catch((error) => {
-        console.error("Sign in error:", error);
-      });
-    setSignInProvider(null);
-  };
-
   const handleSignOut = async () => {
     if (isSigningOut) return;
     setIsSigningOut(true);
@@ -577,13 +572,18 @@ function MobileJoinScreen({
   };
 
   const handleGuest = () => {
-    const normalizedGuestName = normalizeGuestName(guestName);
+    const normalizedGuestName = liveDisplayName;
     if (!normalizedGuestName) return;
     const guestUser = buildGuestUser(normalizedGuestName, user);
     onUserChange(guestUser);
     onIsAdminChange(false);
     setGuestName(normalizedGuestName);
+    onDisplayNameInputChange(normalizedGuestName);
     setManualPhase("join");
+  };
+  const handleNameInputChange = (nextName: string) => {
+    setGuestName(nextName);
+    onDisplayNameInputChange(nextName);
   };
 
   const handleJoin = () => {
@@ -709,97 +709,14 @@ function MobileJoinScreen({
             Choose how to continue
           </p>
 
-          <div className="grid gap-3 mb-4">
-            <button
-              onClick={() => handleSocialSignIn("google")}
-              disabled={isSigningIn}
-              className="w-full flex items-center justify-center gap-3 px-4 py-3 mobile-glass mobile-pill text-[#fafafa] hover:border-[#fafafa]/25 hover:bg-black/40 transition-all disabled:opacity-50"
-            >
-              {signInProvider === "google" ? (
-                <Loader2 className="w-5 h-5 animate-spin text-[#fafafa]" />
-              ) : (
-                <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
-                  <path
-                    fill="#4285F4"
-                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                  />
-                  <path
-                    fill="#34A853"
-                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                  />
-                  <path
-                    fill="#FBBC05"
-                    d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-                  />
-                  <path
-                    fill="#EA4335"
-                    d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-                  />
-                </svg>
-              )}
-              <span className="text-[13px] leading-none whitespace-nowrap" style={{ fontFamily: "'PolySans Trial', sans-serif" }}>
-                Continue with Google
-              </span>
-            </button>
-            <button
-              onClick={() => handleSocialSignIn("apple")}
-              disabled={isSigningIn}
-              className="w-full flex items-center justify-center gap-3 px-4 py-3 mobile-glass mobile-pill text-[#fafafa] hover:border-[#fafafa]/25 hover:bg-black/40 transition-all disabled:opacity-50"
-            >
-              {signInProvider === "apple" ? (
-                <Loader2 className="w-5 h-5 animate-spin text-[#fafafa]" />
-              ) : (
-                <img
-                  src="/assets/apple-50.png"
-                  alt=""
-                  aria-hidden="true"
-                  className="w-5 h-5 shrink-0 object-contain"
-                />
-              )}
-              <span className="text-[13px] leading-none whitespace-nowrap" style={{ fontFamily: "'PolySans Trial', sans-serif" }}>
-                Continue with Apple
-              </span>
-            </button>
-            <button
-              onClick={() => handleSocialSignIn("roblox")}
-              disabled={isSigningIn}
-              className="w-full flex items-center justify-center gap-3 px-4 py-3 mobile-glass mobile-pill text-[#fafafa] hover:border-[#fafafa]/25 hover:bg-black/40 transition-all disabled:opacity-50"
-            >
-              {signInProvider === "roblox" ? (
-                <Loader2 className="w-5 h-5 animate-spin text-[#fafafa]" />
-              ) : (
-                <img
-                  src="/roblox-logo.png"
-                  alt=""
-                  aria-hidden="true"
-                  className="w-5 h-5 shrink-0 object-contain invert"
-                />
-              )}
-              <span className="text-[13px] leading-none whitespace-nowrap" style={{ fontFamily: "'PolySans Trial', sans-serif" }}>
-                Continue with Roblox
-              </span>
-            </button>
-            <button
-              onClick={() => handleSocialSignIn("vercel")}
-              disabled={isSigningIn}
-              className="w-full flex items-center justify-center gap-3 px-4 py-3 mobile-glass mobile-pill text-[#fafafa] hover:border-[#fafafa]/25 hover:bg-black/40 transition-all disabled:opacity-50"
-            >
-              {signInProvider === "vercel" ? (
-                <Loader2 className="w-5 h-5 animate-spin text-[#fafafa]" />
-              ) : (
-                <svg
-                  className="w-5 h-5 shrink-0"
-                  viewBox="0 0 24 24"
-                  aria-hidden="true"
-                >
-                  <path fill="#fff" d="M12 4l8 14H4z" />
-                </svg>
-              )}
-              <span className="text-[13px] leading-none whitespace-nowrap" style={{ fontFamily: "'PolySans Trial', sans-serif" }}>
-                Continue with Vercel
-              </span>
-            </button>
-          </div>
+          <a
+            href={getSignInHref()}
+            className="mb-4 w-full flex items-center justify-center gap-3 px-4 py-3 bg-[#F95F4A] text-white text-sm rounded-full hover:bg-[#e8553f] transition-colors"
+            style={{ fontFamily: "'PolySans Trial', sans-serif" }}
+          >
+            Authenticate
+            <ArrowRight className="w-4 h-4" />
+          </a>
 
           <div className="flex items-center gap-4 my-6">
             <div className="flex-1 h-px bg-[#fafafa]/10" />
@@ -814,22 +731,22 @@ function MobileJoinScreen({
 
           <input
             type="text"
-            value={guestName}
-            onChange={(e) => setGuestName(e.target.value)}
+            value={nameInputValue}
+            onChange={(e) => handleNameInputChange(e.target.value)}
             placeholder="Enter your name"
             className="w-full px-4 py-2.5 mobile-glass mobile-pill text-sm text-[#fafafa] placeholder:text-[#fafafa]/25 focus:border-[#F95F4A]/50 focus:outline-none mb-3"
             style={{ fontFamily: "'PolySans Trial', sans-serif" }}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && guestName.trim()) handleGuest();
+              if (e.key === "Enter" && liveDisplayName) handleGuest();
             }}
           />
           <button
             onClick={handleGuest}
-            disabled={!guestName.trim()}
+            disabled={!liveDisplayName}
             className="w-full px-4 py-3 bg-[#F95F4A] text-white text-sm rounded-full hover:bg-[#e8553f] transition-colors disabled:opacity-30"
             style={{ fontFamily: "'PolySans Trial', sans-serif" }}
           >
-            Continue as Guest
+            Join as Guest
           </button>
         </div>
       </div>
@@ -853,14 +770,12 @@ function MobileJoinScreen({
           ) : (
             <div className="absolute inset-0 flex items-center justify-center bg-[#131316]">
               <div className="absolute inset-0 bg-[rgba(249,95,74,0.15)]" />
-              <div className="relative w-20 h-20 rounded-full mobile-avatar flex items-center justify-center">
-                <span
-                  className="text-4xl text-[#fafafa] font-bold"
-                  style={{ fontFamily: "'PolySans Bulky Wide', sans-serif" }}
-                >
-                  {userEmail[0]?.toUpperCase() || "?"}
-                </span>
-              </div>
+              <Avatar
+                className="relative mobile-avatar"
+                id={user?.id || userEmail || previewName}
+                name={previewName}
+                size={80}
+              />
             </div>
           )}
 
@@ -987,7 +902,7 @@ function MobileJoinScreen({
               className="min-w-0 max-w-[65%] h-8 px-3 flex items-center mobile-glass mobile-pill text-xs text-[#fafafa]/80 truncate"
               style={{ fontFamily: "'PolySans Trial', sans-serif" }}
             >
-              {userEmail}
+              {previewName}
             </div>
             <div className="flex items-center gap-2">
               {isSignedInUser && (
@@ -1154,11 +1069,14 @@ function MobileJoinScreen({
             )}
           </div>
 
+          <ScheduledMeetingsPanel isSignedIn={isSignedInUser} />
+
         {meetError && onDismissMeetError && (
           <div className="mt-4">
             <MeetsErrorBanner
               meetError={meetError}
               onDismiss={onDismissMeetError}
+              variant="inline"
               primaryActionLabel={
                 meetError.code === "PERMISSION_DENIED"
                   ? "Retry Permissions"

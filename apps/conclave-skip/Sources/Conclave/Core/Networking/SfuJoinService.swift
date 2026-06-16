@@ -133,14 +133,19 @@ enum SfuJoinService {
             return url
         }
 
-        #if DEBUG
         #if SKIP
-        if let bundledUrl = resolveBundledJoinURL(allowProductionHost: false) {
+        let isDebugRuntime = isAndroidDebugRuntime()
+        if let bundledUrl = resolveBundledJoinURL(allowProductionHost: !isDebugRuntime) {
             return bundledUrl
         }
 
-        return URL(string: "http://10.0.2.2:3000/api/sfu/join")!
-        #elseif targetEnvironment(simulator)
+        if isDebugRuntime {
+            return URL(string: "http://10.0.2.2:3000/api/sfu/join")!
+        }
+
+        return productionJoinURL()
+        #elseif DEBUG
+        #if targetEnvironment(simulator)
         if let bundledUrl = resolveBundledJoinURL(allowProductionHost: false) {
             return bundledUrl
         }
@@ -159,6 +164,14 @@ enum SfuJoinService {
         }
 
         return productionJoinURL()
+        #endif
+    }
+
+    static func isAndroidDebugRuntime() -> Bool {
+        #if SKIP
+        return AndroidRuntimeConfig.isDebuggable()
+        #else
+        return false
         #endif
     }
 

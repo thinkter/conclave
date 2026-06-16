@@ -134,14 +134,8 @@ const POPOUT_CSS = `
     width: 44px;
     height: 44px;
     border-radius: 50%;
-    background: rgba(249, 95, 74, 0.2);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 18px;
-    font-weight: 700;
-    color: #fafafa;
-    border: 1px solid rgba(250, 250, 250, 0.2);
+    object-fit: cover;
+    box-shadow: inset 0 0 0 1px rgba(250, 250, 250, 0.18);
   }
 
   .video-tile .label {
@@ -430,7 +424,7 @@ export function useMeetPopout({
         tile.dataset.userId = participant.userId;
         tile.innerHTML = `
           <div class="avatar-placeholder" style="display: none;">
-            <div class="avatar-circle"></div>
+            <img class="avatar-circle" alt="" />
           </div>
           <video autoplay playsinline muted style="display: none;"></video>
           <div class="label">
@@ -445,7 +439,7 @@ export function useMeetPopout({
 
       const video = tile.querySelector("video") as HTMLVideoElement;
       const avatar = tile.querySelector(".avatar-placeholder") as HTMLElement;
-      const avatarCircle = tile.querySelector(".avatar-circle") as HTMLElement;
+      const avatarCircle = tile.querySelector(".avatar-circle") as HTMLImageElement;
       const labelName = tile.querySelector(".label-name") as HTMLElement;
       const labelMuted = tile.querySelector(".label-muted") as HTMLElement;
 
@@ -463,8 +457,7 @@ export function useMeetPopout({
       } else {
         video.style.display = "none";
         avatar.style.display = "flex";
-        const initial = (participant.displayName || "?")[0]?.toUpperCase() || "?";
-        avatarCircle.textContent = initial;
+        avatarCircle.src = avatarUrl(participant.displayName, participant.userId);
         if (video.srcObject) {
           video.srcObject = null;
           videoElementsRef.current.delete(participant.userId);
@@ -663,4 +656,15 @@ export function useMeetPopout({
     openPopout,
     closePopout,
   };
+}
+
+function avatarUrl(name: string, id: string) {
+  const seed = id.trim() ? `${name || id}:${id}` : name || "?";
+  const params = new URLSearchParams({
+    format: "svg",
+    name: seed,
+    showInitial: "false",
+    size: "96",
+  });
+  return `/api/avatar?${params.toString()}`;
 }

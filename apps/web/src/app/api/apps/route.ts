@@ -14,8 +14,20 @@ export async function POST(request: Request) {
   // Reject an oversized body BEFORE buffering it into memory via formData().
   // The multipart envelope adds a little overhead around the file, so allow a
   // 1 MB cushion over the per-file cap; the exact file.size check is below.
-  const declaredLength = Number(request.headers.get("content-length") ?? 0);
-  if (declaredLength > MAX_ASSET_BYTES + 1024 * 1024) {
+  const contentLengthHeader = request.headers.get("content-length");
+  if (!contentLengthHeader) {
+    return NextResponse.json(
+      { error: "Content-Length required" },
+      { status: 411 },
+    );
+  }
+
+  const declaredLength = Number(contentLengthHeader);
+  if (
+    !Number.isFinite(declaredLength) ||
+    declaredLength <= 0 ||
+    declaredLength > MAX_ASSET_BYTES + 1024 * 1024
+  ) {
     return NextResponse.json(
       { error: "File too large (max 5 MB)" },
       { status: 413 },

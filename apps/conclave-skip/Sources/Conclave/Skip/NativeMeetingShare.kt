@@ -6,6 +6,10 @@ import skip.ui.UIApplication
 
 object NativeMeetingShare {
     fun shareMeetingLink(link: String, roomId: String) {
+        if (PermissionHelper.shouldSuppressShareFromNotificationPermissionPrompt()) {
+            return
+        }
+
         val activity = UIApplication.shared.androidActivity
         val context = activity ?: ProcessInfo.processInfo.androidContext
         val message = "Join me in this Conclave room.\n$link"

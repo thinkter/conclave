@@ -1,5 +1,13 @@
+import { headers as nextHeaders } from "next/headers";
 import MeetsClientShell from "../meets-client-shell";
 import { sanitizeRoomCode, sanitizeWebinarLinkCode } from "../lib/utils";
+import ScheduledMeetingLanding from "../components/ScheduledMeetingLanding";
+import {
+  isMeetingJoinable,
+  lookupPublicScheduledMeetingByRoomCode,
+  lookupScheduledMeetingHostEmail,
+} from "@/lib/scheduled-meetings";
+import { auth } from "@/lib/auth";
 
 type MeetRoomPageProps = {
   params: Promise<{ code: string }>;
@@ -32,6 +40,17 @@ const sanitizeClientId = (
   return /^[a-zA-Z0-9._:-]{1,64}$/.test(candidate) ? candidate : undefined;
 };
 
+const resolveSessionEmail = async (): Promise<string | null> => {
+  try {
+    const headers = await nextHeaders();
+    const session = await auth.api.getSession({ headers }).catch(() => null);
+    const email = session?.user?.email?.trim().toLowerCase();
+    return email || null;
+  } catch {
+    return null;
+  }
+};
+
 export default async function MeetRoomPage({
   params,
   searchParams,
@@ -44,12 +63,15 @@ export default async function MeetRoomPage({
   const roomCode = decodeURIComponent(rawCode);
   const resolvedRoomCode =
     roomCode === "undefined" || roomCode === "null" ? "" : roomCode;
+  const bypassMediaPermissions = isTruthyParam(resolvedSearchParams.recorder);
   const devOverridesEnabled = process.env.NODE_ENV === "development";
+  const safeBotOverridesEnabled =
+    devOverridesEnabled || bypassMediaPermissions;
   const autoJoinOnMount =
-    devOverridesEnabled && isTruthyParam(resolvedSearchParams.autojoin);
+    safeBotOverridesEnabled && isTruthyParam(resolvedSearchParams.autojoin);
   const hideJoinUI =
-    devOverridesEnabled && isTruthyParam(resolvedSearchParams.hide);
-  const joinModeParam = devOverridesEnabled
+    safeBotOverridesEnabled && isTruthyParam(resolvedSearchParams.hide);
+  const joinModeParam = safeBotOverridesEnabled
     ? getParamValue(resolvedSearchParams.mode)
     : undefined;
   const joinMode =
@@ -58,7 +80,7 @@ export default async function MeetRoomPage({
     joinMode === "webinar_attendee"
       ? sanitizeWebinarLinkCode(resolvedRoomCode)
       : sanitizeRoomCode(resolvedRoomCode);
-  const displayName = devOverridesEnabled
+  const displayName = safeBotOverridesEnabled
     ? getParamValue(resolvedSearchParams.name)
     : undefined;
   const sfuClientId = sanitizeClientId(resolvedSearchParams.clientId);
@@ -66,10 +88,34 @@ export default async function MeetRoomPage({
   const isAdmin =
     devOverridesEnabled && isTruthyParam(resolvedSearchParams.admin);
 
+  if (sanitizedRoomCode && !bypassMediaPermissions) {
+    const clientIdForLookup = sfuClientId || "default";
+    const scheduled = await lookupPublicScheduledMeetingByRoomCode(
+      clientIdForLookup,
+      sanitizedRoomCode,
+    );
+    if (scheduled && !isMeetingJoinable(scheduled)) {
+      const [sessionEmail, hostEmail] = await Promise.all([
+        resolveSessionEmail(),
+        lookupScheduledMeetingHostEmail(clientIdForLookup, sanitizedRoomCode),
+      ]);
+      const viewerIsHost = Boolean(
+        sessionEmail && hostEmail && sessionEmail === hostEmail,
+      );
+      return (
+        <ScheduledMeetingLanding
+          meeting={scheduled}
+          viewerIsHost={viewerIsHost}
+        />
+      );
+    }
+  }
+
   return (
     <MeetsClientShell
       initialRoomId={sanitizedRoomCode}
       forceJoinOnly={true}
+      bypassMediaPermissions={bypassMediaPermissions}
       sfuClientId={sfuClientId}
       autoJoinOnMount={autoJoinOnMount}
       hideJoinUI={hideJoinUI}

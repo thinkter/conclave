@@ -47,6 +47,7 @@ export function useMeetPictureInPicture({
     const pipWindowRef = useRef<PictureInPictureWindow | null>(null);
     const pipWindowResizeHandlerRef = useRef<(() => void) | null>(null);
     const pipLeaveHandlerRef = useRef<(() => void) | null>(null);
+    const avatarImagesRef = useRef<Map<string, HTMLImageElement>>(new Map());
     const manualExitRef = useRef(false);
     const lastRemoteSpeakerRef = useRef<string | null>(null);
 
@@ -118,6 +119,22 @@ export function useMeetPictureInPicture({
         isCameraOff,
         getDisplayName,
     ]);
+
+    const getAvatarImage = useCallback((name: string) => {
+        if (typeof Image === "undefined") return null;
+
+        const src = avatarUrl(name || userEmail);
+        let image = avatarImagesRef.current.get(src);
+
+        if (!image) {
+            image = new Image();
+            image.decoding = "async";
+            image.src = src;
+            avatarImagesRef.current.set(src, image);
+        }
+
+        return image.complete && image.naturalWidth > 0 ? image : null;
+    }, [userEmail]);
 
     const canEnterPiP = isPiPSupported && isJoined;
 
@@ -232,26 +249,46 @@ export function useMeetPictureInPicture({
             const centerX = canvas.width / 2;
             const centerY = canvas.height / 2;
             const radius = 40;
+            const avatarImage = getAvatarImage(name || userEmail);
 
             ctx.beginPath();
             ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
-            ctx.fillStyle = "rgba(249, 95, 74, 0.2)";
-            ctx.fill();
+            ctx.save();
+            ctx.clip();
+
+            if (avatarImage) {
+                ctx.drawImage(
+                    avatarImage,
+                    centerX - radius,
+                    centerY - radius,
+                    radius * 2,
+                    radius * 2,
+                );
+            } else {
+                ctx.fillStyle = "#F95F4A";
+                ctx.fillRect(centerX - radius, centerY - radius, radius * 2, radius * 2);
+                ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+                ctx.beginPath();
+                ctx.arc(centerX - 14, centerY - 8, 6, 0, Math.PI * 2);
+                ctx.arc(centerX + 14, centerY - 8, 6, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.lineWidth = 4;
+                ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
+                ctx.beginPath();
+                ctx.arc(centerX, centerY + 4, 14, 0.15 * Math.PI, 0.85 * Math.PI);
+                ctx.stroke();
+            }
+
+            ctx.restore();
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
             ctx.strokeStyle = "rgba(250, 250, 250, 0.2)";
             ctx.lineWidth = 2;
             ctx.stroke();
-
-            const initial = (name || userEmail || "?")[0]?.toUpperCase() || "?";
-            ctx.fillStyle = "#fafafa";
-            ctx.font = "bold 32px sans-serif";
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
-            ctx.fillText(initial, centerX, centerY);
-            ctx.textAlign = "start";
         }
 
         animationFrameRef.current = requestAnimationFrame(renderFrame);
-    }, [getVideoSource, userEmail]);
+    }, [getAvatarImage, getVideoSource, userEmail]);
 
     const enterPiP = useCallback(async () => {
         if (!isPiPSupported || !isJoined || isPiPActive) return;
@@ -384,4 +421,14 @@ export function useMeetPictureInPicture({
         enterPiP,
         exitPiP,
     };
+}
+
+function avatarUrl(name: string) {
+    const params = new URLSearchParams({
+        format: "svg",
+        name: name || "?",
+        showInitial: "false",
+        size: "96",
+    });
+    return `/api/avatar?${params.toString()}`;
 }

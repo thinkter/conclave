@@ -52,6 +52,7 @@ export function useMeetRefs() {
   const joinOptionsRef = useRef<{
     displayName?: string;
     isGhost: boolean;
+    isRecorder?: boolean;
     joinMode: JoinMode;
     webinarInviteCode?: string;
     meetingInviteCode?: string;

@@ -20,7 +20,7 @@ import {
 import { memo, useEffect, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import { Avatar } from "@conclave/ui-tokens/web";
-import { signIn, signOut, useSession } from "@/lib/auth-client";
+import { signOut, useSession } from "@/lib/auth-client";
 import type { RoomInfo } from "@/lib/sfu-types";
 import type {
   ConnectionState,
@@ -40,6 +40,7 @@ import {
   sanitizeRoomCode,
 } from "../lib/utils";
 import MeetsErrorBanner from "./MeetsErrorBanner";
+import ScheduledMeetingsPanel from "./ScheduledMeetingsPanel";
 import VideoEffectsPanel from "./VideoEffectsPanel";
 import {
   prewarmVideoEffectsAssets,
@@ -121,12 +122,13 @@ const CTA_PRIMARY =
   "inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#F95F4A] text-[15px] font-medium text-white transition-[filter] duration-150 hover:brightness-105 disabled:bg-[#232327] disabled:text-[#fafafa]/40 disabled:cursor-not-allowed";
 const CTA_GHOST =
   "inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-white/12 bg-[#18181b] text-[15px] font-medium text-[#fafafa] transition-colors duration-150 hover:bg-[#232327] disabled:opacity-50";
-const PROVIDER_BTN =
-  "inline-flex h-11 w-full items-center justify-center gap-2.5 rounded-xl border border-white/10 bg-[#18181b] text-[14px] font-medium text-[#fafafa] transition-colors duration-150 hover:bg-[#232327] disabled:opacity-50";
-
-const isGoogleSignInEnabled =
-  process.env.NEXT_PUBLIC_GOOGLE_SIGN_IN_ENABLED === "true";
 const DEBUG_VIDEO_EFFECTS_STORAGE_KEY = "conclave:debug-video-effects";
+
+const getSignInHref = (): string => {
+  if (typeof window === "undefined") return "/sign-in";
+  const next = `${window.location.pathname}${window.location.search}`;
+  return `/sign-in?next=${encodeURIComponent(next || "/")}`;
+};
 
 const isJoinMediaDebugEnabled = () => {
   if (typeof window === "undefined") return false;
@@ -196,6 +198,8 @@ function JoinScreen({
   enableRoomRouting,
   allowGhostMode,
   showPermissionHint,
+  displayNameInput,
+  onDisplayNameInputChange,
   isGhostMode,
   onGhostModeChange,
   onUserChange,
@@ -231,10 +235,6 @@ function JoinScreen({
   const [isEffectsOpen, setIsEffectsOpen] = useState(false);
   const [isMoreOptionsOpen, setIsMoreOptionsOpen] = useState(false);
   const [guestName, setGuestName] = useState("");
-  const [signInProvider, setSignInProvider] = useState<
-    "google" | "apple" | null
-  >(null);
-  const isSigningIn = signInProvider !== null;
   const [isSigningOut, setIsSigningOut] = useState(false);
   // Deferred join: both the guest user (onUserChange) and the host flag
   // (onIsAdminChange) propagate through the parent asynchronously, and the
@@ -250,10 +250,12 @@ function JoinScreen({
   );
   const hasIdentity = Boolean(user?.id);
   const lastAppliedSessionUserIdRef = useRef<string | null>(null);
+  const nameInputValue = guestName || displayNameInput;
+  const liveDisplayName = normalizeGuestName(nameInputValue);
 
   const previewName =
+    liveDisplayName ||
     normalizeGuestName(user?.name || "") ||
-    normalizeGuestName(guestName || "") ||
     (userEmail ? userEmail.split("@")[0] : "") ||
     "You";
   const {
@@ -419,8 +421,10 @@ function JoinScreen({
   useEffect(() => {
     if (!user?.id?.startsWith("guest-") || guestName.trim().length > 0) return;
     const nextName = normalizeGuestName(user.name || "");
-    if (nextName) setGuestName(nextName);
-  }, [guestName, user]);
+    if (!nextName) return;
+    setGuestName(nextName);
+    onDisplayNameInputChange(nextName);
+  }, [guestName, onDisplayNameInputChange, user]);
 
   useEffect(() => {
     localStreamRef.current = localStream;
@@ -684,8 +688,17 @@ function JoinScreen({
   // Ensure a guest user exists (from the name field) before acting; returns
   // false when nothing actionable (no identity and no usable name).
   const ensureGuest = (): boolean => {
-    if (hasIdentity) return true;
-    const name = normalizeGuestName(guestName);
+    const name = liveDisplayName;
+    if (hasIdentity) {
+      if (
+        user?.id?.startsWith("guest-") &&
+        name &&
+        name !== normalizeGuestName(user.name || "")
+      ) {
+        onUserChange(buildGuestUser(name, user));
+      }
+      return true;
+    }
     if (!name) return false;
     onUserChange(buildGuestUser(name, user));
     return true;
@@ -706,17 +719,6 @@ function JoinScreen({
     commitPrejoinMedia();
     onIsAdminChange(false);
     setPending({ mode: "join", roomId: candidate });
-  };
-
-  const handleSocialSignIn = async (provider: "google" | "apple") => {
-    setSignInProvider(provider);
-    try {
-      await signIn.social({ provider, callbackURL: window.location.href });
-    } catch (error) {
-      console.error("Sign in error:", error);
-    } finally {
-      setSignInProvider(null);
-    }
   };
 
   const handleSignOut = async () => {
@@ -753,13 +755,17 @@ function JoinScreen({
   };
 
   const canJoin = normalizedRoomId.trim().length > 0;
-  const nameReady = hasIdentity || normalizeGuestName(guestName).length > 0;
+  const nameReady = hasIdentity || liveDisplayName.length > 0;
+  const handleNameInputChange = (nextName: string) => {
+    setGuestName(nextName);
+    onDisplayNameInputChange(nextName);
+  };
 
   return (
     <div className="relative min-h-screen w-full bg-[#0a0a0b] text-[#fafafa] flex flex-col">
       <main className="flex-1 flex items-center justify-center px-4 py-10">
         <div className="grid w-full max-w-5xl items-stretch gap-6 md:grid-cols-[1.5fr_1fr]">
-          <div className="relative aspect-video overflow-hidden rounded-2xl border border-white/10 bg-[#121214]">
+          <div className="relative aspect-video w-full self-center overflow-hidden rounded-2xl border border-white/10 bg-[#121214]">
             <video
               ref={videoRef}
               autoPlay
@@ -952,6 +958,7 @@ function JoinScreen({
               <MeetsErrorBanner
                 meetError={meetError}
                 onDismiss={onDismissMeetError ?? (() => {})}
+                variant="inline"
               />
             )}
 
@@ -976,8 +983,8 @@ function JoinScreen({
                 <label className="text-[13px] font-medium text-[#fafafa]/55">Your name</label>
                 <input
                   type="text"
-                  value={guestName}
-                  onChange={(e) => setGuestName(e.target.value)}
+                  value={nameInputValue}
+                  onChange={(e) => handleNameInputChange(e.target.value)}
                   placeholder="Enter your name"
                   className={FIELD}
                 />
@@ -994,6 +1001,8 @@ function JoinScreen({
                 New meeting
               </button>
             )}
+
+            <ScheduledMeetingsPanel isSignedIn={isSignedInUser} />
 
             {allowGhostMode && (
               <button
@@ -1056,23 +1065,20 @@ function JoinScreen({
               </button>
             </div>
 
-            {!isSignedInUser && isGoogleSignInEnabled && (
+            {!isSignedInUser && (
               <>
                 <div className="flex items-center gap-3 py-1">
                   <div className="h-px flex-1 bg-white/10" />
                   <span className="text-[12px] text-[#fafafa]/40">or</span>
                   <div className="h-px flex-1 bg-white/10" />
                 </div>
-                <button
-                  onClick={() => handleSocialSignIn("google")}
-                  disabled={isSigningIn}
-                  className={PROVIDER_BTN}
+                <a
+                  href={getSignInHref()}
+                  className={CTA_GHOST}
                 >
-                  {signInProvider === "google" ? (
-                    <Loader2 size={16} className="animate-spin" />
-                  ) : null}
-                  Continue with Google
-                </button>
+                  Authenticate
+                  <ArrowRight size={18} />
+                </a>
               </>
             )}
           </div>

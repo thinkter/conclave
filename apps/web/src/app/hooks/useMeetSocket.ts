@@ -280,6 +280,7 @@ interface UseMeetSocketOptions {
     getCachedToken?: (roomId: string) => JoinInfo | null;
   };
   onSocketReady?: (socket: Socket | null) => void;
+  bypassMediaPermissions?: boolean;
 }
 
 export function useMeetSocket({
@@ -339,6 +340,7 @@ export function useMeetSocket({
   onTtsMessage,
   prewarm,
   onSocketReady,
+  bypassMediaPermissions = false,
 }: UseMeetSocketOptions) {
   const participantIdsRef = useRef<Set<string>>(new Set([userId]));
   const isCameraOffRef = useRef(isCameraOff);
@@ -723,13 +725,15 @@ export function useMeetSocket({
   const ensureLiveLocalMediaForJoin = useCallback(
     async (
       candidateStream: MediaStream | null,
-      joinOptions: { isGhost: boolean; joinMode: JoinMode },
+      joinOptions: { isGhost: boolean; isRecorder?: boolean; joinMode: JoinMode },
       reason: string,
     ) => {
       const mediaNeeds = getJoinMediaNeeds(candidateStream);
       const shouldRequestMedia =
         !joinOptions.isGhost &&
+        !joinOptions.isRecorder &&
         joinOptions.joinMode !== "webinar_attendee" &&
+        !bypassMediaPermissions &&
         (mediaNeeds.needsAudio || mediaNeeds.needsVideo);
       if (!shouldRequestMedia) return candidateStream;
 
@@ -785,6 +789,7 @@ export function useMeetSocket({
       requestMediaPermissions,
       setLocalStream,
       stopLocalTrack,
+      bypassMediaPermissions,
     ],
   );
 
@@ -2352,6 +2357,7 @@ export function useMeetSocket({
       joinOptions: {
         displayName?: string;
         isGhost: boolean;
+        isRecorder?: boolean;
         joinMode: JoinMode;
         webinarInviteCode?: string;
         meetingInviteCode?: string;
@@ -2478,6 +2484,8 @@ export function useMeetSocket({
               const shouldProduce =
                 !!stream &&
                 !joinOptions.isGhost &&
+                !joinOptions.isRecorder &&
+                !bypassMediaPermissions &&
                 joinOptions.joinMode !== "webinar_attendee";
 
               await Promise.all([
@@ -3390,7 +3398,9 @@ export function useMeetSocket({
               const mediaNeeds = getJoinMediaNeeds(stream);
               const shouldRequestMedia =
                 !joinOptions.isGhost &&
+                !joinOptions.isRecorder &&
                 joinOptions.joinMode !== "webinar_attendee" &&
+                !bypassMediaPermissions &&
                 (mediaNeeds.needsAudio || mediaNeeds.needsVideo);
 
               if (shouldRequestMedia) {
@@ -3405,6 +3415,8 @@ export function useMeetSocket({
                 (stream ||
                   !shouldRequestMedia ||
                   joinOptions.isGhost ||
+                  joinOptions.isRecorder ||
+                  bypassMediaPermissions ||
                   joinOptions.joinMode === "webinar_attendee")
               ) {
                 joinRoomInternal(
@@ -3425,6 +3437,7 @@ export function useMeetSocket({
                     roomId: currentRoomIdRef.current,
                     stream: summarizeStreamForLog(localStreamRef.current),
                     isGhost: joinOptionsRef.current.isGhost,
+                    bypassMediaPermissions,
                   },
                 );
               }
@@ -3728,6 +3741,8 @@ export function useMeetSocket({
             reconnectRoomId &&
             (stream ||
               joinOptions.isGhost ||
+              joinOptions.isRecorder ||
+              bypassMediaPermissions ||
               joinOptions.joinMode === "webinar_attendee")
           ) {
             await joinRoomInternal(reconnectRoomId, stream, joinOptions);
@@ -3778,6 +3793,7 @@ export function useMeetSocket({
     setConnectionState,
     setMeetError,
     socketRef,
+    bypassMediaPermissions,
   ]);
 
   useEffect(() => {
@@ -3883,12 +3899,14 @@ export function useMeetSocket({
       const joinOptions: {
         displayName?: string;
         isGhost: boolean;
+        isRecorder?: boolean;
         joinMode: JoinMode;
         webinarInviteCode?: string;
         meetingInviteCode?: string;
       } = {
         displayName: isAdmin ? normalizedDisplayName || undefined : undefined,
         isGhost: ghostEnabled,
+        isRecorder: bypassMediaPermissions,
         joinMode,
       };
       joinOptionsRef.current = joinOptions;
@@ -3896,7 +3914,9 @@ export function useMeetSocket({
       const mediaNeeds = getJoinMediaNeeds(candidateStream);
       const shouldRequestMedia =
         !joinOptions.isGhost &&
+        !joinOptions.isRecorder &&
         joinOptions.joinMode !== "webinar_attendee" &&
+        !bypassMediaPermissions &&
         (mediaNeeds.needsAudio || mediaNeeds.needsVideo);
 
       try {
@@ -4021,6 +4041,7 @@ export function useMeetSocket({
       requestMeetingInviteCode,
       requestWebinarInviteCode,
       resolveMediaPublishIntent,
+      bypassMediaPermissions,
       refs.abortControllerRef,
       refs.intentionalDisconnectRef,
       setConnectionState,

@@ -2,6 +2,7 @@ package conclave.module
 
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.SystemClock
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import skip.foundation.ProcessInfo
@@ -13,9 +14,12 @@ object PermissionHelper {
     private const val RECORD_AUDIO_REQUEST_CODE = 1002
     private const val CAMERA_REQUEST_CODE = 1003
     private const val NOTIFICATIONS_REQUEST_CODE = 1004
+    private const val NOTIFICATION_SHARE_SUPPRESSION_MS = 1_200L
 
     var onRecordAudioPermissionResult: ((Boolean) -> Unit)? = null
     var onCameraPermissionResult: ((Boolean) -> Unit)? = null
+    @Volatile private var notificationPermissionPromptActive = false
+    @Volatile private var suppressShareUntilElapsedMs = 0L
 
     fun hasRecordAudioPermission(): Boolean {
         val context = ProcessInfo.processInfo.androidContext
@@ -87,11 +91,21 @@ object PermissionHelper {
         }
 
         val activity = UIApplication.shared.androidActivity ?: return
+        notificationPermissionPromptActive = true
         ActivityCompat.requestPermissions(
             activity,
             arrayOf(android.Manifest.permission.POST_NOTIFICATIONS),
             NOTIFICATIONS_REQUEST_CODE
         )
+    }
+
+    fun shouldSuppressShareFromNotificationPermissionPrompt(): Boolean {
+        if (Build.VERSION.SDK_INT < 33) {
+            return false
+        }
+
+        return notificationPermissionPromptActive ||
+            SystemClock.elapsedRealtime() < suppressShareUntilElapsedMs
     }
 
     fun handleRequestPermissionsResult(
@@ -127,6 +141,12 @@ object PermissionHelper {
                     ::hasCameraPermission
                 )
             )
+        }
+
+        if (requestCode == NOTIFICATIONS_REQUEST_CODE) {
+            notificationPermissionPromptActive = false
+            suppressShareUntilElapsedMs =
+                SystemClock.elapsedRealtime() + NOTIFICATION_SHARE_SUPPRESSION_MS
         }
     }
 

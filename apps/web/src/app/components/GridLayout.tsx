@@ -35,7 +35,7 @@ import type { Participant } from "../lib/types";
 import { isSystemUserId, truncateDisplayName } from "../lib/utils";
 import ParticipantAudio from "./ParticipantAudio";
 import ParticipantVideo from "./ParticipantVideo";
-import { avatarColor } from "@conclave/ui-tokens";
+import { Avatar } from "@conclave/ui-tokens/web";
 import {
   chooseStageMode,
   computeGridLayout,
@@ -2659,12 +2659,12 @@ function GridLayout({
                   data-meet-local-camera-placeholder="true"
                   className="absolute inset-0 flex items-center justify-center bg-[#18181b]"
                 >
-                  <div
-                    className="flex h-20 w-20 items-center justify-center rounded-full text-3xl font-bold text-white"
-                    style={{ backgroundColor: avatarColor(userEmail) }}
-                  >
-                    {(localDisplayName[0] || userEmail[0] || "?").toUpperCase()}
-                  </div>
+                  <Avatar
+                    className="text-3xl"
+                    id={userEmail}
+                    name={localDisplayName || userEmail}
+                    size={80}
+                  />
                 </div>
               )}
               {isGhost && (
@@ -3060,9 +3060,8 @@ const OverflowPreviewTile = memo(function OverflowPreviewTile({
   return (
     <div
       className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-lg border border-[#fafafa]/10 text-[13px] font-semibold text-white"
-      style={{ backgroundColor: avatarColor(participant.userId) }}
     >
-      {displayName[0]?.toUpperCase() || "?"}
+      <Avatar id={participant.userId} name={displayName} size={48} />
     </div>
   );
 });
@@ -3247,7 +3246,6 @@ const LocalVideoTile = memo(function LocalVideoTile({
     };
   }, [isCameraOff, stream, videoTrack]);
 
-  const initial = (displayName[0] || userEmail[0] || "?").toUpperCase();
   const compact = size === "rail";
   const speakerHighlight = isActiveSpeaker ? "speaking" : "";
   const handRaisedHighlight = isHandRaised ? "!border-amber-400/60" : "";
@@ -3281,14 +3279,12 @@ const LocalVideoTile = memo(function LocalVideoTile({
           data-meet-local-camera-placeholder="true"
           className="absolute inset-0 flex items-center justify-center bg-[#18181b]"
         >
-          <div
-            className={`flex items-center justify-center rounded-full font-bold text-white ${
-              compact ? "h-12 w-12 text-xl" : "h-20 w-20 text-3xl"
-            }`}
-            style={{ backgroundColor: avatarColor(userEmail) }}
-          >
-            {initial}
-          </div>
+          <Avatar
+            className={compact ? "text-xl" : "text-3xl"}
+            id={userEmail}
+            name={displayName || userEmail}
+            size={compact ? 48 : 80}
+          />
         </div>
       ) : null}
       {isGhost ? (
@@ -3382,8 +3378,6 @@ const MinimizedSelfViewPill = memo(function MinimizedSelfViewPill({
   onDragStart: (event: ReactPointerEvent<HTMLElement>) => void;
   onRestore: () => void;
 }) {
-  const initial = (displayName[0] || userEmail[0] || "?").toUpperCase();
-
   return (
     <div
       className={`absolute z-20 flex max-w-[min(19rem,44vw)] items-center gap-2 rounded-full border border-[#fafafa]/12 bg-[#111114]/92 px-2.5 py-2 text-[#fafafa] shadow-[0_14px_36px_rgba(0,0,0,0.36)] ${
@@ -3405,12 +3399,7 @@ const MinimizedSelfViewPill = memo(function MinimizedSelfViewPill({
       >
         <Move size={14} strokeWidth={1.8} />
       </button>
-      <span
-        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[13px] font-semibold text-white"
-        style={{ backgroundColor: avatarColor(userEmail) }}
-      >
-        {initial}
-      </span>
+      <Avatar id={userEmail} name={displayName || userEmail} size={32} />
       <span className="min-w-0 truncate text-[13px] font-medium">
         {truncateDisplayName(displayName, 20)}
       </span>
@@ -3516,11 +3505,8 @@ const OverflowGalleryTile = memo(function OverflowGalleryTile({
           className={`h-full w-full object-cover ${showPlaceholder ? "hidden" : ""}`}
         />
         {showPlaceholder && (
-          <div
-            className="absolute inset-0 flex items-center justify-center text-xl font-semibold text-white"
-            style={{ backgroundColor: avatarColor(participant.userId) }}
-          >
-            {tileLabel[0]?.toUpperCase() || "?"}
+          <div className="absolute inset-0 flex items-center justify-center bg-[#18181b]">
+            <Avatar id={participant.userId} name={tileLabel} size={56} />
           </div>
         )}
         {participant.isGhost && (

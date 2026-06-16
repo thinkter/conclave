@@ -16,6 +16,7 @@ import {
   computeGridLayout,
   type GridTilePosition,
 } from "@conclave/meeting-core";
+import { Avatar } from "@conclave/ui-tokens/web";
 import { useSmartParticipantOrderWithMetadata } from "../../hooks/useSmartParticipantOrder";
 import type { Participant } from "../../lib/types";
 import { isSystemUserId, truncateDisplayName } from "../../lib/utils";
@@ -1102,12 +1103,12 @@ function LocalTile({
       />
       {showPlaceholder && (
         <div className="absolute inset-0 flex items-center justify-center bg-[#0a0a0b]">
-          <div
-            className={`relative flex items-center justify-center rounded-full mobile-avatar font-bold text-[#fafafa] ${avatarSize}`}
-            style={{ fontFamily: "'PolySans Bulky Wide', sans-serif" }}
-          >
-            {(displayName || userEmail)[0]?.toUpperCase() || "?"}
-          </div>
+          <Avatar
+            className="relative mobile-avatar"
+            id={userEmail}
+            name={displayName || userEmail}
+            size={avatarSize === "h-12 w-12 text-lg" ? 48 : 80}
+          />
         </div>
       )}
       {isGhost && <GhostOverlay variant={variant} />}
@@ -1198,14 +1199,12 @@ const ParticipantTile = memo(function ParticipantTile({
       />
       {showPlaceholder && (
         <div className="absolute inset-0 flex items-center justify-center bg-[#0a0a0b]">
-          <div
-            className={`relative flex items-center justify-center rounded-full mobile-avatar font-bold text-[#fafafa] ${getAvatarSize(
-              variant,
-            )}`}
-            style={{ fontFamily: "'PolySans Bulky Wide', sans-serif" }}
-          >
-            {displayName[0]?.toUpperCase() || "?"}
-          </div>
+          <Avatar
+            className="relative mobile-avatar"
+            id={participant.userId}
+            name={displayName}
+            size={variant === "rail" ? 48 : 80}
+          />
         </div>
       )}
       {participant.isGhost && <GhostOverlay variant={variant} />}

@@ -12,7 +12,7 @@ pluginManagement {
         commandLine(
             "/bin/sh",
             "-c",
-            "skip plugin --prebuild --package-path '${packagePath}' --plugin-ref '${pluginPath.absolutePath}' && swift build --package-path '${packagePath}' --scratch-path '${indexBuildPath}'"
+            "skip plugin --prebuild --package-path '${packagePath}' --plugin-ref '${pluginPath.absolutePath}' && /usr/bin/env -u SDKROOT -u SDK_NAME -u PLATFORM_NAME -u TARGET_DEVICE_PLATFORM_NAME swift build --package-path '${packagePath}' --scratch-path '${indexBuildPath}'"
         )
         environment("PATH", "${System.getenv("PATH")}:/opt/homebrew/bin")
     }

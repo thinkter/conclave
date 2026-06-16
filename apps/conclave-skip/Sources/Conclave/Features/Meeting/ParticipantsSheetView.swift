@@ -359,14 +359,16 @@ struct ParticipantsSheetView: View {
                         }
                     }
 
-                    Button {
-                        viewModel.muteParticipant(userId: participant.id)
-                    } label: {
-                        Label {
-                            Text("Mute")
-                        } icon: {
-                            ACMSystemIcon.icon("mic.slash.fill", android: "mic.off", size: 16, tint: "danger")
-                                .foregroundStyle(ACMColors.error)
+                    if !participant.isMuted {
+                        Button {
+                            viewModel.muteParticipant(userId: participant.id)
+                        } label: {
+                            Label {
+                                Text("Mute")
+                            } icon: {
+                                ACMSystemIcon.icon("mic.slash.fill", android: "mic.off", size: 16, tint: "danger")
+                                    .foregroundStyle(ACMColors.error)
+                            }
                         }
                     }
                     if canPromoteParticipant {

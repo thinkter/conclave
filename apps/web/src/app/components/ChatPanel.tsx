@@ -136,6 +136,7 @@ function ChatPanel({
 }: ChatPanelProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const shouldAutoScrollRef = useRef(true);
   const sendAnimationTimeoutRef = useRef<number | null>(null);
   const prevMessageIdsRef = useRef<Set<string>>(new Set());
@@ -251,6 +252,13 @@ function ChatPanel({
   useEffect(() => {
     hasInitializedRef.current = true;
   }, []);
+
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    textarea.style.height = "auto";
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 112)}px`;
+  }, [chatInput]);
 
   const handleScroll = () => {
     const container = scrollContainerRef.current;
@@ -414,7 +422,7 @@ function ChatPanel({
         <div
           ref={scrollContainerRef}
           onScroll={handleScroll}
-          className="web-chat-scroll h-full min-h-0 space-y-0.5 overflow-y-auto overflow-x-hidden px-3 py-3"
+          className="web-chat-scroll h-full min-h-0 overflow-y-auto overflow-x-hidden px-4 py-4"
         >
           {messages.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
@@ -492,7 +500,9 @@ function ChatPanel({
               return (
                 <div
                   key={msg.id}
-                  className={`flex gap-2.5 ${groupedWithPrevious ? "pt-0.5" : "pt-3 first:pt-0"} ${
+                  className={`flex ${isOwn ? "justify-end pl-10" : "justify-start gap-3 pr-8"} ${
+                    groupedWithPrevious ? "mt-1" : "mt-4 first:mt-0"
+                  } ${
                     isNew
                       ? isOwn
                         ? "web-chat-message-new-self"
@@ -500,15 +510,25 @@ function ChatPanel({
                       : ""
                   }`}
                 >
-                  <div className="w-7 shrink-0">
-                    {!isOwn && !groupedWithPrevious ? (
-                      <Avatar name={displayName} id={msg.userId} size={28} />
-                    ) : null}
-                  </div>
+                  {!isOwn ? (
+                    <div className="w-9 shrink-0">
+                      {!groupedWithPrevious ? (
+                        <Avatar name={displayName} id={msg.userId} size={32} />
+                      ) : null}
+                    </div>
+                  ) : null}
 
-                  <div className="min-w-0 flex-1">
+                  <div
+                    className={`min-w-0 max-w-[82%] ${
+                      isOwn ? "flex flex-col items-end" : "flex-1"
+                    }`}
+                  >
                     {!groupedWithPrevious && (
-                      <div className="mb-1 flex items-baseline gap-2">
+                      <div
+                        className={`mb-1 flex max-w-full items-baseline gap-2 ${
+                          isOwn ? "justify-end text-right" : ""
+                        }`}
+                      >
                         <span className="truncate text-[13px] font-medium text-[#fafafa]">
                           {isOwn ? "You" : displayName}
                         </span>
@@ -518,15 +538,27 @@ function ChatPanel({
                       </div>
                     )}
                     {directMessageLabel ? (
-                      <p className="mb-1 text-[11px] font-medium text-amber-300/80">
+                      <p
+                        className={`mb-1 text-[11px] font-medium text-amber-300/80 ${
+                          isOwn ? "text-right" : ""
+                        }`}
+                      >
                         {directMessageLabel}
                       </p>
                     ) : null}
                     <div
-                      className={`inline-block max-w-full rounded-xl px-3 py-2 text-[13.5px] leading-relaxed break-words ${
+                      className={`inline-block max-w-full px-3.5 py-2 text-[13.5px] leading-relaxed break-words whitespace-pre-wrap ${
                         isOwn
-                          ? "bg-[#F95F4A]/15 text-[#fafafa] selection:bg-[#F95F4A]/40 selection:text-white"
+                          ? "rounded-[18px] bg-[#F95F4A] text-white shadow-sm shadow-black/10 selection:bg-white/25 selection:text-white"
                           : "bg-white/[0.05] text-[#fafafa] selection:bg-[#F95F4A]/40 selection:text-white"
+                      } ${
+                        isOwn
+                          ? groupedWithPrevious
+                            ? "rounded-tr-md"
+                            : ""
+                          : "rounded-[18px]"
+                      } ${
+                        !isOwn && groupedWithPrevious ? "rounded-tl-md" : ""
                       } ${msg.isDirect ? "ring-1 ring-amber-300/30" : ""}`}
                     >
                       {renderMessageContent(msg.content)}
@@ -611,9 +643,9 @@ function ChatPanel({
               })}
             </div>
           )}
-          <div className="flex items-end gap-2 rounded-xl border border-white/10 bg-white/[0.04] py-1.5 pl-3 pr-1.5 transition-colors focus-within:border-white/20">
-            <input
-              type="text"
+          <div className="flex items-end gap-2 rounded-2xl border border-white/10 bg-white/[0.04] py-2 pl-3 pr-2 transition-colors focus-within:border-white/20 focus-within:bg-white/[0.055]">
+            <textarea
+              ref={textareaRef}
               value={chatInput}
               onChange={(e) => onInputChange(e.target.value)}
               onKeyDown={handleKeyDown}
@@ -626,7 +658,8 @@ function ChatPanel({
               }
               maxLength={1000}
               disabled={isChatDisabled}
-              className="min-w-0 flex-1 bg-transparent py-1 text-[13.5px] text-[#fafafa] placeholder:text-[#a1a1aa] focus:outline-none disabled:opacity-50"
+              rows={1}
+              className="max-h-28 min-h-8 min-w-0 flex-1 resize-none bg-transparent py-1 text-[13.5px] leading-5 text-[#fafafa] placeholder:text-[#a1a1aa] focus:outline-none disabled:opacity-50"
             />
             <button
               type="submit"

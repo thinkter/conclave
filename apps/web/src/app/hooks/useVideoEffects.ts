@@ -11756,7 +11756,15 @@ export function useVideoEffects({
       };
       let frameSource: FrameSource | null = null;
 
+      const processorPrimarySource =
+        getFreshTrackProcessorFrameSource("primary");
+      if (processorPrimarySource) {
+        frameSource = processorPrimarySource.frameSource;
+        sourceProbe = processorPrimarySource.sourceProbe;
+      }
+
       if (
+        !frameSource &&
         video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
         video.videoWidth > 0 &&
         video.videoHeight > 0
@@ -11987,7 +11995,7 @@ export function useVideoEffects({
           const logNoVisibleFrameSource = shouldWarnNoVisibleFrameSource
             ? warnVideoEffects
             : logVideoEffects;
-          logNoVisibleFrameSource(debugId, "no_visible_frame_source", {
+          const noVisibleFrameSourcePayload = {
             sourceProbe,
             outputProbe,
             blackOutputFrameCount,
@@ -12021,7 +12029,14 @@ export function useVideoEffects({
             },
             effects: getEffectsDebugSnapshot(currentEffects),
             sourceTrack: getTrackDebugSnapshot(sourceVideoTrack),
-          });
+          };
+          logNoVisibleFrameSource(
+            debugId,
+            shouldWarnNoVisibleFrameSource
+              ? "no_visible_frame_source"
+              : "source_frame_warming_up",
+            noVisibleFrameSourcePayload,
+          );
         }
         if (outputTrackPublished && outputProbe.visible) {
           await deliverOutputFrame(now);
@@ -13613,6 +13628,7 @@ export function useVideoEffects({
 
     effectChangeFramePumpRef.current = pumpEffectChangeFrame;
 
+    startTrackProcessor();
     schedule();
 
     video

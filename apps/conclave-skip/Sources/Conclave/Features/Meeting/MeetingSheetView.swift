@@ -27,7 +27,14 @@ enum MeetingSheetPage: Equatable {
     case sharedBrowser
     case apps
     case roomSettings
+    case roomAccessSettings
+    case roomCommunicationSettings
+    case meetingInviteCodeSettings
     case webinarSettings
+    case webinarAccessSettings
+    case webinarCapacitySettings
+    case webinarInviteCodeSettings
+    case webinarLinkSettings
     case profileSettings
     case audioVideoSettings
     case videoQualitySettings
@@ -43,6 +50,9 @@ private extension MeetingSheetPage {
         case .viewModeSettings, .gridSettings, .selfViewSettings, .selfViewPositionSettings,
              .roomSettings, .webinarSettings, .profileSettings, .audioVideoSettings, .videoQualitySettings:
             return 2
+        case .roomAccessSettings, .roomCommunicationSettings, .meetingInviteCodeSettings,
+             .webinarAccessSettings, .webinarCapacitySettings, .webinarInviteCodeSettings, .webinarLinkSettings:
+            return 3
         }
     }
 
@@ -56,6 +66,10 @@ private extension MeetingSheetPage {
             return .viewSettings
         case .roomSettings, .webinarSettings, .profileSettings, .audioVideoSettings, .videoQualitySettings:
             return .settings
+        case .roomAccessSettings, .roomCommunicationSettings, .meetingInviteCodeSettings:
+            return .roomSettings
+        case .webinarAccessSettings, .webinarCapacitySettings, .webinarInviteCodeSettings, .webinarLinkSettings:
+            return .webinarSettings
         }
     }
 }
@@ -180,9 +194,40 @@ struct MeetingSheetView: View {
             case .apps:
                 pageView(AppsSheetView(viewModel: viewModel, bodyReady: bodyReady, onBack: { navigate(to: .more) }))
             case .roomSettings:
-                pageView(SettingsSheetView(viewModel: viewModel, bodyReady: bodyReady, page: SettingsSheetPage.room, onBack: { navigate(to: .settings) }))
+                pageView(SettingsSheetView(
+                    viewModel: viewModel,
+                    bodyReady: bodyReady,
+                    page: SettingsSheetPage.room,
+                    onBack: { navigate(to: .settings) },
+                    onOpenRoomAccessSettings: { navigate(to: .roomAccessSettings) },
+                    onOpenRoomCommunicationSettings: { navigate(to: .roomCommunicationSettings) },
+                    onOpenMeetingInviteCodeSettings: { navigate(to: .meetingInviteCodeSettings) }
+                ))
+            case .roomAccessSettings:
+                pageView(SettingsSheetView(viewModel: viewModel, bodyReady: bodyReady, page: SettingsSheetPage.roomAccess, onBack: { navigate(to: .roomSettings) }))
+            case .roomCommunicationSettings:
+                pageView(SettingsSheetView(viewModel: viewModel, bodyReady: bodyReady, page: SettingsSheetPage.roomCommunication, onBack: { navigate(to: .roomSettings) }))
+            case .meetingInviteCodeSettings:
+                pageView(SettingsSheetView(viewModel: viewModel, bodyReady: bodyReady, page: SettingsSheetPage.meetingInviteCode, onBack: { navigate(to: .roomSettings) }))
             case .webinarSettings:
-                pageView(SettingsSheetView(viewModel: viewModel, bodyReady: bodyReady, page: SettingsSheetPage.webinar, onBack: { navigate(to: .settings) }))
+                pageView(SettingsSheetView(
+                    viewModel: viewModel,
+                    bodyReady: bodyReady,
+                    page: SettingsSheetPage.webinar,
+                    onBack: { navigate(to: .settings) },
+                    onOpenWebinarAccessSettings: { navigate(to: .webinarAccessSettings) },
+                    onOpenWebinarCapacitySettings: { navigate(to: .webinarCapacitySettings) },
+                    onOpenWebinarInviteCodeSettings: { navigate(to: .webinarInviteCodeSettings) },
+                    onOpenWebinarLinkSettings: { navigate(to: .webinarLinkSettings) }
+                ))
+            case .webinarAccessSettings:
+                pageView(SettingsSheetView(viewModel: viewModel, bodyReady: bodyReady, page: SettingsSheetPage.webinarAccess, onBack: { navigate(to: .webinarSettings) }))
+            case .webinarCapacitySettings:
+                pageView(SettingsSheetView(viewModel: viewModel, bodyReady: bodyReady, page: SettingsSheetPage.webinarCapacity, onBack: { navigate(to: .webinarSettings) }))
+            case .webinarInviteCodeSettings:
+                pageView(SettingsSheetView(viewModel: viewModel, bodyReady: bodyReady, page: SettingsSheetPage.webinarInviteCode, onBack: { navigate(to: .webinarSettings) }))
+            case .webinarLinkSettings:
+                pageView(SettingsSheetView(viewModel: viewModel, bodyReady: bodyReady, page: SettingsSheetPage.webinarLink, onBack: { navigate(to: .webinarSettings) }))
             case .profileSettings:
                 pageView(SettingsSheetView(viewModel: viewModel, bodyReady: bodyReady, page: SettingsSheetPage.profile, onBack: { navigate(to: .settings) }))
             case .audioVideoSettings:

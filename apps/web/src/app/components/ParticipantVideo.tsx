@@ -6,7 +6,7 @@ import { createPlaybackRecoveryScheduler } from "../lib/playback-recovery";
 import type { Participant } from "../lib/types";
 import { truncateDisplayName } from "../lib/utils";
 import ParticipantAudio from "./ParticipantAudio";
-import { avatarColor } from "@conclave/ui-tokens";
+import { Avatar } from "@conclave/ui-tokens/web";
 
 interface ParticipantVideoProps {
   participant: Participant;
@@ -191,14 +191,12 @@ function ParticipantVideo({
       />
       {showPlaceholder && (
         <div className="absolute inset-0 flex items-center justify-center bg-[#18181b]">
-          <div
-            className={`rounded-full flex items-center justify-center text-white font-bold ${
-              compact ? "w-12 h-12 text-lg" : "w-20 h-20 text-3xl"
-            }`}
-            style={{ backgroundColor: avatarColor(participant.userId) }}
-          >
-            {displayName[0]?.toUpperCase() || "?"}
-          </div>
+          <Avatar
+            className={compact ? "text-lg" : "text-3xl"}
+            id={participant.userId}
+            name={displayName}
+            size={compact ? 48 : 80}
+          />
         </div>
       )}
       {participant.isGhost && (

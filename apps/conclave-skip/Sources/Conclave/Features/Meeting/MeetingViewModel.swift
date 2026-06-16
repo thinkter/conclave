@@ -149,11 +149,53 @@ final class MeetingViewModel {
         let user: SfuJoinUser?
     }
 
-    private func localSfuUserKey(sessionId: String) -> String {
-        // /api/sfu/join only trusts id/email from a verified web auth session.
-        // Native profile fields are display-only here; using them as the local
-        // SFU identity makes the server's guest-session identity render as remote.
+    private func localSfuUserKey(sessionId: String, user: SfuJoinUser?) -> String {
+        if let email = normalizedSfuEmail(user?.email) {
+            return email
+        }
+        if let userId = normalizedSfuUserId(user?.id) {
+            return userId
+        }
         return "guest-\(sessionId)"
+    }
+
+    private func normalizedSfuEmail(_ value: String?) -> String? {
+        let normalized = value?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+        guard !normalized.isEmpty, !isSyntheticGuestEmail(normalized) else { return nil }
+        return normalized
+    }
+
+    private func normalizedSfuUserId(_ value: String?) -> String? {
+        let normalized = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !normalized.isEmpty,
+              normalized.count <= 128,
+              !normalized.hasPrefix("guest-"),
+              hasOnlyAllowedSfuUserIdCharacters(normalized) else {
+            return nil
+        }
+        return normalized
+    }
+
+    private func isSyntheticGuestEmail(_ value: String) -> Bool {
+        guard value.hasPrefix("guest-") else { return false }
+        let suffixes = ["@guest.conclave", "@guest.com"]
+        return suffixes.contains { suffix in
+            value.hasSuffix(suffix) && value.count > "guest-".count + suffix.count
+        }
+    }
+
+    private func hasOnlyAllowedSfuUserIdCharacters(_ value: String) -> Bool {
+        for character in value {
+            if !isAllowedSfuUserIdCharacter(character) {
+                return false
+            }
+        }
+        return true
+    }
+
+    private func isAllowedSfuUserIdCharacter(_ character: Character) -> Bool {
+        let allowed = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._:@-"
+        return allowed.contains(character)
     }
 
     // MARK: - Init
@@ -2205,7 +2247,7 @@ final class MeetingViewModel {
         self.shouldRejoinAfterReconnect = false
 
         let userPayload = user
-        let userKey = localSfuUserKey(sessionId: state.sessionId)
+        let userKey = localSfuUserKey(sessionId: state.sessionId, user: userPayload)
         self.state.sfuUserId = userKey
         self.state.userId = "\(userKey)#\(state.sessionId)"
         self.state.hostUserId = isHost ? self.state.userId : nil

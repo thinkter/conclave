@@ -72,6 +72,20 @@ const normalizeEmail = (
   return normalized || undefined;
 };
 
+const normalizeUserId = (
+  value: string | null | undefined,
+): string | undefined => {
+  const normalized = value?.trim();
+  if (!normalized || normalized.length > 128) return undefined;
+  return /^[a-zA-Z0-9._:@-]+$/.test(normalized) ? normalized : undefined;
+};
+
+const isSyntheticGuestEmail = (value: string | undefined): boolean =>
+  Boolean(value && /^guest-[^@]+@guest\.(?:conclave|com)$/i.test(value));
+
+const isSyntheticGuestUserId = (value: string | undefined): boolean =>
+  Boolean(value && value.startsWith("guest-"));
+
 const parseEmailList = (value: string | undefined): Set<string> =>
   new Set(
     (value ?? "")
@@ -204,17 +218,24 @@ export async function POST(request: Request) {
     .catch(() => null);
   const sessionUser = session?.user;
   const sessionEmail = sessionUser?.email?.trim() || undefined;
-  // SECURITY: identity (the userKey the SFU keys host-tracking, allow/block
-  // lists, no-guests, and dedup on) is trusted ONLY from a verified better-auth
-  // session. An unauthenticated caller's body.user.email / body.user.id is NOT
-  // trusted as identity — it was spoofable, enabling impersonation, no-guests
-  // bypass, and allowlist evasion. Unauthenticated callers get a guest- key.
-  // (The display NAME may still come from the body — it is not a security id.)
-  const email = sessionEmail;
+  const rawBodyEmail = normalizeEmail(body?.user?.email);
+  const rawBodyUserId = normalizeUserId(body?.user?.id);
+  const bodyEmail = isSyntheticGuestEmail(rawBodyEmail)
+    ? undefined
+    : rawBodyEmail;
+  const bodyUserId = isSyntheticGuestUserId(rawBodyUserId)
+    ? undefined
+    : rawBodyUserId;
+  // Browser sessions are authoritative when present. Native clients do not have
+  // the better-auth cookie, so preserve their supplied non-guest stable identity
+  // for the SFU's user-keyed reconnect, allow/block-list, and host-tracking
+  // paths. Synthetic web/mobile guests must stay session-scoped because the
+  // clients render their local participant as guest-${sessionId}.
+  const email = sessionEmail || bodyEmail;
   const name =
     sessionUser?.name?.trim() || body?.user?.name?.trim() || undefined;
   const normalizedSessionEmail = normalizeEmail(sessionEmail);
-  const providedId = sessionUser?.id?.trim() || undefined;
+  const providedId = sessionUser?.id?.trim() || bodyUserId || undefined;
   const baseUserId = email || providedId || `guest-${sessionId}`;
   const isWebinarAttendeeJoin = joinMode === "webinar_attendee";
   const isScheduledHostRoom = isScheduledRoomId(roomId);
@@ -245,13 +266,16 @@ export async function POST(request: Request) {
   // security invariant + regression tests) lives in resolveHostGrant: a host
   // *intent* only grants room-creation, so the creator becomes host via the
   // SFU's server-authoritative createdRoom path — never seizing an existing room.
+  const canHonorBodyRoomCreation =
+    Boolean(sessionUser?.id) || clientId !== "public" || requestedHost;
   const { isHost, allowRoomCreation } = resolveHostGrant({
     isWebinarAttendeeJoin,
     isForcedHost,
     scheduledRoomHostMatch,
     isScheduledHostRoom,
     requestedHost,
-    bodyAllowRoomCreation: Boolean(body?.allowRoomCreation),
+    bodyAllowRoomCreation:
+      canHonorBodyRoomCreation && Boolean(body?.allowRoomCreation),
   });
 
   const secret = process.env.SFU_SECRET || "development-secret";

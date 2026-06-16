@@ -78,13 +78,20 @@ export const registerWebinarHandlers = (context: ConnectionContext): void => {
 
       try {
         const update = data ?? {};
-        const { changed: baseChanged } = updateWebinarRoomConfig(
+        const {
+          changed: baseChanged,
+          linkVersionBumped,
+        } = updateWebinarRoomConfig(
           webinarConfig,
           update,
         );
         let changed = baseChanged;
+        const disablingWebinar = update.enabled === false;
 
-        if (Object.prototype.hasOwnProperty.call(update, "linkSlug")) {
+        if (
+          !disablingWebinar &&
+          Object.prototype.hasOwnProperty.call(update, "linkSlug")
+        ) {
           const rawLinkSlug =
             typeof update.linkSlug === "string" ? update.linkSlug.trim() : "";
 
@@ -109,6 +116,18 @@ export const registerWebinarHandlers = (context: ConnectionContext): void => {
             if (slugChanged) {
               webinarConfig.linkVersion += 1;
             }
+          }
+        }
+
+        if (disablingWebinar) {
+          const cleared = clearWebinarLinkSlug({
+            webinarConfig,
+            webinarLinks: state.webinarLinks,
+            roomChannelId: room.channelId,
+          });
+          changed = changed || cleared;
+          if (cleared && !linkVersionBumped) {
+            webinarConfig.linkVersion += 1;
           }
         }
 

@@ -3,6 +3,7 @@
 import { Ghost, Hand } from "lucide-react";
 import { memo, useEffect, useRef } from "react";
 import { DevPlaygroundWebApp } from "@conclave/apps-sdk/dev-playground/web";
+import { Avatar } from "@conclave/ui-tokens/web";
 import { useSmartParticipantOrder } from "../hooks/useSmartParticipantOrder";
 import type { Participant } from "../lib/types";
 import { getSpeakerHighlightClasses, isSystemUserId } from "../lib/utils";
@@ -96,9 +97,7 @@ function DevPlaygroundLayout({
           />
           {isCameraOff && (
             <div className="absolute inset-0 flex items-center justify-center bg-[#18181b]">
-              <div className="w-12 h-12 rounded-full bg-[#2e2e33] border border-[#fafafa]/20 flex items-center justify-center text-lg text-[#fafafa] font-bold">
-                {userEmail[0]?.toUpperCase() || "?"}
-              </div>
+              <Avatar id={userEmail} name={userEmail} size={48} />
             </div>
           )}
           {isGhost && (

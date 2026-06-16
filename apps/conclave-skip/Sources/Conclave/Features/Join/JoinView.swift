@@ -38,6 +38,8 @@ struct JoinView: View {
     @State private var signingInProvider: AppState.AuthProvider = .none
     @State private var pendingLinkJoinTarget: ParsedJoinTarget?
     @State private var shouldShowInviteCodeInput = false
+    @State private var inviteCodePromptRoomId: String?
+    @State private var inviteCodePromptJoinMode: JoinMode?
     @State private var authTransitionGeneration = 0
     @State private var inputFocusClearGeneration = 0
     @State private var cameraPreviewGeneration = 0
@@ -146,7 +148,7 @@ struct JoinView: View {
         }
         .onChange(of: viewModel.state.joinFormErrorMessage) { _, message in
             if shouldRevealInviteCodeInput(for: message) {
-                shouldShowInviteCodeInput = true
+                revealInviteCodeInputForCurrentTarget()
             }
         }
         .onDisappear {
@@ -538,7 +540,7 @@ struct JoinView: View {
         Button {
             activeTab = .new
             viewModel.state.joinFormErrorMessage = nil
-            shouldShowInviteCodeInput = false
+            resetInviteCodePrompt()
         } label: {
             Text("New meeting")
                 .font(ACMFont.trial(14, weight: .medium))
@@ -648,7 +650,7 @@ struct JoinView: View {
     private var joinMeetingForm: some View {
         VStack(spacing: 16) {
             roomNameInputSection
-            if shouldShowInviteCodeInput {
+            if shouldRenderInviteCodeInput {
                 inviteCodeInputSection
             }
             displayNameInputSection2
@@ -716,6 +718,14 @@ struct JoinView: View {
 
     private var isJoinEnabled: Bool {
         !parseJoinTarget(from: roomCode).roomId.isEmpty && !isJoinInProgress
+    }
+
+    private var shouldRenderInviteCodeInput: Bool {
+        let target = resolvedJoinTarget(from: roomCode)
+        return shouldShowInviteCodeInput
+            && !target.roomId.isEmpty
+            && inviteCodePromptRoomId == target.roomId
+            && inviteCodePromptJoinMode == target.joinMode
     }
 
     private var isJoinInProgress: Bool {
@@ -929,7 +939,11 @@ struct JoinView: View {
     }
 
     private func sfuJoinUserPayload(displayName: String) -> SfuJoinUser {
-        SfuJoinUser(id: nil, email: nil, name: displayName)
+        guard let user = appState.currentUser, user.provider != .guest else {
+            return SfuJoinUser(id: nil, email: nil, name: displayName)
+        }
+
+        return SfuJoinUser(id: user.id, email: user.email, name: displayName)
     }
     
     // MARK: - Actions
@@ -1421,8 +1435,7 @@ struct JoinView: View {
                     roomCode = sanitizeRoomCodeInput(newValue)
                 }
                 if roomCode != previousRoomCode {
-                    shouldShowInviteCodeInput = false
-                    inviteCode = ""
+                    resetInviteCodePrompt()
                 }
             }
         )
@@ -1438,16 +1451,37 @@ struct JoinView: View {
         )
     }
 
+    private func revealInviteCodeInputForCurrentTarget() {
+        let target = resolvedJoinTarget(from: roomCode)
+        guard !target.roomId.isEmpty else { return }
+        inviteCodePromptRoomId = target.roomId
+        inviteCodePromptJoinMode = target.joinMode
+        shouldShowInviteCodeInput = true
+    }
+
+    private func resetInviteCodePrompt(clearCode: Bool = true) {
+        shouldShowInviteCodeInput = false
+        inviteCodePromptRoomId = nil
+        inviteCodePromptJoinMode = nil
+        if clearCode {
+            inviteCode = ""
+        }
+    }
+
     private func restoreJoinFormAfterRecoverableError() {
         guard viewModel.state.joinFormErrorMessage != nil else { return }
         phase = .join
         activeTab = .join
-        shouldShowInviteCodeInput = shouldRevealInviteCodeInput(for: viewModel.state.joinFormErrorMessage)
         if !viewModel.state.roomId.isEmpty {
             roomCode = viewModel.state.roomId
         }
         if !viewModel.state.displayName.isEmpty {
             displayNameInput = viewModel.state.displayName
+        }
+        if shouldRevealInviteCodeInput(for: viewModel.state.joinFormErrorMessage) {
+            revealInviteCodeInputForCurrentTarget()
+        } else {
+            resetInviteCodePrompt()
         }
     }
 
@@ -1492,7 +1526,7 @@ struct JoinView: View {
         phase = .join
         activeTab = .join
         viewModel.state.joinFormErrorMessage = nil
-        shouldShowInviteCodeInput = false
+        resetInviteCodePrompt()
 
         guard !joinTarget.roomId.isEmpty else {
             pendingLinkJoinTarget = nil
@@ -1505,10 +1539,10 @@ struct JoinView: View {
         roomCode = joinTarget.roomId
         if joinTarget.joinMode == .meeting {
             inviteCode = joinTarget.meetingInviteCode ?? ""
-            shouldShowInviteCodeInput = false
+            resetInviteCodePrompt(clearCode: false)
         } else {
             inviteCode = joinTarget.webinarInviteCode ?? ""
-            shouldShowInviteCodeInput = false
+            resetInviteCodePrompt(clearCode: false)
             isCameraOn = false
             isMicOn = false
             stopPreviewCapture()

@@ -9,7 +9,14 @@ import UIKit
 enum SettingsSheetPage {
     case overview
     case room
+    case roomAccess
+    case roomCommunication
+    case meetingInviteCode
     case webinar
+    case webinarAccess
+    case webinarCapacity
+    case webinarInviteCode
+    case webinarLink
     case profile
     case audioVideo
     case videoQuality
@@ -22,7 +29,14 @@ struct SettingsSheetView: View {
     @Environment(\.dismiss) private var dismiss
     var onBack: (() -> Void)? = nil
     var onOpenRoomSettings: (() -> Void)? = nil
+    var onOpenRoomAccessSettings: (() -> Void)? = nil
+    var onOpenRoomCommunicationSettings: (() -> Void)? = nil
+    var onOpenMeetingInviteCodeSettings: (() -> Void)? = nil
     var onOpenWebinarSettings: (() -> Void)? = nil
+    var onOpenWebinarAccessSettings: (() -> Void)? = nil
+    var onOpenWebinarCapacitySettings: (() -> Void)? = nil
+    var onOpenWebinarInviteCodeSettings: (() -> Void)? = nil
+    var onOpenWebinarLinkSettings: (() -> Void)? = nil
     var onOpenProfileSettings: (() -> Void)? = nil
     var onOpenAudioVideoSettings: (() -> Void)? = nil
     var onOpenVideoQualitySettings: (() -> Void)? = nil
@@ -43,14 +57,66 @@ struct SettingsSheetView: View {
         meetingInviteCodeInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    private var roomAccessSummary: String {
+        let lockState = viewModel.state.isRoomLocked ? "Locked" : "Open"
+        let guestState = viewModel.state.isNoGuests ? "Guests blocked" : "Guests allowed"
+        return "\(lockState), \(guestState)"
+    }
+
+    private var roomCommunicationSummary: String {
+        let chatState = viewModel.state.isChatLocked ? "Chat locked" : "Chat open"
+        let dmState = viewModel.state.isDmEnabled ? "DMs on" : "DMs off"
+        let ttsState = viewModel.state.isTtsDisabled ? "TTS off" : "TTS on"
+        return "\(chatState), \(dmState), \(ttsState)"
+    }
+
+    private var meetingInviteCodeSummary: String {
+        viewModel.state.meetingRequiresInviteCode ? "Required before joining" : "Not required"
+    }
+
+    private var webinarAccessSummary: String {
+        let accessState = viewModel.state.isWebinarPublicAccess ? "Public access" : "Private access"
+        let lockState = viewModel.state.isWebinarLocked ? "Locked" : "Open"
+        return "\(accessState), \(lockState)"
+    }
+
+    private var webinarCapacitySummary: String {
+        "\(viewModel.state.webinarAttendeeCount) / \(viewModel.state.webinarMaxAttendees) attendees"
+    }
+
+    private var webinarInviteCodeSummary: String {
+        viewModel.state.webinarRequiresInviteCode ? "Required for attendees" : "Not required"
+    }
+
+    private var webinarLinkSummary: String {
+        if let slug = viewModel.state.webinarLinkSlug, !slug.isEmpty {
+            return "/w/\(slug)"
+        }
+        return "No link generated"
+    }
+
     private var title: String {
         switch page {
         case .overview:
             return "Settings"
         case .room:
             return "Room"
+        case .roomAccess:
+            return "Access"
+        case .roomCommunication:
+            return "Messages"
+        case .meetingInviteCode:
+            return "Invite code"
         case .webinar:
             return "Webinar"
+        case .webinarAccess:
+            return "Attendee access"
+        case .webinarCapacity:
+            return "Capacity"
+        case .webinarInviteCode:
+            return "Invite code"
+        case .webinarLink:
+            return "Webinar link"
         case .profile:
             return "Profile"
         case .audioVideo:
@@ -274,42 +340,45 @@ struct SettingsSheetView: View {
                 )
 
                 if viewModel.state.isWebinarEnabled {
-                    MeetingSheetRowDivider(inset: ACMSpacing.sm + 32 + ACMSpacing.sm)
-                    settingsToggleRow(
-                        "Public access",
-                        icon: "globe",
-                        androidIcon: "public",
-                        isOn: Binding(
-                            get: { viewModel.state.isWebinarPublicAccess },
-                            set: { next in
-                                if next != viewModel.state.isWebinarPublicAccess {
-                                    viewModel.toggleWebinarPublicAccess()
-                                }
-                            }
-                        ),
-                        isActive: viewModel.state.isWebinarPublicAccess
-                    )
-                    MeetingSheetRowDivider(inset: ACMSpacing.sm + 32 + ACMSpacing.sm)
-                    settingsToggleRow(
-                        "Lock attendees",
-                        icon: viewModel.state.isWebinarLocked ? "lock.fill" : "lock.open.fill",
-                        androidIcon: viewModel.state.isWebinarLocked ? "lock" : "lock.open",
-                        isOn: Binding(
-                            get: { viewModel.state.isWebinarLocked },
-                            set: { next in
-                                if next != viewModel.state.isWebinarLocked {
-                                    viewModel.toggleWebinarLocked()
-                                }
-                            }
-                        ),
-                        isActive: viewModel.state.isWebinarLocked
-                    )
-                    MeetingSheetRowDivider(inset: ACMSpacing.sm + 32 + ACMSpacing.sm)
-                    webinarCapacityRow()
-                    MeetingSheetRowDivider(inset: ACMSpacing.sm + 32 + ACMSpacing.sm)
-                    webinarInviteCodeRow()
-                    MeetingSheetRowDivider(inset: ACMSpacing.sm + 32 + ACMSpacing.sm)
-                    webinarLinkRow()
+                    MoreRowDivider()
+                    settingsNavigationRow(
+                        "Attendee access",
+                        subtitle: webinarAccessSummary,
+                        icon: viewModel.state.isWebinarLocked ? "lock.fill" : "globe",
+                        androidIcon: viewModel.state.isWebinarLocked ? "lock" : "public",
+                        isActive: viewModel.state.isWebinarPublicAccess || viewModel.state.isWebinarLocked
+                    ) {
+                        onOpenWebinarAccessSettings?()
+                    }
+                    MoreRowDivider()
+                    settingsNavigationRow(
+                        "Capacity",
+                        subtitle: webinarCapacitySummary,
+                        icon: "person.2.fill",
+                        androidIcon: "participants"
+                    ) {
+                        onOpenWebinarCapacitySettings?()
+                    }
+                    MoreRowDivider()
+                    settingsNavigationRow(
+                        "Attendee invite code",
+                        subtitle: webinarInviteCodeSummary,
+                        icon: "key.fill",
+                        androidIcon: "key",
+                        isActive: viewModel.state.webinarRequiresInviteCode
+                    ) {
+                        onOpenWebinarInviteCodeSettings?()
+                    }
+                    MoreRowDivider()
+                    settingsNavigationRow(
+                        "Webinar link",
+                        subtitle: webinarLinkSummary,
+                        icon: "link",
+                        androidIcon: "link",
+                        isActive: viewModel.state.webinarLinkSlug != nil
+                    ) {
+                        onOpenWebinarLinkSettings?()
+                    }
                 }
             }
             .onAppear {
@@ -319,6 +388,78 @@ struct SettingsSheetView: View {
                 if webinarLinkCodeInput.isEmpty {
                     webinarLinkCodeInput = viewModel.state.webinarLinkSlug ?? ""
                 }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var webinarAccessSettingsContent: some View {
+        VStack(alignment: .leading, spacing: ACMSpacing.xs) {
+            acmListSectionHeader("Attendee access")
+
+            MeetingSheetSectionCard {
+                settingsToggleRow(
+                    "Public access",
+                    icon: "globe",
+                    androidIcon: "public",
+                    isOn: Binding(
+                        get: { viewModel.state.isWebinarPublicAccess },
+                        set: { next in
+                            if next != viewModel.state.isWebinarPublicAccess {
+                                viewModel.toggleWebinarPublicAccess()
+                            }
+                        }
+                    ),
+                    isActive: viewModel.state.isWebinarPublicAccess
+                )
+                MoreRowDivider()
+                settingsToggleRow(
+                    "Lock attendees",
+                    icon: viewModel.state.isWebinarLocked ? "lock.fill" : "lock.open.fill",
+                    androidIcon: viewModel.state.isWebinarLocked ? "lock" : "lock.open",
+                    isOn: Binding(
+                        get: { viewModel.state.isWebinarLocked },
+                        set: { next in
+                            if next != viewModel.state.isWebinarLocked {
+                                viewModel.toggleWebinarLocked()
+                            }
+                        }
+                    ),
+                    isActive: viewModel.state.isWebinarLocked
+                )
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var webinarCapacitySettingsContent: some View {
+        VStack(alignment: .leading, spacing: ACMSpacing.xs) {
+            acmListSectionHeader("Capacity")
+
+            MeetingSheetSectionCard {
+                webinarCapacityRow()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var webinarInviteCodeSettingsContent: some View {
+        VStack(alignment: .leading, spacing: ACMSpacing.xs) {
+            acmListSectionHeader("Invite code")
+
+            MeetingSheetSectionCard {
+                webinarInviteCodeRow()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var webinarLinkSettingsContent: some View {
+        VStack(alignment: .leading, spacing: ACMSpacing.xs) {
+            acmListSectionHeader("Webinar link")
+
+            MeetingSheetSectionCard {
+                webinarLinkRow()
             }
         }
     }
@@ -860,8 +1001,22 @@ struct SettingsSheetView: View {
             overviewContent
         case .room:
             roomSettingsContent
+        case .roomAccess:
+            roomAccessSettingsContent
+        case .roomCommunication:
+            roomCommunicationSettingsContent
+        case .meetingInviteCode:
+            meetingInviteCodeSettingsContent
         case .webinar:
             webinarSection()
+        case .webinarAccess:
+            webinarAccessSettingsContent
+        case .webinarCapacity:
+            webinarCapacitySettingsContent
+        case .webinarInviteCode:
+            webinarInviteCodeSettingsContent
+        case .webinarLink:
+            webinarLinkSettingsContent
         case .profile:
             profileSettingsContent
         case .audioVideo:
@@ -940,6 +1095,45 @@ struct SettingsSheetView: View {
     @ViewBuilder
     private var roomSettingsContent: some View {
         VStack(alignment: .leading, spacing: ACMSpacing.xs) {
+            acmListSectionHeader("Room")
+
+            MeetingSheetSectionCard {
+                settingsNavigationRow(
+                    "Access",
+                    subtitle: roomAccessSummary,
+                    icon: viewModel.state.isRoomLocked ? "lock.fill" : "lock.open.fill",
+                    androidIcon: viewModel.state.isRoomLocked ? "lock" : "lock.open",
+                    isActive: viewModel.state.isRoomLocked || viewModel.state.isNoGuests
+                ) {
+                    onOpenRoomAccessSettings?()
+                }
+                MoreRowDivider()
+                settingsNavigationRow(
+                    "Messages",
+                    subtitle: roomCommunicationSummary,
+                    icon: "message.fill",
+                    androidIcon: "chat",
+                    isActive: viewModel.state.isChatLocked || !viewModel.state.isDmEnabled || viewModel.state.isTtsDisabled
+                ) {
+                    onOpenRoomCommunicationSettings?()
+                }
+                MoreRowDivider()
+                settingsNavigationRow(
+                    "Invite code",
+                    subtitle: meetingInviteCodeSummary,
+                    icon: "key.fill",
+                    androidIcon: "key",
+                    isActive: viewModel.state.meetingRequiresInviteCode
+                ) {
+                    onOpenMeetingInviteCodeSettings?()
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var roomAccessSettingsContent: some View {
+        VStack(alignment: .leading, spacing: ACMSpacing.xs) {
             acmListSectionHeader("Access")
 
             MeetingSheetSectionCard {
@@ -957,22 +1151,7 @@ struct SettingsSheetView: View {
                     ),
                     isActive: viewModel.state.isRoomLocked
                 )
-                MeetingSheetRowDivider(inset: ACMSpacing.sm + 32 + ACMSpacing.sm)
-                settingsToggleRow(
-                    "Lock chat",
-                    icon: "message.fill",
-                    androidIcon: "chat",
-                    isOn: Binding(
-                        get: { viewModel.state.isChatLocked },
-                        set: { next in
-                            if next != viewModel.state.isChatLocked {
-                                viewModel.toggleChatLock()
-                            }
-                        }
-                    ),
-                    isActive: viewModel.state.isChatLocked
-                )
-                MeetingSheetRowDivider(inset: ACMSpacing.sm + 32 + ACMSpacing.sm)
+                MoreRowDivider()
                 settingsToggleRow(
                     "Block guests",
                     icon: "nosign",
@@ -987,7 +1166,31 @@ struct SettingsSheetView: View {
                     ),
                     isActive: viewModel.state.isNoGuests
                 )
-                MeetingSheetRowDivider(inset: ACMSpacing.sm + 32 + ACMSpacing.sm)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var roomCommunicationSettingsContent: some View {
+        VStack(alignment: .leading, spacing: ACMSpacing.xs) {
+            acmListSectionHeader("Messages")
+
+            MeetingSheetSectionCard {
+                settingsToggleRow(
+                    "Lock chat",
+                    icon: "message.fill",
+                    androidIcon: "chat",
+                    isOn: Binding(
+                        get: { viewModel.state.isChatLocked },
+                        set: { next in
+                            if next != viewModel.state.isChatLocked {
+                                viewModel.toggleChatLock()
+                            }
+                        }
+                    ),
+                    isActive: viewModel.state.isChatLocked
+                )
+                MoreRowDivider()
                 settingsToggleRow(
                     "Direct messages",
                     icon: "bubble.left.and.bubble.right.fill",
@@ -1002,7 +1205,7 @@ struct SettingsSheetView: View {
                     ),
                     isActive: viewModel.state.isDmEnabled
                 )
-                MeetingSheetRowDivider(inset: ACMSpacing.sm + 32 + ACMSpacing.sm)
+                MoreRowDivider()
                 settingsToggleRow(
                     "Read messages aloud",
                     icon: viewModel.state.isTtsDisabled ? "speaker.slash.fill" : "speaker.wave.2.fill",
@@ -1017,7 +1220,16 @@ struct SettingsSheetView: View {
                     ),
                     isActive: !viewModel.state.isTtsDisabled
                 )
-                MeetingSheetRowDivider(inset: ACMSpacing.sm + 32 + ACMSpacing.sm)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var meetingInviteCodeSettingsContent: some View {
+        VStack(alignment: .leading, spacing: ACMSpacing.xs) {
+            acmListSectionHeader("Invite code")
+
+            MeetingSheetSectionCard {
                 meetingInviteCodeRow()
             }
         }

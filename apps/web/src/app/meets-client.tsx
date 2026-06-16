@@ -233,6 +233,7 @@ export type MeetsClientProps = {
   enableRoomRouting?: boolean;
   forceJoinOnly?: boolean;
   allowGhostMode?: boolean;
+  bypassMediaPermissions?: boolean;
   fontClassName?: string;
   user?: {
     id?: string;
@@ -265,6 +266,7 @@ export default function MeetsClient({
   enableRoomRouting = false,
   forceJoinOnly = false,
   allowGhostMode = true,
+  bypassMediaPermissions = false,
   fontClassName,
   user,
   isAdmin = false,
@@ -314,6 +316,22 @@ export default function MeetsClient({
     if (typeof window === "undefined") return;
     window.localStorage.removeItem(GUEST_USER_STORAGE_KEY);
   }, []);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    clearGuestStorage();
+    setCurrentUser((current) => {
+      if (
+        current?.id === user.id &&
+        current?.email === user.email &&
+        current?.name === user.name
+      ) {
+        return current;
+      }
+      return user;
+    });
+    setCurrentIsAdmin(isAdmin);
+  }, [clearGuestStorage, isAdmin, user]);
 
   useEffect(() => {
     if (process.env.NODE_ENV === "development") {
@@ -1623,6 +1641,7 @@ export default function MeetsClient({
     onTtsMessage: handleTtsMessage,
     prewarm,
     onSocketReady: setAppsSocket,
+    bypassMediaPermissions,
   });
 
   useEffect(() => {

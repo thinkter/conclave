@@ -396,6 +396,8 @@ export const registerSharedBrowserHandlers = (context: ConnectionContext): void 
                 );
 
                 if (!result.success) {
+                    await cleanupBrowserAudio(channelId, context);
+                    await cleanupBrowserVideo(channelId, context);
                     respond(callback, { error: result.error || "Failed to launch browser" });
                     return;
                 }
@@ -420,6 +422,11 @@ export const registerSharedBrowserHandlers = (context: ConnectionContext): void 
                 respond(callback, { success: true, noVncUrl: result.session?.noVncUrl });
             } catch (error) {
                 Logger.error("[SharedBrowser] Failed to launch:", error);
+                if (context.currentRoom) {
+                    const channelId = context.currentRoom.channelId;
+                    await cleanupBrowserAudio(channelId, context);
+                    await cleanupBrowserVideo(channelId, context);
+                }
                 respond(callback, { error: "Failed to connect to browser service" });
             }
         }

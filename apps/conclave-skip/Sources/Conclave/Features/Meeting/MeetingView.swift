@@ -166,7 +166,7 @@ struct MeetingView: View {
                 )
                 .transition(.opacity)
             } else {
-                GridLayoutView(viewModel: viewModel, isCompact: !isRegularSizeClass)
+                WebinarWaitingView()
                     .transition(.opacity)
             }
         } else if viewModel.state.activeAppId != nil {
@@ -199,6 +199,24 @@ struct MeetingView: View {
             GridLayoutView(viewModel: viewModel, isCompact: !isRegularSizeClass)
                 .transition(.opacity)
         }
+    }
+}
+
+private struct WebinarWaitingView: View {
+    var body: some View {
+        ZStack {
+            ACMColors.dark
+
+            Text("Waiting for the host to start speaking...")
+                .font(ACMFont.trial(14, weight: .medium))
+                .foregroundStyle(ACMColors.text)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, ACMSpacing.lg)
+                .padding(.vertical, ACMSpacing.md)
+                .acmColorBackground(ACMColors.surfaceRaised)
+                .clipShape(RoundedRectangle(cornerRadius: ACMRadius.lg))
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 

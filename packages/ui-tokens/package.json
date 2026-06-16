@@ -12,6 +12,9 @@
     "./native": "./src/native/index.ts",
     "./tokens.css": "./src/tokens.css"
   },
+  "dependencies": {
+    "facehash": "^0.1.0"
+  },
   "peerDependencies": {
     "lucide-react": "*",
     "lucide-react-native": "*",
