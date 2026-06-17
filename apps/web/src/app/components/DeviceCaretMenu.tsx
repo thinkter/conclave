@@ -268,7 +268,7 @@ export function MediaControlCluster(props: MediaControlClusterProps) {
           style={{ ...sideStyle, width: SIDE_ZONE_W, color: caretColor }}
         >
           <span
-            className="inline-flex h-12 items-center justify-center"
+            className="inline-flex h-12 -translate-x-1 items-center justify-center"
             style={{ width: CARET_CLICK_W }}
           >
             <ChevronUp

@@ -1106,6 +1106,7 @@ function GridLayout({
     {
       promoteDelayMs: ROOM_TILING_PROMOTE_DELAY_MS,
       minSwitchIntervalMs: ROOM_TILING_MIN_SWITCH_INTERVAL_MS,
+      minParticipantsForReorder: maxRemoteWithoutOverflow + 1,
     },
   );
   const orderedRemoteParticipantIds = useMemo(
@@ -2800,6 +2801,13 @@ function GridLayout({
                   {localDisplayName}
                 </span>
                 <span className="text-[11px] font-medium text-[#F95F4A]">You</span>
+                {isLocalActiveSpeaker && !isMuted ? (
+                  <span className="acm-voice-activity" aria-label="Speaking">
+                    <span />
+                    <span />
+                    <span />
+                  </span>
+                ) : null}
                 {isMuted && (
                   <MicOff size={14} strokeWidth={1.75} className="shrink-0 text-[#F95F4A]" />
                 )}
@@ -3388,6 +3396,13 @@ const LocalVideoTile = memo(function LocalVideoTile({
           {truncateDisplayName(displayName, compact ? 18 : 24)}
         </span>
         <span className="text-[10.5px] font-medium text-[#F95F4A]">You</span>
+        {isActiveSpeaker && !isMuted ? (
+          <span className="acm-voice-activity" aria-label="Speaking">
+            <span />
+            <span />
+            <span />
+          </span>
+        ) : null}
         {isMuted ? (
           <MicOff
             size={compact ? 13 : 14}

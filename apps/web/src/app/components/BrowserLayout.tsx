@@ -370,8 +370,23 @@ function BrowserLayout({
                             <Hand size={18} strokeWidth={1.75} className="h-3.5 w-3.5" />
                         </div>
                     )}
-                    <div className="absolute bottom-3 left-3 max-w-[80%]">
+                    <div className="absolute bottom-3 left-3 flex max-w-[80%] items-center gap-1.5">
                         <NamePlate name="You" isLocal />
+                        {isLocalActiveSpeaker && !isMuted ? (
+                            <span
+                                className="rounded-full px-2 py-1"
+                                style={{
+                                    backgroundColor: color.scrim,
+                                    border: `1px solid ${color.border}`,
+                                }}
+                            >
+                                <span className="acm-voice-activity" aria-label="Speaking">
+                                    <span />
+                                    <span />
+                                    <span />
+                                </span>
+                            </span>
+                        ) : null}
                     </div>
                     <div
                         className="absolute bottom-3 right-3 inline-flex items-center justify-center rounded-full p-1.5"
