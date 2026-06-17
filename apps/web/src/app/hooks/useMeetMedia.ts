@@ -861,10 +861,14 @@ export function useMeetMedia({
         return;
       }
 
-      const transport = producerTransportRef.current;
-      if (!transport) {
-        setIsMuted(previousMuted);
-        return;
+      let transport = producerTransportRef.current;
+      if (!transport || transport.closed) {
+        const transportReady =
+          (await ensureProducerTransportRef?.current?.()) ?? false;
+        transport = producerTransportRef.current;
+        if (!transportReady || !transport || transport.closed) {
+          throw new Error("Audio transport unavailable");
+        }
       }
 
       let audioTrack = localStreamRef.current?.getAudioTracks()[0] ?? null;
@@ -1012,6 +1016,7 @@ export function useMeetMedia({
     localStreamRef,
     setLocalStream,
     producerTransportRef,
+    ensureProducerTransportRef,
     setIsMuted,
     setMeetError,
     OPUS_MAX_AVERAGE_BITRATE,

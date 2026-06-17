@@ -14,6 +14,7 @@ interface ParticipantWithMediaHints {
 interface UseSmartParticipantOrderOptions {
   promoteDelayMs?: number;
   minSwitchIntervalMs?: number;
+  minParticipantsForReorder?: number;
 }
 
 interface SmartParticipantOrderResult<T extends ParticipantWithMediaHints> {
@@ -41,6 +42,8 @@ const getMediaPriority = (participant: ParticipantWithMediaHints): number => {
   return 0;
 };
 
+const DEFAULT_MIN_PARTICIPANTS_FOR_REORDER = 4;
+
 export function useSmartParticipantOrderWithMetadata<
   T extends ParticipantWithMediaHints,
 >(
@@ -48,7 +51,12 @@ export function useSmartParticipantOrderWithMetadata<
   activeSpeakerId: string | null,
   options: UseSmartParticipantOrderOptions = {}
 ): SmartParticipantOrderResult<T> {
-  const { promoteDelayMs = 700, minSwitchIntervalMs = 2200 } = options;
+  const {
+    promoteDelayMs = 700,
+    minSwitchIntervalMs = 2200,
+    minParticipantsForReorder = DEFAULT_MIN_PARTICIPANTS_FOR_REORDER,
+  } = options;
+  const canReorderParticipants = participants.length >= minParticipantsForReorder;
   const participantIdsKey = useMemo(
     () => participants.map((participant) => participant.userId).join("|"),
     [participants]
@@ -134,6 +142,16 @@ export function useSmartParticipantOrderWithMetadata<
   useEffect(() => {
     clearPromoteTimeout();
 
+    if (!canReorderParticipants) {
+      candidateIdRef.current = null;
+      candidateSinceRef.current = 0;
+      if (featuredSpeakerIdRef.current) {
+        featuredSpeakerIdRef.current = null;
+        setFeaturedSpeakerId(null);
+      }
+      return;
+    }
+
     const isActiveVisible =
       !!activeSpeakerId &&
       participantsRef.current.some(
@@ -181,9 +199,19 @@ export function useSmartParticipantOrderWithMetadata<
     return () => {
       clearPromoteTimeout();
     };
-  }, [activeSpeakerId, participantIdsKey, promoteDelayMs, minSwitchIntervalMs]);
+  }, [
+    activeSpeakerId,
+    canReorderParticipants,
+    participantIdsKey,
+    promoteDelayMs,
+    minSwitchIntervalMs,
+  ]);
 
   const orderedParticipants = useMemo(() => {
+    if (!canReorderParticipants) {
+      return [...participants];
+    }
+
     const inputOrder = new Map(
       participants.map((participant, index) => [participant.userId, index] as const)
     );
@@ -239,7 +267,7 @@ export function useSmartParticipantOrderWithMetadata<
 
       return left.userId.localeCompare(right.userId);
     });
-  }, [participants, featuredSpeakerId, raisedOrder]);
+  }, [canReorderParticipants, participants, featuredSpeakerId, raisedOrder]);
 
   // Return the SAME array reference when the resulting order is element-
   // identical (e.g. a participant's mute toggled but the sort didn't move
@@ -264,9 +292,9 @@ export function useSmartParticipantOrderWithMetadata<
   return useMemo(
     () => ({
       orderedParticipants: stableOrdered,
-      featuredSpeakerId,
+      featuredSpeakerId: canReorderParticipants ? featuredSpeakerId : null,
     }),
-    [featuredSpeakerId, stableOrdered],
+    [canReorderParticipants, featuredSpeakerId, stableOrdered],
   );
 }
 

@@ -203,7 +203,11 @@ function MobileBrowserLayout({
       </div>
 
       <div className="h-24 shrink-0 flex gap-3 overflow-x-scroll no-scrollbar snap-x snap-mandatory scroll-smooth pr-3">
-        <div className="relative w-24 h-24 shrink-0 mobile-tile snap-start">
+        <div
+          className={`relative w-24 h-24 shrink-0 mobile-tile snap-start ${
+            activeSpeakerId === currentUserId ? "mobile-tile-active" : ""
+          }`}
+        >
           <video
             ref={localVideoRef}
             autoPlay
@@ -236,6 +240,13 @@ function MobileBrowserLayout({
           >
             <span className="mobile-name-pill px-1.5 py-0.5 text-[10px] text-[#fafafa] font-medium flex items-center gap-1">
               You
+              {activeSpeakerId === currentUserId && !isMuted && (
+                <span className="acm-voice-activity" aria-label="Speaking">
+                  <span />
+                  <span />
+                  <span />
+                </span>
+              )}
               {isMuted && <MicOff className="w-2.5 h-2.5 text-[#F95F4A]" />}
             </span>
           </div>
@@ -285,6 +296,13 @@ function MobileBrowserLayout({
             >
               <span className="mobile-name-pill px-1.5 py-0.5 text-[10px] text-[#fafafa] font-medium truncate max-w-full flex items-center gap-1">
                 {getDisplayName(participant.userId).split(" ")[0]}
+                {participant.userId === activeSpeakerId && !participant.isMuted && (
+                  <span className="acm-voice-activity" aria-label="Speaking">
+                    <span />
+                    <span />
+                    <span />
+                  </span>
+                )}
                 {participant.isMuted && (
                   <MicOff className="w-2.5 h-2.5 text-[#F95F4A]" />
                 )}

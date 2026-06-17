@@ -279,6 +279,7 @@ function MobileGridLayout({
     {
       promoteDelayMs: MOBILE_ROOM_TILING_PROMOTE_DELAY_MS,
       minSwitchIntervalMs: MOBILE_ROOM_TILING_MIN_SWITCH_INTERVAL_MS,
+      minParticipantsForReorder: MAX_MOBILE_VISIBLE_TILES,
     },
   );
 
@@ -1116,6 +1117,7 @@ function LocalTile({
       <TileLabel
         displayName={label}
         isMuted={isMuted}
+        isActiveSpeaker={isActiveSpeaker}
         suffix="You"
         title={displayName}
         variant={variant}
@@ -1212,6 +1214,7 @@ const ParticipantTile = memo(function ParticipantTile({
       <TileLabel
         displayName={label}
         isMuted={participant.isMuted}
+        isActiveSpeaker={isActiveSpeaker}
         title={displayName}
         variant={variant}
       />
@@ -1284,12 +1287,14 @@ function TileLabel({
   title,
   suffix,
   isMuted,
+  isActiveSpeaker,
   variant,
 }: {
   displayName: string;
   title: string;
   suffix?: string;
   isMuted: boolean;
+  isActiveSpeaker: boolean;
   variant: TileVariant;
 }) {
   const iconSize = variant === "rail" ? "h-3 w-3" : "h-3.5 w-3.5";
@@ -1309,6 +1314,13 @@ function TileLabel({
         {suffix ? (
           <span className="shrink-0 text-[11px] font-medium text-[#F95F4A]">
             {suffix}
+          </span>
+        ) : null}
+        {isActiveSpeaker && !isMuted ? (
+          <span className="acm-voice-activity" aria-label="Speaking">
+            <span />
+            <span />
+            <span />
           </span>
         ) : null}
         {isMuted ? <MicOff className={`${iconSize} shrink-0 text-[#F95F4A]`} /> : null}

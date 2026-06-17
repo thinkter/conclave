@@ -196,6 +196,13 @@ function MobileParticipantVideo({
             >
               {displayLabel}
             </span>
+            {isActiveSpeaker && !participant.isMuted && (
+              <span className="acm-voice-activity" aria-label="Speaking">
+                <span />
+                <span />
+                <span />
+              </span>
+            )}
             {participant.isMuted && (
               <MicOff className="w-2.5 h-2.5 text-[#F95F4A] shrink-0" />
             )}

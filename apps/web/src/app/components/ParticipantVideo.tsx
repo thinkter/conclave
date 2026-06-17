@@ -251,6 +251,13 @@ function ParticipantVideo({
         >
           {displayLabel}
         </span>
+        {isActiveSpeaker && !participant.isMuted && (
+          <span className="acm-voice-activity" aria-label="Speaking">
+            <span />
+            <span />
+            <span />
+          </span>
+        )}
         {participant.isMuted && <MicOff className="w-3 h-3 text-[#F95F4A] shrink-0" />}
       </div>
       {onTogglePin && (

@@ -219,6 +219,13 @@ function PresentationLayout({
               {localDisplayName}
             </span>
             <span className="text-[11px] font-medium text-[#F95F4A]">You</span>
+            {isLocalActiveSpeaker && !isMuted ? (
+              <span className="acm-voice-activity" aria-label="Speaking">
+                <span />
+                <span />
+                <span />
+              </span>
+            ) : null}
             {isMuted ? (
               <MicOff size={14} strokeWidth={1.75} className="shrink-0 text-[#F95F4A]" />
             ) : (

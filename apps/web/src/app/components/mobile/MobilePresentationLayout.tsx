@@ -188,7 +188,11 @@ function MobilePresentationLayout({
       <div className="relative h-24 shrink-0">
         <div className="absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-[#0a0a0b] to-transparent z-10 pointer-events-none rounded-r-2xl" />
         <div className="h-full flex gap-3 overflow-x-scroll no-scrollbar snap-x snap-mandatory scroll-smooth pr-3">
-        <div className="relative w-24 h-24 shrink-0 mobile-tile snap-start">
+        <div
+          className={`relative w-24 h-24 shrink-0 mobile-tile snap-start ${
+            activeSpeakerId === currentUserId ? "mobile-tile-active" : ""
+          }`}
+        >
           <video
             ref={localVideoRef}
             autoPlay
@@ -221,6 +225,13 @@ function MobilePresentationLayout({
           >
             <span className="mobile-name-pill px-1.5 py-0.5 text-[10px] text-[#fafafa] font-medium flex items-center gap-1">
               You
+              {activeSpeakerId === currentUserId && !isMuted && (
+                <span className="acm-voice-activity" aria-label="Speaking">
+                  <span />
+                  <span />
+                  <span />
+                </span>
+              )}
               {isMuted && <MicOff className="w-2.5 h-2.5 text-[#F95F4A]" />}
             </span>
           </div>
@@ -270,6 +281,13 @@ function MobilePresentationLayout({
             >
               <span className="mobile-name-pill px-1.5 py-0.5 text-[10px] text-[#fafafa] font-medium truncate max-w-full flex items-center gap-1">
                 {truncateDisplayName(getDisplayName(participant.userId), 10)}
+                {participant.userId === activeSpeakerId && !participant.isMuted && (
+                  <span className="acm-voice-activity" aria-label="Speaking">
+                    <span />
+                    <span />
+                    <span />
+                  </span>
+                )}
                 {participant.isMuted && <MicOff className="w-2.5 h-2.5 text-[#F95F4A]" />}
               </span>
             </div>
