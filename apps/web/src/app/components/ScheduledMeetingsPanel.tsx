@@ -42,6 +42,13 @@ const readError = async (response: Response): Promise<string> => {
   return data?.error || response.statusText || "Request failed";
 };
 
+const STATUS_LABELS: Record<string, string> = {
+  scheduled: "Scheduled",
+  live: "Live",
+  ended: "Ended",
+  cancelled: "Cancelled",
+};
+
 const formatTime = (timestamp: number): string =>
   new Date(timestamp).toLocaleString(undefined, {
     month: "short",
@@ -59,7 +66,7 @@ function ScheduledMeetingsPanel({ isSignedIn }: ScheduledMeetingsPanelProps) {
   const [error, setError] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [activeTab, setActiveTab] = useState<"upcoming" | "past">("upcoming");
-  const [title, setTitle] = useState("Team sync");
+  const [title, setTitle] = useState("");
   const [startInput, setStartInput] = useState(getDefaultStartInput);
   const [durationMinutes, setDurationMinutes] = useState("60");
   const [roomCode, setRoomCode] = useState("");
@@ -155,7 +162,7 @@ function ScheduledMeetingsPanel({ isSignedIn }: ScheduledMeetingsPanelProps) {
       } else {
         await refreshMeetings();
       }
-      setTitle("Team sync");
+      setTitle("");
       setStartInput(getDefaultStartInput());
       setDurationMinutes("60");
       setRoomCode("");
@@ -246,8 +253,8 @@ function ScheduledMeetingsPanel({ isSignedIn }: ScheduledMeetingsPanelProps) {
           <h2 className="truncate text-[15px] font-medium text-[#fafafa]">
             Your meetings
           </h2>
-          <p className="mt-0.5 text-[12px] text-[#fafafa]/45">
-            Schedule and reopen rooms from your account.
+          <p className="mt-0.5 text-[12px] text-[#fafafa]/60">
+            Schedule rooms and reopen them anytime.
           </p>
         </div>
         <button
@@ -286,7 +293,7 @@ function ScheduledMeetingsPanel({ isSignedIn }: ScheduledMeetingsPanelProps) {
         <input
           value={roomCode}
           onChange={(event) => setRoomCode(event.target.value)}
-          placeholder="Custom code optional"
+          placeholder="Custom code (optional)"
           className={`${INPUT} col-span-2`}
         />
         <button
@@ -359,7 +366,7 @@ function ScheduledMeetingsPanel({ isSignedIn }: ScheduledMeetingsPanelProps) {
                           : "bg-[#F95F4A]/15 text-[#ff9a8c]"
                     }`}
                   >
-                    {meeting.status}
+                    {STATUS_LABELS[meeting.status] ?? meeting.status}
                   </span>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">

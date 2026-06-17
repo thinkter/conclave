@@ -632,50 +632,22 @@ function MobileJoinScreen({
 
   if (phase === "welcome") {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center px-6 bg-[#0a0a0b] safe-area-pt relative overflow-hidden">
-        <div className="absolute inset-0 acm-bg-radial pointer-events-none" />
-        <div className="absolute inset-0 acm-bg-dot-grid pointer-events-none" />
-        <div className="relative z-10 text-center mb-8">
-          <div
-            className="text-xl text-[#fafafa]/56 mb-2"
+      <div className="flex-1 flex flex-col items-center justify-center px-6 bg-[#0a0a0b] safe-area-pt">
+        <div className="relative z-10 text-center mb-10">
+          <h1
+            className="text-5xl text-[#fafafa]"
             style={{ fontFamily: "'PolySans Bulky Wide', sans-serif" }}
           >
-            welcome to
-          </div>
-          <div className="relative inline-block">
-            <span
-              className="absolute -left-8 top-1/2 -translate-y-1/2 text-[#F95F4A]/40 text-3xl"
-              style={{ fontFamily: "'PolySans Trial', sans-serif" }}
-            >
-              [
-            </span>
-            <h1
-              className="text-5xl text-[#fafafa]"
-              style={{ fontFamily: "'PolySans Bulky Wide', sans-serif" }}
-            >
-              c0nclav3
-            </h1>
-            <span
-              className="absolute -right-8 top-1/2 -translate-y-1/2 text-[#F95F4A]/40 text-3xl"
-              style={{ fontFamily: "'PolySans Trial', sans-serif" }}
-            >
-              ]
-            </span>
-          </div>
+            Conclave
+          </h1>
         </div>
-        <p
-          className="relative z-10 text-sm text-[#fafafa]/30 mb-10 text-center max-w-[320px]"
-          style={{ fontFamily: "'PolySans Trial', sans-serif" }}
-        >
-          Video conferencing for meetings, webinars, and collaboration
-        </p>
 
         <button
           onClick={() => setManualPhase("auth")}
           className="relative z-10 group flex items-center gap-3 rounded-full bg-[#F95F4A] px-8 py-3 text-sm font-medium text-white transition-colors active:scale-95 hover:bg-[#e8553f]"
           style={{ fontFamily: "'PolySans Trial', sans-serif" }}
         >
-          <span>Let's go</span>
+          <span>Get started</span>
           <ArrowRight className="w-4 h-4" />
         </button>
       </div>
@@ -684,9 +656,7 @@ function MobileJoinScreen({
 
   if (phase === "auth") {
     return (
-      <div className="flex-1 flex flex-col px-6 py-8 bg-[#0a0a0b] safe-area-pt relative overflow-hidden">
-        <div className="absolute inset-0 acm-bg-radial pointer-events-none" />
-        <div className="absolute inset-0 acm-bg-dot-grid pointer-events-none" />
+      <div className="flex-1 flex flex-col px-6 py-8 bg-[#0a0a0b] safe-area-pt">
         <button
           onClick={() => setManualPhase("welcome")}
           className="relative z-10 mb-8 self-start mobile-glass-soft mobile-pill px-3 py-1 text-[12px] font-medium text-[#fafafa]/75"
@@ -697,24 +667,18 @@ function MobileJoinScreen({
 
         <div className="relative z-10 flex-1 flex flex-col justify-center">
           <h2
-            className="text-2xl text-[#fafafa] mb-2 text-center"
+            className="text-2xl text-[#fafafa] mb-8 text-center"
             style={{ fontFamily: "'PolySans Bulky Wide', sans-serif" }}
           >
             Join
           </h2>
-          <p
-            className="text-sm text-[#fafafa]/56 text-center mb-8"
-            style={{ fontFamily: "'PolySans Trial', sans-serif" }}
-          >
-            Choose how to continue
-          </p>
 
           <a
             href={getSignInHref()}
             className="mb-4 w-full flex items-center justify-center gap-3 px-4 py-3 bg-[#F95F4A] text-white text-sm rounded-full hover:bg-[#e8553f] transition-colors"
             style={{ fontFamily: "'PolySans Trial', sans-serif" }}
           >
-            Authenticate
+            Sign in
             <ArrowRight className="w-4 h-4" />
           </a>
 
@@ -755,8 +719,6 @@ function MobileJoinScreen({
 
   return (
     <div className="flex-1 flex flex-col bg-[#0a0a0b] safe-area-pt overflow-hidden relative">
-      <div className="absolute inset-0 acm-bg-radial pointer-events-none" />
-      <div className="absolute inset-0 acm-bg-dot-grid pointer-events-none" />
       <div className="relative flex-1 px-4 pt-3 pb-36 flex flex-col min-h-0">
         <div className="relative flex-1 rounded-[28px] border border-[#fafafa]/10 bg-[#131316] overflow-hidden">
           {isCameraOn && previewStream ? (
@@ -1036,7 +998,7 @@ function MobileJoinScreen({
                   onChange={(e) =>
                     setCustomRoomCode(sanitizeRoomCodeInput(e.target.value))
                   }
-                  placeholder="custom code or leave blank"
+                  placeholder="Custom code (optional)"
                   maxLength={ROOM_CODE_MAX_LENGTH}
                   disabled={isLoading}
                   autoCapitalize="none"
@@ -1125,6 +1087,7 @@ function MobileJoinScreen({
           activeCount={activeVideoEffectsCount}
           cameraPermissionBlocked={isCameraPermissionBlocked}
           showFilters={!isCameraPermissionBlocked}
+          onToggleCamera={toggleCamera}
           onClose={() => setIsEffectsOpen(false)}
         />
       )}

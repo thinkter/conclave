@@ -54,10 +54,12 @@ function MobileBrowserLayout({
   const [navInput, setNavInput] = useState(browserUrl);
   const [navError, setNavError] = useState<string | null>(null);
 
+  // Reveal on the iframe's own `load` event; the timer is only a fallback so a
+  // frame that never loads still resolves instead of spinning forever.
   useEffect(() => {
     setIsReady(false);
     if (!noVncUrl) return;
-    const timer = setTimeout(() => setIsReady(true), 3000);
+    const timer = setTimeout(() => setIsReady(true), 8000);
     return () => clearTimeout(timer);
   }, [noVncUrl]);
 
@@ -157,21 +159,22 @@ function MobileBrowserLayout({
         )}
 
         <div className="flex-1 min-h-0 relative bg-black">
-          {isReady ? (
-            <iframe
-              src={resolvedNoVncUrl}
-              className="absolute inset-0 w-full h-full border-0"
-              allow="clipboard-read; clipboard-write"
-              title="Shared Browser"
-            />
-          ) : (
+          <iframe
+            src={resolvedNoVncUrl}
+            onLoad={() => setIsReady(true)}
+            className="absolute inset-0 w-full h-full border-0 transition-opacity duration-200"
+            style={{ opacity: isReady ? 1 : 0 }}
+            allow="clipboard-read; clipboard-write"
+            title="Shared Browser"
+          />
+          {!isReady && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-[#131316]">
               <div className="w-14 h-14 rounded-full bg-[#F95F4A]/10 flex items-center justify-center">
                 <Globe className="w-7 h-7 text-[#F95F4A] animate-pulse" />
               </div>
               <div className="flex items-center gap-2">
                 <Loader2 className="w-4 h-4 animate-spin text-[#fafafa]/66" />
-                <span className="text-sm text-[#fafafa]/56">Starting browser...</span>
+                <span className="text-sm text-[#fafafa]/56">Starting browser…</span>
               </div>
             </div>
           )}

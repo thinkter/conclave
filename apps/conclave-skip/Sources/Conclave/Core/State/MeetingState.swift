@@ -165,7 +165,10 @@ final class MeetingState {
     }
 
     func isRemoteParticipantUserId(_ id: String) -> Bool {
-        !id.isEmpty && !isLocalParticipantUserId(id) && !Self.isSystemUserId(id)
+        let normalized = id.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !normalized.isEmpty
+            && !isLocalParticipantUserId(normalized)
+            && !Self.isSystemUserId(normalized)
     }
 
     var sortedParticipants: [Participant] {
@@ -388,25 +391,27 @@ final class MeetingState {
     }
 
     func displayName(for id: String) -> String {
-        if isLocalParticipantUserId(id) {
+        let normalized = id.trimmingCharacters(in: .whitespacesAndNewlines)
+        if isLocalParticipantUserId(normalized) {
             return displayName.isEmpty ? "You" : displayName
         }
-        if let systemName = Self.systemDisplayName(for: id) {
+        if let systemName = Self.systemDisplayName(for: normalized) {
             return systemName
         }
-        return displayNames[id] ?? "Guest"
+        return displayNames[normalized] ?? "Guest"
     }
 
     func isHostUser(_ id: String) -> Bool {
+        let normalized = id.trimmingCharacters(in: .whitespacesAndNewlines)
         let localIds = [userId, sfuUserId].compactMap { $0 }
         if !hostUserIds.isEmpty {
-            return hostUserIds.contains(id)
-                || (isLocalParticipantUserId(id) && localIds.contains { hostUserIds.contains($0) })
+            return hostUserIds.contains(normalized)
+                || (isLocalParticipantUserId(normalized) && localIds.contains { hostUserIds.contains($0) })
         }
         if let hostUserId {
-            return hostUserId == id
-                || (isLocalParticipantUserId(id) && localIds.contains(hostUserId))
+            return hostUserId == normalized
+                || (isLocalParticipantUserId(normalized) && localIds.contains(hostUserId))
         }
-        return isAdmin && isLocalParticipantUserId(id)
+        return isAdmin && isLocalParticipantUserId(normalized)
     }
 }

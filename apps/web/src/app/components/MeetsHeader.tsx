@@ -4,30 +4,10 @@ import Image from "next/image";
 import { memo } from "react";
 
 interface MeetsHeaderProps {
+  /** Pre-join only: once joined the in-meeting chrome takes over and this
+   * renders nothing. Account/device/name controls live on the JoinScreen
+   * preview tile, so the header is just a quiet brand mark. */
   isJoined: boolean;
-  isAdmin: boolean;
-  roomId: string;
-  isMirrorCamera: boolean;
-  isVideoSettingsOpen: boolean;
-  onToggleVideoSettings: () => void;
-  onToggleMirror: () => void;
-  isCameraOff: boolean;
-  displayNameInput: string;
-  displayNameStatus: { type: "success" | "error"; message: string } | null;
-  isDisplayNameUpdating: boolean;
-  canUpdateDisplayName: boolean;
-  onDisplayNameInputChange: (value: string) => void;
-  onDisplayNameSubmit: () => void;
-  selectedAudioInputDeviceId?: string;
-  selectedAudioOutputDeviceId?: string;
-  selectedVideoInputDeviceId?: string;
-  onAudioInputDeviceChange: (deviceId: string) => void;
-  onAudioOutputDeviceChange: (deviceId: string) => void;
-  onVideoInputDeviceChange: (deviceId: string) => void;
-  showShareLink?: boolean;
-  canSignOut: boolean;
-  isSigningOut: boolean;
-  onSignOut: () => void;
 }
 
 function MeetsHeader({ isJoined }: MeetsHeaderProps) {
@@ -41,7 +21,7 @@ function MeetsHeader({ isJoined }: MeetsHeaderProps) {
   return (
     <header className="fixed left-0 right-0 top-0 z-[100] pointer-events-none">
       <div className="flex items-center px-5 py-4 pointer-events-auto">
-        <a href="/" className="flex items-center" aria-label="ACM-VIT home">
+        <a href="/" className="flex items-center" aria-label="Conclave home">
           <Image
             src="/assets/acm_topleft.svg"
             alt="ACM-VIT"

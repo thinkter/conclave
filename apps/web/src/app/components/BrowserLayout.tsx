@@ -63,13 +63,16 @@ function BrowserLayout({
     const [navInput, setNavInput] = useState(browserUrl);
     const [navError, setNavError] = useState<string | null>(null);
 
+    // The shared browser frame reveals itself on its own `load` event. The
+    // timer is only a fallback so a frame that never fires `load` (e.g. blocked
+    // by the network) still resolves instead of spinning forever.
     useEffect(() => {
         setIsReady(false);
         if (!noVncUrl) return;
 
         const timer = setTimeout(() => {
             setIsReady(true);
-        }, 3000);
+        }, 8000);
         return () => clearTimeout(timer);
     }, [noVncUrl]);
 
@@ -242,42 +245,49 @@ function BrowserLayout({
                                 className="absolute inset-0 w-full h-full"
                                 style={{ objectFit: "fill", pointerEvents: "none" }}
                             />
-                            {isReady && (
-                                <iframe
-                                    src={`${resolvedNoVncUrl}${resolvedNoVncUrl.includes("?") ? "&" : "?"}autoconnect=true&resize=scale&quality=0&compression=9`}
-                                    className="absolute inset-0 w-full h-full border-0"
-                                    style={{ opacity: 0, pointerEvents: "auto" }}
-                                    allow="clipboard-read; clipboard-write"
-                                    title="Shared Browser Input"
-                                />
-                            )}
+                            <iframe
+                                src={`${resolvedNoVncUrl}${resolvedNoVncUrl.includes("?") ? "&" : "?"}autoconnect=true&resize=scale&quality=0&compression=9`}
+                                onLoad={() => setIsReady(true)}
+                                className="absolute inset-0 w-full h-full border-0"
+                                style={{ opacity: 0, pointerEvents: "auto" }}
+                                allow="clipboard-read; clipboard-write"
+                                title="Shared Browser Input"
+                            />
                         </div>
-                    ) : isReady ? (
-                        <iframe
-                            src={resolvedNoVncUrl}
-                            className="w-full h-full border-0"
-                            allow="clipboard-read; clipboard-write"
-                            title="Shared Browser"
-                        />
                     ) : (
-                        <div className="flex flex-col items-center justify-center gap-3">
-                            <div
-                                className="flex h-16 w-16 items-center justify-center rounded-full"
-                                style={{ backgroundColor: color.accentSoft }}
-                            >
-                                <Globe size={28} strokeWidth={1.75} style={{ color: color.accent }} />
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <Loader2
-                                    size={18}
-                                    strokeWidth={1.75}
-                                    className="animate-spin"
-                                    style={{ color: color.textMuted }}
-                                />
-                                <span className="text-[14px]" style={{ color: color.textMuted }}>
-                                    Starting browser
-                                </span>
-                            </div>
+                        <div className="relative h-full w-full">
+                            <iframe
+                                src={resolvedNoVncUrl}
+                                onLoad={() => setIsReady(true)}
+                                className="h-full w-full border-0 transition-opacity duration-200"
+                                style={{ opacity: isReady ? 1 : 0 }}
+                                allow="clipboard-read; clipboard-write"
+                                title="Shared Browser"
+                            />
+                            {!isReady && (
+                                <div
+                                    className="absolute inset-0 flex flex-col items-center justify-center gap-3"
+                                    style={{ backgroundColor: color.surface }}
+                                >
+                                    <div
+                                        className="flex h-16 w-16 items-center justify-center rounded-full"
+                                        style={{ backgroundColor: color.accentSoft }}
+                                    >
+                                        <Globe size={28} strokeWidth={1.75} style={{ color: color.accent }} />
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <Loader2
+                                            size={18}
+                                            strokeWidth={1.75}
+                                            className="animate-spin"
+                                            style={{ color: color.textMuted }}
+                                        />
+                                        <span className="text-[14px]" style={{ color: color.textMuted }}>
+                                            Starting browser
+                                        </span>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>

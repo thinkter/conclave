@@ -32,12 +32,12 @@ export default function ConnectionBanner({
   const isReconnecting = state === "reconnecting" || showServerRestartNotice;
   const isTerminal = !isOffline && !isReconnecting;
   const message = isOffline
-    ? "You’re offline. Reconnect your internet to restore call audio and video."
+    ? "You’re offline. Check your internet connection."
     : showServerRestartNotice
       ? serverRestartNotice
       : isReconnecting
-        ? "Reconnecting… we’ll keep trying."
-        : "Connection lost. Refresh to rejoin.";
+        ? "Reconnecting…"
+        : "Connection lost.";
 
   // accent for in-progress recovery, danger for hard failures.
   const tone = isReconnecting

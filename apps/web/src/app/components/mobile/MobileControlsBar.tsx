@@ -23,8 +23,11 @@ import {
   WandSparkles,
   X,
   ShieldBan,
+  type LucideIcon,
 } from "lucide-react";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
+import { SwitchRow } from "@conclave/ui-tokens/web";
 import type {
   MeetingConfigSnapshot,
   MeetingUpdateRequest,
@@ -38,6 +41,83 @@ import { normalizeBrowserUrl } from "../../lib/utils";
 interface MediaDeviceOption {
   deviceId: string;
   label: string;
+}
+
+type MoreRowTone = "accent" | "warning";
+
+/** Clean sheet row: a plain icon + label + optional trailing accessory. No
+ * boxed-icon chrome — the old per-row icon tiles made the sheet read as noise. */
+function MoreRow({
+  icon: Icon,
+  label,
+  onClick,
+  disabled = false,
+  active = false,
+  tone = "accent",
+  trailing,
+  ariaLabel,
+  ariaPressed,
+  dataAction,
+  dataActionState,
+}: {
+  icon: LucideIcon;
+  label: string;
+  onClick?: () => void;
+  disabled?: boolean;
+  active?: boolean;
+  tone?: MoreRowTone;
+  trailing?: ReactNode;
+  ariaLabel?: string;
+  ariaPressed?: boolean;
+  dataAction?: string;
+  dataActionState?: string;
+}) {
+  const activeColor = tone === "warning" ? "text-amber-400" : "text-[#F95F4A]";
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      aria-label={ariaLabel}
+      aria-pressed={ariaPressed}
+      data-mobile-more-action={dataAction}
+      data-mobile-more-action-state={dataActionState}
+      onClick={onClick}
+      disabled={disabled}
+      className="flex w-full items-center gap-3.5 rounded-xl px-3 py-3 text-left text-[#fafafa] transition-colors duration-150 hover:bg-[#fafafa]/5 active:bg-[#fafafa]/10 disabled:opacity-30"
+    >
+      <Icon
+        className={`h-[19px] w-[19px] shrink-0 ${active ? activeColor : "text-[#fafafa]/70"}`}
+        strokeWidth={1.75}
+      />
+      <span className="flex-1 text-[15px] font-medium">{label}</span>
+      {trailing}
+    </button>
+  );
+}
+
+/** Non-interactive switch pill for use inside a row that is itself the toggle. */
+function MiniSwitch({ on, tone = "accent" }: { on: boolean; tone?: MoreRowTone }) {
+  const fill = tone === "warning" ? "#fbbf24" : "#F95F4A";
+  return (
+    <span
+      aria-hidden
+      className="relative inline-flex h-[22px] w-[38px] shrink-0 items-center rounded-full transition-colors duration-[120ms]"
+      style={{ backgroundColor: on ? fill : "rgba(250,250,250,0.16)" }}
+    >
+      <span
+        className="absolute h-[16px] w-[16px] rounded-full bg-white transition-transform duration-[120ms]"
+        style={{ transform: on ? "translateX(19px)" : "translateX(3px)" }}
+      />
+    </span>
+  );
+}
+
+function MoreSectionLabel({ children }: { children: ReactNode }) {
+  return (
+    <p className="px-3 pb-1 pt-3 text-[11px] font-medium uppercase tracking-[0.08em] text-[#fafafa]/45">
+      {children}
+    </p>
+  );
 }
 
 interface MobileControlsBarProps {
@@ -592,7 +672,7 @@ function MobileControlsBar({
       </div>
 
       <div
-        className="mobile-sheet-root z-40"
+        className="mobile-sheet-root z-50"
         data-state={isMoreMenuOpen ? "open" : "closed"}
         data-mobile-more-menu-state={isMoreMenuOpen ? "open" : "closed"}
         data-mobile-video-effects-state={videoEffectsStatusLabel}
@@ -609,7 +689,7 @@ function MobileControlsBar({
         />
         <div className="mobile-sheet-panel">
           <div
-            className="mobile-sheet mobile-sheet-scroll w-full p-4 pb-6 max-h-[75vh] touch-pan-y"
+            className="mobile-sheet mobile-sheet-scroll w-full p-4 pb-[calc(24px+env(safe-area-inset-bottom))] max-h-[80vh] touch-pan-y"
             style={{ fontFamily: "'PolySans Trial', sans-serif" }}
             role="dialog"
             aria-modal="true"
@@ -626,145 +706,100 @@ function MobileControlsBar({
               <X className="h-3.5 w-3.5" />
             </button>
           </div>
-          <button
-            type="button"
-            role="menuitem"
-            aria-label={videoEffectsAriaLabel}
-            aria-pressed={isVideoEffectsOpen || hasActiveVideoEffects}
-            data-mobile-more-action="effects"
-            data-mobile-more-action-state={videoEffectsStatusLabel}
+          <MoreRow
+            icon={WandSparkles}
+            label="Backgrounds and effects"
+            ariaLabel={videoEffectsAriaLabel}
+            ariaPressed={isVideoEffectsOpen || hasActiveVideoEffects}
+            dataAction="effects"
+            dataActionState={videoEffectsStatusLabel}
             onClick={handleVideoEffectsClick}
             disabled={!canOpenVideoEffects}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-transform duration-150 touch-feedback ${
-              !canOpenVideoEffects
-                ? "opacity-30"
-                : isVideoEffectsOpen || hasActiveVideoEffects
-                  ? "text-[#F95F4A]"
-                  : "text-[#fafafa]"
-            } hover:bg-[#fafafa]/5 active:bg-[#fafafa]/10`}
-          >
-            <div
-              className={`h-9 w-9 rounded-xl border border-white/5 flex items-center justify-center ${
-                isVideoEffectsOpen || hasActiveVideoEffects
-                  ? "bg-[#F95F4A]/20"
-                  : "bg-[#2b2b2b]"
-              }`}
-            >
-              <WandSparkles className="w-4.5 h-4.5" />
-            </div>
-            <span className="text-sm font-medium">
-              Backgrounds and effects
-            </span>
-            <span
-              className={`ml-auto text-[11px] ${
-                hasActiveVideoEffects
-                  ? "font-semibold text-[#F95F4A]"
-                  : "font-medium text-[#fafafa]/56"
-              }`}
-            >
-              {videoEffectsStatusLabel}
-            </span>
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            data-mobile-more-action="participants"
-            data-mobile-more-action-state={String(pendingUsersCount)}
+            active={isVideoEffectsOpen || hasActiveVideoEffects}
+            trailing={
+              <span
+                className={`text-[12px] ${
+                  hasActiveVideoEffects
+                    ? "font-semibold text-[#F95F4A]"
+                    : "font-medium text-[#fafafa]/56"
+                }`}
+              >
+                {videoEffectsStatusLabel}
+              </span>
+            }
+          />
+          <MoreRow
+            icon={Users}
+            label="Participants"
+            dataAction="participants"
+            dataActionState={String(pendingUsersCount)}
             onClick={() => {
               onToggleParticipants?.();
               setIsMoreMenuOpen(false);
             }}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-[#fafafa] hover:bg-[#fafafa]/5 active:bg-[#fafafa]/10 transition-transform duration-150 touch-feedback"
-          >
-            <div className="h-9 w-9 rounded-xl bg-[#2b2b2b] border border-white/5 flex items-center justify-center">
-              <Users className="w-4.5 h-4.5" />
-            </div>
-            <span className="text-sm font-medium">Participants</span>
-            {pendingUsersCount > 0 && (
-              <span className="ml-auto text-xs bg-[#F95F4A] text-white px-2 py-0.5 rounded-full font-bold">
-                {pendingUsersCount}
-              </span>
-            )}
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            data-mobile-more-action="settings"
-            data-mobile-more-action-state="available"
+            trailing={
+              pendingUsersCount > 0 ? (
+                <span className="rounded-full bg-[#F95F4A] px-2 py-0.5 text-xs font-bold text-white">
+                  {pendingUsersCount}
+                </span>
+              ) : undefined
+            }
+          />
+          <MoreRow
+            icon={Settings}
+            label="Settings"
+            dataAction="settings"
+            dataActionState="available"
             onClick={openSettingsSheet}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-[#fafafa] hover:bg-[#fafafa]/5 active:bg-[#fafafa]/10 transition-transform duration-150 touch-feedback"
-          >
-            <div className="h-9 w-9 rounded-xl bg-[#2b2b2b] border border-white/5 flex items-center justify-center">
-              <Settings className="w-4.5 h-4.5" />
-            </div>
-            <span className="text-sm font-medium">Settings</span>
-          </button>
-          <button
-              onClick={() => {
-                onToggleHandRaised();
-                setIsMoreMenuOpen(false);
-              }}
-              disabled={isGhostMode}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-transform duration-150 touch-feedback ${isGhostMode
-                  ? "opacity-30"
-                  : isHandRaised
-                    ? "text-amber-400"
-                    : "text-[#fafafa]"
-                } hover:bg-[#fafafa]/5 active:bg-[#fafafa]/10`}
-            >
-              <div
-                className={`h-9 w-9 rounded-xl border border-white/5 flex items-center justify-center ${
-                  isHandRaised ? "bg-amber-500/15" : "bg-[#2b2b2b]"
-                }`}
-              >
-                <Hand className="w-4.5 h-4.5" />
-              </div>
-              <span className="text-sm font-medium">{isHandRaised ? "Lower hand" : "Raise hand"}</span>
-            </button>
-            <button
-              onClick={() => {
-                onToggleScreenShare();
-                setIsMoreMenuOpen(false);
-              }}
-              disabled={isGhostMode || !canStartScreenShare}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-transform duration-150 touch-feedback ${isGhostMode || !canStartScreenShare
-                  ? "opacity-30"
-                  : isScreenSharing
-                    ? "text-[#F95F4A]"
-                    : "text-[#fafafa]"
-                } hover:bg-[#fafafa]/5 active:bg-[#fafafa]/10`}
-            >
-              <div
-                className={`h-9 w-9 rounded-xl border border-white/5 flex items-center justify-center ${
-                  isScreenSharing ? "bg-[#F95F4A]/20" : "bg-[#2b2b2b]"
-                }`}
-              >
-                <Monitor className="w-4.5 h-4.5" />
-              </div>
-              <span className="text-sm font-medium">{isScreenSharing ? "Stop sharing" : "Share screen"}</span>
-            </button>
+          />
+          <MoreRow
+            icon={Hand}
+            label="Raise hand"
+            tone="warning"
+            active={isHandRaised}
+            disabled={isGhostMode}
+            onClick={() => {
+              onToggleHandRaised();
+              setIsMoreMenuOpen(false);
+            }}
+            trailing={<MiniSwitch on={isHandRaised} tone="warning" />}
+          />
+          <MoreRow
+            icon={Monitor}
+            label="Share screen"
+            active={isScreenSharing}
+            disabled={isGhostMode || !canStartScreenShare}
+            onClick={() => {
+              onToggleScreenShare();
+              setIsMoreMenuOpen(false);
+            }}
+            trailing={<MiniSwitch on={isScreenSharing} />}
+          />
+            {isAdmin && <MoreSectionLabel>Host controls</MoreSectionLabel>}
             {showBrowserControls &&
               isAdmin &&
               (onLaunchBrowser || onNavigateBrowser || onCloseBrowser) && (
-              <button
+              <MoreRow
+                icon={Globe}
+                label="Shared browser"
+                active={isBrowserActive}
                 onClick={openBrowserSheet}
-                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-[#fafafa] hover:bg-[#fafafa]/5 active:bg-[#fafafa]/10 transition-transform duration-150 touch-feedback"
-              >
-                <div className="h-9 w-9 rounded-xl bg-[#2b2b2b] border border-white/5 flex items-center justify-center">
-                  <Globe className="w-4.5 h-4.5" />
-                </div>
-                <span className="text-sm font-medium">Shared browser</span>
-                <span
-                  className={`ml-auto text-[12px] font-medium ${
-                    isBrowserActive ? "text-emerald-300" : "text-[#fafafa]/56"
-                  }`}
-                >
-                  {isBrowserActive ? "Live" : "Off"}
-                </span>
-              </button>
+                trailing={
+                  <span
+                    className={`text-[12px] font-medium ${
+                      isBrowserActive ? "text-emerald-300" : "text-[#fafafa]/56"
+                    }`}
+                  >
+                    {isBrowserActive ? "Live" : "Off"}
+                  </span>
+                }
+              />
             )}
             {isAdmin && (onOpenWhiteboard || onCloseWhiteboard) && (
-              <button
+              <MoreRow
+                icon={Globe}
+                label="Whiteboard"
+                active={isWhiteboardActive}
                 onClick={() => {
                   if (isWhiteboardActive) {
                     onCloseWhiteboard?.();
@@ -773,28 +808,25 @@ function MobileControlsBar({
                   }
                   setIsMoreMenuOpen(false);
                 }}
-                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-[#fafafa] hover:bg-[#fafafa]/5 active:bg-[#fafafa]/10 transition-transform duration-150 touch-feedback"
-              >
-                <div className="h-9 w-9 rounded-xl bg-[#2b2b2b] border border-white/5 flex items-center justify-center">
-                  <Globe className="w-4.5 h-4.5" />
-                </div>
-                <span className="text-sm font-medium">
-                  {isWhiteboardActive ? "Close whiteboard" : "Open whiteboard"}
-                </span>
-                <span
-                  className={`ml-auto text-[12px] font-medium ${
-                    isWhiteboardActive ? "text-emerald-300" : "text-[#fafafa]/56"
-                  }`}
-                >
-                  {isWhiteboardActive ? "Live" : "Off"}
-                </span>
-              </button>
+                trailing={
+                  <span
+                    className={`text-[12px] font-medium ${
+                      isWhiteboardActive ? "text-emerald-300" : "text-[#fafafa]/56"
+                    }`}
+                  >
+                    {isWhiteboardActive ? "Live" : "Off"}
+                  </span>
+                }
+              />
             )}
             {/* Voice agent action hidden from the mobile web menu. */}
             {isAdmin &&
               isDevPlaygroundEnabled &&
               (onOpenDevPlayground || onCloseDevPlayground) && (
-              <button
+              <MoreRow
+                icon={Code2}
+                label="Dev playground"
+                active={isDevPlaygroundActive}
                 onClick={() => {
                   if (isDevPlaygroundActive) {
                     onCloseDevPlayground?.();
@@ -803,189 +835,105 @@ function MobileControlsBar({
                   }
                   setIsMoreMenuOpen(false);
                 }}
-                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-[#fafafa] hover:bg-[#fafafa]/5 active:bg-[#fafafa]/10 transition-transform duration-150 touch-feedback"
-              >
-                <div className="h-9 w-9 rounded-xl bg-[#2b2b2b] border border-white/5 flex items-center justify-center">
-                  <Code2 className="w-4.5 h-4.5" />
-                </div>
-                <span className="text-sm font-medium">
-                  {isDevPlaygroundActive
-                    ? "Close dev playground"
-                    : "Open dev playground"}
-                </span>
-                <span
-                  className={`ml-auto text-[12px] font-medium ${
-                    isDevPlaygroundActive
-                      ? "text-emerald-300"
-                      : "text-[#fafafa]/56"
-                  }`}
-                >
-                  {isDevPlaygroundActive ? "Live" : "Off"}
-                </span>
-              </button>
-            )}
-            {showBrowserControls &&
-              (hasBrowserAudio || isBrowserActive) &&
-              onToggleBrowserAudio && (
-              <button
-                onClick={() => {
-                  onToggleBrowserAudio();
-                  setIsMoreMenuOpen(false);
-                }}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-transform duration-150 touch-feedback ${
-                  isBrowserAudioMuted ? "text-[#F95F4A]" : "text-[#fafafa]"
-                } hover:bg-[#fafafa]/5 active:bg-[#fafafa]/10`}
-              >
-                <div
-                  className={`h-9 w-9 rounded-xl border border-white/5 flex items-center justify-center ${
-                    isBrowserAudioMuted ? "bg-[#F95F4A]/20" : "bg-[#2b2b2b]"
-                  }`}
-                >
-                  {isBrowserAudioMuted ? (
-                    <VolumeX className="w-4.5 h-4.5" />
-                  ) : (
-                    <Volume2 className="w-4.5 h-4.5" />
-                  )}
-                </div>
-                <span className="text-sm font-medium">Shared browser audio</span>
-                <span className="ml-auto text-[12px] font-medium text-[#fafafa]/56">
-                  {isBrowserAudioMuted ? "Muted" : "On"}
-                </span>
-              </button>
+                trailing={
+                  <span
+                    className={`text-[12px] font-medium ${
+                      isDevPlaygroundActive ? "text-emerald-300" : "text-[#fafafa]/56"
+                    }`}
+                  >
+                    {isDevPlaygroundActive ? "Live" : "Off"}
+                  </span>
+                }
+              />
             )}
             {isAdmin && onToggleAppsLock && (
-              <button
+              <MoreRow
+                icon={isAppsLocked ? Lock : LockOpen}
+                label="Lock whiteboard"
+                tone="warning"
+                active={isAppsLocked}
                 onClick={() => {
                   onToggleAppsLock();
                   setIsMoreMenuOpen(false);
                 }}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-transform duration-150 touch-feedback ${
-                  isAppsLocked ? "text-amber-400" : "text-[#fafafa]"
-                } hover:bg-[#fafafa]/5 active:bg-[#fafafa]/10`}
-              >
-                <div
-                  className={`h-9 w-9 rounded-xl border border-white/5 flex items-center justify-center ${
-                    isAppsLocked ? "bg-amber-500/20" : "bg-[#2b2b2b]"
-                  }`}
-                >
-                  {isAppsLocked ? <Lock className="w-4.5 h-4.5" /> : <LockOpen className="w-4.5 h-4.5" />}
-                </div>
-                <span className="text-sm font-medium">
-                  {isAppsLocked ? "Unlock whiteboard" : "Lock whiteboard"}
-                </span>
-              </button>
+                trailing={<MiniSwitch on={isAppsLocked} tone="warning" />}
+              />
             )}
             {isAdmin && (
-              <button
+              <MoreRow
+                icon={isRoomLocked ? Lock : LockOpen}
+                label="Lock meeting"
+                tone="warning"
+                active={isRoomLocked}
                 onClick={() => {
                   onToggleLock?.();
                   setIsMoreMenuOpen(false);
                 }}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-transform duration-150 touch-feedback ${isRoomLocked
-                    ? "text-amber-400"
-                    : "text-[#fafafa]"
-                  } hover:bg-[#fafafa]/5 active:bg-[#fafafa]/10`}
-              >
-                <div
-                  className={`h-9 w-9 rounded-xl border border-white/5 flex items-center justify-center ${
-                    isRoomLocked ? "bg-amber-500/20" : "bg-[#2b2b2b]"
-                  }`}
-                >
-                  {isRoomLocked ? (
-                    <Lock className="w-4.5 h-4.5" />
-                  ) : (
-                    <LockOpen className="w-4.5 h-4.5" />
-                  )}
-                </div>
-                <span className="text-sm font-medium">{isRoomLocked ? "Unlock meeting" : "Lock meeting"}</span>
-              </button>
+                trailing={<MiniSwitch on={isRoomLocked} tone="warning" />}
+              />
             )}
             {isAdmin && onToggleNoGuests && (
-              <button
+              <MoreRow
+                icon={ShieldBan}
+                label="Block guests"
+                tone="warning"
+                active={isNoGuests}
                 onClick={() => {
                   onToggleNoGuests();
                   setIsMoreMenuOpen(false);
                 }}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-transform duration-150 touch-feedback ${
-                  isNoGuests ? "text-amber-400" : "text-[#fafafa]"
-                } hover:bg-[#fafafa]/5 active:bg-[#fafafa]/10`}
-              >
-                <div
-                  className={`h-9 w-9 rounded-xl border border-white/5 flex items-center justify-center ${
-                    isNoGuests ? "bg-amber-500/20" : "bg-[#2b2b2b]"
-                  }`}
-                >
-                  <ShieldBan className="w-4.5 h-4.5" />
-                </div>
-                <span className="text-sm font-medium">
-                  {isNoGuests ? "Allow guests" : "Block guests"}
-                </span>
-              </button>
+                trailing={<MiniSwitch on={isNoGuests} tone="warning" />}
+              />
             )}
             {isAdmin && onToggleChatLock && (
-              <button
+              <MoreRow
+                icon={MessageSquareLock}
+                label="Allow chat"
+                active={!isChatLocked}
                 onClick={() => {
                   onToggleChatLock();
                   setIsMoreMenuOpen(false);
                 }}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-transform duration-150 touch-feedback ${isChatLocked
-                    ? "text-amber-400"
-                    : "text-[#fafafa]"
-                  } hover:bg-[#fafafa]/5 active:bg-[#fafafa]/10`}
-              >
-                <div
-                  className={`h-9 w-9 rounded-xl border border-white/5 flex items-center justify-center ${
-                    isChatLocked ? "bg-amber-500/20" : "bg-[#2b2b2b]"
-                  }`}
-                >
-                  <MessageSquareLock className="w-4.5 h-4.5" />
-                </div>
-                <span className="text-sm font-medium">{isChatLocked ? "Enable chat" : "Disable chat"}</span>
-              </button>
-            )}
-            {isAdmin && onToggleTtsDisabled && (
-              <button
-                onClick={() => {
-                  onToggleTtsDisabled();
-                  setIsMoreMenuOpen(false);
-                }}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-transform duration-150 touch-feedback ${
-                  isTtsDisabled ? "text-amber-400" : "text-[#fafafa]"
-                } hover:bg-[#fafafa]/5 active:bg-[#fafafa]/10`}
-              >
-                <div
-                  className={`h-9 w-9 rounded-xl border border-white/5 flex items-center justify-center ${
-                    isTtsDisabled ? "bg-amber-500/20" : "bg-[#2b2b2b]"
-                  }`}
-                >
-                  <VolumeX className="w-4.5 h-4.5" />
-                </div>
-                <span className="text-sm font-medium">
-                  {isTtsDisabled ? "Enable TTS" : "Disable TTS"}
-                </span>
-              </button>
+                trailing={<MiniSwitch on={!isChatLocked} />}
+              />
             )}
             {isAdmin && onToggleDmEnabled && (
-              <button
+              <MoreRow
+                icon={MessageSquare}
+                label="Direct messages"
+                active={isDmEnabled}
                 onClick={() => {
                   onToggleDmEnabled();
                   setIsMoreMenuOpen(false);
                 }}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-transform duration-150 touch-feedback ${
-                  isDmEnabled ? "text-amber-300" : "text-[#fafafa]"
-                } hover:bg-[#fafafa]/5 active:bg-[#fafafa]/10`}
-              >
-                <div
-                  className={`h-9 w-9 rounded-xl border border-white/5 flex items-center justify-center ${
-                    isDmEnabled ? "bg-amber-500/20" : "bg-[#2b2b2b]"
-                  }`}
-                >
-                  <MessageSquare className="w-4.5 h-4.5" />
-                </div>
-                <span className="text-sm font-medium">
-                  {isDmEnabled ? "Disable DMs" : "Enable DMs"}
-                </span>
-              </button>
+                trailing={<MiniSwitch on={isDmEnabled} />}
+              />
+            )}
+            {isAdmin && onToggleTtsDisabled && (
+              <MoreRow
+                icon={Volume2}
+                label="Read messages aloud"
+                active={!isTtsDisabled}
+                onClick={() => {
+                  onToggleTtsDisabled();
+                  setIsMoreMenuOpen(false);
+                }}
+                trailing={<MiniSwitch on={!isTtsDisabled} />}
+              />
+            )}
+            {showBrowserControls &&
+              (hasBrowserAudio || isBrowserActive) &&
+              onToggleBrowserAudio && (
+              <MoreRow
+                icon={isBrowserAudioMuted ? VolumeX : Volume2}
+                label="Shared browser audio"
+                active={!isBrowserAudioMuted}
+                onClick={() => {
+                  onToggleBrowserAudio();
+                  setIsMoreMenuOpen(false);
+                }}
+                trailing={<MiniSwitch on={!isBrowserAudioMuted} />}
+              />
             )}
           </div>
         </div>
@@ -1024,9 +972,6 @@ function MobileControlsBar({
               <h2 className="text-lg font-medium text-[#fafafa]">
                 Meeting settings
               </h2>
-              <p className="mt-1 text-xs text-[#fafafa]/55">
-                Audio, access, and webinar controls.
-              </p>
             </div>
 
             <div className="mt-5 space-y-5">
@@ -1207,16 +1152,20 @@ function MobileControlsBar({
                         Webinar
                       </h3>
                       {webinarRole ? (
-                        <span className="text-xs text-[#fafafa]/75">
-                          Role: {webinarRole}
+                        <span className="text-xs capitalize text-[#fafafa]/75">
+                          {webinarRole}
                         </span>
                       ) : null}
                     </div>
 
-                    <div className="flex flex-col gap-2">
-                      <button
-                        type="button"
-                        onClick={() =>
+                    <div className="-mx-2 flex flex-col">
+                      <SwitchRow
+                        label="Webinar mode"
+                        tone="success"
+                        checked={Boolean(webinarConfig?.enabled)}
+                        disabled={isWebinarWorking || !onUpdateWebinarConfig}
+                        className="rounded-lg"
+                        onChange={() =>
                           void runWebinarTask(
                             async () => {
                               if (!onUpdateWebinarConfig) {
@@ -1236,15 +1185,18 @@ function MobileControlsBar({
                             },
                           )
                         }
-                        disabled={isWebinarWorking || !onUpdateWebinarConfig}
-                        className="w-full rounded-lg border border-white/10 px-3 py-2 text-left text-sm text-[#fafafa] transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
-                      >
-                        Webinar: {webinarConfig?.enabled ? "On" : "Off"}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() =>
+                      />
+                      <SwitchRow
+                        label="Public access"
+                        tone="success"
+                        checked={Boolean(webinarConfig?.publicAccess)}
+                        disabled={
+                          isWebinarWorking ||
+                          !onUpdateWebinarConfig ||
+                          !webinarConfig?.enabled
+                        }
+                        className="rounded-lg"
+                        onChange={() =>
                           void runWebinarTask(
                             async () => {
                               if (!onUpdateWebinarConfig) {
@@ -1264,19 +1216,18 @@ function MobileControlsBar({
                             },
                           )
                         }
+                      />
+                      <SwitchRow
+                        label="Lock webinar"
+                        tone="warning"
+                        checked={Boolean(webinarConfig?.locked)}
                         disabled={
                           isWebinarWorking ||
                           !onUpdateWebinarConfig ||
                           !webinarConfig?.enabled
                         }
-                        className="w-full rounded-lg border border-white/10 px-3 py-2 text-left text-sm text-[#fafafa] transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
-                      >
-                        Public access: {webinarConfig?.publicAccess ? "On" : "Off"}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() =>
+                        className="rounded-lg"
+                        onChange={() =>
                           void runWebinarTask(
                             async () => {
                               if (!onUpdateWebinarConfig) {
@@ -1296,15 +1247,7 @@ function MobileControlsBar({
                             },
                           )
                         }
-                        disabled={
-                          isWebinarWorking ||
-                          !onUpdateWebinarConfig ||
-                          !webinarConfig?.enabled
-                        }
-                        className="w-full rounded-lg border border-white/10 px-3 py-2 text-left text-sm text-[#fafafa] transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
-                      >
-                        Webinar lock: {webinarConfig?.locked ? "On" : "Off"}
-                      </button>
+                      />
                     </div>
 
                     <p className="text-xs text-[#fafafa]/75">

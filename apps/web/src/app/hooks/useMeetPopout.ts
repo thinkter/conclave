@@ -545,7 +545,7 @@ export function useMeetPopout({
       style.textContent = POPOUT_CSS;
       pipWin.document.head.appendChild(style);
 
-      pipWin.document.title = "Conclave — Mini Meet";
+      pipWin.document.title = "Conclave · Mini Meet";
 
       pipWin.document.body.innerHTML = `
         <div class="popout-root">

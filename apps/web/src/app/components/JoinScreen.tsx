@@ -1,24 +1,22 @@
 "use client";
 
 import {
-  Blend,
-  CircleHelp,
   Loader2,
-  MessageSquareWarning,
-  MoreVertical,
-  Settings,
   WandSparkles,
   Video,
   VideoOff,
   Mic,
   MicOff,
   Plus,
-  ArrowRight,
   Volume2,
   Ghost,
 } from "lucide-react";
 import { memo, useEffect, useRef, useState } from "react";
-import type { Dispatch, SetStateAction } from "react";
+import type {
+  Dispatch,
+  SetStateAction,
+  PointerEvent as ReactPointerEvent,
+} from "react";
 import { Avatar } from "@conclave/ui-tokens/web";
 import { signOut, useSession } from "@/lib/auth-client";
 import type { RoomInfo } from "@/lib/sfu-types";
@@ -117,11 +115,11 @@ interface JoinScreenProps {
 // screen with the mic/cam self-preview on the left and the join actions on the
 // right. The whole 3-phase welcome/auth/join flow was ripped out for this.
 const FIELD =
-  "w-full rounded-xl border border-white/12 bg-[#131316] px-4 h-12 text-[15px] text-[#fafafa] placeholder:text-[#fafafa]/35 transition-[border-color] duration-150 focus:border-[#F95F4A] focus:outline-none disabled:opacity-50";
+  "w-full rounded-xl border border-white/10 bg-white/[0.03] px-4 h-12 text-[15px] text-[#fafafa] placeholder:text-[#fafafa]/30 transition-[border-color,background-color] duration-150 focus:border-[#F95F4A]/60 focus:bg-white/[0.05] focus:outline-none disabled:opacity-50";
 const CTA_PRIMARY =
-  "inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#F95F4A] text-[15px] font-medium text-white transition-[filter] duration-150 hover:brightness-105 disabled:bg-[#232327] disabled:text-[#fafafa]/40 disabled:cursor-not-allowed";
+  "inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#F95F4A] text-[15px] font-medium text-white transition-[filter] duration-150 hover:brightness-[1.05] disabled:bg-[#232327] disabled:text-[#fafafa]/40 disabled:cursor-not-allowed";
 const CTA_GHOST =
-  "inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-white/12 bg-[#18181b] text-[15px] font-medium text-[#fafafa] transition-colors duration-150 hover:bg-[#232327] disabled:opacity-50";
+  "inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] text-[15px] font-medium text-[#fafafa] transition-colors duration-150 hover:bg-white/[0.08] disabled:opacity-50";
 const DEBUG_VIDEO_EFFECTS_STORAGE_KEY = "conclave:debug-video-effects";
 
 const getSignInHref = (): string => {
@@ -221,7 +219,6 @@ function JoinScreen({
   const processedPreviewTrackRef = useRef<MediaStreamTrack | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const handedOffTrackIdsRef = useRef<Set<string>>(new Set());
-  const moreOptionsRef = useRef<HTMLDivElement>(null);
   const toggleCameraInFlightRef = useRef(false);
   const cameraIntentRef = useRef(false);
   const micIntentRef = useRef(false);
@@ -233,9 +230,9 @@ function JoinScreen({
     string | null
   >(null);
   const [isEffectsOpen, setIsEffectsOpen] = useState(false);
-  const [isMoreOptionsOpen, setIsMoreOptionsOpen] = useState(false);
   const [guestName, setGuestName] = useState("");
   const [isSigningOut, setIsSigningOut] = useState(false);
+  const [activeJoinAction, setActiveJoinAction] = useState<"new" | "join" | null>(null);
   // Deferred join: both the guest user (onUserChange) and the host flag
   // (onIsAdminChange) propagate through the parent asynchronously, and the
   // parent rebuilds onJoinRoom with the new isHost only on the next render.
@@ -287,16 +284,6 @@ function JoinScreen({
     (cameraPermissionState === "prompt" ||
       cameraPermissionState === "denied" ||
       meetError?.code === "PERMISSION_DENIED");
-  const isBackgroundBlurActive =
-    videoEffects.background === "blur-light" ||
-    videoEffects.background === "blur-strong";
-  const prewarmBackgroundBlur = () => {
-    if (isCameraPermissionBlocked) return;
-    void prewarmVideoEffectsAssets({
-      segmentation: true,
-      reason: "prejoin-quick-blur",
-    });
-  };
   const prewarmLiveCameraEffects = (reason: string) => {
     void prewarmVideoEffectsAssets({
       segmentation: true,
@@ -304,23 +291,8 @@ function JoinScreen({
       reason,
     });
   };
-  const toggleBackgroundBlur = () => {
-    if (isCameraPermissionBlocked) return;
-    const nextBackground = isBackgroundBlurActive ? "none" : "blur-strong";
-    if (nextBackground !== "none") {
-      void prewarmVideoEffectsAssets({
-        segmentation: true,
-        reason: "prejoin-quick-blur:select",
-      });
-    }
-    onVideoEffectsChange((current) => ({
-      ...current,
-      background: nextBackground,
-    }));
-  };
   const openEffectsPanel = () => {
     if (isCameraPermissionBlocked) return;
-    setIsMoreOptionsOpen(false);
     setIsEffectsOpen(true);
   };
 
@@ -459,19 +431,6 @@ function JoinScreen({
       videoRef.current.srcObject = null;
     }
   }, [localStream, previewStream]);
-  useEffect(() => {
-    if (!isMoreOptionsOpen) return;
-    const handlePointerDown = (event: MouseEvent) => {
-      if (
-        moreOptionsRef.current &&
-        !moreOptionsRef.current.contains(event.target as Node)
-      ) {
-        setIsMoreOptionsOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handlePointerDown);
-    return () => document.removeEventListener("mousedown", handlePointerDown);
-  }, [isMoreOptionsOpen]);
   useEffect(() => {
     return () => {
       const handedOffTrackIds = handedOffTrackIdsRef.current;
@@ -685,6 +644,12 @@ function JoinScreen({
     onJoinRoom(targetId);
   }, [pending, hasIdentity, isAdmin, enableRoomRouting, onJoinRoom, onRoomIdChange]);
 
+  useEffect(() => {
+    if (!pending && !isLoading) {
+      setActiveJoinAction(null);
+    }
+  }, [pending, isLoading]);
+
   // Ensure a guest user exists (from the name field) before acting; returns
   // false when nothing actionable (no identity and no usable name).
   const ensureGuest = (): boolean => {
@@ -706,6 +671,7 @@ function JoinScreen({
 
   const startMeeting = () => {
     if (!ensureGuest()) return;
+    setActiveJoinAction("new");
     commitPrejoinMedia();
     onIsAdminChange(true);
     setPending({ mode: "new", roomId: generateRoomCode() });
@@ -716,6 +682,7 @@ function JoinScreen({
       : normalizedRoomId.trim();
     if (!candidate) return;
     if (!ensureGuest()) return;
+    setActiveJoinAction("join");
     commitPrejoinMedia();
     onIsAdminChange(false);
     setPending({ mode: "join", roomId: candidate });
@@ -756,331 +723,274 @@ function JoinScreen({
 
   const canJoin = normalizedRoomId.trim().length > 0;
   const nameReady = hasIdentity || liveDisplayName.length > 0;
+  const isStartingMeeting =
+    pending?.mode === "new" || (isLoading && activeJoinAction === "new");
+  const isJoiningMeeting =
+    pending?.mode === "join" || (isLoading && activeJoinAction === "join");
   const handleNameInputChange = (nextName: string) => {
     setGuestName(nextName);
     onDisplayNameInputChange(nextName);
   };
 
   return (
-    <div className="relative min-h-screen w-full bg-[#0a0a0b] text-[#fafafa] flex flex-col">
-      <main className="flex-1 flex items-center justify-center px-4 py-10">
-        <div className="grid w-full max-w-5xl items-stretch gap-6 md:grid-cols-[1.5fr_1fr]">
-          <div className="relative aspect-video w-full self-center overflow-hidden rounded-2xl border border-white/10 bg-[#121214]">
-            <video
-              ref={videoRef}
-              autoPlay
-              muted
-              playsInline
-              className={`h-full w-full -scale-x-100 object-cover ${isCameraOn ? "" : "hidden"}`}
-            />
-            {!isCameraOn && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
-                <Avatar id={user?.id || previewName} name={previewName} size={88} />
-                <span className="text-[14px] text-[#fafafa]/50">Camera is off</span>
-              </div>
-            )}
-            {shouldShowPermissionCta ? (
-              <button
-                type="button"
-                onClick={requestMicrophoneAndCamera}
-                disabled={isRequestingPermissions}
-                className="absolute left-3 top-3 z-10 inline-flex min-h-9 max-w-[calc(100%-1.5rem)] items-center gap-2 rounded-full bg-[#F95F4A] px-3.5 text-[13px] font-medium text-white shadow-lg shadow-black/20 transition-[background-color,opacity] duration-150 hover:bg-[#e8553f] disabled:cursor-wait disabled:opacity-75"
-              >
-                {isRequestingPermissions ? (
-                  <Loader2 size={16} className="shrink-0 animate-spin" />
-                ) : (
-                  <Video size={16} className="shrink-0" />
+    <div className="relative min-h-screen w-full bg-[#0a0a0b] text-[#fafafa]">
+      <main className="flex min-h-screen w-full items-center justify-center px-4 py-10">
+        <div className="animate-fade-in w-full max-w-4xl overflow-hidden rounded-2xl border border-white/10 bg-[#0e0e10] md:grid md:grid-cols-2">
+          <div className="relative aspect-video bg-[#121214] md:aspect-auto md:min-h-[440px]">
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  muted
+                  playsInline
+                  className={`absolute inset-0 h-full w-full -scale-x-100 object-cover ${isCameraOn ? "" : "hidden"}`}
+                />
+                {!isCameraOn && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+                    <Avatar id={user?.id || previewName} name={previewName} size={88} />
+                    <span className="text-[13.5px] text-[#fafafa]/45">Camera is off</span>
+                  </div>
                 )}
-                <span className="truncate">Allow microphone and camera</span>
-              </button>
-            ) : null}
-            <div
-              className={`pointer-events-none absolute top-3 rounded-md bg-black/55 px-2.5 py-1 text-[13px] font-medium ${
-                shouldShowPermissionCta ? "right-3" : "left-3"
-              }`}
-            >
-              {previewName}
-            </div>
-            {(showPermissionHint || permissionRequestError) && (
-              <div className="pointer-events-none absolute bottom-[72px] left-1/2 max-w-[calc(100%-2rem)] -translate-x-1/2 rounded-full bg-black/65 px-3 py-1.5 text-center text-[12.5px] font-medium text-white/80">
-                {permissionRequestError ?? "Permission needed"}
+                {shouldShowPermissionCta ? (
+                  <button
+                    type="button"
+                    onClick={requestMicrophoneAndCamera}
+                    disabled={isRequestingPermissions}
+                    className="absolute left-3 top-3 z-10 inline-flex min-h-9 max-w-[calc(100%-1.5rem)] items-center gap-2 rounded-full bg-[#F95F4A] px-3.5 text-[13px] font-medium text-white transition-[background-color,opacity] duration-150 hover:bg-[#e8553f] disabled:cursor-wait disabled:opacity-75"
+                  >
+                    {isRequestingPermissions ? (
+                      <Loader2 size={16} className="shrink-0 animate-spin" />
+                    ) : (
+                      <Video size={16} className="shrink-0" />
+                    )}
+                    <span className="truncate">Allow microphone and camera</span>
+                  </button>
+                ) : null}
+                <div
+                  className={`pointer-events-none absolute top-3 rounded-full bg-black/55 px-3 py-1 text-[12.5px] font-medium backdrop-blur-sm ${
+                    shouldShowPermissionCta ? "right-3" : "left-3"
+                  }`}
+                >
+                  {previewName}
+                </div>
+                {(showPermissionHint || permissionRequestError) && (
+                  <div className="pointer-events-none absolute bottom-[76px] left-1/2 max-w-[calc(100%-2rem)] -translate-x-1/2 rounded-full bg-black/65 px-3 py-1.5 text-center text-[12.5px] font-medium text-white/80 backdrop-blur-sm">
+                    {permissionRequestError ?? "Permission needed"}
+                  </div>
+                )}
+                <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-2.5">
+                  <button
+                    onClick={toggleMic}
+                    aria-label={isMicOn ? "Turn off microphone" : "Turn on microphone"}
+                    className={`inline-flex h-11 w-11 items-center justify-center rounded-full text-white transition-colors duration-150 ${
+                      isMicOn ? "bg-[#232327] hover:bg-[#2e2e33]" : "bg-[#ea4335] hover:brightness-105"
+                    }`}
+                  >
+                    {isMicOn ? <Mic size={18} /> : <MicOff size={18} />}
+                  </button>
+                  <button
+                    onClick={toggleCamera}
+                    aria-label={isCameraOn ? "Turn off camera" : "Turn on camera"}
+                    className={`inline-flex h-11 w-11 items-center justify-center rounded-full text-white transition-colors duration-150 ${
+                      isCameraOn ? "bg-[#232327] hover:bg-[#2e2e33]" : "bg-[#ea4335] hover:brightness-105"
+                    }`}
+                  >
+                    {isCameraOn ? <Video size={18} /> : <VideoOff size={18} />}
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="prejoin-backgrounds-effects"
+                    onClick={openEffectsPanel}
+                    onFocus={() => prewarmLiveCameraEffects("prejoin-effects-button")}
+                    onPointerEnter={() =>
+                      prewarmLiveCameraEffects("prejoin-effects-button")
+                    }
+                    onTouchStart={() =>
+                      prewarmLiveCameraEffects("prejoin-effects-button")
+                    }
+                    disabled={isCameraPermissionBlocked}
+                    aria-label={
+                      isCameraPermissionBlocked
+                        ? "Backgrounds and effects: Permission needed"
+                        : "Backgrounds and effects"
+                    }
+                    title={
+                      isCameraPermissionBlocked
+                        ? "Permission needed"
+                        : "Backgrounds and effects"
+                    }
+                    className={`inline-flex h-11 w-11 items-center justify-center rounded-full text-white transition-colors duration-150 hover:bg-[#2e2e33] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-[#232327] ${
+                      activeVideoEffectsCount > 0
+                        ? "bg-[#F95F4A] hover:bg-[#ff6d5a]"
+                        : "bg-[#232327]"
+                    }`}
+                  >
+                    <WandSparkles size={18} />
+                  </button>
+                </div>
+                {onTestSpeaker && (
+                  <button
+                    onClick={onTestSpeaker}
+                    className="absolute bottom-4 right-4 inline-flex items-center gap-1.5 rounded-full bg-black/55 px-3 py-1.5 text-[12px] text-[#fafafa]/70 backdrop-blur-sm transition-colors hover:text-[#fafafa]"
+                  >
+                    <Volume2 size={14} /> Test speaker
+                  </button>
+                )}
               </div>
-            )}
-            <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-3">
-              <button
-                onClick={toggleMic}
-                aria-label={isMicOn ? "Turn off microphone" : "Turn on microphone"}
-                className={`inline-flex h-11 w-11 items-center justify-center rounded-full text-white transition-colors duration-150 ${
-                  isMicOn ? "bg-[#232327] hover:bg-[#2e2e33]" : "bg-[#ea4335] hover:brightness-105"
-                }`}
+
+          <div className="flex flex-col justify-center gap-4 p-6 sm:p-8">
+            <div className="space-y-1.5">
+              <h1
+                className="text-[22px] leading-tight text-[#fafafa]"
+                style={{ fontFamily: "'PolySans Bulky Wide', sans-serif" }}
               >
-                {isMicOn ? <Mic size={18} /> : <MicOff size={18} />}
-              </button>
-              <button
-                onClick={toggleCamera}
-                aria-label={isCameraOn ? "Turn off camera" : "Turn on camera"}
-                className={`inline-flex h-11 w-11 items-center justify-center rounded-full text-white transition-colors duration-150 ${
-                  isCameraOn ? "bg-[#232327] hover:bg-[#2e2e33]" : "bg-[#ea4335] hover:brightness-105"
-                }`}
-              >
-                {isCameraOn ? <Video size={18} /> : <VideoOff size={18} />}
-              </button>
-              <button
-                onClick={toggleBackgroundBlur}
-                onFocus={prewarmBackgroundBlur}
-                onPointerEnter={prewarmBackgroundBlur}
-                onTouchStart={prewarmBackgroundBlur}
-                disabled={isCameraPermissionBlocked}
-                aria-label={
-                  isBackgroundBlurActive
-                    ? "Turn off background blur"
-                    : "Turn on background blur"
-                }
-                aria-pressed={isBackgroundBlurActive}
-                className={`inline-flex h-11 w-11 items-center justify-center rounded-full text-white transition-colors duration-150 hover:bg-[#2e2e33] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-[#232327] ${
-                  isBackgroundBlurActive ? "bg-[#F95F4A] hover:bg-[#ff6d5a]" : "bg-[#232327]"
-                }`}
-              >
-                <Blend size={18} />
-              </button>
-              <button
-                type="button"
-                data-testid="prejoin-backgrounds-effects"
-                onClick={openEffectsPanel}
-                onFocus={() => prewarmLiveCameraEffects("prejoin-effects-button")}
-                onPointerEnter={() =>
-                  prewarmLiveCameraEffects("prejoin-effects-button")
-                }
-                onTouchStart={() =>
-                  prewarmLiveCameraEffects("prejoin-effects-button")
-                }
-                disabled={isCameraPermissionBlocked}
-                aria-label={
-                  isCameraPermissionBlocked
-                    ? "Backgrounds and effects: Permission needed"
-                    : "Backgrounds and effects"
-                }
-                title={
-                  isCameraPermissionBlocked
-                    ? "Permission needed"
-                    : "Backgrounds and effects"
-                }
-                className={`inline-flex h-11 w-11 items-center justify-center rounded-full text-white transition-colors duration-150 hover:bg-[#2e2e33] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-[#232327] ${
-                  activeVideoEffectsCount > 0
-                    ? "bg-[#F95F4A] shadow-[0_0_0_1px_rgba(249,95,74,0.35)] hover:bg-[#ff6d5a]"
-                    : "bg-[#232327]"
-                }`}
-              >
-                <WandSparkles size={18} />
-              </button>
-              <div ref={moreOptionsRef} className="relative">
+                {isRoutedRoom ? "Ready to join?" : "Start a meeting"}
+              </h1>
+              <p className="text-[13.5px] text-[#fafafa]/55">
+                {isRoutedRoom
+                  ? "Check your camera and mic before you join."
+                  : "Create a room, or join one with a code."}
+              </p>
+            </div>
+              {meetError && (
+                <MeetsErrorBanner
+                  meetError={meetError}
+                  onDismiss={onDismissMeetError ?? (() => {})}
+                  variant="inline"
+                  primaryActionLabel={
+                    onRetryMedia &&
+                    (meetError.code === "PERMISSION_DENIED" ||
+                      meetError.code === "MEDIA_ERROR")
+                      ? "Try again"
+                      : undefined
+                  }
+                  onPrimaryAction={
+                    meetError.code === "PERMISSION_DENIED" ||
+                    meetError.code === "MEDIA_ERROR"
+                      ? onRetryMedia
+                      : undefined
+                  }
+                />
+              )}
+              {isSignedInUser ? (
+                <div className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-[14px] font-medium">{previewName}</p>
+                    {userEmail && (
+                      <p className="truncate text-[12px] text-[#fafafa]/60">{userEmail}</p>
+                    )}
+                  </div>
+                  <button
+                    onClick={handleSignOut}
+                    disabled={isSigningOut}
+                    className="shrink-0 text-[13px] text-[#fafafa]/55 transition-colors hover:text-[#fafafa] disabled:opacity-50"
+                  >
+                    {isSigningOut ? "…" : "Sign out"}
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  <label className="block text-[11.5px] font-semibold uppercase tracking-[0.07em] text-[#fafafa]/40">
+                    Your name
+                  </label>
+                  <input
+                    type="text"
+                    value={nameInputValue}
+                    onChange={(e) => handleNameInputChange(e.target.value)}
+                    placeholder="Enter your name"
+                    className={FIELD}
+                  />
+                </div>
+              )}
+
+              {!isRoutedRoom && (
+                <button
+                  onClick={startMeeting}
+                  disabled={isLoading || !nameReady}
+                  className={CTA_PRIMARY}
+                >
+                  {isStartingMeeting ? (
+                    <Loader2 size={18} className="animate-spin" />
+                  ) : (
+                    <Plus size={18} />
+                  )}
+                  New meeting
+                </button>
+              )}
+
+              <ScheduledMeetingsPanel isSignedIn={isSignedInUser} />
+
+              {allowGhostMode && (
                 <button
                   type="button"
-                  onClick={() => setIsMoreOptionsOpen((current) => !current)}
-                  aria-label="More options"
-                  aria-expanded={isMoreOptionsOpen}
-                  className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-[#232327] text-white transition-colors duration-150 hover:bg-[#2e2e33]"
+                  onClick={() => onGhostModeChange(!isGhostMode)}
+                  aria-pressed={isGhostMode}
+                  className="flex w-full items-center gap-3 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-left transition-colors duration-150 hover:bg-white/[0.08]"
                 >
-                  <MoreVertical size={18} />
-                </button>
-                {isMoreOptionsOpen ? (
-                  <div
-                    data-testid="prejoin-more-options-menu"
-                    className="absolute bottom-full right-0 z-30 mb-3 w-[260px] overflow-hidden rounded-xl border border-white/10 bg-[#242428] py-2 text-left shadow-2xl shadow-black/35"
+                  <Ghost
+                    size={18}
+                    style={{ color: isGhostMode ? "#F95F4A" : "rgba(250,250,250,0.6)" }}
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[14px] text-[#fafafa]">
+                      Join as ghost
+                    </span>
+                    <span className="block truncate text-[12.5px] text-white/60">
+                      Others won&apos;t see you join
+                    </span>
+                  </span>
+                  <span
+                    aria-hidden
+                    className="relative inline-flex h-[22px] w-[38px] shrink-0 items-center rounded-full transition-colors duration-[120ms]"
+                    style={{
+                      backgroundColor: isGhostMode ? "#F95F4A" : "rgba(250,250,250,0.14)",
+                    }}
                   >
-                    <button
-                      type="button"
-                      data-testid="prejoin-more-backgrounds-effects"
-                      onClick={openEffectsPanel}
-                      disabled={isCameraPermissionBlocked}
-                      aria-label={
-                        isCameraPermissionBlocked
-                          ? "Backgrounds and effects: Permission needed"
-                          : "Backgrounds and effects"
-                      }
-                      className="flex w-full items-center gap-3 px-4 py-3 text-left text-[14px] text-[#f1f3f4] transition-colors duration-150 hover:bg-white/10 disabled:cursor-not-allowed disabled:text-[#f1f3f4]/45 disabled:hover:bg-transparent"
-                    >
-                      <WandSparkles
-                        size={18}
-                        className="shrink-0 text-[#bdc1c6]"
-                      />
-                      <span className="min-w-0">
-                        <span className="block truncate">
-                          Backgrounds and effects
-                        </span>
-                        {isCameraPermissionBlocked ? (
-                          <span className="mt-0.5 block text-[12px] text-[#f1f3f4]/45">
-                            Permission needed
-                          </span>
-                        ) : null}
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setIsMoreOptionsOpen(false)}
-                      className="flex w-full items-center gap-3 px-4 py-3 text-[14px] text-[#f1f3f4] transition-colors duration-150 hover:bg-white/10"
-                    >
-                      <MessageSquareWarning size={18} className="shrink-0 text-[#bdc1c6]" />
-                      <span className="truncate">Report a problem</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setIsMoreOptionsOpen(false)}
-                      className="flex w-full items-center gap-3 px-4 py-3 text-[14px] text-[#f1f3f4] transition-colors duration-150 hover:bg-white/10"
-                    >
-                      <CircleHelp size={18} className="shrink-0 text-[#bdc1c6]" />
-                      <span className="truncate">Troubleshooting &amp; help</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setIsMoreOptionsOpen(false)}
-                      className="flex w-full items-center gap-3 px-4 py-3 text-[14px] text-[#f1f3f4] transition-colors duration-150 hover:bg-white/10"
-                    >
-                      <Settings size={18} className="shrink-0 text-[#bdc1c6]" />
-                      <span className="truncate">Settings</span>
-                    </button>
-                  </div>
-                ) : null}
-              </div>
-            </div>
-            {onTestSpeaker && (
-              <button
-                onClick={onTestSpeaker}
-                className="absolute bottom-4 right-4 inline-flex items-center gap-1.5 rounded-full bg-black/55 px-3 py-1.5 text-[12px] text-[#fafafa]/70 hover:text-[#fafafa] transition-colors"
-              >
-                <Volume2 size={14} /> Test speaker
-              </button>
-            )}
-          </div>
-
-          <div className="flex flex-col justify-center gap-4">
-            {meetError && (
-              <MeetsErrorBanner
-                meetError={meetError}
-                onDismiss={onDismissMeetError ?? (() => {})}
-                variant="inline"
-              />
-            )}
-
-            {isSignedInUser ? (
-              <div className="flex items-center justify-between rounded-xl border border-white/10 bg-[#18181b] px-4 py-3">
-                <div className="min-w-0">
-                  <p className="truncate text-[14px] font-medium">{previewName}</p>
-                  {userEmail && (
-                    <p className="truncate text-[12px] text-[#fafafa]/45">{userEmail}</p>
-                  )}
-                </div>
-                <button
-                  onClick={handleSignOut}
-                  disabled={isSigningOut}
-                  className="shrink-0 text-[13px] text-[#fafafa]/55 transition-colors hover:text-[#fafafa] disabled:opacity-50"
-                >
-                  {isSigningOut ? "…" : "Sign out"}
+                    <span
+                      className="absolute h-[16px] w-[16px] rounded-full bg-white transition-transform duration-[120ms]"
+                      style={{ transform: isGhostMode ? "translateX(19px)" : "translateX(3px)" }}
+                    />
+                  </span>
                 </button>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <label className="text-[13px] font-medium text-[#fafafa]/55">Your name</label>
+              )}
+
+              <div className="space-y-1.5">
+                <label className="block text-[11.5px] font-semibold uppercase tracking-[0.07em] text-[#fafafa]/40">
+                  {isRoutedRoom ? "Room" : "Join with a code"}
+                </label>
                 <input
                   type="text"
-                  value={nameInputValue}
-                  onChange={(e) => handleNameInputChange(e.target.value)}
-                  placeholder="Enter your name"
+                  value={normalizedRoomId}
+                  onChange={(e) => onCodeChange(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && canJoin) joinMeeting();
+                  }}
+                  placeholder="Enter a code or link"
+                  readOnly={isRoutedRoom}
+                  autoFocus={isRoutedRoom}
                   className={FIELD}
                 />
-              </div>
-            )}
-
-            {!isRoutedRoom && (
-              <button
-                onClick={startMeeting}
-                disabled={isLoading || !nameReady}
-                className={CTA_PRIMARY}
-              >
-                {isLoading ? <Loader2 size={18} className="animate-spin" /> : <Plus size={18} />}
-                New meeting
-              </button>
-            )}
-
-            <ScheduledMeetingsPanel isSignedIn={isSignedInUser} />
-
-            {allowGhostMode && (
-              <button
-                type="button"
-                onClick={() => onGhostModeChange(!isGhostMode)}
-                aria-pressed={isGhostMode}
-                className="flex w-full items-center gap-3 rounded-xl border border-white/10 bg-[#18181b] px-4 py-3 text-left transition-colors duration-150 hover:bg-[#232327]"
-              >
-                <Ghost
-                  size={18}
-                  style={{ color: isGhostMode ? "#F95F4A" : "rgba(250,250,250,0.6)" }}
-                />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[14px] text-[#fafafa]">
-                    Join as ghost
-                  </span>
-                  <span className="block truncate text-[12.5px] text-white/45">
-                    Others won&apos;t see you join
-                  </span>
-                </span>
-                <span
-                  aria-hidden
-                  className="relative inline-flex h-[22px] w-[38px] shrink-0 items-center rounded-full transition-colors duration-[120ms]"
-                  style={{
-                    backgroundColor: isGhostMode ? "#F95F4A" : "rgba(250,250,250,0.14)",
-                  }}
-                >
-                  <span
-                    className="absolute h-[16px] w-[16px] rounded-full bg-white transition-transform duration-[120ms]"
-                    style={{ transform: isGhostMode ? "translateX(19px)" : "translateX(3px)" }}
-                  />
-                </span>
-              </button>
-            )}
-
-            <div className="space-y-2">
-              <label className="text-[13px] font-medium text-[#fafafa]/55">
-                {isRoutedRoom ? "Room" : "Join with a code"}
-              </label>
-              <input
-                type="text"
-                value={normalizedRoomId}
-                onChange={(e) => onCodeChange(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && canJoin) joinMeeting();
-                }}
-                placeholder="Enter a code or link"
-                readOnly={isRoutedRoom}
-                autoFocus={isRoutedRoom}
-                className={FIELD}
-              />
-              <button
-                onClick={joinMeeting}
-                disabled={isLoading || !canJoin || !nameReady}
-                className={CTA_GHOST}
-              >
-                {isLoading ? <Loader2 size={18} className="animate-spin" /> : null}
-                Join
-                <ArrowRight size={18} />
-              </button>
-            </div>
-
-            {!isSignedInUser && (
-              <>
-                <div className="flex items-center gap-3 py-1">
-                  <div className="h-px flex-1 bg-white/10" />
-                  <span className="text-[12px] text-[#fafafa]/40">or</span>
-                  <div className="h-px flex-1 bg-white/10" />
-                </div>
-                <a
-                  href={getSignInHref()}
+                <button
+                  onClick={joinMeeting}
+                  disabled={isLoading || !canJoin || !nameReady}
                   className={CTA_GHOST}
                 >
-                  Authenticate
-                  <ArrowRight size={18} />
-                </a>
-              </>
-            )}
+                  {isJoiningMeeting ? <Loader2 size={18} className="animate-spin" /> : null}
+                  Join
+                </button>
+              </div>
+
+              {!isSignedInUser && (
+                <>
+                  <div className="flex items-center gap-3 py-1">
+                    <div className="h-px flex-1 bg-white/10" />
+                    <span className="text-[12px] text-[#fafafa]/40">or</span>
+                    <div className="h-px flex-1 bg-white/10" />
+                  </div>
+                  <a href={getSignInHref()} className={CTA_GHOST}>
+                    Sign in
+                  </a>
+                </>
+              )}
           </div>
         </div>
       </main>
@@ -1097,6 +1007,7 @@ function JoinScreen({
           activeCount={activeVideoEffectsCount}
           cameraPermissionBlocked={isCameraPermissionBlocked}
           showFilters={!isCameraPermissionBlocked}
+          onToggleCamera={toggleCamera}
           onClose={() => setIsEffectsOpen(false)}
         />
       )}

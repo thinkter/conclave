@@ -1,6 +1,6 @@
 "use client";
 
-import { Ghost, RefreshCw, Users } from "lucide-react";
+import { Ghost, RefreshCw, Users, X } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch, PointerEvent, SetStateAction } from "react";
 import type { Socket } from "socket.io-client";
@@ -1063,11 +1063,12 @@ function MobileMeetsMainContent({
             <span className="font-medium text-[#F95F4A]">Browser error</span>
             {onClearBrowserError && (
               <button
+                type="button"
                 onClick={onClearBrowserError}
-                className="ml-auto text-[#fafafa]/66 hover:text-[#fafafa]"
+                className="ml-auto inline-flex h-6 w-6 items-center justify-center rounded-full text-[#fafafa]/66 hover:text-[#fafafa]"
                 aria-label="Dismiss browser error"
               >
-                X
+                <X className="h-3.5 w-3.5" />
               </button>
             )}
           </div>
@@ -1082,11 +1083,12 @@ function MobileMeetsMainContent({
             <span className="font-medium text-[#F95F4A]">Voice agent error</span>
             {onClearVoiceAgentError && (
               <button
+                type="button"
                 onClick={onClearVoiceAgentError}
-                className="ml-auto text-[#fafafa]/66 hover:text-[#fafafa]"
+                className="ml-auto inline-flex h-6 w-6 items-center justify-center rounded-full text-[#fafafa]/66 hover:text-[#fafafa]"
                 aria-label="Dismiss voice agent error"
               >
-                X
+                <X className="h-3.5 w-3.5" />
               </button>
             )}
           </div>
@@ -1095,8 +1097,14 @@ function MobileMeetsMainContent({
       )}
 
       {!isWebinarAttendee && browserAudioNeedsGesture && (
-        <div className="px-4 mt-2 text-center text-[12px] font-medium text-[#F95F4A]/80">
-          Tap "Shared browser audio" to unlock the system sound.
+        <div className="px-4 mt-2 flex justify-center">
+          <button
+            type="button"
+            onClick={onToggleBrowserAudio}
+            className="rounded-full bg-[#F95F4A] px-4 py-2 text-[13px] font-medium text-white transition-colors active:scale-95 hover:bg-[#e8553f]"
+          >
+            Tap to enable shared browser audio
+          </button>
         </div>
       )}
       <MobileControlsBar
@@ -1187,6 +1195,7 @@ function MobileMeetsMainContent({
           debugStats={videoEffectsDebugStats}
           activeCount={activeVideoEffectsCount}
           cameraPermissionBlocked={isCameraPermissionBlocked}
+          onToggleCamera={toggleCamera}
           onClose={handleCloseVideoEffects}
         />
       )}

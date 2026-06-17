@@ -116,15 +116,11 @@ function ParticipantsPanel({
   );
   const canManageHost = Boolean(isAdmin);
 
-  const getEmailFromUserId = (userId: string): string => {
-    return userId.split("#")[0] || userId;
-  };
-
   const handleCloseProducer = (producerId: string) => {
     if (!socket || !isAdmin) return;
     setHostActionError(null);
     socket.emit("closeRemoteProducer", { producerId }, (res: unknown) => {
-      const error = getAdminActionError(res, "Failed to close producer.");
+      const error = getAdminActionError(res, "Couldn’t stop that stream.");
       if (error) setHostActionError(error);
     });
   };
@@ -133,7 +129,7 @@ function ParticipantsPanel({
     if (!socket || !isAdmin) return;
     setHostActionError(null);
     socket.emit("muteAll", (res: unknown) => {
-      const error = getAdminActionError(res, "Failed to mute participants.");
+      const error = getAdminActionError(res, "Couldn’t mute everyone.");
       if (error) setHostActionError(error);
     });
   };
@@ -142,7 +138,7 @@ function ParticipantsPanel({
     if (!socket || !isAdmin) return;
     setHostActionError(null);
     socket.emit("closeAllVideo", (res: unknown) => {
-      const error = getAdminActionError(res, "Failed to stop participant video.");
+      const error = getAdminActionError(res, "Couldn’t turn off everyone’s camera.");
       if (error) setHostActionError(error);
     });
   };
@@ -403,11 +399,13 @@ function ParticipantsPanel({
           const displayName = formatDisplayName(
             getDisplayName(participant.userId),
           );
-          const userEmail = getEmailFromUserId(participant.userId);
           const hasScreenShare =
             Boolean(participant.screenShareStream) ||
             (isMe && Boolean(localState?.isScreenSharing));
           const isExpanded = expandedUserId === participant.userId;
+          // Only hosts get an expandable row (the detail panel holds moderation
+          // actions); for everyone else there's nothing to reveal.
+          const canExpand = isAdmin && !isMe;
           const detailId = `participant-details-${participant.userId.replace(
             /[^a-zA-Z0-9_-]/g,
             "",
@@ -415,20 +413,24 @@ function ParticipantsPanel({
           return (
             <div key={participant.userId}>
               <div
-                className={`flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2.5 transition-colors ${
-                  isExpanded ? "bg-white/[0.06]" : "hover:bg-white/[0.04]"
-                }`}
-                role="button"
-                tabIndex={0}
-                aria-expanded={isExpanded}
-                aria-controls={detailId}
-                onClick={() => toggleExpanded(participant.userId)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === " ") {
-                    event.preventDefault();
-                    toggleExpanded(participant.userId);
-                  }
-                }}
+                className={`flex items-center gap-3 rounded-lg px-2 py-2.5 transition-colors ${
+                  canExpand ? "cursor-pointer" : ""
+                } ${isExpanded ? "bg-white/[0.06]" : canExpand ? "hover:bg-white/[0.04]" : ""}`}
+                role={canExpand ? "button" : undefined}
+                tabIndex={canExpand ? 0 : undefined}
+                aria-expanded={canExpand ? isExpanded : undefined}
+                aria-controls={canExpand ? detailId : undefined}
+                onClick={canExpand ? () => toggleExpanded(participant.userId) : undefined}
+                onKeyDown={
+                  canExpand
+                    ? (event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          toggleExpanded(participant.userId);
+                        }
+                      }
+                    : undefined
+                }
               >
                 <Avatar name={displayName} id={participant.userId} size={36} />
 
@@ -436,7 +438,7 @@ function ParticipantsPanel({
                   <div className="flex min-w-0 items-center gap-2">
                     <span
                       className="truncate text-[14px] font-medium text-[#fafafa]"
-                      title={userEmail}
+                      title={displayName}
                     >
                       {displayName}
                     </span>
@@ -495,28 +497,26 @@ function ParticipantsPanel({
                       className="text-[#a1a1aa]"
                     />
                   )}
-                  <ChevronDown
-                    size={ICON}
-                    strokeWidth={STROKE}
-                    className={`text-[#71717a] transition-transform ${
-                      isExpanded ? "rotate-180" : ""
-                    }`}
-                    aria-hidden="true"
-                  />
+                  {canExpand && (
+                    <ChevronDown
+                      size={ICON}
+                      strokeWidth={STROKE}
+                      className={`text-[#71717a] transition-transform ${
+                        isExpanded ? "rotate-180" : ""
+                      }`}
+                      aria-hidden="true"
+                    />
+                  )}
                 </div>
               </div>
 
-              {isExpanded && (
+              {isExpanded && canExpand && (
                 <div
                   id={detailId}
                   className="mx-2 mb-1 mt-0.5 rounded-lg border border-white/10 bg-black/20 px-3 py-2.5"
                 >
-                  <div className="flex flex-wrap items-baseline gap-1.5 text-[12.5px]">
-                    <span className="text-[#a1a1aa]">ID</span>
-                    <span className="break-all text-[#fafafa]">{userEmail}</span>
-                  </div>
                   {isAdmin && !isMe && (
-                    <div className="mt-2.5 flex flex-wrap gap-1.5">
+                    <div className="flex flex-wrap gap-1.5">
                       {canPromoteParticipant && (
                         <>
                           {isPendingPromotion ? (

@@ -657,8 +657,6 @@ export default function MeetsClient({
     setVideoQuality,
     isMirrorCamera,
     setIsMirrorCamera,
-    isVideoSettingsOpen,
-    setIsVideoSettingsOpen,
     selectedAudioInputDeviceId,
     setSelectedAudioInputDeviceId,
     selectedAudioOutputDeviceId,
@@ -712,11 +710,7 @@ export default function MeetsClient({
     setDisplayNames,
     displayNameInput,
     setDisplayNameInput,
-    displayNameStatus,
-    isDisplayNameUpdating,
-    handleDisplayNameSubmit,
     resolveDisplayName,
-    canUpdateDisplayName,
   } = useMeetDisplayName({
     user: currentUser,
     userId,
@@ -2298,32 +2292,7 @@ export default function MeetsClient({
     <div
       className={`flex flex-col h-full w-full bg-[#18181b] text-white ${fontClassName ?? ""}`}
     >
-      <MeetsHeader
-        isJoined={isJoined}
-        isAdmin={isAdminFlag}
-        roomId={roomId}
-        isMirrorCamera={isMirrorCamera}
-        isVideoSettingsOpen={isVideoSettingsOpen}
-        onToggleVideoSettings={() => setIsVideoSettingsOpen((prev) => !prev)}
-        onToggleMirror={() => setIsMirrorCamera((prev) => !prev)}
-        isCameraOff={isCameraOff}
-        displayNameInput={displayNameInput}
-        displayNameStatus={displayNameStatus}
-        isDisplayNameUpdating={isDisplayNameUpdating}
-        canUpdateDisplayName={canUpdateDisplayName}
-        onDisplayNameInputChange={setDisplayNameInput}
-        onDisplayNameSubmit={handleDisplayNameSubmit}
-        selectedAudioInputDeviceId={selectedAudioInputDeviceId}
-        selectedAudioOutputDeviceId={selectedAudioOutputDeviceId}
-        selectedVideoInputDeviceId={selectedVideoInputDeviceId}
-        onAudioInputDeviceChange={handleAudioInputDeviceChange}
-        onAudioOutputDeviceChange={handleAudioOutputDeviceChange}
-        onVideoInputDeviceChange={handleVideoInputDeviceSelect}
-        showShareLink={enableRoomRouting || forceJoinOnly}
-        canSignOut={canSignOut}
-        isSigningOut={isSigningOut}
-        onSignOut={handleSignOut}
-      />
+      <MeetsHeader isJoined={isJoined} />
       {isJoined && meetError && (
         <MeetsErrorBanner
           meetError={meetError}

@@ -1,12 +1,11 @@
 "use client";
 
 import {
-  ChevronDown,
   Check,
   ImagePlus,
-  Layers,
   LoaderCircle,
-  Sparkles,
+  Video,
+  VideoOff,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -65,6 +64,7 @@ interface VideoEffectsPanelProps {
   activeCount: number;
   cameraPermissionBlocked?: boolean;
   onRecenterFraming?: () => void;
+  onToggleCamera?: () => void;
   onClose: () => void;
   variant?: "dock" | "dialog";
   initialTab?: EffectsTab;
@@ -278,13 +278,6 @@ function EffectOptionButton<T extends string>({
         {isMotionOption ? (
           <span className="pointer-events-none absolute bottom-1 right-1 h-1.5 w-1.5 rounded-full bg-[#F95F4A]" />
         ) : null}
-        {selected ? (
-          <span
-            aria-hidden
-            className="pointer-events-none absolute inset-0 rounded-md"
-            style={{ boxShadow: `inset 0 0 0 1px ${EFFECTS_ACCENT}` }}
-          />
-        ) : null}
         {busy ? (
           <span className="absolute inset-0 flex items-center justify-center bg-black/45">
             <LoaderCircle
@@ -300,16 +293,6 @@ function EffectOptionButton<T extends string>({
           <span className="block text-[12px] font-medium leading-tight text-[#fafafa]">
             {option.label}
           </span>
-          {busy ? (
-            <span className="mt-1 flex items-center gap-1.5 text-[11px] leading-tight text-[#f4a096]">
-              <LoaderCircle
-                size={10}
-                strokeWidth={ICON_STROKE}
-                className="animate-spin"
-              />
-              Applying
-            </span>
-          ) : null}
           {option.description ? (
             <span className="mt-1 block text-[11px] leading-tight text-[#a1a1aa]">
               {option.description}
@@ -404,12 +387,16 @@ function VideoEffectsPreview({
   hasLiveVideo,
   isPreparing,
   preparingLabel,
+  onToggleCamera,
+  cameraToggleDisabled = false,
 }: {
   stream: MediaStream | null;
   isCameraOff: boolean;
   hasLiveVideo: boolean;
   isPreparing: boolean;
   preparingLabel: string;
+  onToggleCamera?: () => void;
+  cameraToggleDisabled?: boolean;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const shouldShowVideo = hasLiveVideo;
@@ -447,9 +434,33 @@ function VideoEffectsPreview({
         }`}
       />
       {!shouldShowVideo ? (
-        <div className="absolute inset-0 flex items-center justify-center text-[15px] font-medium text-[#fafafa]">
-          {isCameraOff ? "Camera is off" : "Camera unavailable"}
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-4 text-center">
+          <span className="text-[15px] font-medium text-[#fafafa]">
+            {isCameraOff ? "Camera is off" : "Camera unavailable"}
+          </span>
+          {onToggleCamera ? (
+            <button
+              type="button"
+              onClick={onToggleCamera}
+              disabled={cameraToggleDisabled}
+              className="inline-flex items-center gap-2 rounded-full bg-[#F95F4A] px-4 py-2 text-[13px] font-medium text-white transition-[filter] duration-[120ms] hover:brightness-105 disabled:cursor-not-allowed disabled:bg-[#232327] disabled:text-[#fafafa]/40"
+            >
+              <Video size={16} strokeWidth={ICON_STROKE} />
+              Turn on camera to preview
+            </button>
+          ) : null}
         </div>
+      ) : null}
+      {shouldShowVideo && onToggleCamera ? (
+        <button
+          type="button"
+          onClick={onToggleCamera}
+          aria-label="Turn off camera"
+          title="Turn off camera"
+          className="absolute right-3 top-3 inline-flex h-9 w-9 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-sm transition-colors duration-[120ms] hover:bg-black/70"
+        >
+          <VideoOff size={16} strokeWidth={ICON_STROKE} />
+        </button>
       ) : null}
       {shouldShowVideo && isPreparing ? (
         <div className="absolute inset-0 flex items-end justify-center bg-black/[0.18] p-3">
@@ -478,6 +489,7 @@ export default function VideoEffectsPanel({
   activeCount,
   cameraPermissionBlocked = false,
   onRecenterFraming,
+  onToggleCamera,
   onClose,
   variant = "dock",
   initialTab = "backgrounds",
@@ -485,7 +497,6 @@ export default function VideoEffectsPanel({
 }: VideoEffectsPanelProps) {
   const isDialogVariant = variant === "dialog";
   const [activeTab, setActiveTab] = useState<EffectsTab>(initialTab);
-  const [showActiveEffectStack, setShowActiveEffectStack] = useState(false);
   const [customBackgroundError, setCustomBackgroundError] = useState<string | null>(
     null,
   );
@@ -851,12 +862,6 @@ export default function VideoEffectsPanel({
   ]);
 
   useEffect(() => {
-    if (activeEffectStack.length === 0) {
-      setShowActiveEffectStack(false);
-    }
-  }, [activeEffectStack.length]);
-
-  useEffect(() => {
     setActiveTab(initialTab);
   }, [initialTab]);
 
@@ -904,21 +909,6 @@ export default function VideoEffectsPanel({
       prewarmFace("effects-panel-appearance-tab");
     }
   }, [activeTab, cameraPermissionBlocked, prewarmFace]);
-
-  const statusLabel =
-    cameraPermissionBlocked
-      ? "Camera is blocked"
-      : cameraUnavailable && activeCount > 0
-        ? "Will apply when camera turns on"
-        : status === "loading"
-          ? preparingLabel
-          : status === "running"
-            ? "Effects are live"
-            : status === "degraded"
-              ? "Effects degraded"
-              : activeCount > 0
-                ? "Waiting for camera"
-                : "No effects applied";
 
   const compactDebugStats = useMemo(() => {
     if (!debugStats) return undefined;
@@ -1024,30 +1014,10 @@ export default function VideoEffectsPanel({
           <div className="mx-auto mobile-sheet-grabber" />
         </div>
       ) : null}
-      <header className="flex items-center justify-between border-b border-white/[0.14] px-4 py-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <div className="min-w-0">
-            <h2 className="truncate text-[15px] font-bold text-[#fafafa]">
-              Backgrounds and effects
-            </h2>
-            <div className="mt-1 flex items-center gap-2 text-[12px] text-[#a1a1aa]">
-              {status === "loading" ? (
-                <LoaderCircle
-                  size={13}
-                  strokeWidth={ICON_STROKE}
-                  className="animate-spin text-[#F95F4A]"
-                />
-              ) : (
-                <span
-                  className={`h-1.5 w-1.5 rounded-full ${
-                    status === "running" ? "bg-[#F95F4A]" : "bg-white/35"
-                  }`}
-                />
-              )}
-              <span className="truncate">{statusLabel}</span>
-            </div>
-          </div>
-        </div>
+      <header className="flex items-center justify-between border-b border-white/[0.14] px-4 py-3.5">
+        <h2 className="truncate text-[15px] font-semibold text-[#fafafa]">
+          Backgrounds and effects
+        </h2>
         <button
           type="button"
           onClick={onClose}
@@ -1065,12 +1035,14 @@ export default function VideoEffectsPanel({
           hasLiveVideo={hasLiveVideo}
           isPreparing={isPreparingEffects}
           preparingLabel={preparingLabel}
+          onToggleCamera={onToggleCamera}
+          cameraToggleDisabled={cameraPermissionBlocked}
         />
         {cameraUnavailable ? (
           <div className="mt-3 rounded-xl border border-white/[0.14] bg-[#131316] px-3 py-2 text-[12px] leading-snug text-[#fafafa]/74">
             {cameraPermissionBlocked
-              ? "Camera is blocked"
-              : "Your camera is turned off. Effects will apply when you turn it on."}
+              ? "Camera blocked"
+              : "Your camera is off. Effects apply once you turn it on."}
           </div>
         ) : null}
         {error ? (
@@ -1083,90 +1055,46 @@ export default function VideoEffectsPanel({
             {customBackgroundError}
           </div>
         ) : null}
-        <button
-          type="button"
-          disabled={displayedActiveCount === 0}
-          title={displayedActiveCount === 0 ? "No effects applied" : undefined}
-          aria-expanded={showActiveEffectStack}
-          onClick={() => {
-            if (activeEffectStack.length === 0) return;
-            setShowActiveEffectStack((current) => !current);
-          }}
-          className="mt-3 flex min-h-10 w-full items-center justify-between rounded-xl border border-white/[0.14] bg-[#131316] px-3 py-2 text-[13px] font-medium text-[#fafafa] transition-colors duration-[120ms] hover:border-white/[0.24] hover:bg-[#232327] disabled:cursor-not-allowed disabled:text-[#71717a] disabled:hover:border-white/[0.14] disabled:hover:bg-[#131316]"
-        >
-          <span className="flex items-center gap-2">
-            <Layers size={16} strokeWidth={ICON_STROKE} />
-            Active effects
-          </span>
-          <span className="flex items-center gap-2">
-            {displayedActiveCount > 0 ? (
-              <span className="flex h-5 min-w-5 items-center justify-center rounded-md bg-[#F95F4A] px-1.5 text-[11px] font-semibold text-white">
-                {displayedActiveCount}
-              </span>
-            ) : null}
-            <ChevronDown
-              size={15}
-              strokeWidth={ICON_STROKE}
-              className={`text-[#a1a1aa] transition-transform duration-[120ms] ${
-                showActiveEffectStack ? "rotate-180" : ""
-              }`}
-            />
-          </span>
-        </button>
-        {showActiveEffectStack &&
-        activeEffectStack.length > 0 ? (
+        {activeEffectStack.length > 0 ? (
           <div
             aria-label="Active visual effects"
-            className="mt-2 grid gap-1.5 border-l border-white/[0.14] pl-2"
+            className="mt-3 flex flex-wrap items-center gap-1.5"
             data-video-effects-active-stack="true"
             data-video-effects-active-stack-open="true"
           >
-            <div className="flex items-center justify-between gap-2 px-1 pb-1">
-              <span className="text-[12px] font-medium text-[#a1a1aa]">
-                Applied effects
-              </span>
-              <button
-                type="button"
-                aria-label="Remove all visual effects"
-                onClick={() => onEffectsChange(DEFAULT_VIDEO_EFFECTS)}
-                className="rounded-md px-2 py-1 text-[12px] font-medium text-[#F95F4A] transition-colors hover:bg-[#F95F4A]/[0.10]"
+            {activeEffectStack.map((item) => (
+              <span
+                key={item.key}
+                data-video-effects-active-item={item.key}
+                className="inline-flex items-center overflow-hidden rounded-full border border-white/[0.14] bg-[#131316]"
               >
-                Remove all
-              </button>
-            </div>
-            {activeEffectStack.map((item) => {
-              const Icon = item.icon ?? Sparkles;
-              return (
-                <div
-                  key={item.key}
-                  className="flex min-h-9 items-center gap-2 rounded-xl border border-white/[0.14] bg-[#131316] px-2.5 py-1.5 text-[13px] text-[#fafafa]"
-                  data-video-effects-active-item={item.key}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab(item.tab)}
+                  title={`Edit ${item.label}`}
+                  className="max-w-[170px] truncate py-1.5 pl-3 pr-1 text-[12px] font-medium text-[#fafafa] transition-colors duration-[120ms] hover:text-white"
                 >
-                  <button
-                    type="button"
-                    className="flex min-w-0 flex-1 items-center gap-2 text-left"
-                    onClick={() => setActiveTab(item.tab)}
-                  >
-                    <span
-                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-white"
-                      style={{ backgroundColor: item.tone ?? EFFECTS_ACCENT }}
-                    >
-                      <Icon size={14} strokeWidth={1.85} />
-                    </span>
-                    <span className="truncate">{item.label}</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={item.remove}
-                    aria-label={`Remove ${item.label}`}
-                    title={`Remove ${item.label}`}
-                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[#a1a1aa] transition-colors duration-[120ms] hover:bg-[#232327] hover:text-[#fafafa]"
-                  >
-                    <X size={15} strokeWidth={1.85} />
-                  </button>
-                </div>
-              );
-            })}
+                  {item.label}
+                </button>
+                <button
+                  type="button"
+                  onClick={item.remove}
+                  aria-label={`Remove ${item.label}`}
+                  title={`Remove ${item.label}`}
+                  className="flex h-7 w-7 shrink-0 items-center justify-center text-[#a1a1aa] transition-colors duration-[120ms] hover:text-[#fafafa]"
+                >
+                  <X size={13} strokeWidth={2} />
+                </button>
+              </span>
+            ))}
+            <button
+              type="button"
+              aria-label="Remove all visual effects"
+              onClick={() => onEffectsChange(DEFAULT_VIDEO_EFFECTS)}
+              className="rounded-full px-2.5 py-1.5 text-[12px] font-medium text-[#F95F4A] transition-colors duration-[120ms] hover:bg-[#F95F4A]/[0.10]"
+            >
+              Clear all
+            </button>
           </div>
         ) : null}
       </div>
@@ -1394,11 +1322,10 @@ export default function VideoEffectsPanel({
             aria-labelledby="video-effects-tab-appearance"
           >
             {studioLookControlVisible ? (
-              <Section label="Touch-up appearance">
+              <Section label="Appearance">
                 <div className="grid gap-1">
                   <ToggleRow
                     label="Touch-up appearance"
-                    description="Smooths skin tone and balances contrast"
                     checked={effects.studioLook}
                     testId="video-effects-appearance-studio-look"
                     onChange={setToggle("studioLook")}

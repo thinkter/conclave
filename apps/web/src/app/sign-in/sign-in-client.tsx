@@ -148,11 +148,8 @@ export default function SignInClient({ next }: SignInClientProps) {
   );
 
   return (
-    <main className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-[#0a0a0b] px-4 py-10 text-[#fafafa]">
-      <div className="absolute inset-0 acm-bg-radial pointer-events-none" />
-      <div className="absolute inset-0 acm-bg-dot-grid pointer-events-none" />
-
-      <section className="relative z-10 w-full max-w-[420px] rounded-2xl border border-white/10 bg-[#131316]/95 p-5 shadow-2xl shadow-black/35">
+    <main className="flex min-h-dvh items-center justify-center bg-[#0a0a0b] px-4 py-10 text-[#fafafa]">
+      <section className="animate-fade-in w-full max-w-[420px] rounded-2xl border border-white/10 bg-[#0e0e10] p-5 sm:p-6">
         <a
           href={safeNext}
           className="inline-flex items-center gap-2 rounded-full border border-white/10 px-3 py-1.5 text-[12px] text-[#fafafa]/65 transition-colors hover:bg-white/5 hover:text-[#fafafa]"
@@ -174,14 +171,14 @@ export default function SignInClient({ next }: SignInClientProps) {
 
         <div className="mt-7 grid gap-3">
           {status === "loading" ? (
-            <div className="flex h-12 items-center justify-center rounded-xl border border-white/10 bg-[#18181b] text-sm text-[#fafafa]/55">
+            <div className="flex h-12 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-sm text-[#fafafa]/55">
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               Loading providers
             </div>
           ) : null}
 
           {status !== "loading" && providers.length === 0 ? (
-            <div className="rounded-xl border border-white/10 bg-[#18181b] p-4 text-sm text-[#fafafa]/55">
+            <div className="rounded-xl border border-white/10 bg-white/[0.04] p-4 text-sm text-[#fafafa]/55">
               Authentication is not configured for this deployment.
             </div>
           ) : null}
@@ -192,7 +189,7 @@ export default function SignInClient({ next }: SignInClientProps) {
               type="button"
               onClick={() => void handleSignIn(provider)}
               disabled={activeProvider !== null}
-              className="flex h-12 w-full items-center justify-center gap-3 rounded-xl border border-white/10 bg-[#18181b] text-[14px] font-medium text-[#fafafa] transition-colors hover:bg-[#232327] disabled:cursor-not-allowed disabled:opacity-60"
+              className="flex h-12 w-full items-center justify-center gap-3 rounded-xl border border-white/10 bg-white/[0.04] text-[14px] font-medium text-[#fafafa] transition-colors hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {activeProvider === provider ? (
                 <Loader2 className="h-5 w-5 animate-spin" />

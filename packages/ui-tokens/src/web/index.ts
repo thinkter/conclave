@@ -2,3 +2,4 @@
 export * from "./buttons";
 export * from "./tile";
 export * from "./panels";
+export * from "./controls";

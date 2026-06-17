@@ -431,9 +431,6 @@ function ChatPanel({
               </div>
               <div className="space-y-1">
                 <p className="text-[14px] font-medium text-[#fafafa]">No messages yet</p>
-                <p className="text-[12.5px] leading-relaxed text-[#a1a1aa]">
-                  Say hello or share a link with the room.
-                </p>
               </div>
             </div>
           ) : (
@@ -674,16 +671,6 @@ function ChatPanel({
             </button>
           </div>
         </div>
-        {isGhostMode && (
-          <p className="mt-2 text-center text-[12px] text-[#a1a1aa]">
-            Ghost mode: chat disabled
-          </p>
-        )}
-        {!isGhostMode && isChatLocked && !isAdmin && (
-          <p className="mt-2 text-center text-[12px] text-amber-200/70">
-            Chat locked by host
-          </p>
-        )}
       </form>
     </div>
   );

@@ -505,10 +505,11 @@ final class MeetingViewModel {
             let eventContext = self.currentSocketEventContext()
             Task { @MainActor in
                 guard self.isCurrentSocketEvent(eventContext, roomId: notification.roomId) else { return }
-                let userId = notification.userId
+                guard let userId = self.normalizedParticipantUserId(notification.userId) else { return }
                 guard self.state.isRemoteParticipantUserId(userId) else { return }
                 self.ensureParticipantPresent(userId)
-                if let displayName = notification.displayName, !displayName.isEmpty {
+                if let displayName = notification.displayName?.trimmingCharacters(in: .whitespacesAndNewlines),
+                   !displayName.isEmpty {
                     self.state.displayNames[userId] = displayName
                 }
                 if let isGhost = notification.isGhost {
@@ -522,7 +523,7 @@ final class MeetingViewModel {
             let eventContext = self.currentSocketEventContext()
             Task { @MainActor in
                 guard self.isCurrentSocketEvent(eventContext, roomId: notification.roomId) else { return }
-                let userId = notification.userId
+                guard let userId = self.normalizedParticipantUserId(notification.userId) else { return }
                 guard self.state.isRemoteParticipantUserId(userId) else { return }
                 let leaveToken = UUID()
                 self.participantLeaveTokens[userId] = leaveToken
@@ -550,13 +551,17 @@ final class MeetingViewModel {
             let eventContext = self.currentSocketEventContext()
             Task { @MainActor in
                 guard self.isCurrentSocketEvent(eventContext, roomId: update.roomId) else { return }
-                if self.state.isLocalParticipantUserId(update.userId) {
-                    self.state.displayName = update.displayName
+                guard let userId = self.normalizedParticipantUserId(update.userId) else { return }
+                let displayName = update.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+                if self.state.isLocalParticipantUserId(userId) {
+                    self.state.displayName = displayName.isEmpty ? self.state.displayName : displayName
                     return
                 }
-                guard self.state.isRemoteParticipantUserId(update.userId) else { return }
-                self.state.displayNames[update.userId] = update.displayName
-                self.ensureParticipantPresent(update.userId)
+                guard self.state.isRemoteParticipantUserId(userId) else { return }
+                if !displayName.isEmpty {
+                    self.state.displayNames[userId] = displayName
+                }
+                self.ensureParticipantPresent(userId)
             }
         }
 
@@ -634,7 +639,7 @@ final class MeetingViewModel {
             let eventContext = self.currentSocketEventContext()
             Task { @MainActor in
                 guard self.isCurrentSocketEvent(eventContext, roomId: notification.roomId) else { return }
-                let userId = notification.userId
+                guard let userId = self.normalizedParticipantUserId(notification.userId) else { return }
                 let raised = notification.raised
                 if self.state.isLocalParticipantUserId(userId) {
                     self.state.isHandRaised = raised
@@ -652,11 +657,12 @@ final class MeetingViewModel {
                 guard self.isCurrentSocketEvent(eventContext, roomId: snapshot.roomId) else { return }
                 self.clearRaisedHands()
                 for entry in snapshot.users {
-                    if self.state.isLocalParticipantUserId(entry.userId) {
+                    guard let userId = self.normalizedParticipantUserId(entry.userId) else { continue }
+                    if self.state.isLocalParticipantUserId(userId) {
                         self.state.isHandRaised = entry.raised
                     } else {
-                        self.ensureParticipantPresent(entry.userId)
-                        self.state.participants[entry.userId]?.isHandRaised = entry.raised
+                        self.ensureParticipantPresent(userId)
+                        self.state.participants[userId]?.isHandRaised = entry.raised
                     }
                 }
             }
@@ -667,18 +673,19 @@ final class MeetingViewModel {
             let eventContext = self.currentSocketEventContext()
             Task { @MainActor in
                 guard self.isCurrentSocketEvent(eventContext, roomId: notification.roomId) else { return }
-                if self.state.isLocalParticipantUserId(notification.userId) {
+                guard let userId = self.normalizedParticipantUserId(notification.userId) else { return }
+                if self.state.isLocalParticipantUserId(userId) {
                     self.state.isMuted = notification.muted
                     if notification.muted {
-                        self.clearHeldActiveSpeakerIfNeeded(notification.userId)
+                        self.clearHeldActiveSpeakerIfNeeded(userId)
                     }
                     self.syncCallPresenceMute()
                     return
                 }
-                self.ensureParticipantPresent(notification.userId)
-                self.state.participants[notification.userId]?.isMuted = notification.muted
+                self.ensureParticipantPresent(userId)
+                self.state.participants[userId]?.isMuted = notification.muted
                 if notification.muted {
-                    self.clearHeldActiveSpeakerIfNeeded(notification.userId)
+                    self.clearHeldActiveSpeakerIfNeeded(userId)
                 }
             }
         }
@@ -688,12 +695,13 @@ final class MeetingViewModel {
             let eventContext = self.currentSocketEventContext()
             Task { @MainActor in
                 guard self.isCurrentSocketEvent(eventContext, roomId: notification.roomId) else { return }
-                if self.state.isLocalParticipantUserId(notification.userId) {
+                guard let userId = self.normalizedParticipantUserId(notification.userId) else { return }
+                if self.state.isLocalParticipantUserId(userId) {
                     self.setLocalCameraOffState(notification.cameraOff)
                     return
                 }
-                self.ensureParticipantPresent(notification.userId)
-                self.state.participants[notification.userId]?.isCameraOff = notification.cameraOff
+                self.ensureParticipantPresent(userId)
+                self.state.participants[userId]?.isCameraOff = notification.cameraOff
             }
         }
 
@@ -828,7 +836,9 @@ final class MeetingViewModel {
             let eventContext = self.currentSocketEventContext()
             Task { @MainActor in
                 guard self.isCurrentSocketEvent(eventContext, roomId: notification.roomId) else { return }
-                self.state.pendingUsers[notification.userId] = notification.displayName
+                guard let userId = self.normalizedParticipantUserId(notification.userId) else { return }
+                let displayName = notification.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+                self.state.pendingUsers[userId] = displayName.isEmpty ? userId : displayName
             }
         }
 
@@ -846,7 +856,8 @@ final class MeetingViewModel {
             let eventContext = self.currentSocketEventContext()
             Task { @MainActor in
                 guard self.isCurrentSocketEvent(eventContext, roomId: notification.roomId) else { return }
-                self.state.pendingUsers.removeValue(forKey: notification.userId)
+                guard let userId = self.normalizedParticipantUserId(notification.userId) else { return }
+                self.state.pendingUsers.removeValue(forKey: userId)
             }
         }
 
@@ -1278,6 +1289,7 @@ final class MeetingViewModel {
 
     @discardableResult
     private func ensureParticipantPresent(_ userId: String) -> Bool {
+        guard let userId = normalizedParticipantUserId(userId) else { return false }
         guard state.isRemoteParticipantUserId(userId) else { return false }
         if state.participants[userId] == nil {
             state.participants[userId] = Participant(id: userId)
@@ -1285,6 +1297,27 @@ final class MeetingViewModel {
         participantLeaveTokens.removeValue(forKey: userId)
         state.participants[userId]?.isLeaving = false
         return true
+    }
+
+    private func normalizedParticipantUserId(_ userId: String?) -> String? {
+        let normalized = userId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return normalized.isEmpty ? nil : normalized
+    }
+
+    private func normalizedProducerInfo(_ producer: ProducerInfo) -> ProducerInfo? {
+        let producerId = producer.producerId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !producerId.isEmpty,
+              let producerUserId = normalizedParticipantUserId(producer.producerUserId) else {
+            return nil
+        }
+        return ProducerInfo(
+            producerId: producerId,
+            producerUserId: producerUserId,
+            kind: producer.kind,
+            type: producer.type,
+            paused: producer.paused,
+            roomId: producer.roomId
+        )
     }
 
     private func applyDisplayNameSnapshot(_ snapshot: DisplayNameSnapshotNotification) {
@@ -1352,16 +1385,17 @@ final class MeetingViewModel {
         updateAdminFromSnapshot: Bool,
         clearMissingHostUserId: Bool = false
     ) {
-        if let hostUserId {
-            state.hostUserId = hostUserId
+        let normalizedHostUserId = normalizedParticipantUserId(hostUserId)
+        if let normalizedHostUserId {
+            state.hostUserId = normalizedHostUserId
         } else if clearMissingHostUserId {
             state.hostUserId = nil
         }
 
         if let hostUserIds {
-            state.hostUserIds = hostUserIds
-        } else if let hostUserId, state.hostUserIds.isEmpty {
-            state.hostUserIds = [hostUserId]
+            state.hostUserIds = hostUserIds.compactMap { normalizedParticipantUserId($0) }
+        } else if let normalizedHostUserId, state.hostUserIds.isEmpty {
+            state.hostUserIds = [normalizedHostUserId]
         }
 
         if updateAdminFromSnapshot {
@@ -1598,7 +1632,9 @@ final class MeetingViewModel {
     private func applyPendingUsersSnapshot(_ users: [PendingUserSnapshot]) {
         var next: [String: String] = [:]
         for user in users {
-            next[user.userId] = user.displayName ?? user.userId
+            guard let userId = normalizedParticipantUserId(user.userId) else { continue }
+            let displayName = user.displayName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            next[userId] = displayName.isEmpty ? userId : displayName
         }
         state.pendingUsers = next
     }
@@ -1974,6 +2010,7 @@ final class MeetingViewModel {
     }
 
     private func applyRemoteAdminClosedProducerState(userId: String, producer: AdminMediaProducer) {
+        guard let userId = normalizedParticipantUserId(userId) else { return }
         guard ensureParticipantPresent(userId) else { return }
 
         if producer.kind == "audio", producer.type == ProducerType.webcam.rawValue {
@@ -2043,7 +2080,7 @@ final class MeetingViewModel {
 
     private func handleRemoteProducerClosed(_ notification: ProducerClosedNotification) {
         let trackedProducer = producerInfosById.removeValue(forKey: notification.producerId)
-        let producerUserId = notification.producerUserId ?? trackedProducer?.producerUserId
+        let producerUserId = normalizedParticipantUserId(notification.producerUserId ?? trackedProducer?.producerUserId)
         pendingProducers.removeValue(forKey: notification.producerId)
         pendingProducerContexts.removeValue(forKey: notification.producerId)
         pendingProducerRetryAttempts.removeValue(forKey: notification.producerId)
@@ -2147,19 +2184,21 @@ final class MeetingViewModel {
     }
 
     func handleProducerState(_ producer: ProducerInfo) {
+        guard let producer = normalizedProducerInfo(producer) else { return }
+        let producerUserId = producer.producerUserId
         producerInfosById[producer.producerId] = producer
-        if MeetingState.isBrowserAudioUserId(producer.producerUserId) {
+        if MeetingState.isBrowserAudioUserId(producerUserId) {
             refreshBrowserAudioPresence()
             return
         }
-        if MeetingState.isBrowserVideoUserId(producer.producerUserId) {
-            if state.activeScreenShareUserId == producer.producerUserId {
+        if MeetingState.isBrowserVideoUserId(producerUserId) {
+            if state.activeScreenShareUserId == producerUserId {
                 state.activeScreenShareUserId = nil
             }
             return
         }
-        guard !MeetingState.isSystemUserId(producer.producerUserId) else { return }
-        if state.isLocalParticipantUserId(producer.producerUserId) {
+        guard !MeetingState.isSystemUserId(producerUserId) else { return }
+        if state.isLocalParticipantUserId(producerUserId) {
             if producer.kind == "audio", producer.type == ProducerType.webcam.rawValue {
                 state.isMuted = producer.paused ?? state.isMuted
                 syncCallPresenceMute()
@@ -2174,27 +2213,27 @@ final class MeetingViewModel {
             return
         }
 
-        ensureParticipantPresent(producer.producerUserId)
+        ensureParticipantPresent(producerUserId)
 
         if producer.kind == "audio", producer.type == ProducerType.webcam.rawValue {
-            state.participants[producer.producerUserId]?.isMuted = producer.paused ?? false
+            state.participants[producerUserId]?.isMuted = producer.paused ?? false
         } else if producer.kind == "video" {
             if producer.type == "screen" {
                 let isActiveScreenShare = producer.paused != true
                 if isActiveScreenShare {
-                    if let previous = state.activeScreenShareUserId, previous != producer.producerUserId {
+                    if let previous = state.activeScreenShareUserId, previous != producerUserId {
                         state.participants[previous]?.isScreenSharing = false
                     }
-                    state.participants[producer.producerUserId]?.isScreenSharing = true
-                    state.activeScreenShareUserId = producer.producerUserId
+                    state.participants[producerUserId]?.isScreenSharing = true
+                    state.activeScreenShareUserId = producerUserId
                 } else {
-                    state.participants[producer.producerUserId]?.isScreenSharing = false
-                    if state.activeScreenShareUserId == producer.producerUserId {
+                    state.participants[producerUserId]?.isScreenSharing = false
+                    if state.activeScreenShareUserId == producerUserId {
                         state.activeScreenShareUserId = nil
                     }
                 }
             } else {
-                state.participants[producer.producerUserId]?.isCameraOff = producer.paused ?? false
+                state.participants[producerUserId]?.isCameraOff = producer.paused ?? false
             }
         }
     }
@@ -2664,6 +2703,7 @@ final class MeetingViewModel {
         context: SocketEventContext? = nil,
         joinAttemptId: UUID? = nil
     ) async {
+        guard let producer = normalizedProducerInfo(producer) else { return }
         if let context {
             guard isCurrentSocketEvent(context, roomId: producer.roomId) else { return }
         } else {

@@ -290,10 +290,8 @@ function MobileChatPanel({
           <div className="flex-1 mobile-sheet-scroll overflow-y-auto px-4 pb-3 space-y-3">
             {messages.length === 0 ? (
               <div className="flex-1 flex items-center justify-center h-full py-6">
-                <p className="text-[#fafafa]/75 text-sm text-center">
-                  No messages yet.
-                  <br />
-                  Start the conversation!
+                <p className="text-[#fafafa]/60 text-sm text-center">
+                  No messages yet
                 </p>
               </div>
             ) : (

@@ -274,6 +274,14 @@ function ControlsBar(props: ControlsBarProps) {
               className={popoverPanelClass + " flex items-center gap-1"}
               style={{ backgroundColor: color.surfaceRaised, borderColor: color.border }}
             >
+              {reactionOptions.length === 0 ? (
+                <span
+                  className="px-3 py-1.5 text-[13px]"
+                  style={{ color: color.textFaint }}
+                >
+                  No reactions available
+                </span>
+              ) : null}
               {reactionOptions.map((reaction) => (
                 <button
                   key={reaction.id}

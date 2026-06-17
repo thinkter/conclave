@@ -40,7 +40,7 @@ function AndroidUpsellSheet({ isOpen, onClose }: AndroidUpsellSheetProps) {
                   Conclave for Android
                 </span>
                 <span className="text-xs text-[#fafafa]/55">
-                  A better experience on mobile
+                  Available on the Play Store
                 </span>
               </div>
             </div>

@@ -3,6 +3,7 @@
 import { Check, ChevronUp, FlipHorizontal2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { color } from "@conclave/ui-tokens";
+import { SwitchRow } from "@conclave/ui-tokens/web";
 
 type DeviceOption = { deviceId: string; label: string };
 
@@ -98,6 +99,19 @@ function DeviceList({
   );
 }
 
+function EmptyDevices({ kind }: { kind: "audio" | "video" }) {
+  return (
+    <p
+      className="px-3 py-3 text-[13px]"
+      style={{ color: color.textFaint }}
+    >
+      {kind === "audio"
+        ? "No microphones or speakers found. Allow microphone access, then reopen this menu."
+        : "No cameras found. Allow camera access, then reopen this menu."}
+    </p>
+  );
+}
+
 export interface DeviceCaretMenuProps {
   kind: "audio" | "video";
   disabled?: boolean;
@@ -169,49 +183,44 @@ export function DeviceCaretMenu(props: DeviceCaretMenuProps) {
             style={{ backgroundColor: color.surfaceRaised, borderColor: color.border }}
           >
             {kind === "audio" ? (
-              <>
-                <DeviceList
-                  heading="Microphone"
-                  devices={audioInput}
-                  selectedId={props.selectedAudioInputDeviceId}
-                  onSelect={handleSelect(props.onAudioInputDeviceChange)}
-                />
-                <DeviceList
-                  heading="Speaker"
-                  devices={audioOutput}
-                  selectedId={props.selectedAudioOutputDeviceId}
-                  onSelect={handleSelect(props.onAudioOutputDeviceChange)}
-                />
-              </>
+              audioInput.length === 0 && audioOutput.length === 0 ? (
+                <EmptyDevices kind="audio" />
+              ) : (
+                <>
+                  <DeviceList
+                    heading="Microphone"
+                    devices={audioInput}
+                    selectedId={props.selectedAudioInputDeviceId}
+                    onSelect={handleSelect(props.onAudioInputDeviceChange)}
+                  />
+                  <DeviceList
+                    heading="Speaker"
+                    devices={audioOutput}
+                    selectedId={props.selectedAudioOutputDeviceId}
+                    onSelect={handleSelect(props.onAudioOutputDeviceChange)}
+                  />
+                </>
+              )
             ) : (
               <>
-                <DeviceList
-                  heading="Camera"
-                  devices={videoInput}
-                  selectedId={props.selectedVideoInputDeviceId}
-                  onSelect={handleSelect(props.onVideoInputDeviceChange)}
-                />
+                {videoInput.length === 0 ? (
+                  <EmptyDevices kind="video" />
+                ) : (
+                  <DeviceList
+                    heading="Camera"
+                    devices={videoInput}
+                    selectedId={props.selectedVideoInputDeviceId}
+                    onSelect={handleSelect(props.onVideoInputDeviceChange)}
+                  />
+                )}
                 {props.onToggleMirror && (
-                  <div className="px-1.5 pb-1">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        props.onToggleMirror?.();
-                        setOpen(false);
-                      }}
-                      className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] transition-[background-color] duration-[120ms] hover:bg-white/[0.06]"
-                      style={{ color: color.text }}
-                    >
-                      <FlipHorizontal2 size={16} strokeWidth={1.75} className="shrink-0" />
-                      <span className="flex-1">Mirror my video</span>
-                      <span
-                        className="text-[12px]"
-                        style={{ color: props.isMirrorCamera ? color.accent : color.textFaint }}
-                      >
-                        {props.isMirrorCamera ? "On" : "Off"}
-                      </span>
-                    </button>
-                  </div>
+                  <SwitchRow
+                    icon={FlipHorizontal2}
+                    label="Mirror my video"
+                    checked={Boolean(props.isMirrorCamera)}
+                    onChange={() => props.onToggleMirror?.()}
+                    className="rounded-lg"
+                  />
                 )}
               </>
             )}

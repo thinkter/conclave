@@ -12,6 +12,7 @@ import {
   X,
 } from "lucide-react";
 import type { Dispatch, SetStateAction } from "react";
+import { Switch } from "@conclave/ui-tokens/web";
 import {
   clampMeetViewTiles,
   MEET_VIEW_MAX_TILES,
@@ -45,7 +46,7 @@ const SELF_VIEW_OPTIONS: {
   icon: typeof Grid3X3;
 }[] = [
   { id: "auto", label: "Auto", icon: Scan },
-  { id: "tile", label: "In a tile", icon: UserRound },
+  { id: "tile", label: "Tile", icon: UserRound },
   { id: "floating", label: "Floating", icon: PictureInPicture2 },
   { id: "minimized", label: "Minimized", icon: Minimize2 },
 ];
@@ -84,7 +85,6 @@ function ViewOptionButton<T extends string>({
           ? {
               backgroundColor: "#211817",
               borderColor: "rgba(249, 95, 74, 0.7)",
-              boxShadow: "0 0 0 1px rgba(249, 95, 74, 0.18)",
             }
           : undefined
       }
@@ -96,7 +96,7 @@ function ViewOptionButton<T extends string>({
       />
       <span className="text-[13px] font-medium text-[#fafafa]">{label}</span>
       {selected ? (
-        <span className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full bg-[#F95F4A] text-white shadow-[0_4px_12px_rgba(249,95,74,0.28)]">
+        <span className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full bg-[#F95F4A] text-white">
           <Check size={13} strokeWidth={2} />
         </span>
       ) : null}
@@ -135,7 +135,7 @@ export default function MeetViewPanel({
   return (
     <aside
       data-testid="meet-view-panel"
-      className="fixed bottom-24 right-4 top-4 z-40 flex w-[360px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-[18px] border border-white/[0.10] bg-[#18181b] text-[#fafafa] shadow-[0_18px_60px_rgba(0,0,0,0.42)] animate-[meet-panel-in_180ms_cubic-bezier(0.22,1,0.36,1)]"
+      className="fixed bottom-24 right-4 top-4 z-40 flex w-[360px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-[18px] border border-white/[0.10] bg-[#18181b] text-[#fafafa] animate-[meet-panel-in_180ms_cubic-bezier(0.22,1,0.36,1)]"
       aria-label="Adjust view"
     >
       <header className="flex items-center justify-between border-b border-white/[0.08] px-4 py-4">
@@ -212,39 +212,21 @@ export default function MeetViewPanel({
         </section>
 
         <section className="border-t border-white/[0.08] px-4 py-3">
-          <button
-            type="button"
-            role="switch"
-            aria-checked={settings.hideTilesWithoutVideo}
-            onClick={() =>
-              setHideTilesWithoutVideo(!settings.hideTilesWithoutVideo)
-            }
-            className="flex w-full items-center justify-between gap-3 rounded-[12px] px-3 py-2.5 text-left transition-colors duration-[120ms] hover:bg-white/[0.06]"
-          >
+          <div className="flex w-full items-center justify-between gap-3 px-1 py-1.5">
             <span className="text-[13px] font-medium text-[#fafafa]">
               Hide tiles without video
             </span>
-            <span
-              className={`relative h-6 w-10 rounded-full border transition-colors ${
-                settings.hideTilesWithoutVideo
-                  ? "border-[#F95F4A] bg-[#F95F4A]"
-                  : "border-white/[0.16] bg-white/[0.08]"
-              }`}
-            >
-              <span
-                className={`absolute top-1 h-4 w-4 rounded-full bg-white transition-transform ${
-                  settings.hideTilesWithoutVideo
-                    ? "translate-x-[18px]"
-                    : "translate-x-1"
-                }`}
-              />
-            </span>
-          </button>
+            <Switch
+              label="Hide tiles without video"
+              checked={settings.hideTilesWithoutVideo}
+              onChange={setHideTilesWithoutVideo}
+            />
+          </div>
         </section>
 
         <section className="border-t border-white/[0.08] px-4 py-4">
           <h3 className="mb-2 text-[12px] font-semibold uppercase tracking-[0.14em] text-[#a1a1aa]">
-            Your self-view
+            Self view
           </h3>
           <div
             className="grid grid-cols-2 gap-2"

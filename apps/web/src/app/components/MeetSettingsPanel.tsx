@@ -673,7 +673,7 @@ export default function MeetSettingsPanel({
           <SectionHeader label="Chat & messaging" />
           <SwitchRow
             icon={MessageSquareLock}
-            label="Chat"
+            label="Allow chat"
             isOn={!isChatLocked}
             tone="success"
             onClick={onToggleChatLock}
@@ -742,7 +742,7 @@ export default function MeetSettingsPanel({
               />
               <SwitchRow
                 icon={Users}
-                label={isWebinarEnabled ? "Webinar mode" : "Start webinar mode"}
+                label="Webinar mode"
                 isOn={isWebinarEnabled}
                 tone="success"
                 onClick={() =>
