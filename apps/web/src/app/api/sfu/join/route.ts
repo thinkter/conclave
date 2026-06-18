@@ -316,16 +316,16 @@ export async function POST(request: Request) {
   // security invariant + regression tests) lives in resolveHostGrant: a host
   // *intent* only grants room-creation, so the creator becomes host via the
   // SFU's server-authoritative createdRoom path — never seizing an existing room.
-  const canHonorBodyRoomCreation =
-    Boolean(sessionUser?.id) || clientId !== "public" || requestedHost;
   const { isHost, allowRoomCreation } = resolveHostGrant({
     isWebinarAttendeeJoin,
     isForcedHost,
     scheduledRoomHostMatch,
     isScheduledHostRoom,
     requestedHost,
-    bodyAllowRoomCreation:
-      canHonorBodyRoomCreation && Boolean(body?.allowRoomCreation),
+    // `/abc123` public room links intentionally create the room on first join.
+    // This still does not mint host/admin for an existing room; the SFU only
+    // promotes the requester through its server-authoritative createdRoom path.
+    bodyAllowRoomCreation: Boolean(body?.allowRoomCreation),
   });
 
   const secret = process.env.SFU_SECRET || "development-secret";
