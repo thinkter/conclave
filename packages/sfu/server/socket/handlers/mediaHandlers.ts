@@ -52,9 +52,11 @@ export const registerMediaHandlers = (context: ConnectionContext): void => {
           respond(callback, { error: "Not ready to produce" });
           return;
         }
-        if (currentClient.isObserver) {
+        if (currentClient.isObserver || currentClient.isGhost) {
           respond(callback, {
-            error: "Watch-only attendees cannot produce media",
+            error: currentClient.isGhost
+              ? "Ghost participants cannot produce media"
+              : "Watch-only attendees cannot produce media",
           });
           return;
         }

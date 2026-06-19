@@ -100,7 +100,8 @@ export function useMeetDisplayName({
     const normalized = normalizeDisplayName(displayNameInput);
     joinOptionsRef.current = {
       ...joinOptionsRef.current,
-      displayName: isAdmin ? normalized || undefined : undefined,
+      displayName:
+        isAdmin || ghostEnabled ? normalized || undefined : undefined,
       isGhost: ghostEnabled,
     };
   }, [displayNameInput, ghostEnabled, isAdmin, joinOptionsRef]);

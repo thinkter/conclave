@@ -2,6 +2,7 @@ import { createHash, createHmac } from "crypto";
 import jwt from "jsonwebtoken";
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { canUseGhostMode } from "@/lib/ghost-mode";
 
 export const runtime = "nodejs";
 
@@ -364,6 +365,7 @@ export async function POST(request: Request) {
     sessionUser?.id?.trim() || body?.user?.id?.trim() || undefined;
   const baseUserId = email || providedId || `guest-${sessionId}`;
   const isWebinarAttendeeJoin = joinMode === "webinar_attendee";
+  const canJoinAsGhost = canUseGhostMode(sessionEmail);
   const isForcedHost =
     !isWebinarAttendeeJoin &&
     Boolean(
@@ -388,6 +390,7 @@ export async function POST(request: Request) {
       clientId,
       sessionId,
       joinMode,
+      canGhostMode: canJoinAsGhost,
     },
     process.env.SFU_SECRET || "development-secret",
     { expiresIn: "1h" }

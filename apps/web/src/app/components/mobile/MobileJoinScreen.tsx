@@ -4,6 +4,7 @@ import {
   AlertCircle,
   ArrowRight,
   Loader2,
+  Ghost,
   Mic,
   MicOff,
   Plus,
@@ -758,6 +759,7 @@ function MobileJoinScreen({
               onClick={() => {
                 setActiveTab("new");
                 onIsAdminChange(true);
+                onGhostModeChange(false);
               }}
               className={`flex-1 py-2.5 text-xs uppercase tracking-[0.25em] rounded-full transition-all ${
                 activeTab === "new"
@@ -785,6 +787,26 @@ function MobileJoinScreen({
               Join
             </button>
           </div>
+
+          {allowGhostMode && (activeTab === "join" || isRoutedRoom) && (
+            <button
+              type="button"
+              onClick={() => onGhostModeChange(!isGhostMode)}
+              disabled={isLoading}
+              className={`mobile-glass-soft mobile-pill h-11 px-4 flex items-center gap-3 text-xs uppercase tracking-[0.2em] ${
+                isGhostMode ? "text-[#4DA8FF]" : "text-[#FEFCD9]/60"
+              }`}
+              style={{ fontFamily: "'PolySans Mono', monospace" }}
+            >
+              <Ghost className="w-4 h-4" />
+              <span className="flex-1 text-left">Ghost Mode</span>
+              <span
+                className={`h-2.5 w-2.5 rounded-full ${
+                  isGhostMode ? "bg-[#4DA8FF]" : "bg-[#FEFCD9]/20"
+                }`}
+              />
+            </button>
+          )}
 
           <div className="mobile-glass-soft mobile-pill p-1 h-[52px]">
             {activeTab === "join" || isRoutedRoom ? (

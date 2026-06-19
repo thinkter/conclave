@@ -251,7 +251,7 @@ export class Room {
   getMeetingParticipantCount(): number {
     let count = 0;
     for (const client of this.clients.values()) {
-      if (client.isWebinarAttendee) {
+      if (client.isGhost || client.isWebinarAttendee) {
         continue;
       }
       count += 1;

@@ -812,6 +812,7 @@ function JoinScreen({
                       onClick={() => {
                         setActiveTab("new");
                         onIsAdminChange(true);
+                        onGhostModeChange(false);
                       }}
                       className={`flex-1 py-2.5 text-xs uppercase tracking-wider rounded-md transition-all ${activeTab === "new" ? "bg-[#5B7CFA] text-white" : "text-[#FEFCD9]/50 hover:text-[#FEFCD9]"}`}
                       style={{ fontFamily: "'PolySans Mono', monospace" }}
@@ -924,7 +925,7 @@ function JoinScreen({
                         )}
                       </div>
                     </div>
-                    {isAdmin && allowGhostMode && (
+                    {(isAdmin || allowGhostMode) && (
                       <div>
                         <label className="text-[10px] uppercase tracking-wider text-[#FEFCD9]/40 mb-1.5 block" style={{ fontFamily: "'PolySans Mono', monospace" }}>
                           Display Name
@@ -939,6 +940,38 @@ function JoinScreen({
                           className="w-full px-3 py-2.5 bg-[#1a1b1f] border border-[#FEFCD9]/10 rounded-lg text-sm text-[#FEFCD9] placeholder:text-[#FEFCD9]/30 focus:border-[#5B7CFA]/50 focus:outline-none"
                         />
                       </div>
+                    )}
+                    {allowGhostMode && (
+                      <button
+                        type="button"
+                        onClick={() => onGhostModeChange(!isGhostMode)}
+                        disabled={isLoading}
+                        className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg transition-all text-sm ${
+                          isGhostMode
+                            ? "bg-[#4DA8FF]/15 border border-[#4DA8FF]/30"
+                            : "bg-[#1a1b1f] border border-[#FEFCD9]/10"
+                        }`}
+                      >
+                        <Ghost
+                          className={`w-4 h-4 ${
+                            isGhostMode ? "text-[#4DA8FF]" : "text-[#FEFCD9]/40"
+                          }`}
+                        />
+                        <span className="flex-1 text-left text-[#FEFCD9]/70">
+                          Ghost Mode
+                        </span>
+                        <div
+                          className={`w-8 h-4 rounded-full relative ${
+                            isGhostMode ? "bg-[#4DA8FF]" : "bg-[#FEFCD9]/15"
+                          }`}
+                        >
+                          <div
+                            className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${
+                              isGhostMode ? "left-4" : "left-0.5"
+                            }`}
+                          />
+                        </div>
+                      </button>
                     )}
                     <button
                       onClick={handleJoin}

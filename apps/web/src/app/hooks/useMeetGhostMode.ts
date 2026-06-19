@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 
 interface UseMeetGhostModeOptions {
-  isAdmin: boolean;
+  canUseGhostMode: boolean;
   isGhostMode: boolean;
   setIsGhostMode: (value: boolean) => void;
   ghostEnabled: boolean;
@@ -14,7 +14,7 @@ interface UseMeetGhostModeOptions {
 }
 
 export function useMeetGhostMode({
-  isAdmin,
+  canUseGhostMode,
   isGhostMode,
   setIsGhostMode,
   ghostEnabled,
@@ -24,10 +24,10 @@ export function useMeetGhostMode({
   setIsHandRaised,
 }: UseMeetGhostModeOptions) {
   useEffect(() => {
-    if (!isAdmin && isGhostMode) {
+    if (!canUseGhostMode && isGhostMode) {
       setIsGhostMode(false);
     }
-  }, [isAdmin, isGhostMode, setIsGhostMode]);
+  }, [canUseGhostMode, isGhostMode, setIsGhostMode]);
 
   useEffect(() => {
     if (!ghostEnabled) return;

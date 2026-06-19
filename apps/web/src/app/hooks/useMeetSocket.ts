@@ -3142,7 +3142,8 @@ export function useMeetSocket({
         webinarInviteCode?: string;
         meetingInviteCode?: string;
       } = {
-        displayName: isAdmin ? normalizedDisplayName || undefined : undefined,
+        displayName:
+          isAdmin || ghostEnabled ? normalizedDisplayName || undefined : undefined,
         isGhost: ghostEnabled,
         joinMode,
       };

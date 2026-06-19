@@ -143,6 +143,7 @@ export default function MeetsClient({
 }: MeetsClientProps) {
   const [currentUser, setCurrentUser] = useState<MeetUser | undefined>(user);
   const [currentIsAdmin, setCurrentIsAdmin] = useState(isAdmin);
+  const [canUseGhostMode, setCanUseGhostMode] = useState(false);
   const [guestStorageReady, setGuestStorageReady] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [appsSocket, setAppsSocket] = useState<Socket | null>(null);
@@ -175,6 +176,33 @@ export default function MeetsClient({
     }
     window.localStorage.removeItem(GUEST_USER_STORAGE_KEY);
   }, [currentUser, guestStorageReady]);
+
+  useEffect(() => {
+    if (!allowGhostMode || !currentUser || isGuestUser(currentUser)) {
+      setCanUseGhostMode(false);
+      return;
+    }
+
+    let cancelled = false;
+    void fetch("/api/sfu/ghost-mode", { cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) return false;
+        const data = (await response.json().catch(() => null)) as {
+          allowed?: unknown;
+        } | null;
+        return data?.allowed === true;
+      })
+      .catch(() => false)
+      .then((allowed) => {
+        if (!cancelled) {
+          setCanUseGhostMode(allowed);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [allowGhostMode, currentUser]);
 
   const clearGuestStorage = useCallback(() => {
     if (typeof window === "undefined") return;
@@ -335,7 +363,8 @@ export default function MeetsClient({
   const isAdminFlag = Boolean(currentIsAdmin);
   const isWebinarAttendee =
     joinMode === "webinar_attendee" || webinarRole === "attendee";
-  const ghostEnabled = allowGhostMode && isAdminFlag && isGhostMode;
+  const ghostEnabled =
+    allowGhostMode && canUseGhostMode && !isWebinarAttendee && isGhostMode;
   const canSignOut = Boolean(
     currentUser && !currentUser.id?.startsWith("guest-"),
   );
@@ -774,7 +803,7 @@ export default function MeetsClient({
   });
 
   useMeetGhostMode({
-    isAdmin: isAdminFlag,
+    canUseGhostMode: allowGhostMode && canUseGhostMode && !isWebinarAttendee,
     isGhostMode,
     setIsGhostMode,
     ghostEnabled,
@@ -1261,7 +1290,7 @@ export default function MeetsClient({
           isWebinarAttendee={isWebinarAttendee}
           enableRoomRouting={enableRoomRouting}
           forceJoinOnly={forceJoinOnly}
-          allowGhostMode={allowGhostMode}
+          allowGhostMode={allowGhostMode && canUseGhostMode && !isWebinarAttendee}
           user={currentUser}
           userEmail={userEmail}
           isAdmin={isAdminFlag}
@@ -1427,7 +1456,7 @@ export default function MeetsClient({
         isWebinarAttendee={isWebinarAttendee}
         enableRoomRouting={enableRoomRouting}
         forceJoinOnly={forceJoinOnly}
-        allowGhostMode={allowGhostMode}
+        allowGhostMode={allowGhostMode && canUseGhostMode && !isWebinarAttendee}
         user={currentUser}
         userEmail={userEmail}
         isAdmin={isAdminFlag}

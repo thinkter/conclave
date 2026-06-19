@@ -4,7 +4,6 @@ import { config } from "../../../config/config.js";
 import type { AppsAwarenessData } from "../../../types.js";
 import { Logger } from "../../../utilities/loggers.js";
 import { cleanupRoom } from "../../rooms.js";
-import { emitUserLeft } from "../../notifications.js";
 import {
   emitWebinarAttendeeCountChanged,
   emitWebinarFeedChanged,
@@ -74,16 +73,13 @@ export const registerDisconnectHandlers = (
         }
 
         activeRoom.removeClient(userId);
-        if (isGhost) {
-          emitUserLeft(activeRoom, userId, {
-            ghostOnly: true,
-            excludeUserId: userId,
-          });
-        } else if (!isWebinarAttendee) {
+        if (!isGhost && !isWebinarAttendee) {
           io.to(roomChannelId).emit("userLeft", { userId });
         }
-        emitWebinarAttendeeCountChanged(io, state, activeRoom);
-        emitWebinarFeedChanged(io, state, activeRoom);
+        if (!isGhost) {
+          emitWebinarAttendeeCountChanged(io, state, activeRoom);
+          emitWebinarFeedChanged(io, state, activeRoom);
+        }
 
         if (wasAdmin) {
           if (!activeRoom.hasActiveAdmin()) {

@@ -115,7 +115,7 @@ export default function MeetsClientPage({
         initialRoomId={resolvedInitialRoomId}
         enableRoomRouting={isPublicClient}
         forceJoinOnly={forceJoinOnly}
-        allowGhostMode={!isPublicClient}
+        allowGhostMode={true}
         bypassMediaPermissions={bypassMediaPermissions}
         joinMode={joinMode}
         autoJoinOnMount={autoJoinOnMount}
