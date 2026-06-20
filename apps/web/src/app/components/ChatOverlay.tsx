@@ -7,6 +7,7 @@ import { color } from "@conclave/ui-tokens";
 import type { ChatMessage } from "../lib/types";
 import { getActionText } from "../lib/chat-commands";
 import { formatDisplayName } from "../lib/utils";
+import ChatGifAttachmentView from "./ChatGifAttachmentView";
 
 interface ChatOverlayProps {
   messages: ChatMessage[];
@@ -54,6 +55,12 @@ function ChatOverlay({ messages, onDismiss }: ChatOverlayProps) {
                 >
                   {actionText}
                 </p>
+              ) : message.gif ? (
+                <ChatGifAttachmentView
+                  gif={message.gif}
+                  className="mt-2 rounded-xl"
+                  widthClassName="w-[150px]"
+                />
               ) : (
                 <p
                   className="mt-0.5 break-words text-[13.5px] leading-snug"

@@ -995,6 +995,7 @@ export default function MeetsClient({
     setChatInput,
     toggleChat,
     sendChat,
+    sendChatGif,
     isChatOpenRef,
   } = useMeetChat({
     socketRef: refs.socketRef,
@@ -2750,6 +2751,7 @@ export default function MeetsClient({
           chatInput={chatInput}
           setChatInput={setChatInput}
           sendChat={sendChat}
+          sendChatGif={sendChatGif}
           chatOverlayMessages={chatOverlayMessages}
           setChatOverlayMessages={setChatOverlayMessages}
           socket={refs.socketRef.current}
@@ -2910,6 +2912,7 @@ export default function MeetsClient({
         chatInput={chatInput}
         setChatInput={setChatInput}
         sendChat={sendChat}
+        sendChatGif={sendChatGif}
         chatOverlayMessages={chatOverlayMessages}
         setChatOverlayMessages={setChatOverlayMessages}
         socket={refs.socketRef.current}

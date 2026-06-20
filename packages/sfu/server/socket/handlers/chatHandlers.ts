@@ -1,4 +1,8 @@
-import type { ChatMessage, SendChatData } from "../../../types.js";
+import type {
+  ChatGifAttachment,
+  ChatMessage,
+  SendChatData,
+} from "../../../types.js";
 import { Admin } from "../../../config/classes/Admin.js";
 import { Logger } from "../../../utilities/loggers.js";
 import type Room from "../../../config/classes/Room.js";
@@ -11,12 +15,83 @@ const DM_COMMAND_PATTERN = /^\/dm\s+(\S+)\s+([\s\S]+)$/i;
 const TRAILING_MENTION_PUNCTUATION_PATTERN = /[,:;.!?]+$/;
 const DIRECT_MESSAGE_USAGE_ERROR =
   "Use private messages as @username <message> or /dm <username> <message>.";
+const MAX_GIF_TITLE_LENGTH = 140;
+const MAX_GIF_URL_LENGTH = 2048;
+const KLIPY_MEDIA_HOSTS = new Set(["static.klipy.com"]);
+const KLIPY_PAGE_HOSTS = new Set(["klipy.com", "www.klipy.com"]);
 
 const fallbackDisplayNameFromUserId = (userId: string): string =>
   userId.split("#")[0]?.split("@")[0] || userId;
 
 const normalizeLookupToken = (value: string): string =>
   value.trim().toLowerCase().replace(/[^a-z0-9._-]/g, "");
+
+const normalizeHttpsUrl = (
+  value: unknown,
+  allowedHosts: Set<string>,
+): string | null => {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > MAX_GIF_URL_LENGTH) return null;
+
+  try {
+    const url = new URL(trimmed);
+    if (url.protocol !== "https:" || !allowedHosts.has(url.hostname)) {
+      return null;
+    }
+    return url.href;
+  } catch {
+    return null;
+  }
+};
+
+const normalizeGifDimension = (value: unknown): number | undefined => {
+  if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
+  const rounded = Math.round(value);
+  return rounded > 0 && rounded <= 4096 ? rounded : undefined;
+};
+
+const normalizeChatGifAttachment = (
+  value: unknown,
+): ChatGifAttachment | { error: string } | null => {
+  if (!value) return null;
+  if (typeof value !== "object") {
+    return { error: "Invalid GIF attachment." };
+  }
+
+  const candidate = value as Record<string, unknown>;
+  if (candidate.source !== "klipy") {
+    return { error: "Unsupported GIF provider." };
+  }
+
+  const url = normalizeHttpsUrl(candidate.url, KLIPY_MEDIA_HOSTS);
+  if (!url) {
+    return { error: "Invalid GIF URL." };
+  }
+
+  const previewUrl =
+    normalizeHttpsUrl(candidate.previewUrl, KLIPY_MEDIA_HOSTS) ?? undefined;
+  const pageUrl =
+    normalizeHttpsUrl(candidate.pageUrl, KLIPY_PAGE_HOSTS) ?? undefined;
+  const rawId = typeof candidate.id === "string" ? candidate.id.trim() : "";
+  const id = rawId.slice(0, 120) || url;
+  const rawTitle =
+    typeof candidate.title === "string" ? candidate.title.trim() : "";
+  const title = (rawTitle || "GIF").slice(0, MAX_GIF_TITLE_LENGTH);
+  const width = normalizeGifDimension(candidate.width);
+  const height = normalizeGifDimension(candidate.height);
+
+  return {
+    id,
+    title,
+    url,
+    ...(previewUrl ? { previewUrl } : {}),
+    ...(pageUrl ? { pageUrl } : {}),
+    ...(width ? { width } : {}),
+    ...(height ? { height } : {}),
+    source: "klipy",
+  };
+};
 
 interface DirectMessageTargetCandidate {
   userId: string;
@@ -209,8 +284,16 @@ export const registerChatHandlers = (context: ConnectionContext): void => {
           return;
         }
 
-        const content = data.content?.trim();
-        if (!content || content.length === 0) {
+        const normalizedGif = normalizeChatGifAttachment(data.gif);
+        if (normalizedGif && "error" in normalizedGif) {
+          respond(callback, { error: normalizedGif.error });
+          return;
+        }
+
+        const gif = normalizedGif ?? undefined;
+        const content =
+          typeof data.content === "string" ? data.content.trim() : "";
+        if (!content && !gif) {
           respond(callback, { error: "Message cannot be empty" });
           return;
         }
@@ -242,9 +325,12 @@ export const registerChatHandlers = (context: ConnectionContext): void => {
           dmTarget = resolvedTarget;
         }
 
-        const messageContent = directMessageIntent
+        let messageContent = directMessageIntent
           ? directMessageIntent.messageBody
           : content;
+        if (!messageContent && gif) {
+          messageContent = gif.title;
+        }
 
         if (
           !directMessageIntent &&
@@ -277,6 +363,7 @@ export const registerChatHandlers = (context: ConnectionContext): void => {
           displayName,
           content: messageContent,
           timestamp: Date.now(),
+          ...(gif ? { gif } : {}),
           isDirect: Boolean(dmTarget),
           dmTargetUserId: dmTarget?.userId,
           dmTargetDisplayName: dmTarget?.displayName,

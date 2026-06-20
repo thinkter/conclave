@@ -2,9 +2,11 @@
 
 import { Send } from "lucide-react";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import type { ChatMessage } from "../../lib/types";
+import type { ChatGifAttachment, ChatMessage } from "../../lib/types";
 import { getActionText, getCommandSuggestions } from "../../lib/chat-commands";
 import { formatDisplayName, getChatMessageSegments } from "../../lib/utils";
+import ChatGifAttachmentView from "../ChatGifAttachmentView";
+import GifPicker from "../GifPicker";
 
 interface MentionableParticipant {
   userId: string;
@@ -19,6 +21,7 @@ interface MobileChatPanelProps {
   chatInput: string;
   onInputChange: (value: string) => void;
   onSend: (content: string) => void;
+  onSendGif: (gif: ChatGifAttachment) => void;
   onClose: () => void;
   isOpen: boolean;
   currentUserId: string;
@@ -35,6 +38,7 @@ function MobileChatPanel({
   chatInput,
   onInputChange,
   onSend,
+  onSendGif,
   onClose,
   isOpen,
   currentUserId,
@@ -144,6 +148,13 @@ function MobileChatPanel({
       setLocalValue("");
       onInputChange("");
     }
+  };
+
+  const handleSendGif = (gif: ChatGifAttachment) => {
+    if (isChatDisabled) return;
+    onSendGif(gif);
+    setLocalValue("");
+    onInputChange("");
   };
 
   const applyMentionSuggestion = (index: number) => {
@@ -340,22 +351,41 @@ function MobileChatPanel({
                         {resolveDisplayName(message.userId)}
                       </span>
                     )}
-                    <div
-                      className={`max-w-[80%] rounded-[18px] px-3 py-2 ${
-                        isOwn
-                          ? "bg-[#F95F4A] text-white rounded-br-md selection:bg-white/90 selection:text-[#131316]"
-                          : "bg-[#2e2e33]/90 text-[#fafafa] rounded-bl-md selection:bg-[#F95F4A]/40 selection:text-white"
-                      } ${message.isDirect ? "ring-1 ring-amber-300/30" : ""}`}
-                    >
-                      <p className="text-sm break-words">
-                        {directMessageLabel ? (
-                          <span className="mb-1 block text-[11px] font-medium text-amber-300/80">
-                            {directMessageLabel}
-                          </span>
-                        ) : null}
-                        {renderMessageContent(message.content)}
-                      </p>
-                    </div>
+                    {directMessageLabel && message.gif ? (
+                      <span className="mb-1 px-1 text-[11px] font-medium text-amber-300/80">
+                        {directMessageLabel}
+                      </span>
+                    ) : null}
+                    {message.gif ? (
+                      <div
+                        className={`max-w-[80%] overflow-hidden rounded-[18px] ring-1 ${
+                          isOwn ? "ring-[#F95F4A]/55" : "ring-white/10"
+                        } ${message.isDirect ? "ring-amber-300/30" : ""}`}
+                      >
+                        <ChatGifAttachmentView
+                          gif={message.gif}
+                          className="rounded-[18px]"
+                          widthClassName="w-[220px]"
+                        />
+                      </div>
+                    ) : (
+                      <div
+                        className={`max-w-[80%] rounded-[18px] px-3 py-2 ${
+                          isOwn
+                            ? "bg-[#F95F4A] text-white rounded-br-md selection:bg-white/90 selection:text-[#131316]"
+                            : "bg-[#2e2e33]/90 text-[#fafafa] rounded-bl-md selection:bg-[#F95F4A]/40 selection:text-white"
+                        } ${message.isDirect ? "ring-1 ring-amber-300/30" : ""}`}
+                      >
+                        <p className="text-sm break-words">
+                          {directMessageLabel ? (
+                            <span className="mb-1 block text-[11px] font-medium text-amber-300/80">
+                              {directMessageLabel}
+                            </span>
+                          ) : null}
+                          {renderMessageContent(message.content)}
+                        </p>
+                      </div>
+                    )}
                     <span className="text-[9px] text-[#fafafa]/35 mt-0.5 px-1">
                       {formatTime(message.timestamp)}
                     </span>
@@ -425,6 +455,11 @@ function MobileChatPanel({
                 })}
               </div>
             )}
+            <GifPicker
+              disabled={isChatDisabled}
+              onSelect={handleSendGif}
+              variant="mobile"
+            />
             <input
               ref={inputRef}
               type="text"

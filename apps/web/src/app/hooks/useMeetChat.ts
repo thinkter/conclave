@@ -2,7 +2,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import type { Socket } from "socket.io-client";
-import type { ChatMessage } from "../lib/types";
+import type { ChatGifAttachment, ChatMessage } from "../lib/types";
 import {
   createLocalChatMessage,
   formatActionContent,
@@ -72,13 +72,14 @@ export function useMeetChat({
   );
 
   const buildOptimisticMessage = useCallback(
-    (content: string): ChatMessage =>
+    (content: string, gif?: ChatGifAttachment): ChatMessage =>
       normalizeChatMessage({
         id: `optimistic-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         userId: currentUserId,
         displayName: currentUserDisplayName,
         content,
         timestamp: Date.now(),
+        ...(gif ? { gif } : {}),
       }).message,
     [currentUserDisplayName, currentUserId],
   );
@@ -90,17 +91,18 @@ export function useMeetChat({
   }, [setChatMessages, setChatOverlayMessages, setUnreadCount]);
 
   const sendChatInternal = useCallback(
-    (content: string) => {
+    (content: string, gif?: ChatGifAttachment) => {
       const socket = socketRef.current;
       const trimmedContent = content.trim();
-      if (!socket || !trimmedContent) return;
+      if (!socket || (!trimmedContent && !gif)) return;
 
-      const optimisticMessage = buildOptimisticMessage(trimmedContent);
+      const messageContent = trimmedContent || gif?.title || "GIF";
+      const optimisticMessage = buildOptimisticMessage(messageContent, gif);
       setChatMessages((prev) => [...prev, optimisticMessage]);
 
       socket.emit(
         "sendChat",
-        { content: trimmedContent },
+        { content: messageContent, ...(gif ? { gif } : {}) },
         (
           response:
             | { success: boolean; message?: ChatMessage }
@@ -283,6 +285,25 @@ export function useMeetChat({
     ],
   );
 
+  const sendChatGif = useCallback(
+    (gif: ChatGifAttachment) => {
+      if (ghostEnabled || isObserverMode) return;
+      if (isChatLocked && !isAdmin) {
+        appendLocalMessage("Chat is locked by the host.");
+        return;
+      }
+      sendChatInternal(gif.title || "GIF", gif);
+    },
+    [
+      ghostEnabled,
+      isObserverMode,
+      isChatLocked,
+      isAdmin,
+      appendLocalMessage,
+      sendChatInternal,
+    ],
+  );
+
   return {
     chatMessages,
     setChatMessages,
@@ -295,6 +316,7 @@ export function useMeetChat({
     setChatInput,
     toggleChat,
     sendChat,
+    sendChatGif,
     isChatOpenRef,
   };
 }
