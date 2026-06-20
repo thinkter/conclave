@@ -442,8 +442,8 @@ assertNotIncludes(
 );
 assertRegex(
   "webMeetClient",
-  /const browserPublishRecoveryQuality = selfConnectionStats\.browserNetwork[\s\S]*browserPublishRecoveryQuality === "good"[\s\S]*\? "good"[\s\S]*: selfPublishQuality/,
-  "web cap recovery browser hint only restores good profile",
+  /const browserPublishRecoveryQuality = \([\s\S]*selfConnectionStats\.browserNetwork\.quality === "unknown"[\s\S]*selfConnectionStats\.browserNetwork\.startupQuality[\s\S]*const browserAllowsPublishCapRecovery =[\s\S]*browserPublishRecoveryQuality === "good" \|\|[\s\S]*browserPublishRecoveryQuality === "unknown"[\s\S]*browserAllowsPublishCapRecovery && !hasPoorPublishRecoverySignal[\s\S]*\? "good"[\s\S]*: selfPublishQuality/,
+  "web cap recovery restores good profile when browser hint is good or unknown",
 );
 assertNotIncludes(
   "webMeetClient",
@@ -462,23 +462,28 @@ assertNotIncludes(
 );
 assertIncludes(
   "webMeetMedia",
-  "Camera constraints update failed; refreshing capture once",
-  "web quality switch refreshes capture when constraints fail",
+  "Camera constraints update failed; keeping current capture",
+  "web quality switch keeps live camera when constraints fail",
 );
-assertIncludes(
+assertNotIncludes(
+  "webMeetMedia",
+  "Camera constraints update failed; refreshing capture once",
+  "web quality switch must not reopen live cameras when constraints fail",
+);
+assertNotIncludes(
   "webMeetMedia",
   "shouldRefreshVideoTrackForQualitySwitch",
-  "web quality switch refreshes capture when constraints undershoot",
+  "web quality switch must not reopen live cameras when settings undershoot",
 );
-assertIncludes(
+assertNotIncludes(
   "webMeetMedia",
   "settings.width <= lowQualityWidth * 1.05",
-  "web standard-quality camera refresh only reopens low-width captures",
+  "web standard-quality camera refresh must not key off low-width captures",
 );
-assertIncludes(
+assertNotIncludes(
   "webMeetMedia",
   "settings.height <= lowQualityHeight * 1.05",
-  "web standard-quality camera refresh only reopens low-height captures",
+  "web standard-quality camera refresh must not key off low-height captures",
 );
 assertIncludes(
   "webMeetMedia",

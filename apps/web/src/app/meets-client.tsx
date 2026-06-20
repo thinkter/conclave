@@ -2378,12 +2378,18 @@ export default function MeetsClient({
       selfConnectionStats.jitterMs >= PUBLISH_RECOVERY_JITTER_POOR_MS);
   const hasBrowserEmergencySignal =
     selfConnectionStats.browserNetwork.emergency === true;
-  const browserPublishRecoveryQuality = selfConnectionStats.browserNetwork
-    .quality as ConnectionQuality;
-  const selfPublishCapRecoveryQuality: ConnectionQuality =
+  const browserPublishRecoveryQuality = (
+    selfConnectionStats.browserNetwork.quality === "unknown"
+      ? selfConnectionStats.browserNetwork.startupQuality
+      : selfConnectionStats.browserNetwork.quality
+  ) as ConnectionQuality;
+  const browserAllowsPublishCapRecovery =
     !hasBrowserEmergencySignal &&
-    !hasPoorPublishRecoverySignal &&
-    browserPublishRecoveryQuality === "good"
+    selfConnectionStats.browserNetwork.saveData !== true &&
+    (browserPublishRecoveryQuality === "good" ||
+      browserPublishRecoveryQuality === "unknown");
+  const selfPublishCapRecoveryQuality: ConnectionQuality =
+    browserAllowsPublishCapRecovery && !hasPoorPublishRecoverySignal
       ? "good"
       : selfPublishQuality;
   useAdaptiveConsumerPreferences({
