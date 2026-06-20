@@ -29,6 +29,8 @@ import {
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { SwitchRow } from "@conclave/ui-tokens/web";
+import { useMeetVolume } from "../../hooks/useMeetVolume";
+import { clampMeetVolume } from "../../lib/meet-volume";
 import type {
   MeetingConfigSnapshot,
   MeetingUpdateRequest,
@@ -118,6 +120,39 @@ function MoreSectionLabel({ children }: { children: ReactNode }) {
     <p className="px-3 pb-1 pt-3 text-[11px] font-medium uppercase tracking-[0.08em] text-[#fafafa]/45">
       {children}
     </p>
+  );
+}
+
+function MobileMeetVolumeControl({
+  volumePercent,
+  onVolumePercentChange,
+}: {
+  volumePercent: number;
+  onVolumePercentChange: (value: number) => void;
+}) {
+  const Icon = volumePercent === 0 ? VolumeX : Volume2;
+  return (
+    <div className="rounded-xl px-3 py-3 text-[#fafafa]">
+      <div className="mb-2 flex items-center gap-3.5">
+        <Icon className="h-[19px] w-[19px] shrink-0 text-[#fafafa]/70" strokeWidth={1.75} />
+        <span className="flex-1 text-[15px] font-medium">Meet volume</span>
+        <span className="text-[12px] font-medium tabular-nums text-[#fafafa]/56">
+          {volumePercent}%
+        </span>
+      </div>
+      <input
+        type="range"
+        min={0}
+        max={100}
+        step={1}
+        value={volumePercent}
+        onChange={(event) =>
+          onVolumePercentChange(Number(event.currentTarget.value))
+        }
+        aria-label="Meet volume"
+        className="h-2 w-full accent-[#F95F4A]"
+      />
+    </div>
   );
 }
 
@@ -301,6 +336,8 @@ function MobileControlsBar({
   const [webinarNotice, setWebinarNotice] = useState<string | null>(null);
   const [webinarError, setWebinarError] = useState<string | null>(null);
   const [isWebinarWorking, setIsWebinarWorking] = useState(false);
+  const { meetVolume, setMeetVolume } = useMeetVolume();
+  const meetVolumePercent = Math.round(clampMeetVolume(meetVolume) * 100);
 
   const closeControlSheets = useCallback(() => {
     setIsMoreMenuOpen(false);
@@ -755,6 +792,10 @@ function MobileControlsBar({
             dataAction="settings"
             dataActionState="available"
             onClick={openSettingsSheet}
+          />
+          <MobileMeetVolumeControl
+            volumePercent={meetVolumePercent}
+            onVolumePercentChange={(value) => setMeetVolume(value / 100)}
           />
           <MoreRow
             icon={Hand}

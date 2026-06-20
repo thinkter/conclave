@@ -5,6 +5,8 @@ import {
   PhoneOff,
   Shield,
   Smile,
+  Volume2,
+  VolumeX,
 } from "lucide-react";
 import {
   memo,
@@ -22,6 +24,8 @@ import { normalizeBrowserUrl } from "../lib/utils";
 import HotkeyTooltip from "./HotkeyTooltip";
 import Coachmark from "./Coachmark";
 import { useOneTimeHint } from "../hooks/useOneTimeHint";
+import { useMeetVolume } from "../hooks/useMeetVolume";
+import { clampMeetVolume } from "../lib/meet-volume";
 import {
   BROWSER_APPS,
   buildControlsConfig,
@@ -216,6 +220,8 @@ function ControlsBar(props: ControlsBarProps) {
   const [browserOpen, setBrowserOpen] = useState(false);
   const [browserUrl, setBrowserUrl] = useState("");
   const [browserError, setBrowserError] = useState<string | null>(null);
+  const { meetVolume, setMeetVolume } = useMeetVolume();
+  const meetVolumePercent = Math.round(clampMeetVolume(meetVolume) * 100);
 
   const reactionRef = useRef<HTMLDivElement>(null);
   const moreRef = useRef<HTMLDivElement>(null);
@@ -263,6 +269,7 @@ function ControlsBar(props: ControlsBarProps) {
   );
 
   const showHost = Boolean(isAdmin);
+  const VolumeIcon = meetVolumePercent === 0 ? VolumeX : Volume2;
 
   return (
     <div className="relative grid w-full grid-cols-[1fr_auto_1fr] items-center gap-2 px-4 py-3">
@@ -399,6 +406,11 @@ function ControlsBar(props: ControlsBarProps) {
                   }}
                 />
               ))}
+              <MeetVolumeOverflowControl
+                icon={VolumeIcon}
+                volumePercent={meetVolumePercent}
+                onVolumePercentChange={(value) => setMeetVolume(value / 100)}
+              />
               {browserOpen && onLaunchBrowser && (
                 <BrowserLauncher
                   url={browserUrl}
@@ -471,6 +483,45 @@ function OverflowItem({ row, onActivate }: { row: OverflowRow; onActivate: () =>
       <Icon size={MENU_ICON} strokeWidth={STROKE} className="shrink-0" />
       <span className="flex-1">{row.label}</span>
     </button>
+  );
+}
+
+function MeetVolumeOverflowControl({
+  icon: Icon,
+  volumePercent,
+  onVolumePercentChange,
+}: {
+  icon: typeof Volume2;
+  volumePercent: number;
+  onVolumePercentChange: (value: number) => void;
+}) {
+  return (
+    <div className="mt-1.5 border-t px-2.5 pb-2 pt-3" style={{ borderColor: color.border }}>
+      <div className="mb-2 flex items-center gap-3">
+        <Icon size={MENU_ICON} strokeWidth={STROKE} className="shrink-0" />
+        <span className="flex-1 text-[14px] font-medium" style={{ color: color.text }}>
+          Meet volume
+        </span>
+        <span
+          className="text-[12px] tabular-nums"
+          style={{ color: color.textMuted }}
+        >
+          {volumePercent}%
+        </span>
+      </div>
+      <input
+        type="range"
+        min={0}
+        max={100}
+        step={1}
+        value={volumePercent}
+        onChange={(event) =>
+          onVolumePercentChange(Number(event.currentTarget.value))
+        }
+        aria-label="Meet volume"
+        className="h-2 w-full accent-[#F95F4A]"
+      />
+    </div>
   );
 }
 

@@ -39,6 +39,7 @@ import { useMeetRooms } from "./hooks/useMeetRooms";
 import { useMeetSocket } from "./hooks/useMeetSocket";
 import { useMeetState } from "./hooks/useMeetState";
 import { useMeetTts } from "./hooks/useMeetTts";
+import { MeetVolumeProvider } from "./hooks/useMeetVolume";
 import {
   useBandwidthHeavyPreloadDeferred,
   useBandwidthHeavyVideoEffectsSuppressed,
@@ -527,6 +528,8 @@ export default function MeetsClient({
     setIsDmEnabled,
     isBrowserAudioMuted,
     setIsBrowserAudioMuted,
+    meetVolume,
+    setMeetVolume,
     hostUserId,
     setHostUserId,
     hostUserIds,
@@ -982,7 +985,7 @@ export default function MeetsClient({
     reactionAssets,
   });
 
-  const { ttsSpeakerId, handleTtsMessage } = useMeetTts();
+  const { ttsSpeakerId, handleTtsMessage } = useMeetTts({ meetVolume });
   const effectiveActiveSpeakerId = ttsSpeakerId ?? activeSpeakerId;
 
   const {
@@ -1080,6 +1083,7 @@ export default function MeetsClient({
     setSelectedAudioInputDeviceId,
     selectedAudioOutputDeviceId,
     setSelectedAudioOutputDeviceId,
+    meetVolume,
     videoQuality,
     videoQualityRef: refs.videoQualityRef,
     activeVideoEffectsCount,
@@ -2509,7 +2513,12 @@ export default function MeetsClient({
         isAdmin={isAdminFlag}
         uploadAsset={uploadAsset}
       >
-        {content}
+        <MeetVolumeProvider
+          meetVolume={meetVolume}
+          setMeetVolume={setMeetVolume}
+        >
+          {content}
+        </MeetVolumeProvider>
       </AppsProvider>
     </>
   );

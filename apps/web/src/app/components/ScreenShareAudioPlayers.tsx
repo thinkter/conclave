@@ -1,6 +1,7 @@
 "use client";
 
 import { memo, useCallback, useEffect, useRef } from "react";
+import { useMeetVolume } from "../hooks/useMeetVolume";
 import type { Participant } from "../lib/types";
 
 interface ScreenShareAudioPlayersProps {
@@ -60,6 +61,7 @@ function ScreenShareAudioPlayer({
   playbackAttemptToken,
 }: ScreenShareAudioPlayerProps) {
   const audioRef = useRef<HTMLAudioElement>(null);
+  const { meetVolume } = useMeetVolume();
 
   const attemptPlay = useCallback(() => {
     const audio = audioRef.current;
@@ -113,6 +115,12 @@ function ScreenShareAudioPlayer({
       console.error("[Meets] Failed to set screen share audio output:", err);
     });
   }, [audioOutputDeviceId]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.volume = meetVolume;
+  }, [meetVolume]);
 
   return (
     <audio

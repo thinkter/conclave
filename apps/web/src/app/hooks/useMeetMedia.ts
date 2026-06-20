@@ -21,6 +21,7 @@ import {
   getBrowserNetworkSnapshot,
   shouldDeferBandwidthHeavyPreload,
 } from "../lib/network-information";
+import { clampMeetVolume, DEFAULT_MEET_VOLUME } from "../lib/meet-volume";
 import { createMeetError } from "../lib/utils";
 import { prewarmVideoEffectsAssetsDeferred } from "../lib/video-effects-lazy";
 import {
@@ -56,6 +57,7 @@ interface UseMeetMediaOptions {
   setSelectedAudioInputDeviceId: (value: string) => void;
   selectedAudioOutputDeviceId?: string;
   setSelectedAudioOutputDeviceId: (value: string) => void;
+  meetVolume?: number;
   videoQuality: VideoQuality;
   videoQualityRef: React.MutableRefObject<VideoQuality>;
   activeVideoEffectsCount?: number;
@@ -263,6 +265,7 @@ export function useMeetMedia({
   setSelectedAudioInputDeviceId,
   selectedAudioOutputDeviceId,
   setSelectedAudioOutputDeviceId,
+  meetVolume = DEFAULT_MEET_VOLUME,
   videoQuality,
   videoQualityRef,
   activeVideoEffectsCount = 0,
@@ -299,6 +302,7 @@ export function useMeetMedia({
   const audioRecoveryInFlightRef = useRef(false);
   const [audioProducerRecoveryPulse, setAudioProducerRecoveryPulse] =
     useState(0);
+  const notificationVolume = clampMeetVolume(meetVolume);
   const requestAudioProducerRecovery = useCallback(() => {
     setAudioProducerRecoveryPulse((value) => value + 1);
   }, []);
@@ -381,6 +385,7 @@ export function useMeetMedia({
 
   const playNotificationSound = useCallback(
     (type: "join" | "leave" | "waiting" | "handRaise") => {
+      if (notificationVolume <= 0) return;
       const audioContext = getAudioContext();
       if (!audioContext) return;
 
@@ -397,7 +402,8 @@ export function useMeetMedia({
         const duration =
           type === "waiting" ? 0.1 : type === "handRaise" ? 0.12 : 0.12;
         const gap = 0.03;
-        const peakGain = type === "handRaise" ? 0.13 : 0.16;
+        const basePeakGain = type === "handRaise" ? 0.13 : 0.16;
+        const peakGain = basePeakGain * notificationVolume;
 
         frequencies.forEach((frequency, index) => {
           const start = now + index * (duration + gap);
@@ -429,7 +435,7 @@ export function useMeetMedia({
 
       playPattern();
     },
-    [getAudioContext]
+    [getAudioContext, notificationVolume]
   );
 
   const primeAudioOutput = useCallback(() => {

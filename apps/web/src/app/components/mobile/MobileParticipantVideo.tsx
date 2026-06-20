@@ -3,6 +3,7 @@
 import { Hand, MicOff, VenetianMask } from "lucide-react";
 import { memo, useEffect, useRef } from "react";
 import { Avatar } from "@conclave/ui-tokens/web";
+import { useMeetVolume } from "../../hooks/useMeetVolume";
 import { createPlaybackRecoveryScheduler } from "../../lib/playback-recovery";
 import { getRenderableParticipantVideoStream } from "../../lib/participant-media";
 import type { Participant } from "../../lib/types";
@@ -26,6 +27,7 @@ function MobileParticipantVideo({
 }: MobileParticipantVideoProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const { meetVolume } = useMeetVolume();
   const videoStream = getRenderableParticipantVideoStream(participant);
   const videoTrack = videoStream?.getVideoTracks()[0] ?? null;
   const connectionStatus = participant.connectionStatus;
@@ -174,6 +176,12 @@ function MobileParticipantVideo({
     participant.isMuted,
     audioOutputDeviceId,
   ]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.volume = meetVolume;
+  }, [meetVolume]);
 
   const showPlaceholder = !videoStream;
 

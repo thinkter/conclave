@@ -1,6 +1,7 @@
 "use client";
 
 import { memo, useCallback, useEffect, useRef } from "react";
+import { useMeetVolume } from "../hooks/useMeetVolume";
 import { createPlaybackRecoveryScheduler } from "../lib/playback-recovery";
 import type { Participant } from "../lib/types";
 
@@ -21,6 +22,7 @@ function ParticipantAudio({
 }: ParticipantAudioProps) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const autoplayBlockedRef = useRef(false);
+  const { meetVolume } = useMeetVolume();
 
   const attemptAudioPlayback = useCallback(() => {
     const audio = audioRef.current;
@@ -65,7 +67,6 @@ function ParticipantAudio({
     audio.autoplay = true;
     audio.defaultMuted = false;
     audio.muted = false;
-    audio.volume = 1;
 
     if (audio.srcObject !== participant.audioStream) {
       // Force a clean re-attach when the remote track changes. Firefox is
@@ -143,6 +144,12 @@ function ParticipantAudio({
     audioOutputDeviceId,
     attemptAudioPlayback,
   ]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.volume = meetVolume;
+  }, [meetVolume]);
 
   useEffect(() => {
     if (audioPlaybackAttemptToken == null || audioPlaybackAttemptToken < 1) return;

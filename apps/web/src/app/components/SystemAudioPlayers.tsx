@@ -1,6 +1,7 @@
 "use client";
 
 import { memo, useEffect, useRef, useState } from "react";
+import { useMeetVolume } from "../hooks/useMeetVolume";
 import type { Participant } from "../lib/types";
 import { isSystemUserId } from "../lib/utils";
 
@@ -51,6 +52,7 @@ function SystemAudioPlayer({
 }: SystemAudioPlayerProps) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [blocked, setBlocked] = useState(false);
+  const { meetVolume } = useMeetVolume();
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -114,6 +116,12 @@ function SystemAudioPlayer({
       console.error("[Meets] Failed to set system audio output:", err);
     });
   }, [audioOutputDeviceId]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.volume = meetVolume;
+  }, [meetVolume]);
 
   return (
     <audio
