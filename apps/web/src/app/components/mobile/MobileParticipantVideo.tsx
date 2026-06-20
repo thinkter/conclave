@@ -3,6 +3,7 @@
 import { Hand, MicOff, VenetianMask } from "lucide-react";
 import { memo, useEffect, useRef } from "react";
 import { Avatar } from "@conclave/ui-tokens/web";
+import { createPlaybackRecoveryScheduler } from "../../lib/playback-recovery";
 import { getRenderableParticipantVideoStream } from "../../lib/participant-media";
 import type { Participant } from "../../lib/types";
 import { truncateDisplayName } from "../../lib/utils";
@@ -45,24 +46,72 @@ function MobileParticipantVideo({
       video.srcObject = videoStream;
     }
 
+    let cancelled = false;
+
     const playVideo = () => {
+      if (cancelled) return;
       video.play().catch((err) => {
         if (err.name !== "AbortError") {
+          if (err.name === "NotAllowedError") {
+            video.muted = true;
+            video.play().catch(() => {});
+            return;
+          }
           console.error("[Meets] Mobile video play error:", err);
         }
       });
     };
 
-    playVideo();
+    const playbackRecovery = createPlaybackRecoveryScheduler({
+      attemptPlayback: playVideo,
+      shouldAttemptAnimationFrameReplay: () =>
+        !cancelled &&
+        (video.paused ||
+          video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA),
+    });
+    const scheduleReplay = playbackRecovery.schedule;
+
+    scheduleReplay();
+
+    const handleTrackUnmuted = () => {
+      scheduleReplay();
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        scheduleReplay();
+      }
+    };
+    const handleResize = () => {
+      scheduleReplay();
+    };
+    const handleOrientationChange = () => {
+      scheduleReplay();
+    };
 
     if (videoTrack) {
-      videoTrack.addEventListener("unmute", playVideo);
+      videoTrack.addEventListener("unmute", handleTrackUnmuted);
     }
+    video.addEventListener("loadedmetadata", scheduleReplay);
+    video.addEventListener("loadeddata", scheduleReplay);
+    video.addEventListener("canplay", scheduleReplay);
+    video.addEventListener("stalled", scheduleReplay);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("resize", handleResize);
+    window.addEventListener("orientationchange", handleOrientationChange);
 
     return () => {
+      cancelled = true;
       if (videoTrack) {
-        videoTrack.removeEventListener("unmute", playVideo);
+        videoTrack.removeEventListener("unmute", handleTrackUnmuted);
       }
+      video.removeEventListener("loadedmetadata", scheduleReplay);
+      video.removeEventListener("loadeddata", scheduleReplay);
+      video.removeEventListener("canplay", scheduleReplay);
+      video.removeEventListener("stalled", scheduleReplay);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("resize", handleResize);
+      window.removeEventListener("orientationchange", handleOrientationChange);
+      playbackRecovery.clear();
       if (video.srcObject === videoStream) {
         video.srcObject = null;
       }
@@ -158,6 +207,7 @@ function MobileParticipantVideo({
       <video
         ref={videoRef}
         autoPlay
+        muted
         playsInline
         className={`w-full h-full object-cover ${
           showPlaceholder ? "hidden" : ""

@@ -15,6 +15,8 @@ const files = {
     "apps/web/src/app/hooks/useAdaptiveConsumerPreferences.ts",
   webPlaybackRecovery: "apps/web/src/app/lib/playback-recovery.ts",
   webParticipantVideo: "apps/web/src/app/components/ParticipantVideo.tsx",
+  webMobileParticipantVideo:
+    "apps/web/src/app/components/mobile/MobileParticipantVideo.tsx",
   webGridLayout: "apps/web/src/app/components/GridLayout.tsx",
   webPresentationLayout: "apps/web/src/app/components/PresentationLayout.tsx",
   webMobilePresentationLayout:
@@ -304,6 +306,7 @@ assertIncludes(
 );
 for (const [key, label] of [
   ["webParticipantVideo", "participant video"],
+  ["webMobileParticipantVideo", "mobile participant video"],
   ["webGridLayout", "grid video"],
   ["webPresentationLayout", "presentation video"],
   ["webMobilePresentationLayout", "mobile presentation video"],
@@ -314,6 +317,26 @@ for (const [key, label] of [
     `web ${label} should not replay on benign suspend events`,
   );
 }
+assertIncludes(
+  "webMobileParticipantVideo",
+  "createPlaybackRecoveryScheduler",
+  "web mobile participant video uses playback recovery scheduler",
+);
+assertIncludes(
+  "webMobileParticipantVideo",
+  "shouldAttemptAnimationFrameReplay",
+  "web mobile participant video retries stalled first-frame playback",
+);
+assertIncludes(
+  "webMobileParticipantVideo",
+  'document.addEventListener("visibilitychange", handleVisibilityChange)',
+  "web mobile participant video retries playback after foregrounding",
+);
+assertRegex(
+  "webMobileParticipantVideo",
+  /<video[\s\S]*autoPlay[\s\S]*muted[\s\S]*playsInline/,
+  "web mobile participant video is muted for autoplay reliability",
+);
 assertRegex(
   "webAdaptiveConsumerPreferences",
   /const effectiveQuality = worstQuality\([\s\S]*options\.quality === "good" \|\| options\.quality === "fair"[\s\S]*\? "unknown"[\s\S]*: getConsumerScoreQualityHint/,
