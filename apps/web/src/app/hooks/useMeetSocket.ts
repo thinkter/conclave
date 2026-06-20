@@ -65,6 +65,10 @@ import type {
   ConsumerTelemetrySnapshot,
   MeetRefs,
 } from "./useMeetRefs";
+import type {
+  ConnectionQuality,
+  ConnectionQualityStats,
+} from "./useConnectionQuality";
 
 type ConsumerTelemetryPayload = Omit<
   ConsumerTelemetrySnapshot,
@@ -92,11 +96,27 @@ const STALE_REPLACEMENT_CLEANUP_DELAY_MS = 5000;
 const TURN_URL_PATTERN = /^turns?:/i;
 const TRANSPORT_CC_FEEDBACK_TYPE = "transport-cc";
 
-const getBrowserPublishNetworkProfile = (): WebcamProducerNetworkProfile => {
-  const snapshot = getBrowserNetworkSnapshot();
-  const quality =
-    snapshot.quality === "unknown" ? snapshot.startupQuality : snapshot.quality;
-  if (snapshot.emergency) return "emergency";
+const getConnectionStatsNetworkProfile = (
+  stats: ConnectionQualityStats | null | undefined,
+  direction: "publish" | "receive",
+): WebcamProducerNetworkProfile => {
+  const snapshot = stats?.browserNetwork ?? getBrowserNetworkSnapshot();
+  const statsQuality =
+    direction === "publish" ? stats?.publishQuality : stats?.receiveQuality;
+  const statsEmergency =
+    direction === "publish"
+      ? stats?.publishEmergencyMode
+      : stats?.receiveEmergencyMode;
+  const quality: ConnectionQuality =
+    statsQuality && statsQuality !== "unknown"
+      ? statsQuality
+      : ((snapshot.quality === "unknown"
+          ? snapshot.startupQuality
+          : snapshot.quality) as ConnectionQuality);
+
+  if (snapshot.emergency || (statsEmergency === true && quality !== "good")) {
+    return "emergency";
+  }
   if (quality === "poor") return "poor";
   if (quality === "fair") return "fair";
   return "good";
@@ -122,7 +142,10 @@ type InitialConsumerPreferences = {
 
 const getInitialConsumerPreferences = (
   producerInfo: ProducerInfo,
-  options: { preferHighWebcamLayer?: boolean } = {},
+  options: {
+    preferHighWebcamLayer?: boolean;
+    networkProfile?: WebcamProducerNetworkProfile;
+  } = {},
 ): InitialConsumerPreferences => {
   if (producerInfo.kind === "audio") {
     return { priority: 255 };
@@ -132,7 +155,7 @@ const getInitialConsumerPreferences = (
     return {};
   }
 
-  const networkProfile = getBrowserPublishNetworkProfile();
+  const networkProfile = options.networkProfile ?? "good";
 
   if (producerInfo.type === "screen") {
     return {
@@ -462,6 +485,7 @@ interface UseMeetSocketOptions {
   setActiveScreenShareId: (value: string | null) => void;
   setNetworkManagedVideoQuality: (value: VideoQuality) => void;
   videoQualityRef: React.MutableRefObject<VideoQuality>;
+  connectionQualityRef?: React.MutableRefObject<ConnectionQualityStats | null>;
   updateVideoQualityRef: React.MutableRefObject<
     (
       quality: VideoQuality,
@@ -550,6 +574,7 @@ export function useMeetSocket({
   setActiveScreenShareId,
   setNetworkManagedVideoQuality,
   videoQualityRef,
+  connectionQualityRef,
   updateVideoQualityRef,
   requestMediaPermissions,
   requestAudioProducerRecovery,
@@ -653,6 +678,18 @@ export function useMeetSocket({
     iceRestartInFlightRef,
     producerSyncIntervalRef,
   } = refs;
+
+  const getPublishNetworkProfile = useCallback(
+    () =>
+      getConnectionStatsNetworkProfile(connectionQualityRef?.current, "publish"),
+    [connectionQualityRef],
+  );
+
+  const getReceiveNetworkProfile = useCallback(
+    () =>
+      getConnectionStatsNetworkProfile(connectionQualityRef?.current, "receive"),
+    [connectionQualityRef],
+  );
 
   useEffect(() => {
     participantIdsRef.current = new Set([userId]);
@@ -788,7 +825,7 @@ export function useMeetSocket({
         videoTrack.contentHint = "detail";
       }
 
-      const screenNetworkProfile = getBrowserPublishNetworkProfile();
+      const screenNetworkProfile = getPublishNetworkProfile();
       await applyScreenShareTrackNetworkProfile(videoTrack, screenNetworkProfile);
       const preferredScreenShareCodec = getPreferredScreenShareCodec(
         deviceRef.current,
@@ -889,6 +926,7 @@ export function useMeetSocket({
       deviceRef,
       emitCloseProducer,
       flushPendingScreenProducerCloses,
+      getPublishNetworkProfile,
       producerTransportRef,
       screenAudioProducerRef,
       screenProducerRef,
@@ -2113,7 +2151,7 @@ export function useMeetSocket({
           const audioProducer = await transport.produce({
             track: audioTrack,
             codecOptions: buildMicrophoneOpusCodecOptions(
-              getBrowserPublishNetworkProfile(),
+              getPublishNetworkProfile(),
             ),
             stopTracks: false,
             appData: {
@@ -2193,7 +2231,7 @@ export function useMeetSocket({
             transport,
             track: videoTrack,
             quality,
-            networkProfile: getBrowserPublishNetworkProfile(),
+            networkProfile: getPublishNetworkProfile(),
             paused: shouldPauseVideo,
             preferredCodec: preferredWebcamCodec,
           });
@@ -2248,7 +2286,7 @@ export function useMeetSocket({
                 transport,
                 track: rawFallbackTrack,
                 quality,
-                networkProfile: getBrowserPublishNetworkProfile(),
+                networkProfile: getPublishNetworkProfile(),
                 paused: shouldPauseVideo,
                 preferredCodec: preferredWebcamCodec,
               });
@@ -2324,6 +2362,7 @@ export function useMeetSocket({
       videoQualityRef,
       deviceRef,
       getVideoPublishTrack,
+      getPublishNetworkProfile,
       onPreferredVideoPublishTrackRejected,
       dropVideoTracksForCameraOff,
       refs.processedVideoTrackRef,
@@ -2367,6 +2406,7 @@ export function useMeetSocket({
               preferHighWebcamLayer:
                 joinMode === "webinar_attendee" ||
                 existingWebcamVideoConsumerCount < 4,
+              networkProfile: getReceiveNetworkProfile(),
             }),
           },
           async (response: ConsumeResponse | { error: string }) => {
@@ -2626,6 +2666,7 @@ export function useMeetSocket({
       producerMapRef,
       dispatchParticipants,
       handleProducerClosed,
+      getReceiveNetworkProfile,
       joinMode,
       queueProducerConsumeRetry,
       setActiveScreenShareId,

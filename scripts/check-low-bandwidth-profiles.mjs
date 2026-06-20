@@ -586,6 +586,31 @@ assertRegex(
   /publishEmergencyMode: selfPublishEmergencyMode,[\s\S]*receiveEmergencyMode: selfReceiveEmergencyMode,[\s\S]*useAdaptiveConsumerPreferences\(\{[\s\S]*connectionQuality: selfReceiveQuality,[\s\S]*emergencyMode: selfReceiveEmergencyMode,[\s\S]*useAdaptivePublishQuality\(\{[\s\S]*connectionQuality: selfPublishQuality,[\s\S]*emergencyMode: selfPublishEmergencyMode,/,
   "web publish and receive adaptation use direction-specific emergency signals",
 );
+assertRegex(
+  "webMeetSocket",
+  /connectionQualityRef\?: React\.MutableRefObject<ConnectionQualityStats \| null>[\s\S]*const getPublishNetworkProfile = useCallback\([\s\S]*getConnectionStatsNetworkProfile\(connectionQualityRef\?\.current, "publish"\)[\s\S]*const getReceiveNetworkProfile = useCallback\([\s\S]*getConnectionStatsNetworkProfile\(connectionQualityRef\?\.current, "receive"\)/,
+  "web socket publish and receive setup uses measured directional network profiles",
+);
+assertRegex(
+  "webMeetSocket",
+  /const screenNetworkProfile = getPublishNetworkProfile\(\);[\s\S]*buildMicrophoneOpusCodecOptions\(\s*getPublishNetworkProfile\(\),\s*\)[\s\S]*networkProfile: getPublishNetworkProfile\(\)[\s\S]*networkProfile: getPublishNetworkProfile\(\)/,
+  "web socket publish paths use measured publish profile for recreated producers",
+);
+assertRegex(
+  "webMeetSocket",
+  /getInitialConsumerPreferences\(producerInfo, \{[\s\S]*preferHighWebcamLayer:[\s\S]*networkProfile: getReceiveNetworkProfile\(\)/,
+  "web initial consumer preferences use measured receive profile",
+);
+assertRegex(
+  "webMeetClient",
+  /useMeetSocket\(\{[\s\S]*videoQualityRef: refs\.videoQualityRef,[\s\S]*connectionQualityRef: connectionQualityDebugRef,/,
+  "web meet client passes measured connection stats to socket hook",
+);
+assertNotIncludes(
+  "webMeetSocket",
+  "getBrowserPublishNetworkProfile",
+  "web socket must not use raw browser-only startup hints for producer caps",
+);
 assertNotIncludes(
   "webAdaptivePublishQuality",
   'if (connectionQuality === "poor") {\n          void applyLiveProducerProfile(emergencyMode ? "emergency" : "poor");\n        }',

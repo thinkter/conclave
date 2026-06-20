@@ -2064,6 +2064,7 @@ export default function MeetsClient({
     setActiveScreenShareId,
     setNetworkManagedVideoQuality,
     videoQualityRef: refs.videoQualityRef,
+    connectionQualityRef: connectionQualityDebugRef,
     updateVideoQualityRef,
     requestMediaPermissions,
     requestAudioProducerRecovery,
