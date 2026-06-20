@@ -1714,7 +1714,10 @@ export function useMeetMedia({
             (await ensureProducerTransportRef?.current?.()) ?? false;
           transport = getUsableProducerTransport(producerTransportRef.current);
           if (!transportReady || !transport) {
-            throw new Error("Video transport unavailable");
+            console.warn(
+              "[Meets] Camera producer recovery waiting for producer transport.",
+            );
+            return;
           }
         }
 

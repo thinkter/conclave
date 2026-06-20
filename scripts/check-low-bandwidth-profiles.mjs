@@ -443,6 +443,39 @@ assertIncludes(
   }
 }
 {
+  const text = source.webMeetMedia;
+  const start = text.indexOf("const recoverCameraProducer = async () => {");
+  const end = text.indexOf("void recoverCameraProducer();", start);
+  if (start < 0 || end < 0) {
+    failures.push("web camera producer recovery section missing");
+  } else {
+    const section = text.slice(start, end);
+    if (!section.includes("let transport = getUsableProducerTransport(")) {
+      failures.push("web camera producer recovery must reject failed transports");
+    }
+    if (!section.includes("await ensureProducerTransportRef?.current?.()")) {
+      failures.push("web camera producer recovery must rebuild failed transports");
+    }
+    const transportSectionEnd = section.indexOf("let videoTrack");
+    const transportSection =
+      transportSectionEnd >= 0 ? section.slice(0, transportSectionEnd) : section;
+    if (
+      !transportSection.includes(
+        "Camera producer recovery waiting for producer transport.",
+      )
+    ) {
+      failures.push(
+        "web camera producer recovery must treat transport rebuild as retryable",
+      );
+    }
+    if (transportSection.includes('throw new Error("Video transport unavailable")')) {
+      failures.push(
+        "web camera producer recovery must not turn cameras off for retryable transport rebuilds",
+      );
+    }
+  }
+}
+{
   const text = source.webMeetSocket;
   const start = text.indexOf('socket.on(\n              "setVideoQuality"');
   const end = text.indexOf('socket.on("chatMessage"', start);
