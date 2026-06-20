@@ -8,10 +8,13 @@ import {
   Maximize2,
   Minimize2,
   MicOff,
+  Minus,
   MonitorUp,
   Move,
   Pin,
   PinOff,
+  Plus,
+  RotateCcw,
   UserPlus,
   Users,
 } from "lucide-react";
@@ -53,6 +56,12 @@ import {
   type MeetViewSettings,
 } from "../lib/meet-view";
 import { createPlaybackRecoveryScheduler } from "../lib/playback-recovery";
+import {
+  readCapturedSurfaceZoomLevel,
+  readCapturedSurfaceZoomLevels,
+  type CapturedSurfaceControlState,
+  type CaptureControllerLike,
+} from "../lib/captured-surface-control";
 
 interface GridLayoutProps {
   localStream: MediaStream | null;
@@ -77,11 +86,20 @@ interface GridLayoutProps {
   onViewSettingsChange?: Dispatch<SetStateAction<MeetViewSettings>>;
   presentationStream?: MediaStream | null;
   presenterName?: string;
+  /** True when the presentation stream above is YOUR own screen share —
+   *  the stage tile defaults to a chooser instead of mirroring it back. */
+  isLocalPresenter?: boolean;
+  screenShareControlState?: CapturedSurfaceControlState;
+  screenShareCaptureController?: CaptureControllerLike | null;
   getDisplayName: (userId: string) => string;
   /** px the stage reserves on the right for a docked side panel (0 when none).
    *  Drives the one-shot reflow glide: when this changes, the grid re-measures
    *  synchronously and FLIPs every tile to its new size/position. */
   sidePanelReserve?: number;
+  /** Phone-width layout: stage-rail layouts (side-by-side, sidebar) stack
+   * vertically and the companion/thumbnail rail becomes a horizontal strip
+   * instead of a fixed-width side column. */
+  isMobile?: boolean;
 }
 
 // Keep this many just-past-the-cutoff participants' <video> mounted (hidden but
@@ -116,6 +134,10 @@ const PRESENTATION_TILE_ID = "__presentation__";
 
 type EffectiveMeetViewMode = MeetViewMode | "sideBySide";
 type ResolvedSelfViewMode = Exclude<MeetSelfViewMode, "auto">;
+// "placeholder" = the flat "you're presenting" card (default); "preview" =
+// an actual mirror of your share. This is a LOCAL-ONLY viewing choice — other
+// participants can always see your share either way, regardless of this mode.
+type SelfPresentationView = "placeholder" | "preview";
 type MeetRoomTilingWarmReason =
   | "boundary"
   | "recently-visible"
@@ -315,6 +337,9 @@ const hasLiveTrack = (
 
 const hasLiveVideo = (stream: MediaStream | null | undefined) =>
   hasLiveTrack(stream, "video");
+
+const formatPresentingLabel = (presenterName: string) =>
+  presenterName === "You" ? "You're presenting" : `${presenterName} is presenting`;
 
 const participantHasLiveVideo = (participant: Participant) =>
   hasLiveVideo(getRenderableParticipantVideoStream(participant));
@@ -789,8 +814,12 @@ function GridLayout({
   onViewSettingsChange,
   presentationStream = null,
   presenterName = "Someone",
+  isLocalPresenter = false,
+  screenShareControlState,
+  screenShareCaptureController = null,
   getDisplayName,
   sidePanelReserve = 0,
+  isMobile = false,
 }: GridLayoutProps) {
   const stageRootRef = useRef<HTMLDivElement>(null);
   const localVideoRef = useRef<HTMLVideoElement>(null);
@@ -834,6 +863,28 @@ function GridLayout({
   const isLocalActiveSpeaker = activeSpeakerId === currentUserId;
   const isLocalPinned = pinnedId === LOCAL_STAGE_ID;
   const hasPresentation = hasLiveVideo(presentationStream);
+  // Default to the placeholder (not your own mirrored screen) each time a
+  // new share session starts; reset happens the moment sharing stops so the
+  // NEXT share starts fresh rather than carrying over the last choice.
+  const [selfPresentationView, setSelfPresentationView] =
+    useState<SelfPresentationView>("placeholder");
+  useEffect(() => {
+    if (!isLocalPresenter) {
+      setSelfPresentationView("placeholder");
+    } else if (screenShareControlState?.available) {
+      setSelfPresentationView("preview");
+    }
+  }, [isLocalPresenter, screenShareControlState?.available]);
+  const presentationSelfView = isLocalPresenter
+    ? { mode: selfPresentationView, onModeChange: setSelfPresentationView }
+    : undefined;
+  const presentationCaptureControl =
+    isLocalPresenter && screenShareControlState?.available
+      ? {
+          controller: screenShareCaptureController,
+          state: screenShareControlState,
+        }
+      : undefined;
   const localVideoTrack = localStream?.getVideoTracks()[0] ?? null;
   const localVideoTrackingRef = useRef<MeetLocalVideoTracking>(
     emptyLocalVideoTracking(),
@@ -1130,18 +1181,25 @@ function GridLayout({
       return changed ? next : prev;
     });
   }, [orderedRemoteParticipantIds]);
-  const pinnedParticipant = pinnedId && pinnedId !== LOCAL_STAGE_ID
-    ? orderedRemoteParticipants.find((p) => p.userId === pinnedId) ?? null
-    : null;
+  const pinnedParticipant =
+    pinnedId && pinnedId !== LOCAL_STAGE_ID && pinnedId !== PRESENTATION_TILE_ID
+      ? orderedRemoteParticipants.find((p) => p.userId === pinnedId) ?? null
+      : null;
   useEffect(() => {
     if (
       pinnedId &&
       pinnedId !== LOCAL_STAGE_ID &&
+      pinnedId !== PRESENTATION_TILE_ID &&
       !orderedRemoteParticipants.some((p) => p.userId === pinnedId)
     ) {
       setPinnedId(null);
     }
   }, [pinnedId, orderedRemoteParticipants]);
+  useEffect(() => {
+    if (pinnedId === PRESENTATION_TILE_ID && !hasPresentation) {
+      setPinnedId(null);
+    }
+  }, [pinnedId, hasPresentation]);
   const hasOverflow = orderedRemoteParticipants.length > maxRemoteWithoutOverflow;
   const isSolo = orderedRemoteParticipants.length === 0 && !hasPresentation;
   const maxVisibleRemoteParticipants = hasOverflow
@@ -2410,7 +2468,7 @@ function GridLayout({
       >
         {usesSideBySideLayout && presentationStream ? (
           <div
-            className="flex h-full w-full min-w-0 gap-3"
+            className="flex h-full w-full min-w-0 flex-col gap-3 sm:flex-row"
             data-meet-side-by-side
             data-meet-side-by-side-companion-kind={sideBySideCompanionKind}
             data-meet-side-by-side-companion={
@@ -2420,18 +2478,22 @@ function GridLayout({
             }
           >
             <div
-              className="relative min-w-0 flex-[1.7]"
+              className="relative min-w-0 flex-1 sm:flex-[1.7]"
               data-meet-stage-main={PRESENTATION_TILE_ID}
             >
               <PresentationVideoTile
                 stream={presentationStream}
                 presenterName={presenterName}
                 size="stage"
+                selfView={presentationSelfView}
+                captureControl={presentationCaptureControl}
+                isPinned={pinnedId === PRESENTATION_TILE_ID}
+                onTogglePin={() => togglePin(PRESENTATION_TILE_ID)}
               />
             </div>
 
-            <div className="flex w-[min(32vw,28rem)] min-w-[17rem] max-w-[28rem] shrink-0 flex-col gap-3">
-              <div className="relative min-h-0 flex-[1.15]">
+            <div className="flex h-40 w-full shrink-0 flex-row gap-3 sm:h-auto sm:w-[min(32vw,28rem)] sm:min-w-[17rem] sm:max-w-[28rem] sm:flex-col">
+              <div className="relative min-h-0 min-w-0 flex-[1.15]">
                 {sideBySideCompanionKind === "local" ? (
                   <LocalVideoTile
                     stream={localStream}
@@ -2476,32 +2538,34 @@ function GridLayout({
               </div>
 
               <div
-                className="flex min-h-[7rem] max-h-[35%] flex-col gap-3 overflow-y-auto pr-1"
+                className="flex h-full min-w-0 flex-1 flex-row gap-3 overflow-x-auto pb-1 sm:h-auto sm:max-h-[35%] sm:min-h-[7rem] sm:flex-none sm:flex-col sm:overflow-x-visible sm:overflow-y-auto sm:pb-0 sm:pr-1"
                 data-meet-stage-rail
               >
                 {shouldShowSelfAsTile && sideBySideCompanionKind !== "local" ? (
-                  <LocalVideoTile
-                    stream={localStream}
-                    isCameraOff={isCameraOff}
-                    isMuted={isMuted}
-                    isHandRaised={isHandRaised}
-                    isGhost={isGhost}
-                    isMirrorCamera={isMirrorCamera}
-                    displayName={localDisplayName}
-                    userEmail={userEmail}
-                    isActiveSpeaker={isLocalActiveSpeaker}
-                    isPinned={isLocalPinned}
-                    onTogglePin={toggleLocalPin}
-                    tracking={localVideoTracking}
-                    cropPosition={localTrackingObjectPosition}
-                    size="rail"
-                  />
+                  <div className="relative h-full w-28 shrink-0 sm:h-28 sm:w-auto">
+                    <LocalVideoTile
+                      stream={localStream}
+                      isCameraOff={isCameraOff}
+                      isMuted={isMuted}
+                      isHandRaised={isHandRaised}
+                      isGhost={isGhost}
+                      isMirrorCamera={isMirrorCamera}
+                      displayName={localDisplayName}
+                      userEmail={userEmail}
+                      isActiveSpeaker={isLocalActiveSpeaker}
+                      isPinned={isLocalPinned}
+                      onTogglePin={toggleLocalPin}
+                      tracking={localVideoTracking}
+                      cropPosition={localTrackingObjectPosition}
+                      size="rail"
+                    />
+                  </div>
                 ) : null}
 
                 {stageSideParticipants.map((participant) => (
                   <div
                     key={participant.userId}
-                    className="relative h-28 shrink-0"
+                    className="relative h-full w-28 shrink-0 sm:h-28 sm:w-auto"
                     data-userid={participant.userId}
                   >
                     <ParticipantVideo
@@ -2526,7 +2590,7 @@ function GridLayout({
                     aria-expanded={isOverflowOpen}
                     aria-label={`Show ${hiddenParticipantsCount} more participants`}
                     title={`Show ${hiddenParticipantsCount} more participants`}
-                    className="acm-video-tile group relative flex h-28 shrink-0 flex-col items-center justify-center bg-[#131316] text-[#fafafa] transition-colors hover:border-[#fafafa]/15"
+                    className="acm-video-tile group relative flex h-full w-28 shrink-0 flex-col items-center justify-center bg-[#131316] text-[#fafafa] transition-colors hover:border-[#fafafa]/15 sm:h-28 sm:w-auto"
                   >
                     <div className="absolute inset-2 grid grid-cols-2 grid-rows-2 gap-1 opacity-30 transition-opacity duration-200 group-hover:opacity-50">
                       {overflowPreviewParticipants.map((participant) => (
@@ -2552,7 +2616,7 @@ function GridLayout({
             </div>
           </div>
         ) : usesStageLayout && stageMainKind ? (
-          <div className="flex h-full w-full min-w-0 gap-3">
+          <div className="flex h-full w-full min-w-0 flex-col gap-3 sm:flex-row">
             <div
               className="relative min-w-0 flex-1"
               data-meet-stage-main={
@@ -2568,6 +2632,10 @@ function GridLayout({
                   stream={presentationStream}
                   presenterName={presenterName}
                   size="stage"
+                  selfView={presentationSelfView}
+                  captureControl={presentationCaptureControl}
+                  isPinned={pinnedId === PRESENTATION_TILE_ID}
+                  onTogglePin={() => togglePin(PRESENTATION_TILE_ID)}
                 />
               ) : stageMainKind === "local" ? (
                 <LocalVideoTile
@@ -2611,42 +2679,49 @@ function GridLayout({
 
             {!usesSpotlightLayout ? (
               <div
-                className="flex w-[min(22vw,15rem)] min-w-[10rem] max-w-[15rem] shrink-0 flex-col gap-3 overflow-y-auto pr-1"
+                className="flex h-32 w-full shrink-0 flex-row gap-3 overflow-x-auto pb-1 sm:h-auto sm:w-[min(22vw,15rem)] sm:min-w-[10rem] sm:max-w-[15rem] sm:flex-col sm:overflow-x-visible sm:overflow-y-auto sm:pb-0 sm:pr-1"
                 data-meet-stage-rail
               >
                 {shouldShowSelfAsTile && stageMainKind !== "local" ? (
-                  <LocalVideoTile
-                    stream={localStream}
-                    isCameraOff={isCameraOff}
-                    isMuted={isMuted}
-                    isHandRaised={isHandRaised}
-                    isGhost={isGhost}
-                    isMirrorCamera={isMirrorCamera}
-                    displayName={localDisplayName}
-                    userEmail={userEmail}
-                    isActiveSpeaker={isLocalActiveSpeaker}
-                    isPinned={isLocalPinned}
-                    onTogglePin={toggleLocalPin}
-                    tracking={localVideoTracking}
-                    cropPosition={localTrackingObjectPosition}
-                    size="rail"
-                  />
+                  <div className="relative h-full w-28 shrink-0 sm:h-28 sm:w-auto">
+                    <LocalVideoTile
+                      stream={localStream}
+                      isCameraOff={isCameraOff}
+                      isMuted={isMuted}
+                      isHandRaised={isHandRaised}
+                      isGhost={isGhost}
+                      isMirrorCamera={isMirrorCamera}
+                      displayName={localDisplayName}
+                      userEmail={userEmail}
+                      isActiveSpeaker={isLocalActiveSpeaker}
+                      isPinned={isLocalPinned}
+                      onTogglePin={toggleLocalPin}
+                      tracking={localVideoTracking}
+                      cropPosition={localTrackingObjectPosition}
+                      size="rail"
+                    />
+                  </div>
                 ) : null}
 
                 {hasPresentation &&
                 stageMainKind !== "presentation" &&
                 presentationStream ? (
-                  <PresentationVideoTile
-                    stream={presentationStream}
-                    presenterName={presenterName}
-                    size="rail"
-                  />
+                  <div className="relative h-full w-28 shrink-0 sm:h-28 sm:w-auto">
+                    <PresentationVideoTile
+                      stream={presentationStream}
+                      presenterName={presenterName}
+                      size="rail"
+                      captureControl={presentationCaptureControl}
+                      isPinned={pinnedId === PRESENTATION_TILE_ID}
+                      onTogglePin={() => togglePin(PRESENTATION_TILE_ID)}
+                    />
+                  </div>
                 ) : null}
 
                 {stageSideParticipants.map((participant) => (
                   <div
                     key={participant.userId}
-                    className="relative h-28 shrink-0"
+                    className="relative h-full w-28 shrink-0 sm:h-28 sm:w-auto"
                     data-userid={participant.userId}
                   >
                     <ParticipantVideo
@@ -2671,7 +2746,7 @@ function GridLayout({
                     aria-expanded={isOverflowOpen}
                     aria-label={`Show ${hiddenParticipantsCount} more participants`}
                     title={`Show ${hiddenParticipantsCount} more participants`}
-                    className="acm-video-tile group relative flex h-28 shrink-0 flex-col items-center justify-center bg-[#131316] text-[#fafafa] transition-colors hover:border-[#fafafa]/15"
+                    className="acm-video-tile group relative flex h-full w-28 shrink-0 flex-col items-center justify-center bg-[#131316] text-[#fafafa] transition-colors hover:border-[#fafafa]/15 sm:h-28 sm:w-auto"
                   >
                     <div className="absolute inset-2 grid grid-cols-2 grid-rows-2 gap-1 opacity-30 transition-opacity duration-200 group-hover:opacity-50">
                       {overflowPreviewParticipants.map((participant) => (
@@ -2708,6 +2783,10 @@ function GridLayout({
               stream={presentationStream}
               presenterName={presenterName}
               size="grid"
+              selfView={presentationSelfView}
+              captureControl={presentationCaptureControl}
+              isPinned={pinnedId === PRESENTATION_TILE_ID}
+              onTogglePin={() => togglePin(PRESENTATION_TILE_ID)}
             />
           </div>
         ) : null}
@@ -3147,14 +3226,141 @@ const PresentationVideoTile = memo(function PresentationVideoTile({
   stream,
   presenterName,
   size,
+  selfView,
+  captureControl,
+  isPinned = false,
+  onTogglePin,
 }: {
   stream: MediaStream;
   presenterName: string;
   size: "stage" | "grid" | "rail";
+  /** Only set when this presentation IS your own screen share — lets the
+   *  presenter choose between a flat "you're presenting" placeholder and an
+   *  actual mirror of their share, right where the share would render. */
+  selfView?: {
+    mode: SelfPresentationView;
+    onModeChange: (mode: SelfPresentationView) => void;
+  };
+  captureControl?: {
+    controller: CaptureControllerLike | null;
+    state: CapturedSurfaceControlState;
+  };
+  isPinned?: boolean;
+  /** Pins/unpins the share to the main stage — same spotlight mechanism as
+   *  participant tiles, so it works from a small grid/rail tile too. */
+  onTogglePin?: () => void;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const wheelForwardTargetRef = useRef<HTMLDivElement>(null);
+  const forwardedWheelElementRef = useRef<Element | null>(null);
+  const wheelForwardPromiseRef = useRef<Promise<void> | null>(null);
   const videoTrack = stream.getVideoTracks()[0] ?? null;
   const compact = size === "rail";
+  const showChooser = Boolean(selfView) && selfView?.mode !== "preview";
+  const captureController = captureControl?.controller ?? null;
+  const showCaptureControls = Boolean(
+    captureController && captureControl?.state.available && !compact && !showChooser,
+  );
+  const [captureZoomLevel, setCaptureZoomLevel] = useState<number | null>(null);
+  const [captureZoomLevels, setCaptureZoomLevels] = useState<number[]>([]);
+
+  const syncCaptureZoom = useCallback(() => {
+    setCaptureZoomLevel(readCapturedSurfaceZoomLevel(captureController));
+    setCaptureZoomLevels(readCapturedSurfaceZoomLevels(captureController));
+  }, [captureController]);
+
+  useEffect(() => {
+    if (!showCaptureControls || !captureController) {
+      setCaptureZoomLevel(null);
+      setCaptureZoomLevels([]);
+      return;
+    }
+
+    syncCaptureZoom();
+    captureController.addEventListener("zoomlevelchange", syncCaptureZoom);
+
+    return () => {
+      captureController.removeEventListener("zoomlevelchange", syncCaptureZoom);
+    };
+  }, [captureController, showCaptureControls, syncCaptureZoom]);
+
+  const startForwardingWheel = useCallback(() => {
+    const element = wheelForwardTargetRef.current;
+    if (
+      !showCaptureControls ||
+      !captureController?.forwardWheel ||
+      !element
+    ) {
+      return Promise.resolve();
+    }
+    if (forwardedWheelElementRef.current === element) {
+      return Promise.resolve();
+    }
+    if (wheelForwardPromiseRef.current) {
+      return wheelForwardPromiseRef.current;
+    }
+
+    const forwardPromise = captureController
+      .forwardWheel(element)
+      .then(() => {
+        forwardedWheelElementRef.current = element;
+      })
+      .catch((error) => {
+        console.warn("[Meets] Failed to enable captured tab scrolling:", error);
+      })
+      .finally(() => {
+        wheelForwardPromiseRef.current = null;
+      });
+
+    wheelForwardPromiseRef.current = forwardPromise;
+    return forwardPromise;
+  }, [captureController, showCaptureControls]);
+
+  useEffect(() => {
+    if (!showCaptureControls || !captureController?.forwardWheel) return;
+
+    void startForwardingWheel();
+
+    return () => {
+      forwardedWheelElementRef.current = null;
+      wheelForwardPromiseRef.current = null;
+      void captureController.forwardWheel?.(null).catch(() => {});
+    };
+  }, [captureController, showCaptureControls, startForwardingWheel]);
+
+  const runCaptureZoomAction = useCallback(
+    async (action?: () => Promise<void>) => {
+      if (!action) return;
+      try {
+        await action();
+      } catch (error) {
+        console.warn("[Meets] Failed to update captured tab zoom:", error);
+      } finally {
+        syncCaptureZoom();
+      }
+    },
+    [syncCaptureZoom],
+  );
+
+  const zoomMinimum = captureZoomLevels[0] ?? null;
+  const zoomMaximum =
+    captureZoomLevels.length > 0
+      ? captureZoomLevels[captureZoomLevels.length - 1]
+      : null;
+  const canZoomOut =
+    showCaptureControls &&
+    (zoomMinimum === null ||
+      captureZoomLevel === null ||
+      captureZoomLevel > zoomMinimum);
+  const canZoomIn =
+    showCaptureControls &&
+    (zoomMaximum === null ||
+      captureZoomLevel === null ||
+      captureZoomLevel < zoomMaximum);
+  const captureZoomLabel =
+    captureZoomLevel === null ? "Tab" : `${Math.round(captureZoomLevel)}%`;
+  const captureControlButtonClass =
+    "inline-flex h-8 w-8 items-center justify-center rounded-full text-[#fafafa]/82 transition-colors duration-100 hover:bg-white/[0.1] hover:text-[#fafafa] disabled:cursor-not-allowed disabled:text-[#fafafa]/28 disabled:hover:bg-transparent";
 
   useEffect(() => {
     const video = videoRef.current;
@@ -3218,10 +3424,20 @@ const PresentationVideoTile = memo(function PresentationVideoTile({
 
   return (
     <div
+      ref={wheelForwardTargetRef}
+      onWheelCapture={
+        showCaptureControls ? () => void startForwardingWheel() : undefined
+      }
+      onPointerDownCapture={
+        showCaptureControls ? () => void startForwardingWheel() : undefined
+      }
       className={`acm-video-tile group relative flex overflow-hidden bg-[#131316] ${
         compact ? "h-28 shrink-0" : "h-full w-full"
       }`}
       data-meet-presentation-tile
+      data-meet-captured-surface-control={
+        showCaptureControls ? "available" : "unavailable"
+      }
     >
       <video
         ref={videoRef}
@@ -3229,28 +3445,153 @@ const PresentationVideoTile = memo(function PresentationVideoTile({
         muted
         playsInline
         data-meet-presentation-video="true"
-        className="h-full w-full bg-black object-contain"
-      />
-      <div
-        className={`absolute flex max-w-[calc(100%-1.5rem)] items-center gap-2 rounded-full border border-[#fafafa]/10 bg-[#0a0a0b]/70 ${
-          compact
-            ? "bottom-2 left-2 px-2.5 py-1"
-            : "left-3 top-3 px-3 py-1.5"
+        className={`h-full w-full bg-black object-contain ${
+          showChooser ? "opacity-0" : ""
         }`}
-      >
-        <MonitorUp
-          size={compact ? 15 : 18}
-          strokeWidth={1.75}
-          className="shrink-0 text-[#F95F4A]"
-        />
-        <span
-          className={`truncate font-medium text-[#fafafa] ${
-            compact ? "text-[12.5px]" : "text-[13px]"
+      />
+      {showChooser && selfView && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-[#131316] p-4 text-center">
+          <MonitorUp
+            size={size === "stage" ? 32 : 22}
+            strokeWidth={1.75}
+            className="text-[#F95F4A]"
+          />
+          <p
+            className={`font-medium text-[#fafafa] ${
+              size === "stage" ? "text-[14px]" : "text-[11.5px]"
+            }`}
+          >
+            You&rsquo;re sharing your screen
+          </p>
+          {size === "stage" && (
+            <p className="max-w-[20rem] text-[12px] leading-snug text-[#fafafa]/56">
+              Everyone in the call can already see it — this is just what you
+              see on your end.
+            </p>
+          )}
+          <button
+            type="button"
+            onClick={() => selfView.onModeChange("preview")}
+            className={`mt-1 rounded-full border border-[#fafafa]/14 bg-[#18181b] font-medium text-[#fafafa]/82 transition-colors duration-100 hover:bg-[#232327] hover:text-[#fafafa] ${
+              size === "stage"
+                ? "px-4 py-2 text-[13px]"
+                : "px-3 py-1.5 text-[11.5px]"
+            }`}
+          >
+            Preview my screen
+          </button>
+        </div>
+      )}
+      {!showChooser && (
+        <div
+          className={`absolute flex max-w-[calc(100%-1.5rem)] items-center gap-2 rounded-full border border-[#fafafa]/10 bg-[#0a0a0b]/70 ${
+            compact
+              ? "bottom-2 left-2 px-2.5 py-1"
+              : "left-3 top-3 px-3 py-1.5"
           }`}
         >
-          {compact ? "Presenting" : `${presenterName} is presenting`}
-        </span>
-      </div>
+          <MonitorUp
+            size={compact ? 15 : 18}
+            strokeWidth={1.75}
+            className="shrink-0 text-[#F95F4A]"
+          />
+          <span
+            className={`truncate font-medium text-[#fafafa] ${
+              compact ? "text-[12.5px]" : "text-[13px]"
+            }`}
+          >
+            {compact ? "Presenting" : formatPresentingLabel(presenterName)}
+          </span>
+          {selfView && !compact && (
+            <>
+              <span className="h-3 w-px shrink-0 bg-[#fafafa]/14" />
+              <button
+                type="button"
+                onClick={() => selfView.onModeChange("placeholder")}
+                className="shrink-0 text-[12px] font-medium text-[#fafafa]/70 transition-colors duration-100 hover:text-[#fafafa]"
+              >
+                Hide preview
+              </button>
+            </>
+          )}
+        </div>
+      )}
+      {showCaptureControls && (
+        <div
+          className="absolute bottom-3 right-3 flex items-center gap-1 rounded-full border border-[#fafafa]/10 bg-black/65 p-1 shadow-[0_10px_24px_rgba(0,0,0,0.35)] backdrop-blur-md"
+          data-meet-captured-surface-controls
+        >
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              void runCaptureZoomAction(
+                captureController?.decreaseZoomLevel?.bind(captureController),
+              );
+            }}
+            className={captureControlButtonClass}
+            title="Zoom out shared tab"
+            aria-label="Zoom out shared tab"
+            disabled={!canZoomOut}
+          >
+            <Minus size={16} strokeWidth={1.75} />
+          </button>
+          <span className="min-w-12 px-1 text-center text-[12px] font-medium tabular-nums text-[#fafafa]/78">
+            {captureZoomLabel}
+          </span>
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              void runCaptureZoomAction(
+                captureController?.increaseZoomLevel?.bind(captureController),
+              );
+            }}
+            className={captureControlButtonClass}
+            title="Zoom in shared tab"
+            aria-label="Zoom in shared tab"
+            disabled={!canZoomIn}
+          >
+            <Plus size={16} strokeWidth={1.75} />
+          </button>
+          <span className="mx-0.5 h-4 w-px bg-[#fafafa]/12" />
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              void runCaptureZoomAction(
+                captureController?.resetZoomLevel?.bind(captureController),
+              );
+            }}
+            className={captureControlButtonClass}
+            title="Reset shared tab zoom"
+            aria-label="Reset shared tab zoom"
+          >
+            <RotateCcw size={15} strokeWidth={1.75} />
+          </button>
+        </div>
+      )}
+      {onTogglePin && (
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            onTogglePin();
+          }}
+          className={`absolute right-3 top-3 inline-flex items-center justify-center rounded-full border border-[#fafafa]/10 bg-black/60 text-[#fafafa]/82 transition-[border-color,color,opacity] duration-[120ms] hover:border-[#F95F4A]/40 hover:text-[#fafafa] focus-visible:opacity-100 ${
+            compact ? "h-7 w-7" : "h-9 w-9"
+          } ${isPinned ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
+          title={isPinned ? "Unpin" : "Pin to spotlight"}
+          aria-label={isPinned ? "Unpin" : "Pin to spotlight"}
+          aria-pressed={isPinned}
+        >
+          {isPinned ? (
+            <PinOff size={compact ? 14 : 18} strokeWidth={1.75} />
+          ) : (
+            <Pin size={compact ? 14 : 18} strokeWidth={1.75} />
+          )}
+        </button>
+      )}
     </div>
   );
 });

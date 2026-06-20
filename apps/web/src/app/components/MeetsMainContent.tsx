@@ -21,18 +21,22 @@ import ScreenShareAudioPlayers from "./ScreenShareAudioPlayers";
 import SystemAudioPlayers from "./SystemAudioPlayers";
 import WhiteboardLayout from "./WhiteboardLayout";
 import ParticipantVideo from "./ParticipantVideo";
-import MeetingIdentity from "./MeetingIdentity";
 import ToastQueue from "./ToastQueue";
+import AndroidUpsellSheet from "./AndroidUpsellSheet";
 import type { BrowserState } from "../hooks/useSharedBrowser";
-import type { ConnectionQuality } from "../hooks/useConnectionQuality";
 import type {
   VideoEffectsDebugStats,
   VideoEffectsRuntimeStatus,
 } from "../hooks/useVideoEffects";
 import type {
+  CapturedSurfaceControlState,
+  CaptureControllerLike,
+} from "../lib/captured-surface-control";
+import type {
   AdminNoticeNotification,
   ChatGifAttachment,
   ChatMessage,
+  ChatReplyPreview,
   ConnectionState,
   MeetError,
   MeetingConfigSnapshot,
@@ -76,6 +80,8 @@ const DevMeetToolsPanel = dynamic(() => import("./DevMeetToolsPanel"), {
 
 interface MeetsMainContentProps {
   isJoined: boolean;
+  /** True under the phone-width breakpoint — gates compact control/panel layout. */
+  isMobile?: boolean;
   connectionState: ConnectionState;
   isLoading: boolean;
   roomId: string;
@@ -103,6 +109,8 @@ interface MeetsMainContentProps {
   setIsGhostMode: Dispatch<SetStateAction<boolean>>;
   presentationStream: MediaStream | null;
   presenterName: string;
+  screenShareControlState: CapturedSurfaceControlState;
+  screenShareCaptureController: CaptureControllerLike | null;
   localStream: MediaStream | null;
   videoEffects: VideoEffectsState;
   onVideoEffectsChange: Dispatch<SetStateAction<VideoEffectsState>>;
@@ -153,6 +161,9 @@ interface MeetsMainContentProps {
   sendChatGif: (gif: ChatGifAttachment) => void;
   chatOverlayMessages: ChatMessage[];
   setChatOverlayMessages: Dispatch<SetStateAction<ChatMessage[]>>;
+  replyTarget: ChatReplyPreview | null;
+  onReplyToMessage: (message: ChatMessage) => void;
+  onCancelReply: () => void;
   socket: Socket | null;
   setPendingUsers: Dispatch<SetStateAction<Map<string, string>>>;
   resolveDisplayName: (userId: string) => string;
@@ -216,7 +227,6 @@ interface MeetsMainContentProps {
   ) => Promise<WebinarConfigSnapshot | null>;
   onGenerateWebinarLink?: () => Promise<WebinarLinkResponse | null>;
   onRotateWebinarLink?: () => Promise<WebinarLinkResponse | null>;
-  selfConnectionQuality?: ConnectionQuality;
 }
 
 const MEET_VIEW_STORAGE_KEY = "conclave:meet-view";
@@ -301,6 +311,7 @@ const getPipCornerClass = (corner: PipCorner): string => {
 
 export default function MeetsMainContent({
   isJoined,
+  isMobile = false,
   connectionState,
   isLoading,
   roomId,
@@ -324,6 +335,8 @@ export default function MeetsMainContent({
   setIsGhostMode,
   presentationStream,
   presenterName,
+  screenShareControlState,
+  screenShareCaptureController,
   localStream,
   videoEffects,
   onVideoEffectsChange,
@@ -374,6 +387,9 @@ export default function MeetsMainContent({
   sendChatGif,
   chatOverlayMessages,
   setChatOverlayMessages,
+  replyTarget,
+  onReplyToMessage,
+  onCancelReply,
   socket,
   setPendingUsers,
   resolveDisplayName,
@@ -431,7 +447,6 @@ export default function MeetsMainContent({
   onUpdateWebinarConfig,
   onGenerateWebinarLink,
   onRotateWebinarLink,
-  selfConnectionQuality = "unknown",
 }: MeetsMainContentProps) {
   const {
     state: appsState,
@@ -500,12 +515,29 @@ export default function MeetsMainContent({
   const [isHostControlsOpen, setIsHostControlsOpen] = useState(false);
   const [isVideoEffectsOpen, setIsVideoEffectsOpen] = useState(false);
   const [isViewPanelOpen, setIsViewPanelOpen] = useState(false);
+  const [showAndroidUpsell, setShowAndroidUpsell] = useState(false);
   const [viewSettings, setViewSettings] = useState<MeetViewSettings>(
     readStoredMeetViewSettings,
   );
   useEffect(() => {
     writeStoredMeetViewSettings(viewSettings);
   }, [viewSettings]);
+  useEffect(() => {
+    if (typeof navigator === "undefined" || typeof window === "undefined") return;
+    const isAndroid = /android/i.test(navigator.userAgent);
+    const dismissed = window.localStorage.getItem(
+      "conclave_android_upsell_dismissed",
+    );
+    if (isAndroid && !dismissed) {
+      setShowAndroidUpsell(true);
+    }
+  }, []);
+  const dismissAndroidUpsell = useCallback(() => {
+    setShowAndroidUpsell(false);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("conclave_android_upsell_dismissed", "1");
+    }
+  }, []);
   const [devPresentationStream, setDevPresentationStream] =
     useState<MediaStream | null>(null);
   const [devCameraStream, setDevCameraStream] =
@@ -519,6 +551,10 @@ export default function MeetsMainContent({
       !hasLiveDevCamera &&
       (cameraPermissionState === "prompt" ||
         cameraPermissionState === "denied"));
+  // You're the one sharing your screen — the stage tile defaults to a
+  // chooser instead of mirroring your own share back at you (see
+  // GridLayout's `isLocalPresenter` handling).
+  const isLocalPresenter = isScreenSharing && Boolean(presentationStream);
   const effectivePresentationStream =
     presentationStream ?? devPresentationStream;
   const effectivePresenterName = presentationStream
@@ -1025,6 +1061,7 @@ export default function MeetsMainContent({
     return videoParticipant?.screenShareStream ?? null;
   }, [participantsArray]);
   const dockedPanelReserve =
+    !isMobile &&
     isJoined &&
     !isWebinarAttendee &&
     (isChatOpen ||
@@ -1077,15 +1114,6 @@ export default function MeetsMainContent({
         <ReactionOverlay
           reactions={reactions}
           getDisplayName={resolveDisplayName}
-        />
-      )}
-      {isJoined && !isWebinarAttendee && (
-        <MeetingIdentity
-          connectionState={connectionState}
-          serverRestartNotice={serverRestartNotice}
-          isScreenSharing={isScreenSharing}
-          isGhost={ghostEnabled}
-          connectionQuality={selfConnectionQuality}
         />
       )}
       {isDevToolsEnabled && isJoined && !isWebinarAttendee && (
@@ -1336,8 +1364,19 @@ export default function MeetsMainContent({
           onViewSettingsChange={setViewSettings}
           presentationStream={effectivePresentationStream}
           presenterName={effectivePresenterName}
+          isLocalPresenter={isLocalPresenter}
+          screenShareControlState={screenShareControlState}
+          screenShareCaptureController={screenShareCaptureController}
           getDisplayName={resolveDisplayName}
           sidePanelReserve={dockedPanelReserve}
+          isMobile={isMobile}
+        />
+      )}
+
+      {!isWebinarAttendee && (
+        <AndroidUpsellSheet
+          isOpen={showAndroidUpsell}
+          onClose={dismissAndroidUpsell}
         />
       )}
 
@@ -1376,8 +1415,9 @@ export default function MeetsMainContent({
             </div>
           </div>
         ) : (
-          <div className="flex w-full flex-col items-center gap-2">
+          <div className="safe-area-pb flex w-full flex-col items-center gap-2">
             <ControlsBar
+                compact={isMobile}
                 roomId={roomId}
                 isMuted={isMuted}
                 isMuteTogglePending={isMuteTogglePending}
@@ -1491,6 +1531,9 @@ export default function MeetsMainContent({
           isDmEnabled={isDmEnabled}
           isAdmin={isAdmin}
           mentionableParticipants={mentionableParticipants}
+          replyTarget={replyTarget}
+          onReply={onReplyToMessage}
+          onCancelReply={onCancelReply}
         />
       )}
 

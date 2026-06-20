@@ -13,6 +13,7 @@ import type {
   Transport,
   VideoQuality,
 } from "../lib/types";
+import type { CaptureControllerLike } from "../lib/captured-surface-control";
 import { getOrCreateSessionId } from "../lib/utils";
 
 export type ConsumerTelemetryLayerPreference = {
@@ -47,6 +48,8 @@ export function useMeetRefs() {
   const screenProducerRef = useRef<Producer | null>(null);
   const screenAudioProducerRef = useRef<Producer | null>(null);
   const screenShareStreamRef = useRef<MediaStream | null>(null);
+  const screenShareCaptureControllerRef =
+    useRef<CaptureControllerLike | null>(null);
   const intentionalLocalProducerCloseIdsRef = useRef<Set<string>>(new Set());
   const consumersRef = useRef<Map<string, Consumer>>(new Map());
   const adaptivelyPausedConsumerProducerIdsRef = useRef<Set<string>>(
@@ -121,6 +124,7 @@ export function useMeetRefs() {
     screenProducerRef,
     screenAudioProducerRef,
     screenShareStreamRef,
+    screenShareCaptureControllerRef,
     intentionalLocalProducerCloseIdsRef,
     consumersRef,
     adaptivelyPausedConsumerProducerIdsRef,

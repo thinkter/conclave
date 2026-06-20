@@ -2,7 +2,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import type { Socket } from "socket.io-client";
-import type { ChatGifAttachment, ChatMessage } from "../lib/types";
+import type { ChatGifAttachment, ChatMessage, ChatReplyPreview } from "../lib/types";
 import {
   createLocalChatMessage,
   formatActionContent,
@@ -62,6 +62,7 @@ export function useMeetChat({
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [chatInput, setChatInput] = useState("");
+  const [replyTarget, setReplyTarget] = useState<ChatReplyPreview | null>(null);
   const isChatOpenRef = useRef(false);
 
   const appendLocalMessage = useCallback(
@@ -72,7 +73,11 @@ export function useMeetChat({
   );
 
   const buildOptimisticMessage = useCallback(
-    (content: string, gif?: ChatGifAttachment): ChatMessage =>
+    (
+      content: string,
+      gif?: ChatGifAttachment,
+      replyTo?: ChatReplyPreview,
+    ): ChatMessage =>
       normalizeChatMessage({
         id: `optimistic-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         userId: currentUserId,
@@ -80,29 +85,54 @@ export function useMeetChat({
         content,
         timestamp: Date.now(),
         ...(gif ? { gif } : {}),
+        ...(replyTo ? { replyTo } : {}),
       }).message,
     [currentUserDisplayName, currentUserId],
   );
+
+  const startReply = useCallback((message: ChatMessage) => {
+    setReplyTarget({
+      id: message.id,
+      userId: message.userId,
+      displayName: message.displayName,
+      content: message.gif ? message.gif.title || "GIF" : message.content,
+      hasGif: Boolean(message.gif),
+      isDirect: message.isDirect,
+    });
+  }, []);
+
+  const cancelReply = useCallback(() => {
+    setReplyTarget(null);
+  }, []);
 
   const clearChat = useCallback(() => {
     setChatMessages([]);
     setChatOverlayMessages([]);
     setUnreadCount(0);
+    setReplyTarget(null);
   }, [setChatMessages, setChatOverlayMessages, setUnreadCount]);
 
   const sendChatInternal = useCallback(
-    (content: string, gif?: ChatGifAttachment) => {
+    (content: string, gif?: ChatGifAttachment, replyTo?: ChatReplyPreview) => {
       const socket = socketRef.current;
       const trimmedContent = content.trim();
       if (!socket || (!trimmedContent && !gif)) return;
 
       const messageContent = trimmedContent || gif?.title || "GIF";
-      const optimisticMessage = buildOptimisticMessage(messageContent, gif);
+      const optimisticMessage = buildOptimisticMessage(
+        messageContent,
+        gif,
+        replyTo,
+      );
       setChatMessages((prev) => [...prev, optimisticMessage]);
 
       socket.emit(
         "sendChat",
-        { content: messageContent, ...(gif ? { gif } : {}) },
+        {
+          content: messageContent,
+          ...(gif ? { gif } : {}),
+          ...(replyTo ? { replyTo } : {}),
+        },
         (
           response:
             | { success: boolean; message?: ChatMessage }
@@ -264,7 +294,9 @@ export function useMeetChat({
         }
       }
 
-      sendChatInternal(trimmed);
+      const activeReply = replyTarget ?? undefined;
+      if (activeReply) setReplyTarget(null);
+      sendChatInternal(trimmed, undefined, activeReply);
     },
     [
       ghostEnabled,
@@ -282,6 +314,7 @@ export function useMeetChat({
       onSetHandRaised,
       onLeaveRoom,
       isTtsDisabled,
+      replyTarget,
     ],
   );
 
@@ -292,7 +325,9 @@ export function useMeetChat({
         appendLocalMessage("Chat is locked by the host.");
         return;
       }
-      sendChatInternal(gif.title || "GIF", gif);
+      const activeReply = replyTarget ?? undefined;
+      if (activeReply) setReplyTarget(null);
+      sendChatInternal(gif.title || "GIF", gif, activeReply);
     },
     [
       ghostEnabled,
@@ -301,6 +336,7 @@ export function useMeetChat({
       isAdmin,
       appendLocalMessage,
       sendChatInternal,
+      replyTarget,
     ],
   );
 
@@ -318,5 +354,8 @@ export function useMeetChat({
     sendChat,
     sendChatGif,
     isChatOpenRef,
+    replyTarget,
+    startReply,
+    cancelReply,
   };
 }

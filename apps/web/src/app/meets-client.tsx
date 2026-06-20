@@ -20,7 +20,6 @@ import MeetsErrorBanner from "./components/MeetsErrorBanner";
 import MeetsHeader from "./components/MeetsHeader";
 import MeetsMainContent from "./components/MeetsMainContent";
 import MeetsWaitingScreen from "./components/MeetsWaitingScreen";
-import MobileMeetsMainContent from "./components/mobile/MobileMeetsMainContent";
 
 import { useMeetAudioActivity } from "./hooks/useMeetAudioActivity";
 import { useMeetChat } from "./hooks/useMeetChat";
@@ -337,7 +336,6 @@ export type MeetsClientProps = {
   forceJoinOnly?: boolean;
   allowGhostMode?: boolean;
   bypassMediaPermissions?: boolean;
-  fontClassName?: string;
   user?: {
     id?: string;
     email?: string | null;
@@ -370,7 +368,6 @@ export default function MeetsClient({
   forceJoinOnly = false,
   allowGhostMode = true,
   bypassMediaPermissions = false,
-  fontClassName,
   user,
   isAdmin = false,
   getJoinInfo,
@@ -997,6 +994,9 @@ export default function MeetsClient({
     sendChat,
     sendChatGif,
     isChatOpenRef,
+    replyTarget,
+    startReply,
+    cancelReply,
   } = useMeetChat({
     socketRef: refs.socketRef,
     ghostEnabled,
@@ -1045,6 +1045,7 @@ export default function MeetsClient({
 
   const {
     showPermissionHint,
+    screenShareControlState,
     requestMediaPermissions,
     handleAudioInputDeviceChange,
     handleVideoInputDeviceChange,
@@ -1096,6 +1097,7 @@ export default function MeetsClient({
     screenProducerRef: refs.screenProducerRef,
     screenAudioProducerRef: refs.screenAudioProducerRef,
     screenShareStreamRef: refs.screenShareStreamRef,
+    screenShareCaptureControllerRef: refs.screenShareCaptureControllerRef,
     intentionalLocalProducerCloseIdsRef:
       refs.intentionalLocalProducerCloseIdsRef,
     localStreamRef: refs.localStreamRef,
@@ -2662,161 +2664,8 @@ export default function MeetsClient({
     );
   }
 
-  if (isMobile) {
-    return renderWithApps(
-      <div
-        className={`flex flex-col h-dvh w-full bg-[#131316] text-white ${fontClassName ?? ""}`}
-      >
-        {isJoined && meetError && (
-          <MeetsErrorBanner
-            meetError={meetError}
-            onDismiss={() => setMeetError(null)}
-            primaryActionLabel={
-              meetError.code === "PERMISSION_DENIED"
-                ? "Retry Permissions"
-                : meetError.code === "MEDIA_ERROR"
-                  ? "Retry Devices"
-                  : undefined
-            }
-            onPrimaryAction={
-              meetError.code === "PERMISSION_DENIED" ||
-              meetError.code === "MEDIA_ERROR"
-                ? handleRetryMedia
-                : undefined
-            }
-          />
-        )}
-        <MobileMeetsMainContent
-          isJoined={isJoined}
-          connectionState={connectionState}
-          isLoading={isLoading}
-          roomId={roomId}
-          setRoomId={setRoomId}
-          joinRoomById={joinRoomById}
-          hideJoinUI={hideJoinUI || joinMode === "webinar_attendee"}
-          isWebinarAttendee={isWebinarAttendee}
-          enableRoomRouting={enableRoomRouting}
-          forceJoinOnly={forceJoinOnly}
-          allowGhostMode={allowGhostMode}
-          user={currentUser}
-          userEmail={userEmail}
-          isAdmin={isAdminFlag}
-          showPermissionHint={showPermissionHint}
-          displayNameInput={displayNameInput}
-          setDisplayNameInput={setDisplayNameInput}
-          ghostEnabled={ghostEnabled}
-          setIsGhostMode={setIsGhostMode}
-          presentationStream={presentationStream}
-          presenterName={presenterName || ""}
-          localStream={displayLocalStream}
-          videoEffects={videoEffects}
-          onVideoEffectsChange={setVideoEffects}
-          onVideoEffectsRecenter={() =>
-            setFramingRecenterToken((token) => token + 1)
-          }
-          videoEffectsStatus={videoEffectsStatus}
-          videoEffectsError={videoEffectsError}
-          videoEffectsDebugStats={videoEffectsDebugStats}
-          activeVideoEffectsCount={activeVideoEffectsCount}
-          deferVideoEffectsPreload={shouldDeferVideoEffectsPreload}
-          onPrejoinMediaCommit={handlePrejoinMediaCommit}
-          isCameraOff={isCameraOff}
-          isMuted={isMuted}
-          isMuteTogglePending={isMuteTogglePending}
-          isHandRaised={isHandRaised}
-          participants={participants}
-          mirrorLocalPreview={mirrorLocalPreview}
-          activeSpeakerId={effectiveActiveSpeakerId}
-          currentUserId={userId}
-          selectedAudioInputDeviceId={selectedAudioInputDeviceId}
-          audioOutputDeviceId={selectedAudioOutputDeviceId}
-          onAudioInputDeviceChange={handleAudioInputDeviceChange}
-          onAudioOutputDeviceChange={handleAudioOutputDeviceChange}
-          activeScreenShareId={activeScreenShareId}
-          isScreenSharing={isScreenSharing}
-          isChatOpen={isChatOpen}
-          unreadCount={unreadCount}
-          reactionOptions={reactionOptions}
-          toggleMute={toggleMute}
-          toggleCamera={toggleCamera}
-          toggleScreenShare={toggleScreenShare}
-          toggleChat={toggleChat}
-          toggleHandRaised={toggleHandRaised}
-          sendReaction={sendReaction}
-          leaveRoom={leaveRoom}
-          isParticipantsOpen={isParticipantsOpen}
-          setIsParticipantsOpen={setIsParticipantsOpen}
-          pendingUsers={pendingUsers}
-          chatMessages={chatMessages}
-          chatInput={chatInput}
-          setChatInput={setChatInput}
-          sendChat={sendChat}
-          sendChatGif={sendChatGif}
-          chatOverlayMessages={chatOverlayMessages}
-          setChatOverlayMessages={setChatOverlayMessages}
-          socket={refs.socketRef.current}
-          setPendingUsers={setPendingUsers}
-          resolveDisplayName={resolveDisplayName}
-          reactions={reactionEvents}
-          onUserChange={(user) => setCurrentUser(user ?? undefined)}
-          onIsAdminChange={setCurrentIsAdmin}
-          isRoomLocked={isRoomLocked}
-          isNoGuests={isNoGuests}
-          onToggleNoGuests={() => socket.toggleNoGuests(!isNoGuests)}
-          isTtsDisabled={isTtsDisabled}
-          isDmEnabled={isDmEnabled}
-          onToggleLock={() => socket.toggleRoomLock(!isRoomLocked)}
-          isChatLocked={isChatLocked}
-          onToggleChatLock={() => socket.toggleChatLock(!isChatLocked)}
-          browserState={browserState}
-          isBrowserLaunching={isBrowserLaunching}
-          browserLaunchError={browserLaunchError}
-          showBrowserControls={showBrowserControls}
-          onLaunchBrowser={launchBrowser}
-          onNavigateBrowser={navigateBrowser}
-          onCloseBrowser={closeBrowser}
-          onClearBrowserError={clearBrowserError}
-          isBrowserAudioMuted={isBrowserAudioMuted}
-          onToggleBrowserAudio={toggleBrowserAudio}
-          browserAudioNeedsGesture={browserAudioNeedsGesture}
-          onBrowserAudioAutoplayBlocked={handleBrowserAudioAutoplayBlocked}
-          meetError={meetError}
-          onDismissMeetError={() => setMeetError(null)}
-          onRetryMedia={handleRetryMedia}
-          hostUserId={hostUserId}
-          hostUserIds={hostUserIds}
-          isNetworkOffline={isNetworkOffline}
-          serverRestartNotice={serverRestartNotice}
-          adminNotice={adminNotice}
-          meetingRequiresInviteCode={meetingRequiresInviteCode}
-          webinarConfig={webinarConfig}
-          webinarRole={webinarRole}
-          webinarSpeakerUserId={webinarSpeakerUserId}
-          webinarLink={webinarLink}
-          onSetWebinarLink={setWebinarLink}
-          onGetMeetingConfig={socket.getMeetingConfig}
-          onUpdateMeetingConfig={socket.updateMeetingConfig}
-          onGetWebinarConfig={socket.getWebinarConfig}
-          onUpdateWebinarConfig={socket.updateWebinarConfig}
-          onGenerateWebinarLink={socket.generateWebinarLink}
-          onRotateWebinarLink={socket.rotateWebinarLink}
-          isVoiceAgentRunning={voiceAgent.isRunning}
-          isVoiceAgentStarting={voiceAgent.isStarting}
-          voiceAgentError={voiceAgent.error}
-          onStartVoiceAgent={handleStartVoiceAgent}
-          onStopVoiceAgent={handleStopVoiceAgent}
-          onClearVoiceAgentError={voiceAgent.clearError}
-        />
-        {inviteCodePrompt}
-        {voiceAgentKeyPrompt}
-      </div>,
-    );
-  }
-
   return renderWithApps(
-    <div
-      className={`flex flex-col h-full w-full bg-[#18181b] text-white ${fontClassName ?? ""}`}
-    >
+    <div className="flex flex-col h-full w-full bg-[#18181b] text-white">
       <MeetsHeader isJoined={isJoined} />
       {isJoined && meetError && (
         <MeetsErrorBanner
@@ -2839,8 +2688,8 @@ export default function MeetsClient({
       )}
       <MeetsMainContent
         isJoined={isJoined}
+        isMobile={isMobile}
         connectionState={connectionState}
-        selfConnectionQuality={selfConnectionStats.quality}
         isLoading={isLoading}
         roomId={roomId}
         setRoomId={setRoomId}
@@ -2863,14 +2712,16 @@ export default function MeetsClient({
         setIsGhostMode={setIsGhostMode}
         presentationStream={presentationStream}
         presenterName={presenterName || ""}
+        screenShareControlState={screenShareControlState}
+        screenShareCaptureController={refs.screenShareCaptureControllerRef.current}
         localStream={displayLocalStream}
-          videoEffects={videoEffects}
-          onVideoEffectsChange={setVideoEffects}
-          onVideoEffectsRecenter={() =>
-            setFramingRecenterToken((token) => token + 1)
-          }
-          videoEffectsStatus={videoEffectsStatus}
-          videoEffectsError={videoEffectsError}
+        videoEffects={videoEffects}
+        onVideoEffectsChange={setVideoEffects}
+        onVideoEffectsRecenter={() =>
+          setFramingRecenterToken((token) => token + 1)
+        }
+        videoEffectsStatus={videoEffectsStatus}
+        videoEffectsError={videoEffectsError}
         videoEffectsDebugStats={videoEffectsDebugStats}
         activeVideoEffectsCount={activeVideoEffectsCount}
         deferVideoEffectsPreload={shouldDeferVideoEffectsPreload}
@@ -2915,6 +2766,9 @@ export default function MeetsClient({
         sendChatGif={sendChatGif}
         chatOverlayMessages={chatOverlayMessages}
         setChatOverlayMessages={setChatOverlayMessages}
+        replyTarget={replyTarget}
+        onReplyToMessage={startReply}
+        onCancelReply={cancelReply}
         socket={refs.socketRef.current}
         setPendingUsers={setPendingUsers}
         resolveDisplayName={resolveDisplayName}

@@ -172,7 +172,7 @@ function ParticipantVideo({
     <div
       onClick={handleClick}
       className={`acm-video-tile group ${
-        compact ? "h-36 shrink-0" : "w-full h-full"
+        compact ? "h-36 w-48 shrink-0 sm:w-auto" : "w-full h-full"
       } ${speakerHighlight} ${handRaisedHighlight} ${
         isAdmin && onAdminClick ? "cursor-pointer hover:border-[#F95F4A]/40" : ""
       }`}

@@ -31,6 +31,9 @@ import type {
 import { HOTKEYS } from "../lib/hotkeys";
 
 export interface ControlsBarProps {
+  /** Phone-width layout: fold screen-share/reactions into the More menu so the
+   * core mic/camera/More/leave row fits without wrapping. */
+  compact?: boolean;
   roomId?: string;
   isMuted: boolean;
   isMuteTogglePending?: boolean;
@@ -227,22 +230,38 @@ export function buildControlsConfig(p: ControlsBarProps): ControlsConfig {
       disabled: ghost,
       onPress: p.onToggleCamera,
     },
-    {
-      id: "screen-share",
-      icon: Monitor,
-      label: !canStartScreenShare
-        ? "Someone else is presenting"
-        : p.isScreenSharing
-          ? "Stop sharing"
-          : "Share screen",
-      hotkey: HOTKEYS.toggleScreenShare.keys,
-      variant: p.isScreenSharing ? "active" : "default",
-      disabled: screenShareDisabled,
-      onPress: p.onToggleScreenShare,
-    },
   ];
 
+  const screenShareDescriptor: ControlDescriptor = {
+    id: "screen-share",
+    icon: Monitor,
+    label: !canStartScreenShare
+      ? "Someone else is presenting"
+      : p.isScreenSharing
+        ? "Stop sharing"
+        : "Share screen",
+    hotkey: HOTKEYS.toggleScreenShare.keys,
+    variant: p.isScreenSharing ? "active" : "default",
+    disabled: screenShareDisabled,
+    onPress: p.onToggleScreenShare,
+  };
+
   const overflow: OverflowRow[] = [];
+  if (p.compact) {
+    // Phone-width bar: keep the core row to mic/cam/More/leave, fold
+    // screen-share into the More menu instead of squeezing it in.
+    overflow.push({
+      id: "screen-share",
+      icon: screenShareDescriptor.icon,
+      label: screenShareDescriptor.label,
+      hotkey: screenShareDescriptor.hotkey,
+      active: p.isScreenSharing,
+      disabled: screenShareDescriptor.disabled,
+      onPress: screenShareDescriptor.onPress,
+    });
+  } else {
+    center.push(screenShareDescriptor);
+  }
   overflow.push({
     id: "hand",
     icon: Hand,

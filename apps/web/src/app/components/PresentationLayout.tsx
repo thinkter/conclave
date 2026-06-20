@@ -156,7 +156,7 @@ function PresentationLayout({
 
   return (
     <div
-      className="flex min-h-0 flex-1 gap-4 overflow-hidden p-4"
+      className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden p-4 sm:flex-row"
       style={{ fontFamily: FONT_SANS }}
     >
       <div className="relative flex min-w-0 flex-1 items-center justify-center overflow-hidden rounded-2xl border border-[#fafafa]/10 bg-[#131316]">
@@ -175,9 +175,9 @@ function PresentationLayout({
         </div>
       </div>
 
-      <div className="flex w-64 shrink-0 flex-col gap-3 overflow-y-auto overflow-x-visible px-1">
+      <div className="flex h-36 w-full shrink-0 flex-row gap-3 overflow-x-auto overflow-y-visible pb-1 sm:h-auto sm:w-64 sm:flex-col sm:gap-3 sm:overflow-y-auto sm:overflow-x-visible sm:px-1 sm:pb-0">
         <div
-          className={`acm-video-tile h-36 shrink-0 ${localSpeakerHighlight} ${localHandRaisedHighlight}`}
+          className={`acm-video-tile h-36 w-48 shrink-0 sm:w-auto ${localSpeakerHighlight} ${localHandRaisedHighlight}`}
         >
           <video
             ref={localVideoRef}

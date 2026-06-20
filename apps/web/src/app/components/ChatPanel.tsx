@@ -1,9 +1,16 @@
 "use client";
 
-import { ArrowDown, MessageSquare, Send, X } from "lucide-react";
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import {
+  ArrowDown,
+  Image as ImageIcon,
+  MessageSquare,
+  Reply,
+  Send,
+  X,
+} from "lucide-react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Avatar } from "@conclave/ui-tokens/web";
-import type { ChatGifAttachment, ChatMessage } from "../lib/types";
+import type { ChatGifAttachment, ChatMessage, ChatReplyPreview } from "../lib/types";
 import { getActionText, getCommandSuggestions } from "../lib/chat-commands";
 import { formatDisplayName, getChatMessageSegments } from "../lib/utils";
 import ChatGifAttachmentView from "./ChatGifAttachmentView";
@@ -30,6 +37,9 @@ interface ChatPanelProps {
   isDmEnabled?: boolean;
   isAdmin?: boolean;
   mentionableParticipants?: MentionableParticipant[];
+  replyTarget?: ChatReplyPreview | null;
+  onReply?: (message: ChatMessage) => void;
+  onCancelReply?: () => void;
 }
 
 const areGifsEqual = (
@@ -73,13 +83,30 @@ const areMessagesEqual = (
       (previousMessage.dmTargetUserId ?? "") !==
         (nextMessage.dmTargetUserId ?? "") ||
       (previousMessage.dmTargetDisplayName ?? "") !==
-        (nextMessage.dmTargetDisplayName ?? "")
+        (nextMessage.dmTargetDisplayName ?? "") ||
+      (previousMessage.replyTo?.id ?? "") !== (nextMessage.replyTo?.id ?? "")
     ) {
       return false;
     }
   }
 
   return true;
+};
+
+const areReplyTargetsEqual = (
+  previous?: ChatReplyPreview | null,
+  next?: ChatReplyPreview | null,
+): boolean => {
+  if (previous === next) return true;
+  if (!previous || !next) return false;
+  return (
+    previous.id === next.id &&
+    previous.userId === next.userId &&
+    previous.displayName === next.displayName &&
+    previous.content === next.content &&
+    Boolean(previous.hasGif) === Boolean(next.hasGif) &&
+    Boolean(previous.isDirect) === Boolean(next.isDirect)
+  );
 };
 
 const areMentionableParticipantsEqual = (
@@ -129,12 +156,20 @@ const areChatPanelPropsEqual = (
     previousProps.onInputChange !== nextProps.onInputChange ||
     previousProps.onSend !== nextProps.onSend ||
     previousProps.onSendGif !== nextProps.onSendGif ||
-    previousProps.onClose !== nextProps.onClose
+    previousProps.onClose !== nextProps.onClose ||
+    previousProps.onReply !== nextProps.onReply ||
+    previousProps.onCancelReply !== nextProps.onCancelReply
   ) {
     return false;
   }
 
   if (!areMessagesEqual(previousProps.messages, nextProps.messages)) {
+    return false;
+  }
+
+  if (
+    !areReplyTargetsEqual(previousProps.replyTarget, nextProps.replyTarget)
+  ) {
     return false;
   }
 
@@ -157,6 +192,9 @@ function ChatPanel({
   isDmEnabled = true,
   isAdmin = false,
   mentionableParticipants = [],
+  replyTarget = null,
+  onReply,
+  onCancelReply,
 }: ChatPanelProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -166,11 +204,29 @@ function ChatPanel({
   const prevMessageIdsRef = useRef<Set<string>>(new Set());
   const previousMessageCountRef = useRef(messages.length);
   const hasInitializedRef = useRef(false);
+  const messageNodeRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const highlightTimeoutRef = useRef<number | null>(null);
   const [activeCommandIndex, setActiveCommandIndex] = useState(0);
   const [activeMentionIndex, setActiveMentionIndex] = useState(0);
   const [isSendAnimating, setIsSendAnimating] = useState(false);
   const [unseenCount, setUnseenCount] = useState(0);
+  const [highlightedMessageId, setHighlightedMessageId] = useState<
+    string | null
+  >(null);
   const isChatDisabled = isGhostMode || (isChatLocked && !isAdmin);
+
+  const scrollToMessage = useCallback((id: string) => {
+    const node = messageNodeRefs.current.get(id);
+    if (!node) return;
+    node.scrollIntoView({ behavior: "smooth", block: "center" });
+    setHighlightedMessageId(id);
+    if (highlightTimeoutRef.current !== null) {
+      window.clearTimeout(highlightTimeoutRef.current);
+    }
+    highlightTimeoutRef.current = window.setTimeout(() => {
+      setHighlightedMessageId(null);
+    }, 900);
+  }, []);
 
   const commandSuggestions = getCommandSuggestions(chatInput);
   const showCommandSuggestions =
@@ -260,9 +316,18 @@ function ChatPanel({
       if (sendAnimationTimeoutRef.current !== null) {
         window.clearTimeout(sendAnimationTimeoutRef.current);
       }
+      if (highlightTimeoutRef.current !== null) {
+        window.clearTimeout(highlightTimeoutRef.current);
+      }
     },
     []
   );
+
+  useEffect(() => {
+    if (replyTarget) {
+      textareaRef.current?.focus();
+    }
+  }, [replyTarget]);
 
   useEffect(() => {
     const frameId = window.requestAnimationFrame(() => {
@@ -337,6 +402,10 @@ function ChatPanel({
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Escape") {
+      if (replyTarget && onCancelReply) {
+        onCancelReply();
+        return;
+      }
       onClose();
       return;
     }
@@ -433,7 +502,7 @@ function ChatPanel({
 
   return (
     <div
-      className="fixed right-0 top-0 bottom-0 z-40 flex w-[360px] flex-col border-l border-white/10 bg-[#18181b] animate-[meet-panel-in_280ms_cubic-bezier(0.22,1,0.36,1)]"
+      className="safe-area-pt safe-area-pb fixed right-0 top-0 bottom-0 z-40 flex w-full sm:w-[360px] flex-col border-l border-white/10 bg-[#18181b] animate-[meet-panel-in_280ms_cubic-bezier(0.22,1,0.36,1)]"
       style={{ fontFamily: "'PolySans Trial', sans-serif" }}
     >
       <div className="flex shrink-0 items-center justify-between border-b border-white/10 px-4 py-3">
@@ -482,15 +551,18 @@ function ChatPanel({
               const groupedWithPrevious = Boolean(
                 previousMessage &&
                   !previousActionText &&
+                  !msg.replyTo &&
                   previousMessage.userId === msg.userId &&
-                  previousMessage.isDirect === msg.isDirect &&
+                  (previousMessage.isDirect ?? false) ===
+                    (msg.isDirect ?? false) &&
                   Math.abs(msg.timestamp - previousMessage.timestamp) < 120000
               );
               const groupedWithNext = Boolean(
                 nextMessage &&
                   !nextActionText &&
+                  !nextMessage.replyTo &&
                   nextMessage.userId === msg.userId &&
-                  nextMessage.isDirect === msg.isDirect &&
+                  (nextMessage.isDirect ?? false) === (msg.isDirect ?? false) &&
                   Math.abs(nextMessage.timestamp - msg.timestamp) < 120000
               );
               const directMessageLabel = msg.isDirect
@@ -524,16 +596,80 @@ function ChatPanel({
                 );
               }
 
+              const replyAuthorLabel =
+                msg.replyTo &&
+                (msg.replyTo.userId === currentUserId
+                  ? "You"
+                  : formatDisplayName(msg.replyTo.displayName));
+
+              const nestedReplyQuote = msg.replyTo ? (
+                <button
+                  type="button"
+                  onClick={() => scrollToMessage(msg.replyTo!.id)}
+                  className={`flex w-full items-center border-l-[3px] py-1.5 pl-2.5 pr-3 text-left transition-colors ${
+                    isOwn
+                      ? "border-white/70 bg-black/[0.14] hover:bg-black/[0.22]"
+                      : "border-[#F95F4A] bg-black/20 hover:bg-black/30"
+                  }`}
+                >
+                  <span className="min-w-0 flex-1">
+                    <span
+                      className={`block truncate text-[11.5px] font-semibold ${
+                        isOwn ? "text-white" : "text-[#F95F4A]"
+                      }`}
+                    >
+                      {replyAuthorLabel}
+                    </span>
+                    <span
+                      className={`flex min-w-0 items-center gap-1 truncate text-[12.5px] ${
+                        isOwn ? "text-white/75" : "text-[#fafafa]/70"
+                      }`}
+                    >
+                      {msg.replyTo.hasGif ? (
+                        <ImageIcon
+                          size={11}
+                          strokeWidth={1.75}
+                          className="shrink-0"
+                        />
+                      ) : null}
+                      <span className="truncate">
+                        {msg.replyTo.hasGif ? "GIF" : msg.replyTo.content}
+                      </span>
+                    </span>
+                  </span>
+                </button>
+              ) : null;
+
+              const replyButton = onReply ? (
+                <button
+                  type="button"
+                  onClick={() => onReply(msg)}
+                  aria-label="Reply"
+                  title="Reply"
+                  className="inline-flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full border border-white/10 bg-[#232327] text-[#a1a1aa] opacity-0 transition-[opacity,background-color,color] duration-100 hover:bg-[#2e2e33] hover:text-[#fafafa] focus-visible:opacity-100 group-hover:opacity-100"
+                >
+                  <Reply size={13} strokeWidth={2} />
+                </button>
+              ) : null;
+
               return (
                 <div
                   key={msg.id}
-                  className={`flex ${isOwn ? "justify-end pl-10" : "justify-start gap-3 pr-8"} ${
-                    groupedWithPrevious ? "mt-1" : "mt-4 first:mt-0"
-                  } ${
+                  ref={(el) => {
+                    if (el) messageNodeRefs.current.set(msg.id, el);
+                    else messageNodeRefs.current.delete(msg.id);
+                  }}
+                  className={`group flex rounded-xl transition-colors duration-300 ${
+                    isOwn ? "justify-end" : "justify-start gap-3"
+                  } ${groupedWithPrevious ? "mt-1" : "mt-4 first:mt-0"} ${
                     isNew
                       ? isOwn
                         ? "web-chat-message-new-self"
                         : "web-chat-message-new-peer"
+                      : ""
+                  } ${
+                    highlightedMessageId === msg.id
+                      ? "web-chat-message-highlight"
                       : ""
                   }`}
                 >
@@ -546,7 +682,7 @@ function ChatPanel({
                   ) : null}
 
                   <div
-                    className={`min-w-0 max-w-[82%] ${
+                    className={`min-w-0 max-w-[84%] ${
                       isOwn ? "flex flex-col items-end" : "flex-1"
                     }`}
                   >
@@ -573,33 +709,45 @@ function ChatPanel({
                         {directMessageLabel}
                       </p>
                     ) : null}
-                    {msg.gif ? (
+                    <div
+                      className={`flex items-end gap-1.5 ${
+                        isOwn ? "flex-row-reverse" : ""
+                      }`}
+                    >
                       <div
-                        className={`inline-block max-w-full overflow-hidden rounded-[18px] ring-1 ${
-                          isOwn ? "ring-[#F95F4A]/55" : "ring-white/10"
-                        } ${msg.isDirect ? "ring-amber-300/30" : ""}`}
-                      >
-                        <ChatGifAttachmentView gif={msg.gif} />
-                      </div>
-                    ) : (
-                      <div
-                        className={`inline-block max-w-full px-3.5 py-2 text-[13.5px] leading-relaxed break-words whitespace-pre-wrap ${
+                        className={`inline-block min-w-0 max-w-full overflow-hidden rounded-[18px] ${
                           isOwn
-                            ? "rounded-[18px] bg-[#F95F4A] text-white shadow-sm shadow-black/10 selection:bg-white/25 selection:text-white"
-                            : "bg-white/[0.05] text-[#fafafa] selection:bg-[#F95F4A]/40 selection:text-white"
+                            ? "bg-[#F95F4A] text-white"
+                            : "bg-white/[0.05] text-[#fafafa]"
                         } ${
-                          isOwn
-                            ? groupedWithPrevious
-                              ? "rounded-tr-md"
-                              : ""
-                            : "rounded-[18px]"
+                          isOwn && groupedWithPrevious ? "rounded-tr-md" : ""
                         } ${
                           !isOwn && groupedWithPrevious ? "rounded-tl-md" : ""
-                        } ${msg.isDirect ? "ring-1 ring-amber-300/30" : ""}`}
+                        } ${
+                          msg.isDirect ? "ring-1 ring-amber-300/30" : ""
+                        } ${
+                          msg.gif && !isOwn && !msg.isDirect
+                            ? "ring-1 ring-white/10"
+                            : ""
+                        }`}
                       >
-                        {renderMessageContent(msg.content)}
+                        {nestedReplyQuote}
+                        {msg.gif ? (
+                          <ChatGifAttachmentView gif={msg.gif} />
+                        ) : (
+                          <div
+                            className={`px-3.5 py-2 text-[13.5px] leading-relaxed break-words whitespace-pre-wrap ${
+                              isOwn
+                                ? "selection:bg-white/25 selection:text-white"
+                                : "selection:bg-[#F95F4A]/40 selection:text-white"
+                            }`}
+                          >
+                            {renderMessageContent(msg.content)}
+                          </div>
+                        )}
                       </div>
-                    )}
+                      {replyButton}
+                    </div>
                   </div>
                 </div>
               );
@@ -678,6 +826,41 @@ function ChatPanel({
                   </button>
                 );
               })}
+            </div>
+          )}
+          {replyTarget && (
+            <div className="mb-2 flex items-stretch gap-2.5 overflow-hidden rounded-xl bg-white/[0.04] pr-1.5">
+              <span
+                className="w-[3px] shrink-0 bg-[#F95F4A]"
+                aria-hidden="true"
+              />
+              <div className="min-w-0 flex-1 py-1.5">
+                <p className="truncate text-[11.5px] text-[#a1a1aa]">
+                  Replying to{" "}
+                  <span className="font-semibold text-[#F95F4A]">
+                    {replyTarget.userId === currentUserId
+                      ? "yourself"
+                      : formatDisplayName(replyTarget.displayName)}
+                  </span>
+                </p>
+                <p className="flex min-w-0 items-center gap-1 truncate text-[12.5px] text-[#fafafa]/70">
+                  {replyTarget.hasGif ? (
+                    <ImageIcon size={12} strokeWidth={1.75} className="shrink-0" />
+                  ) : null}
+                  <span className="truncate">
+                    {replyTarget.hasGif ? "GIF" : replyTarget.content}
+                  </span>
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={onCancelReply}
+                aria-label="Cancel reply"
+                title="Cancel reply"
+                className="my-1.5 shrink-0 self-center rounded-md p-1 text-[#a1a1aa] transition-colors hover:bg-white/[0.08] hover:text-[#fafafa]"
+              >
+                <X size={14} strokeWidth={2} />
+              </button>
             </div>
           )}
           <div className="flex items-end gap-2 rounded-2xl border border-white/10 bg-white/[0.04] py-2 pl-3 pr-2 transition-colors focus-within:border-white/20 focus-within:bg-white/[0.055]">

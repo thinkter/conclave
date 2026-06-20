@@ -1,6 +1,7 @@
 import type {
   ChatGifAttachment,
   ChatMessage,
+  ChatReplyPreview,
   SendChatData,
 } from "../../../types.js";
 import { Admin } from "../../../config/classes/Admin.js";
@@ -17,6 +18,8 @@ const DIRECT_MESSAGE_USAGE_ERROR =
   "Use private messages as @username <message> or /dm <username> <message>.";
 const MAX_GIF_TITLE_LENGTH = 140;
 const MAX_GIF_URL_LENGTH = 2048;
+const MAX_REPLY_CONTENT_LENGTH = 280;
+const MAX_REPLY_NAME_LENGTH = 120;
 const KLIPY_MEDIA_HOSTS = new Set(["static.klipy.com"]);
 const KLIPY_PAGE_HOSTS = new Set(["klipy.com", "www.klipy.com"]);
 
@@ -90,6 +93,56 @@ const normalizeChatGifAttachment = (
     ...(width ? { width } : {}),
     ...(height ? { height } : {}),
     source: "klipy",
+  };
+};
+
+// Resolve the quoted message from the room's broadcast history whenever
+// possible so a reply can't be used to put fabricated words in someone
+// else's mouth. Direct messages aren't retained server-side (see
+// Room.recordChatMessage), so replies to a DM fall back to the client's
+// own (sanitized) snapshot of a message it already has in its own thread.
+const normalizeReplyTo = (
+  value: unknown,
+  room: Room,
+): ChatReplyPreview | undefined => {
+  if (!value || typeof value !== "object") return undefined;
+
+  const candidate = value as Record<string, unknown>;
+  const id = typeof candidate.id === "string" ? candidate.id.trim() : "";
+  if (!id) return undefined;
+
+  const original = room
+    .getChatHistorySnapshot()
+    .find((message) => message.id === id);
+  if (original) {
+    return {
+      id: original.id,
+      userId: original.userId,
+      displayName: original.displayName,
+      content: original.gif
+        ? original.gif.title || "GIF"
+        : original.content.slice(0, MAX_REPLY_CONTENT_LENGTH),
+      hasGif: Boolean(original.gif),
+    };
+  }
+
+  const userId =
+    typeof candidate.userId === "string" ? candidate.userId.trim() : "";
+  const displayName =
+    typeof candidate.displayName === "string"
+      ? candidate.displayName.trim()
+      : "";
+  const content =
+    typeof candidate.content === "string" ? candidate.content.trim() : "";
+  if (!userId || !displayName || !content) return undefined;
+
+  return {
+    id,
+    userId: userId.slice(0, MAX_REPLY_NAME_LENGTH),
+    displayName: displayName.slice(0, MAX_REPLY_NAME_LENGTH),
+    content: content.slice(0, MAX_REPLY_CONTENT_LENGTH),
+    hasGif: Boolean(candidate.hasGif),
+    isDirect: Boolean(candidate.isDirect),
   };
 };
 
@@ -291,6 +344,7 @@ export const registerChatHandlers = (context: ConnectionContext): void => {
         }
 
         const gif = normalizedGif ?? undefined;
+        const replyTo = normalizeReplyTo(data.replyTo, room);
         const content =
           typeof data.content === "string" ? data.content.trim() : "";
         if (!content && !gif) {
@@ -364,6 +418,7 @@ export const registerChatHandlers = (context: ConnectionContext): void => {
           content: messageContent,
           timestamp: Date.now(),
           ...(gif ? { gif } : {}),
+          ...(replyTo ? { replyTo } : {}),
           isDirect: Boolean(dmTarget),
           dmTargetUserId: dmTarget?.userId,
           dmTargetDisplayName: dmTarget?.displayName,

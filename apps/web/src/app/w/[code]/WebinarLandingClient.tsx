@@ -1,15 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Roboto } from "next/font/google";
 import { CalendarPlus, Check, Copy } from "lucide-react";
 import MeetsClientPage from "../../meets-client-page";
-
-const roboto = Roboto({
-  subsets: ["latin"],
-  weight: ["400", "500", "700"],
-  display: "swap",
-});
 
 export type PublicScheduledWebinar = {
   id: string;
@@ -162,7 +155,6 @@ export default function WebinarLandingClient({
         joinMode="webinar_attendee"
         autoJoinOnMount={true}
         hideJoinUI={true}
-        fontClassName={roboto.className}
       />
     );
   }

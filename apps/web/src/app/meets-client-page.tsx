@@ -36,7 +36,6 @@ type MeetsClientPageProps = {
   joinMode?: JoinMode;
   autoJoinOnMount?: boolean;
   hideJoinUI?: boolean;
-  fontClassName?: string;
   user?: {
     id?: string;
     email?: string | null;
@@ -53,7 +52,6 @@ export default function MeetsClientPage({
   joinMode = "meeting",
   autoJoinOnMount = false,
   hideJoinUI = false,
-  fontClassName,
   user,
   isAdmin = false,
 }: MeetsClientPageProps) {
@@ -133,7 +131,6 @@ export default function MeetsClientPage({
         reactionAssets={reactionAssets}
         user={defaultUser}
         isAdmin={resolvedIsAdmin}
-        fontClassName={fontClassName}
       />
     </div>
   );
