@@ -3,9 +3,11 @@
 import { ArrowDown, MessageSquare, Send, X } from "lucide-react";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { Avatar } from "@conclave/ui-tokens/web";
-import type { ChatMessage } from "../lib/types";
+import type { ChatGifAttachment, ChatMessage } from "../lib/types";
 import { getActionText, getCommandSuggestions } from "../lib/chat-commands";
 import { formatDisplayName, getChatMessageSegments } from "../lib/utils";
+import ChatGifAttachmentView from "./ChatGifAttachmentView";
+import GifPicker from "./GifPicker";
 
 interface MentionableParticipant {
   userId: string;
@@ -20,6 +22,7 @@ interface ChatPanelProps {
   chatInput: string;
   onInputChange: (value: string) => void;
   onSend: (content: string) => void;
+  onSendGif: (gif: ChatGifAttachment) => void;
   onClose: () => void;
   currentUserId: string;
   isGhostMode?: boolean;
@@ -28,6 +31,24 @@ interface ChatPanelProps {
   isAdmin?: boolean;
   mentionableParticipants?: MentionableParticipant[];
 }
+
+const areGifsEqual = (
+  previousGif?: ChatGifAttachment,
+  nextGif?: ChatGifAttachment,
+): boolean => {
+  if (previousGif === nextGif) return true;
+  if (!previousGif || !nextGif) return false;
+  return (
+    previousGif.id === nextGif.id &&
+    previousGif.title === nextGif.title &&
+    previousGif.url === nextGif.url &&
+    (previousGif.previewUrl ?? "") === (nextGif.previewUrl ?? "") &&
+    (previousGif.pageUrl ?? "") === (nextGif.pageUrl ?? "") &&
+    (previousGif.width ?? 0) === (nextGif.width ?? 0) &&
+    (previousGif.height ?? 0) === (nextGif.height ?? 0) &&
+    previousGif.source === nextGif.source
+  );
+};
 
 const areMessagesEqual = (
   previousMessages: ChatMessage[],
@@ -47,6 +68,7 @@ const areMessagesEqual = (
       previousMessage.displayName !== nextMessage.displayName ||
       previousMessage.content !== nextMessage.content ||
       previousMessage.timestamp !== nextMessage.timestamp ||
+      !areGifsEqual(previousMessage.gif, nextMessage.gif) ||
       (previousMessage.isDirect ?? false) !== (nextMessage.isDirect ?? false) ||
       (previousMessage.dmTargetUserId ?? "") !==
         (nextMessage.dmTargetUserId ?? "") ||
@@ -106,6 +128,7 @@ const areChatPanelPropsEqual = (
     previousIsAdmin !== nextIsAdmin ||
     previousProps.onInputChange !== nextProps.onInputChange ||
     previousProps.onSend !== nextProps.onSend ||
+    previousProps.onSendGif !== nextProps.onSendGif ||
     previousProps.onClose !== nextProps.onClose
   ) {
     return false;
@@ -126,6 +149,7 @@ function ChatPanel({
   chatInput,
   onInputChange,
   onSend,
+  onSendGif,
   onClose,
   currentUserId,
   isGhostMode = false,
@@ -293,6 +317,12 @@ function ChatPanel({
       onSend(chatInput);
       onInputChange("");
     }
+  };
+
+  const handleSendGif = (gif: ChatGifAttachment) => {
+    if (isChatDisabled) return;
+    onSendGif(gif);
+    onInputChange("");
   };
 
   const applyMentionSuggestion = (index: number) => {
@@ -543,23 +573,33 @@ function ChatPanel({
                         {directMessageLabel}
                       </p>
                     ) : null}
-                    <div
-                      className={`inline-block max-w-full px-3.5 py-2 text-[13.5px] leading-relaxed break-words whitespace-pre-wrap ${
-                        isOwn
-                          ? "rounded-[18px] bg-[#F95F4A] text-white shadow-sm shadow-black/10 selection:bg-white/25 selection:text-white"
-                          : "bg-white/[0.05] text-[#fafafa] selection:bg-[#F95F4A]/40 selection:text-white"
-                      } ${
-                        isOwn
-                          ? groupedWithPrevious
-                            ? "rounded-tr-md"
-                            : ""
-                          : "rounded-[18px]"
-                      } ${
-                        !isOwn && groupedWithPrevious ? "rounded-tl-md" : ""
-                      } ${msg.isDirect ? "ring-1 ring-amber-300/30" : ""}`}
-                    >
-                      {renderMessageContent(msg.content)}
-                    </div>
+                    {msg.gif ? (
+                      <div
+                        className={`inline-block max-w-full overflow-hidden rounded-[18px] ring-1 ${
+                          isOwn ? "ring-[#F95F4A]/55" : "ring-white/10"
+                        } ${msg.isDirect ? "ring-amber-300/30" : ""}`}
+                      >
+                        <ChatGifAttachmentView gif={msg.gif} />
+                      </div>
+                    ) : (
+                      <div
+                        className={`inline-block max-w-full px-3.5 py-2 text-[13.5px] leading-relaxed break-words whitespace-pre-wrap ${
+                          isOwn
+                            ? "rounded-[18px] bg-[#F95F4A] text-white shadow-sm shadow-black/10 selection:bg-white/25 selection:text-white"
+                            : "bg-white/[0.05] text-[#fafafa] selection:bg-[#F95F4A]/40 selection:text-white"
+                        } ${
+                          isOwn
+                            ? groupedWithPrevious
+                              ? "rounded-tr-md"
+                              : ""
+                            : "rounded-[18px]"
+                        } ${
+                          !isOwn && groupedWithPrevious ? "rounded-tl-md" : ""
+                        } ${msg.isDirect ? "ring-1 ring-amber-300/30" : ""}`}
+                      >
+                        {renderMessageContent(msg.content)}
+                      </div>
+                    )}
                   </div>
                 </div>
               );
@@ -641,6 +681,7 @@ function ChatPanel({
             </div>
           )}
           <div className="flex items-end gap-2 rounded-2xl border border-white/10 bg-white/[0.04] py-2 pl-3 pr-2 transition-colors focus-within:border-white/20 focus-within:bg-white/[0.055]">
+            <GifPicker disabled={isChatDisabled} onSelect={handleSendGif} />
             <textarea
               ref={textareaRef}
               value={chatInput}

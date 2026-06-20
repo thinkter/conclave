@@ -7,6 +7,7 @@ import type { Dispatch, PointerEvent, SetStateAction } from "react";
 import type { Socket } from "socket.io-client";
 import type {
   AdminNoticeNotification,
+  ChatGifAttachment,
   ChatMessage,
   ConnectionState,
   MeetError,
@@ -128,6 +129,7 @@ interface MobileMeetsMainContentProps {
   chatInput: string;
   setChatInput: Dispatch<SetStateAction<string>>;
   sendChat: (content: string) => void;
+  sendChatGif: (gif: ChatGifAttachment) => void;
   chatOverlayMessages: ChatMessage[];
   setChatOverlayMessages: Dispatch<SetStateAction<ChatMessage[]>>;
   socket: Socket | null;
@@ -314,6 +316,7 @@ function MobileMeetsMainContent({
   chatInput,
   setChatInput,
   sendChat,
+  sendChatGif,
   chatOverlayMessages,
   setChatOverlayMessages,
   socket,
@@ -1229,6 +1232,7 @@ function MobileMeetsMainContent({
           chatInput={chatInput}
           onInputChange={setChatInput}
           onSend={sendChat}
+          onSendGif={sendChatGif}
           onClose={handleToggleChat}
           isOpen={isChatOpen}
           currentUserId={currentUserId}

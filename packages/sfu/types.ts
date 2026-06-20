@@ -405,13 +405,26 @@ export interface ChatMessage {
   displayName: string;
   content: string;
   timestamp: number;
+  gif?: ChatGifAttachment;
   isDirect?: boolean;
   dmTargetUserId?: string;
   dmTargetDisplayName?: string;
 }
 
+export interface ChatGifAttachment {
+  id: string;
+  title: string;
+  url: string;
+  previewUrl?: string;
+  pageUrl?: string;
+  width?: number;
+  height?: number;
+  source: "klipy";
+}
+
 export interface SendChatData {
-  content: string;
+  content?: string;
+  gif?: ChatGifAttachment;
 }
 
 export interface ChatMessageNotification extends ChatMessage {}

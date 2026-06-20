@@ -31,6 +31,7 @@ import type {
 } from "../hooks/useVideoEffects";
 import type {
   AdminNoticeNotification,
+  ChatGifAttachment,
   ChatMessage,
   ConnectionState,
   MeetError,
@@ -149,6 +150,7 @@ interface MeetsMainContentProps {
   chatInput: string;
   setChatInput: Dispatch<SetStateAction<string>>;
   sendChat: (content: string) => void;
+  sendChatGif: (gif: ChatGifAttachment) => void;
   chatOverlayMessages: ChatMessage[];
   setChatOverlayMessages: Dispatch<SetStateAction<ChatMessage[]>>;
   socket: Socket | null;
@@ -369,6 +371,7 @@ export default function MeetsMainContent({
   chatInput,
   setChatInput,
   sendChat,
+  sendChatGif,
   chatOverlayMessages,
   setChatOverlayMessages,
   socket,
@@ -948,6 +951,13 @@ export default function MeetsMainContent({
   const handleSendChat = useCallback((content: string) => {
     sendChatRef.current(content);
   }, []);
+  const sendChatGifRef = useRef(sendChatGif);
+  useEffect(() => {
+    sendChatGifRef.current = sendChatGif;
+  }, [sendChatGif]);
+  const handleSendChatGif = useCallback((gif: ChatGifAttachment) => {
+    sendChatGifRef.current(gif);
+  }, []);
 
   const handleToggleTtsDisabled = useCallback(() => {
     if (!socket) return;
@@ -1473,6 +1483,7 @@ export default function MeetsMainContent({
           chatInput={chatInput}
           onInputChange={setChatInput}
           onSend={handleSendChat}
+          onSendGif={handleSendChatGif}
           onClose={handleToggleChat}
           currentUserId={currentUserId}
           isGhostMode={ghostEnabled}

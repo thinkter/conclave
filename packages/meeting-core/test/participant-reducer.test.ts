@@ -423,6 +423,20 @@ describe("participantReducer — mute / camera / hand transitions", () => {
   });
 });
 
+describe("participantReducer — connection status transitions", () => {
+  it("UPDATE_CONNECTION_STATUS clear does not materialize an absent participant", () => {
+    const state = seed("a");
+    const next = participantReducer(state, {
+      type: "UPDATE_CONNECTION_STATUS",
+      userId: "missing",
+      status: null,
+    });
+
+    expect(next).toBe(state);
+    expect(next.has("missing")).toBe(false);
+  });
+});
+
 describe("participantReducer — CLEAR_ALL & fallthrough", () => {
   it("clears a populated map", () => {
     let state = seed("a");
