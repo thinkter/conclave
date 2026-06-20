@@ -12,11 +12,38 @@ import {
   buildScreenShareEncoding,
 } from "./video-encodings";
 
-// Prefer VP8 when the browser/router intersection supports it. This avoids the
-// H264 multi-decoder path that can surface as black remote webcam tiles on some
-// viewer devices in larger calls.
-const PREFERRED_WEBCAM_CODEC_MIME_TYPES = ["video/VP8"] as const;
-const PREFERRED_SCREEN_SHARE_CODEC_MIME_TYPES = ["video/VP8"] as const;
+// Desktop Chromium/Firefox generally get the strongest simulcast behavior with
+// VP8. Safari/iOS/Android are more sensitive to software video paths, so prefer
+// H264 there when the router/browser intersection supports it.
+const SOFTWARE_VP8_SENSITIVE_CODEC_MIME_TYPES = [
+  "video/H264",
+  "video/VP8",
+] as const;
+const SIMULCAST_FRIENDLY_CODEC_MIME_TYPES = [
+  "video/VP8",
+  "video/H264",
+] as const;
+
+const isLikelyHardwareAcceleratedH264Browser = (): boolean => {
+  if (typeof navigator === "undefined") return false;
+  const userAgent = navigator.userAgent;
+  const vendor = navigator.vendor;
+  const platform = navigator.platform;
+  const isIOS =
+    /\b(iPad|iPhone|iPod)\b/.test(userAgent) ||
+    (platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const isSafari =
+    /Safari/i.test(userAgent) &&
+    /Apple/i.test(vendor) &&
+    !/CriOS|FxiOS|EdgiOS|Chrome|Chromium|Edg\//i.test(userAgent);
+  const isAndroid = /Android/i.test(userAgent);
+  return isIOS || isSafari || isAndroid;
+};
+
+const getPreferredVideoCodecMimeTypes = () =>
+  isLikelyHardwareAcceleratedH264Browser()
+    ? SOFTWARE_VP8_SENSITIVE_CODEC_MIME_TYPES
+    : SIMULCAST_FRIENDLY_CODEC_MIME_TYPES;
 
 const isPreferredVideoCodec = (
   codec: RtpCodecCapability,
@@ -33,7 +60,7 @@ export const getPreferredWebcamCodec = (
 ): RtpCodecCapability | undefined => {
   const codecs = device?.rtpCapabilities?.codecs ?? [];
 
-  for (const mimeType of PREFERRED_WEBCAM_CODEC_MIME_TYPES) {
+  for (const mimeType of getPreferredVideoCodecMimeTypes()) {
     const codec = codecs.find((candidate) =>
       isPreferredVideoCodec(candidate, mimeType),
     );
@@ -50,7 +77,7 @@ export const getPreferredScreenShareCodec = (
 ): RtpCodecCapability | undefined => {
   const codecs = device?.rtpCapabilities?.codecs ?? [];
 
-  for (const mimeType of PREFERRED_SCREEN_SHARE_CODEC_MIME_TYPES) {
+  for (const mimeType of getPreferredVideoCodecMimeTypes()) {
     const codec = codecs.find((candidate) =>
       isPreferredVideoCodec(candidate, mimeType),
     );
@@ -101,6 +128,14 @@ const SCREEN_SHARE_RTP_PRIORITY: RTCPriorityType = "medium";
 const WEBRTC_ENCODING_ORDER = ["q", "h", "f"] as const;
 const MIN_CRISP_BASE_LAYER_WIDTH = 300;
 const MIN_CRISP_BASE_LAYER_HEIGHT = 160;
+const LOW_BANDWIDTH_BASE_LAYER_TARGETS: Record<
+  Extract<WebcamProducerNetworkProfile, "poor" | "emergency">,
+  { width: number; height: number }
+> = {
+  poor: { width: 426, height: 240 },
+  emergency: { width: 320, height: 180 },
+};
+const FAIR_BANDWIDTH_ACTIVE_LAYER_TARGET = { width: 640, height: 360 };
 
 const getTrackCaptureSize = (
   track: MediaStreamTrack | null | undefined,
@@ -181,7 +216,7 @@ const getProfileAdjustedCap = (
       quality === "standard"
         ? [120000, 420000, 900000]
         : [80000, 220000];
-    const fairFramerateCaps = [12, 20, 24];
+    const fairFramerateCaps = [15, 24, 30];
     return {
       maxBitrate: Math.min(
         base.maxBitrate,
@@ -224,10 +259,27 @@ const getProfileAdjustedScaleResolutionDownBy = (
   if (layerRank !== 0) return current;
   if (profile !== "poor" && profile !== "emergency") return current;
 
-  // Poor/emergency capture is already constrained before encoding. Scaling the
-  // only active layer again makes the stream softer without saving meaningful
-  // bandwidth because the bitrate/FPS caps are already tight.
-  return 1;
+  return current;
+};
+
+const getCaptureScaleForTarget = (
+  captureSize: CaptureSize,
+  target: { width: number; height: number },
+): number | null => {
+  const widthScale =
+    captureSize.width !== null && captureSize.width > 0
+      ? captureSize.width / target.width
+      : null;
+  const heightScale =
+    captureSize.height !== null && captureSize.height > 0
+      ? captureSize.height / target.height
+      : null;
+  const targetScale = Math.min(
+    ...(widthScale !== null ? [widthScale] : []),
+    ...(heightScale !== null ? [heightScale] : []),
+  );
+  if (!Number.isFinite(targetScale) || targetScale <= 1) return null;
+  return Number(targetScale.toFixed(1));
 };
 
 const getCaptureAdjustedScaleResolutionDownBy = (
@@ -242,9 +294,34 @@ const getCaptureAdjustedScaleResolutionDownBy = (
     layerRank,
   );
   if (layerRank !== 0 || typeof profileAdjusted !== "number") {
+    if (layerRank === 0 && (profile === "poor" || profile === "emergency")) {
+      return (
+        getCaptureScaleForTarget(
+          captureSize,
+          LOW_BANDWIDTH_BASE_LAYER_TARGETS[profile],
+        ) ?? profileAdjusted
+      );
+    }
     return profileAdjusted;
   }
-  if (profile === "poor" || profile === "emergency") return profileAdjusted;
+  if (profile === "poor" || profile === "emergency") {
+    const targetScale = getCaptureScaleForTarget(
+      captureSize,
+      LOW_BANDWIDTH_BASE_LAYER_TARGETS[profile],
+    );
+    return targetScale === null
+      ? profileAdjusted
+      : Math.max(profileAdjusted, targetScale);
+  }
+  if (profile === "fair" && layerRank <= 1) {
+    const targetScale = getCaptureScaleForTarget(
+      captureSize,
+      FAIR_BANDWIDTH_ACTIVE_LAYER_TARGET,
+    );
+    return targetScale === null
+      ? profileAdjusted
+      : Math.max(profileAdjusted, targetScale);
+  }
 
   const widthScale =
     captureSize.width !== null && captureSize.width >= MIN_CRISP_BASE_LAYER_WIDTH
@@ -486,9 +563,19 @@ const applyWebcamEncodingCaps = async (
 
   const [base] = getBaseEncodingCaps(quality, 1);
   const adjusted = getProfileAdjustedCap(base, quality, profile, 0);
+  const captureSize = getTrackCaptureSize(producer.track);
+  const fallbackScaleResolutionDownBy = getCaptureAdjustedScaleResolutionDownBy(
+    undefined,
+    profile,
+    0,
+    captureSize,
+  );
   await producer.setRtpEncodingParameters({
     maxBitrate: adjusted.maxBitrate,
     maxFramerate: adjusted.maxFramerate,
+    ...(typeof fallbackScaleResolutionDownBy === "number"
+      ? { scaleResolutionDownBy: fallbackScaleResolutionDownBy }
+      : {}),
   } as RTCRtpEncodingParameters);
 };
 
@@ -704,7 +791,7 @@ export async function produceWebcamTrack({
     }
 
     console.warn(
-      "[Meets] Preferred VP8 webcam codec failed, retrying router default codec:",
+      "[Meets] Preferred webcam codec failed, retrying router default codec:",
       codecError,
     );
   }

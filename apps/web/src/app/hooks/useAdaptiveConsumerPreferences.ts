@@ -58,7 +58,7 @@ interface UseAdaptiveConsumerPreferencesOptions {
 }
 
 const APPLY_INTERVAL_MS = 2500;
-const MAX_WEBCAMS_TO_KEEP_FULL_ON_GOOD_LINKS = 2;
+const MAX_WEBCAMS_TO_KEEP_FULL_ON_GOOD_LINKS = 4;
 const MAX_CONSUMER_PREFERENCE_UPDATES_PER_CYCLE = 8;
 const CONSUMER_PREFERENCE_EMIT_SPACING_MS = 75;
 const RATE_LIMIT_RETRY_DELAY_MS = 1000;
@@ -389,7 +389,9 @@ const getDesiredPreferences = (
 
   const effectiveQuality = worstQuality(
     options.quality,
-    getConsumerScoreQualityHint(options.consumerScoreQuality),
+    options.quality === "good" || options.quality === "fair"
+      ? "unknown"
+      : getConsumerScoreQualityHint(options.consumerScoreQuality),
   );
   const quality = effectiveQuality === "unknown" ? "good" : effectiveQuality;
 
@@ -435,8 +437,8 @@ const getDesiredPreferences = (
   if (isHidden && !isWarm && !isFocus) {
     return {
       preferredLayers: bounds ? buildLayerPreference(0, 0, bounds) : undefined,
-      priority: 10,
-      paused: true,
+      priority: quality === "poor" ? 10 : 25,
+      paused: quality === "poor",
     };
   }
 
@@ -453,6 +455,7 @@ const getDesiredPreferences = (
   const keepFull =
     quality === "good" &&
     (isFocus ||
+      isVisible ||
       options.webcamVideoCount <= MAX_WEBCAMS_TO_KEEP_FULL_ON_GOOD_LINKS);
 
   if (quality === "poor") {
@@ -468,7 +471,11 @@ const getDesiredPreferences = (
   if (quality === "fair") {
     return {
       preferredLayers: bounds
-        ? buildLayerPreference(isFocus ? 1 : 0, isFocus ? 2 : 1, bounds)
+        ? buildLayerPreference(
+            isFocus ? 1 : 0,
+            isVisible || isFocus ? bounds.maxTemporalLayer : 1,
+            bounds,
+          )
         : undefined,
       priority: isFocus ? 175 : isVisible ? 90 : 50,
       paused: false,
@@ -483,7 +490,11 @@ const getDesiredPreferences = (
             bounds.maxTemporalLayer,
             bounds,
           )
-        : buildLayerPreference(isVisible ? 1 : 0, isVisible ? 1 : 0, bounds)
+        : buildLayerPreference(
+            isVisible ? 1 : 0,
+            isVisible ? bounds.maxTemporalLayer : 0,
+            bounds,
+          )
       : undefined,
     priority: keepFull ? 175 : isVisible ? 95 : 45,
     paused: false,

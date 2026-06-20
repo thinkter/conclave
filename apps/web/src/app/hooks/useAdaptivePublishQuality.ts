@@ -284,20 +284,6 @@ export function useAdaptivePublishQuality({
             );
             lastAppliedProfilesRef.current.webcam = signature;
             writeDebugSnapshot();
-            if (!isCameraOff && !updateInFlightRef.current) {
-              updateInFlightRef.current = true;
-              try {
-                await updateVideoQualityRef.current(quality, profile);
-              } catch (error) {
-                console.warn(
-                  "[Meets] Adaptive webcam capture constraints failed:",
-                  error,
-                );
-              } finally {
-                updateInFlightRef.current = false;
-                writeDebugSnapshot();
-              }
-            }
           } catch (error) {
             console.warn(
               "[Meets] Adaptive webcam bitrate cap failed:",
@@ -350,10 +336,8 @@ export function useAdaptivePublishQuality({
     },
     [
       audioProducerRef,
-      isCameraOff,
       screenAudioProducerRef,
       screenProducerRef,
-      updateVideoQualityRef,
       videoProducerRef,
       videoQualityRef,
       writeDebugSnapshot,
@@ -364,10 +348,10 @@ export function useAdaptivePublishQuality({
     async (
       quality: VideoQuality,
       networkProfileOverride?: WebcamProducerNetworkProfile,
-    ) => {
-      if (updateInFlightRef.current) return;
+    ): Promise<boolean> => {
+      if (updateInFlightRef.current) return false;
       const previousQuality = videoQualityRef.current;
-      if (previousQuality === quality) return;
+      if (previousQuality === quality) return true;
 
       updateInFlightRef.current = true;
       try {
@@ -379,6 +363,7 @@ export function useAdaptivePublishQuality({
         }
         lastAppliedProfilesRef.current.webcam = null;
         writeDebugSnapshot();
+        return true;
       } catch (error) {
         console.warn("[Meets] Adaptive publish quality update failed:", error);
         videoQualityRef.current = previousQuality;
@@ -386,6 +371,7 @@ export function useAdaptivePublishQuality({
         if (networkManagedVideoQualityRef) {
           networkManagedVideoQualityRef.current = previousQuality === "low";
         }
+        return false;
       } finally {
         updateInFlightRef.current = false;
         writeDebugSnapshot();
@@ -503,17 +489,20 @@ export function useAdaptivePublishQuality({
         participantCount <= MAX_AUTO_UPGRADE_PARTICIPANTS &&
         capRecoveryQuality !== "poor"
       ) {
-        autoDowngradedRef.current = false;
-        if (networkManagedVideoQualityRef) {
-          networkManagedVideoQualityRef.current = false;
-        }
         void switchQuality(
           "standard",
           capRecoveryQuality === "good" &&
             capRecoveryElapsedMs >= GOOD_UPGRADE_AFTER_MS
             ? "good"
             : undefined,
-        );
+        ).then((switched) => {
+          if (!switched) return;
+          autoDowngradedRef.current = false;
+          if (networkManagedVideoQualityRef) {
+            networkManagedVideoQualityRef.current = false;
+          }
+          writeDebugSnapshot();
+        });
         writeDebugSnapshot(now);
         return;
       }

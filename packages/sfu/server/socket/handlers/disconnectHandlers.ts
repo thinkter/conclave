@@ -221,22 +221,10 @@ export const registerDisconnectHandlers = (
           graceMs,
           finalizeDisconnect,
         );
-        if (
-          !context.currentClient.isGhost &&
-          !context.currentClient.isWebinarAttendee
-        ) {
-          io.to(roomChannelId).except(disconnectedSocketId).emit(
-            "participantConnectionState",
-            {
-              userId,
-              roomId,
-              state: "reconnecting",
-              reason,
-              graceMs,
-              updatedAt: Date.now(),
-            },
-          );
-        }
+        // Browser background throttling can make a healthy hidden tab miss a
+        // socket heartbeat. Keep the grace-window cleanup, but do not show peers
+        // a premature "reconnecting" badge for a client that may recover before
+        // final disconnect.
         Logger.info(
           `Delaying disconnect cleanup for ${userId} in room ${roomId} by ${graceMs}ms.`,
         );

@@ -466,10 +466,11 @@ const isLowAvailableBitrate = (
   if (value == null || value <= 0 || value > threshold) return false;
   if (encoderLimited || mediaBitrate == null) return true;
 
-  // RTCPeerConnection.availableOutgoingBitrate can remain low after we
-  // intentionally cap the sender. Only treat it as congestion when media is
-  // actually pressing against that ceiling.
-  return mediaBitrate >= value * AVAILABLE_BITRATE_SATURATION_RATIO;
+  // Available bitrate estimates can remain low after we intentionally cap media.
+  // Do not let our own low-bitrate profile prove that the link is still bad; only
+  // treat the estimate as congestion when media is trying to use a meaningful
+  // fraction of the fair/poor threshold itself.
+  return mediaBitrate >= threshold * AVAILABLE_BITRATE_SATURATION_RATIO;
 };
 
 function windowedPacketLoss(
@@ -579,8 +580,8 @@ const buildDirectionMediaStats = (
   video: buildMediaTrackStats({ kind: "video", current, previous }),
 });
 
-const hasEncoderQualityLimitation = (reason: string | null): boolean =>
-  reason === "bandwidth" || reason === "cpu" || reason === "other";
+const hasBandwidthQualityLimitation = (reason: string | null): boolean =>
+  reason === "bandwidth";
 
 const getDirectionMediaBitrate = (
   stats: DirectionMediaQualityStats,
@@ -610,7 +611,7 @@ function deriveDirectionalQuality({
   poorBitrate: number;
   qualityLimitationReason?: string | null;
 }): ConnectionQuality {
-  const encoderLimited = hasEncoderQualityLimitation(
+  const bandwidthLimited = hasBandwidthQualityLimitation(
     qualityLimitationReason ?? null,
   );
   if (
@@ -618,7 +619,7 @@ function deriveDirectionalQuality({
     packetLoss == null &&
     jitterMs == null &&
     availableBitrate == null &&
-    !encoderLimited
+    !bandwidthLimited
   ) {
     return "unknown";
   }
@@ -631,7 +632,7 @@ function deriveDirectionalQuality({
       availableBitrate,
       poorBitrate,
       mediaBitrate,
-      encoderLimited,
+      bandwidthLimited,
     );
   if (isPoor) return "poor";
 
@@ -643,9 +644,9 @@ function deriveDirectionalQuality({
       availableBitrate,
       fairBitrate,
       mediaBitrate,
-      encoderLimited,
+      bandwidthLimited,
     ) ||
-    encoderLimited;
+    bandwidthLimited;
   if (isFair) return "fair";
 
   return "good";
@@ -668,7 +669,7 @@ function deriveDirectionalEmergencyMode({
   emergencyBitrate: number;
   qualityLimitationReason?: string | null;
 }): boolean {
-  const encoderLimited = hasEncoderQualityLimitation(
+  const bandwidthLimited = hasBandwidthQualityLimitation(
     qualityLimitationReason ?? null,
   );
 
@@ -680,16 +681,22 @@ function deriveDirectionalEmergencyMode({
       availableBitrate,
       emergencyBitrate,
       mediaBitrate,
-      encoderLimited,
+      bandwidthLimited,
     )
   ) {
     return true;
   }
 
   // Some browsers report a sender-side bandwidth limitation but omit
-  // availableOutgoingBitrate. If the actual media stream is already below the
-  // emergency ceiling, switch to emergency rather than lingering in "poor".
-  return encoderLimited && mediaBitrate != null && mediaBitrate <= emergencyBitrate;
+  // availableOutgoingBitrate. Treat that as emergency only while media is near
+  // the emergency threshold; otherwise our own survival cap can keep emergency
+  // mode latched after the link recovers.
+  return (
+    bandwidthLimited &&
+    mediaBitrate != null &&
+    mediaBitrate >= emergencyBitrate * AVAILABLE_BITRATE_SATURATION_RATIO &&
+    mediaBitrate <= emergencyBitrate
+  );
 }
 
 const qualityRank: Record<ConnectionQuality, number> = {
@@ -710,10 +717,15 @@ const worstQuality = (
 
 const applyBrowserQualityHint = (
   observed: ConnectionQuality,
-  browserHint: ConnectionQuality,
+  browserNetwork: BrowserNetworkSnapshot,
 ): ConnectionQuality => {
+  const browserHint = browserNetwork.quality as ConnectionQuality;
   if (browserHint === "unknown") return observed;
-  return worstQuality(observed, browserHint);
+  if (observed === "unknown") return browserHint;
+  if (browserNetwork.emergency || browserNetwork.saveData === true) {
+    return worstQuality(observed, browserHint);
+  }
+  return observed;
 };
 
 /**
@@ -750,7 +762,6 @@ export function useConnectionQuality({
         browserNetwork.quality === "unknown"
           ? browserNetwork.startupQuality
           : browserNetwork.quality;
-      const liveBrowserQualityHint = browserNetwork.quality as ConnectionQuality;
       const producerTransport = producerTransportRef.current;
       const consumerTransport = consumerTransportRef.current;
       const transportEntries = [
@@ -955,11 +966,11 @@ export function useConnectionQuality({
       });
       const publishQuality = applyBrowserQualityHint(
         observedPublishQuality,
-        liveBrowserQualityHint,
+        browserNetwork,
       );
       const receiveQuality = applyBrowserQualityHint(
         observedReceiveQuality,
-        liveBrowserQualityHint,
+        browserNetwork,
       );
       const publishEmergencyMode =
         browserNetwork.emergency || observedPublishEmergencyMode;
