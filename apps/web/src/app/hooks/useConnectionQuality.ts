@@ -710,10 +710,15 @@ const worstQuality = (
 
 const applyBrowserQualityHint = (
   observed: ConnectionQuality,
-  browserHint: ConnectionQuality,
+  browserNetwork: BrowserNetworkSnapshot,
 ): ConnectionQuality => {
+  const browserHint = browserNetwork.quality as ConnectionQuality;
   if (browserHint === "unknown") return observed;
-  return worstQuality(observed, browserHint);
+  if (observed === "unknown") return browserHint;
+  if (browserNetwork.emergency || browserNetwork.saveData === true) {
+    return worstQuality(observed, browserHint);
+  }
+  return observed;
 };
 
 /**
@@ -750,7 +755,6 @@ export function useConnectionQuality({
         browserNetwork.quality === "unknown"
           ? browserNetwork.startupQuality
           : browserNetwork.quality;
-      const liveBrowserQualityHint = browserNetwork.quality as ConnectionQuality;
       const producerTransport = producerTransportRef.current;
       const consumerTransport = consumerTransportRef.current;
       const transportEntries = [
@@ -955,11 +959,11 @@ export function useConnectionQuality({
       });
       const publishQuality = applyBrowserQualityHint(
         observedPublishQuality,
-        liveBrowserQualityHint,
+        browserNetwork,
       );
       const receiveQuality = applyBrowserQualityHint(
         observedReceiveQuality,
-        liveBrowserQualityHint,
+        browserNetwork,
       );
       const publishEmergencyMode =
         browserNetwork.emergency || observedPublishEmergencyMode;

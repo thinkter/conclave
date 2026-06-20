@@ -110,7 +110,13 @@ export class Room {
   > = new Map();
   public pendingDisconnects: Map<
     string,
-    { timeout: NodeJS.Timeout; socketId: string; startedAt: number }
+    {
+      timeout: NodeJS.Timeout;
+      socketId: string;
+      startedAt: number;
+      notificationTimeout?: NodeJS.Timeout;
+      notificationEmittedAt?: number;
+    }
   > = new Map();
   public allowedUsers: Set<string> = new Set();
   public currentScreenShareProducerId: string | null = null;
@@ -234,6 +240,9 @@ export class Room {
     const pending = this.pendingDisconnects.get(clientId);
     if (pending) {
       clearTimeout(pending.timeout);
+      if (pending.notificationTimeout) {
+        clearTimeout(pending.notificationTimeout);
+      }
       this.pendingDisconnects.delete(clientId);
     }
     if (client) {
@@ -1234,6 +1243,9 @@ export class Room {
     this.stopCleanupTimer();
     for (const pending of this.pendingDisconnects.values()) {
       clearTimeout(pending.timeout);
+      if (pending.notificationTimeout) {
+        clearTimeout(pending.notificationTimeout);
+      }
     }
     this.pendingDisconnects.clear();
     for (const client of this.clients.values()) {
@@ -1286,11 +1298,34 @@ export class Room {
     });
   }
 
+  schedulePendingDisconnectNotification(
+    userId: string,
+    socketId: string,
+    delayMs: number,
+    onNotify: () => void,
+  ): void {
+    const pending = this.pendingDisconnects.get(userId);
+    if (!pending || pending.socketId !== socketId) return;
+    if (pending.notificationTimeout) {
+      clearTimeout(pending.notificationTimeout);
+    }
+    pending.notificationTimeout = setTimeout(() => {
+      const current = this.pendingDisconnects.get(userId);
+      if (!current || current.socketId !== socketId) return;
+      current.notificationTimeout = undefined;
+      current.notificationEmittedAt = Date.now();
+      onNotify();
+    }, delayMs);
+  }
+
   clearPendingDisconnect(userId: string, socketId?: string): boolean {
     const pending = this.pendingDisconnects.get(userId);
     if (!pending) return false;
     if (socketId && pending.socketId !== socketId) return false;
     clearTimeout(pending.timeout);
+    if (pending.notificationTimeout) {
+      clearTimeout(pending.notificationTimeout);
+    }
     this.pendingDisconnects.delete(userId);
     return true;
   }
@@ -1304,6 +1339,10 @@ export class Room {
 
   getPendingDisconnectStartedAt(userId: string): number | null {
     return this.pendingDisconnects.get(userId)?.startedAt ?? null;
+  }
+
+  wasPendingDisconnectNotified(userId: string): boolean {
+    return this.pendingDisconnects.get(userId)?.notificationEmittedAt != null;
   }
 
   startCleanupTimer(callback: () => void) {

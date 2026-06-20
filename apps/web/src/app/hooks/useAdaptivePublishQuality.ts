@@ -284,20 +284,6 @@ export function useAdaptivePublishQuality({
             );
             lastAppliedProfilesRef.current.webcam = signature;
             writeDebugSnapshot();
-            if (!isCameraOff && !updateInFlightRef.current) {
-              updateInFlightRef.current = true;
-              try {
-                await updateVideoQualityRef.current(quality, profile);
-              } catch (error) {
-                console.warn(
-                  "[Meets] Adaptive webcam capture constraints failed:",
-                  error,
-                );
-              } finally {
-                updateInFlightRef.current = false;
-                writeDebugSnapshot();
-              }
-            }
           } catch (error) {
             console.warn(
               "[Meets] Adaptive webcam bitrate cap failed:",
@@ -350,10 +336,8 @@ export function useAdaptivePublishQuality({
     },
     [
       audioProducerRef,
-      isCameraOff,
       screenAudioProducerRef,
       screenProducerRef,
-      updateVideoQualityRef,
       videoProducerRef,
       videoQualityRef,
       writeDebugSnapshot,

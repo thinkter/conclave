@@ -376,6 +376,8 @@ export const registerJoinRoomHandler = (context: ConnectionContext): void => {
 
         const pendingDisconnectStartedAt =
           room.getPendingDisconnectStartedAt(userId);
+        const wasReconnectNoticeEmitted =
+          room.wasPendingDisconnectNotified(userId);
         const wasReconnecting = room.clearPendingDisconnect(userId);
         const existingClient = room.getClient(userId);
         const reclaimingWebinarSeat = existingClient
@@ -740,7 +742,7 @@ export const registerJoinRoomHandler = (context: ConnectionContext): void => {
               });
             }
           }
-        } else {
+        } else if (wasReconnectNoticeEmitted) {
           Logger.info(`User ${userId} reconnected to room ${roomId}.`);
           if (
             context.currentClient &&

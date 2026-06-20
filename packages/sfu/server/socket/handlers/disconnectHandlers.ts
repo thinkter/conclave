@@ -205,6 +205,10 @@ export const registerDisconnectHandlers = (
       };
 
       const graceMs = config.socket.disconnectGraceMs;
+      const reconnectNoticeDelayMs = Math.min(
+        10000,
+        Math.max(0, graceMs - 5000),
+      );
       const immediateReasons = new Set([
         "client namespace disconnect",
         "server namespace disconnect",
@@ -225,15 +229,22 @@ export const registerDisconnectHandlers = (
           !context.currentClient.isGhost &&
           !context.currentClient.isWebinarAttendee
         ) {
-          io.to(roomChannelId).except(disconnectedSocketId).emit(
-            "participantConnectionState",
-            {
-              userId,
-              roomId,
-              state: "reconnecting",
-              reason,
-              graceMs,
-              updatedAt: Date.now(),
+          room.schedulePendingDisconnectNotification(
+            userId,
+            disconnectedSocketId,
+            reconnectNoticeDelayMs,
+            () => {
+              io.to(roomChannelId).except(disconnectedSocketId).emit(
+                "participantConnectionState",
+                {
+                  userId,
+                  roomId,
+                  state: "reconnecting",
+                  reason,
+                  graceMs,
+                  updatedAt: Date.now(),
+                },
+              );
             },
           );
         }
