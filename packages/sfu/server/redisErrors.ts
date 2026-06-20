@@ -31,6 +31,7 @@ export const isRedisTransientError = (error: unknown): boolean => {
           name?: unknown;
           code?: unknown;
           message?: unknown;
+          stack?: unknown;
           constructor?: { name?: unknown };
         })
       : null;
@@ -43,8 +44,16 @@ export const isRedisTransientError = (error: unknown): boolean => {
   const code = typeof candidate?.code === "string" ? candidate.code : null;
   const message =
     typeof candidate?.message === "string" ? candidate.message : "";
+  const stack = typeof candidate?.stack === "string" ? candidate.stack : "";
+  const redisStack = /(?:@redis\/client|node_modules\/(?:@redis|redis))/i.test(
+    stack,
+  );
 
   if (name && REDIS_TRANSIENT_ERROR_NAMES.has(name)) {
+    return true;
+  }
+
+  if (message && REDIS_TRANSIENT_ERROR_NAMES.has(message) && redisStack) {
     return true;
   }
 
@@ -53,6 +62,10 @@ export const isRedisTransientError = (error: unknown): boolean => {
   }
 
   if (/redis/i.test(message) && /timeout|closed|offline|connect/i.test(message)) {
+    return true;
+  }
+
+  if (redisStack && /timeout|closed|offline|connect/i.test(message)) {
     return true;
   }
 
