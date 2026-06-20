@@ -457,6 +457,7 @@ interface UseMeetSocketOptions {
   >;
   requestMediaPermissions: () => Promise<MediaStream | null>;
   requestAudioProducerRecovery: () => void;
+  requestCameraProducerRecovery: () => void;
   stopLocalTrack: (track?: MediaStreamTrack | null) => void;
   handleLocalTrackEnded: (
     kind: "audio" | "video",
@@ -538,6 +539,7 @@ export function useMeetSocket({
   updateVideoQualityRef,
   requestMediaPermissions,
   requestAudioProducerRecovery,
+  requestCameraProducerRecovery,
   stopLocalTrack,
   handleLocalTrackEnded,
   playNotificationSound,
@@ -1920,6 +1922,9 @@ export function useMeetSocket({
           audioProducer.on("transportclose", () => {
             if (audioProducerRef.current?.id === audioProducerId) {
               audioProducerRef.current = null;
+              if (!shouldPauseAudio) {
+                requestAudioProducerRecovery();
+              }
             }
           });
         } catch (err) {
@@ -1993,6 +1998,9 @@ export function useMeetSocket({
           videoProducer.on("transportclose", () => {
             if (videoProducerRef.current?.id === videoProducerId) {
               videoProducerRef.current = null;
+              if (!shouldPauseVideo) {
+                requestCameraProducerRecovery();
+              }
             }
           });
         } catch (err) {
@@ -2041,6 +2049,9 @@ export function useMeetSocket({
               fallbackVideoProducer.on("transportclose", () => {
                 if (videoProducerRef.current?.id === fallbackVideoProducerId) {
                   videoProducerRef.current = null;
+                  if (!shouldPauseVideo) {
+                    requestCameraProducerRecovery();
+                  }
                 }
               });
               return;
@@ -2095,6 +2106,8 @@ export function useMeetSocket({
       dropVideoTracksForCameraOff,
       refs.processedVideoTrackRef,
       resolveMediaPublishIntent,
+      requestAudioProducerRecovery,
+      requestCameraProducerRecovery,
     ],
   );
 
@@ -3412,6 +3425,7 @@ export function useMeetSocket({
                     if (shouldRecoverCamera) {
                       isCameraOffRef.current = false;
                       setIsCameraOff(false);
+                      requestCameraProducerRecovery();
                       return;
                     }
                     isCameraOffRef.current = true;
@@ -4353,6 +4367,7 @@ export function useMeetSocket({
       applyWebinarFeedProducers,
       producerMapRef,
       requestAudioProducerRecovery,
+      requestCameraProducerRecovery,
       reconnectAttemptsRef,
       screenAudioProducerRef,
       screenProducerRef,

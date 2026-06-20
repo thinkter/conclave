@@ -515,6 +515,16 @@ assertIncludes(
       "web meet client must pass audio producer recovery pulse to socket hook",
     );
   }
+  if (!mediaText.includes("const requestCameraProducerRecovery = useCallback(")) {
+    failures.push(
+      "web media hook must expose explicit camera producer recovery pulse",
+    );
+  }
+  if (!source.webMeetClient.includes("requestCameraProducerRecovery,")) {
+    failures.push(
+      "web meet client must pass camera producer recovery pulse to socket hook",
+    );
+  }
 
   const socketText = source.webMeetSocket;
   const start = socketText.indexOf('"producerClosed"');
@@ -538,6 +548,65 @@ assertIncludes(
     if (!section.includes("requestAudioProducerRecovery();")) {
       failures.push(
         "web local audio producer-close recovery must pulse audio producer recovery",
+      );
+    }
+    if (!section.includes("requestCameraProducerRecovery();")) {
+      failures.push(
+        "web local camera producer-close recovery must pulse camera producer recovery",
+      );
+    }
+  }
+}
+{
+  const text = source.webMeetMedia;
+  const start = text.indexOf("const updateVideoQuality = useCallback(");
+  const end = text.indexOf(
+    "useEffect(() => {\n    updateVideoQualityRef.current = updateVideoQuality;",
+    start,
+  );
+  if (start >= 0 && end >= 0) {
+    const section = text.slice(start, end);
+    if (!section.includes("requestCameraProducerRecovery();")) {
+      failures.push(
+        "web quality-switch video producer transport close must pulse camera recovery",
+      );
+    }
+  }
+  const toggleStart = text.indexOf("const toggleCamera = useCallback(");
+  const toggleEnd = text.indexOf("useEffect(() => {\n    if (ghostEnabled", toggleStart);
+  if (toggleStart >= 0 && toggleEnd >= 0) {
+    const section = text.slice(toggleStart, toggleEnd);
+    if (!section.includes("requestCameraProducerRecovery();")) {
+      failures.push(
+        "web camera-toggle video producer transport close must pulse camera recovery",
+      );
+    }
+  }
+}
+{
+  const text = source.webMeetSocket;
+  const start = text.indexOf("const produce = useCallback(");
+  const end = text.indexOf("const consumeProducer = useCallback(", start);
+  if (start < 0 || end < 0) {
+    failures.push("web socket publish section missing");
+  } else {
+    const section = text.slice(start, end);
+    if (!section.includes("requestAudioProducerRecovery();")) {
+      failures.push(
+        "web socket audio producer transport close must pulse audio recovery",
+      );
+    }
+    if (!section.includes("requestCameraProducerRecovery();")) {
+      failures.push(
+        "web socket video producer transport close must pulse camera recovery",
+      );
+    }
+    if (
+      !section.includes("if (!shouldPauseAudio)") ||
+      !section.includes("if (!shouldPauseVideo)")
+    ) {
+      failures.push(
+        "web socket producer transport-close recovery must preserve muted/camera-off intent",
       );
     }
   }

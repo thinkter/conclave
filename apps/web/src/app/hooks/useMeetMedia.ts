@@ -241,6 +241,9 @@ export function useMeetMedia({
   const cameraRecoveryInFlightRef = useRef(false);
   const [cameraProducerRecoveryPulse, setCameraProducerRecoveryPulse] =
     useState(0);
+  const requestCameraProducerRecovery = useCallback(() => {
+    setCameraProducerRecoveryPulse((value) => value + 1);
+  }, []);
   const connectionStateRef = useRef(connectionState);
   if (connectionStateRef.current !== connectionState) {
     connectionStateRef.current = connectionState;
@@ -1043,6 +1046,7 @@ export function useMeetMedia({
         nextProducer.on("transportclose", () => {
           if (videoProducerRef.current?.id === nextProducerId) {
             videoProducerRef.current = null;
+            requestCameraProducerRecovery();
           }
         });
 
@@ -1088,6 +1092,7 @@ export function useMeetMedia({
       localStreamRef,
       waitForPreferredVideoPublishTrack,
       getPublishNetworkProfile,
+      requestCameraProducerRecovery,
     ]
   );
 
@@ -1603,6 +1608,7 @@ export function useMeetMedia({
           videoProducer.on("transportclose", () => {
             if (videoProducerRef.current?.id === videoProducerId) {
               videoProducerRef.current = null;
+              requestCameraProducerRecovery();
             }
           });
           setIsCameraOff(false);
@@ -1646,6 +1652,7 @@ export function useMeetMedia({
     waitForPreferredVideoPublishTrack,
     buildVideoConstraints,
     getPublishNetworkProfile,
+    requestCameraProducerRecovery,
   ]);
 
   useEffect(() => {
@@ -1675,7 +1682,7 @@ export function useMeetMedia({
         trackId: producerTrack?.id ?? null,
         trackState: producerTrack?.readyState ?? null,
       });
-      setCameraProducerRecoveryPulse((value) => value + 1);
+      requestCameraProducerRecovery();
     };
 
     const initialTimeout = window.setTimeout(
@@ -1699,6 +1706,7 @@ export function useMeetMedia({
     isObserverMode,
     videoProducerRef,
     closeLocalVideoProducerForReplacement,
+    requestCameraProducerRecovery,
   ]);
 
   useEffect(() => {
@@ -1805,7 +1813,7 @@ export function useMeetMedia({
         recoveredProducer.on("transportclose", () => {
           if (videoProducerRef.current?.id === recoveredProducer.id) {
             videoProducerRef.current = null;
-            setCameraProducerRecoveryPulse((value) => value + 1);
+            requestCameraProducerRecovery();
           }
         });
         setIsCameraOff(false);
@@ -1860,6 +1868,7 @@ export function useMeetMedia({
     buildVideoConstraints,
     getPublishNetworkProfile,
     closeLocalVideoProducerForReplacement,
+    requestCameraProducerRecovery,
   ]);
 
   const stopScreenShareStream = useCallback(
@@ -2091,6 +2100,7 @@ export function useMeetMedia({
     updateVideoQuality,
     updateVideoQualityRef,
     requestAudioProducerRecovery,
+    requestCameraProducerRecovery,
     toggleMute,
     toggleCamera,
     toggleScreenShare,
