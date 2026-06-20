@@ -385,6 +385,45 @@ assertIncludes(
   "web producer transport recovery closes unusable transports before rebuilding",
 );
 {
+  const text = source.webMeetMedia;
+  const start = text.indexOf("const updateVideoQuality = useCallback(");
+  const end = text.indexOf(
+    "useEffect(() => {\n    updateVideoQualityRef.current = updateVideoQuality;",
+    start,
+  );
+  if (start < 0 || end < 0) {
+    failures.push("web video-quality update section missing");
+  } else {
+    const section = text.slice(start, end);
+    if (!section.includes("let transport = getUsableProducerTransport(")) {
+      failures.push(
+        "web video-quality producer recreation must reject failed transports",
+      );
+    }
+    if (!section.includes("await ensureProducerTransportRef?.current?.()")) {
+      failures.push(
+        "web video-quality producer recreation must rebuild failed transports",
+      );
+    }
+  }
+}
+{
+  const text = source.webMeetMedia;
+  const start = text.indexOf("const recoverAudioProducer = async () => {");
+  const end = text.indexOf("void recoverAudioProducer();", start);
+  if (start < 0 || end < 0) {
+    failures.push("web audio producer recovery section missing");
+  } else {
+    const section = text.slice(start, end);
+    if (!section.includes("let transport = getUsableProducerTransport(")) {
+      failures.push("web audio producer recovery must reject failed transports");
+    }
+    if (!section.includes("await ensureProducerTransportRef?.current?.()")) {
+      failures.push("web audio producer recovery must rebuild failed transports");
+    }
+  }
+}
+{
   const text = source.webMeetSocket;
   const start = text.indexOf('socket.on(\n              "setVideoQuality"');
   const end = text.indexOf('socket.on("chatMessage"', start);

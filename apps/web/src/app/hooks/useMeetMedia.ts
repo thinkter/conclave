@@ -1000,9 +1000,14 @@ export function useMeetMedia({
           return;
         }
 
-        const transport = producerTransportRef.current;
+        let transport = getUsableProducerTransport(producerTransportRef.current);
         if (!transport) {
-          throw new Error("Video transport unavailable");
+          const transportReady =
+            (await ensureProducerTransportRef?.current?.()) ?? false;
+          transport = getUsableProducerTransport(producerTransportRef.current);
+          if (!transportReady || !transport) {
+            throw new Error("Video transport unavailable");
+          }
         }
 
         const preferredWebcamCodec = getPreferredWebcamCodec(deviceRef.current);
@@ -1059,6 +1064,7 @@ export function useMeetMedia({
       socketRef,
       deviceRef,
       producerTransportRef,
+      ensureProducerTransportRef,
       videoProducerRef,
       intentionalLocalProducerCloseIdsRef,
       localStreamRef,
@@ -1309,15 +1315,24 @@ export function useMeetMedia({
     }
     if (audioRecoveryInFlightRef.current) return;
 
-    const transport = producerTransportRef.current;
-    if (!transport) return;
-
     let cancelled = false;
     audioRecoveryInFlightRef.current = true;
 
     const recoverAudioProducer = async () => {
       let createdTrack: MediaStreamTrack | null = null;
       try {
+        let transport = getUsableProducerTransport(
+          producerTransportRef.current,
+        );
+        if (!transport) {
+          const transportReady =
+            (await ensureProducerTransportRef?.current?.()) ?? false;
+          transport = getUsableProducerTransport(producerTransportRef.current);
+          if (!transportReady || !transport) {
+            throw new Error("Audio transport unavailable");
+          }
+        }
+
         let audioTrack = localStreamRef.current?.getAudioTracks()[0] ?? null;
 
         if (!audioTrack || audioTrack.readyState !== "live") {
@@ -1410,6 +1425,7 @@ export function useMeetMedia({
     stopLocalTrack,
     buildAudioConstraints,
     producerTransportRef,
+    ensureProducerTransportRef,
     audioProducerRef,
     localStreamRef,
     setLocalStream,
