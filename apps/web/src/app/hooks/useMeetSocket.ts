@@ -2225,11 +2225,6 @@ export function useMeetSocket({
                     Date.now(),
                   );
                 }
-                if (isWebcamAudio) {
-                  updateMutedState(true);
-                } else if (isWebcamVideo) {
-                  updateCameraState(true);
-                }
                 if (!producerPausedStateRef.current.get(producerInfo.producerId)) {
                   scheduleStaleConsumerRecovery();
                 }
@@ -2281,11 +2276,6 @@ export function useMeetSocket({
               const handleTrackUnmuted = () => {
                 mutedConsumerSinceRef.current.delete(producerInfo.producerId);
                 setProducerPausedState(producerInfo.producerId, false);
-                if (isWebcamAudio) {
-                  updateMutedState(false);
-                } else if (isWebcamVideo) {
-                  updateCameraState(false);
-                }
                 clearStaleConsumerRecoveryTimeout(producerInfo.producerId);
                 const existingTimeout = videoStallRecoveryTimeoutsRef.current.get(
                   producerInfo.producerId,
@@ -2334,6 +2324,10 @@ export function useMeetSocket({
                 } else if (isWebcamVideo) {
                   updateCameraState(true);
                 }
+              } else if (isWebcamAudio) {
+                updateMutedState(false);
+              } else if (isWebcamVideo) {
+                updateCameraState(false);
               }
 
               socket.emit(

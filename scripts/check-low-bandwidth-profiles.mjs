@@ -376,6 +376,47 @@ assertIncludes(
 );
 {
   const text = source.webMeetSocket;
+  const start = text.indexOf("const handleTrackMuted = () => {");
+  const end = text.indexOf("const handleTrackUnmuted = () => {", start);
+  if (start < 0 || end < 0) {
+    failures.push("web remote track mute handler missing");
+  } else {
+    const section = text.slice(start, end);
+    if (
+      section.includes("updateCameraState(true)") ||
+      section.includes("updateMutedState(true)")
+    ) {
+      failures.push(
+        "web remote track mute must not be treated as user camera-off/mute",
+      );
+    }
+    if (!section.includes("scheduleStaleConsumerRecovery();")) {
+      failures.push(
+        "web remote track mute should still schedule stale consumer recovery",
+      );
+    }
+  }
+}
+{
+  const text = source.webMeetSocket;
+  const start = text.indexOf("if (producerInfo.paused) {");
+  const end = text.indexOf("socket.emit(\n                \"resumeConsumer\"", start);
+  if (start < 0 || end < 0) {
+    failures.push("web consume producer paused-state section missing");
+  } else {
+    const section = text.slice(start, end);
+    if (
+      !section.includes("updateCameraState(false)") ||
+      !section.includes("updateMutedState(false)")
+    ) {
+      failures.push(
+        "web consume must restore remote user mute/camera state from producer pause state",
+      );
+    }
+  }
+}
+{
+  const text = source.webMeetSocket;
   const start = text.indexOf("const recoverStaleConsumer = useCallback(");
   const end = text.indexOf("recoverStaleConsumerRef.current", start);
   if (start < 0 || end < 0) {
