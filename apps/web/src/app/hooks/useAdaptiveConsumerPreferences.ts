@@ -65,6 +65,7 @@ const RATE_LIMIT_RETRY_DELAY_MS = 1000;
 const CONSUMER_PREFERENCE_ACK_TIMEOUT_MS = 3000;
 const AUDIO_CONSUMER_PRIORITY = 255;
 const CONSUMER_SCORE_STALE_AFTER_MS = 15000;
+const UNSUPPORTED_LAYER_RETRY_AFTER_MS = 30000;
 
 type LayoutRole = {
   primary: boolean;
@@ -165,6 +166,12 @@ type PendingConsumerPreferenceUpdate = {
   signature: string;
   debugEntryBase: ConsumerPreferenceDebugEntryBase;
   urgency: number;
+};
+
+type UnsupportedLayerPreference = {
+  consumerId: string;
+  signature: string;
+  retryAt: number;
 };
 
 type RoomTilingDebugWindow = Window & {
@@ -537,6 +544,13 @@ const getPreferenceSignature = (
   ].join(":");
 };
 
+const getLayerPreferenceSignature = (
+  layers?: ConsumerLayerPreference,
+): string =>
+  layers
+    ? [layers.spatialLayer, layers.temporalLayer ?? "none"].join(":")
+    : "none";
+
 const getPreferenceUpdateUrgency = (
   info: ProducerMapEntry,
   preferences: DesiredConsumerPreferences,
@@ -576,7 +590,9 @@ export function useAdaptiveConsumerPreferences({
   const lastAppliedRef = useRef<Map<string, string>>(new Map());
   const lastLayersRef = useRef<Map<string, ConsumerLayerPreference>>(new Map());
   const lastPausedRef = useRef<Map<string, boolean>>(new Map());
-  const unsupportedLayerProducerIdsRef = useRef<Set<string>>(new Set());
+  const unsupportedLayerPreferencesRef = useRef<
+    Map<string, UnsupportedLayerPreference>
+  >(new Map());
   const inFlightProducerIdsRef = useRef<Set<string>>(new Set());
   const scheduledPreferenceTimeoutsRef = useRef<Set<number>>(new Set());
   const rateLimitRetryTimeoutRef = useRef<number | null>(null);
@@ -686,7 +702,7 @@ export function useAdaptiveConsumerPreferences({
           refs.adaptivelyPausedConsumerProducerIdsRef.current,
         ),
         unsupportedLayerProducerIds: Array.from(
-          unsupportedLayerProducerIdsRef.current,
+          unsupportedLayerPreferencesRef.current.keys(),
         ),
         entries,
       };
@@ -814,7 +830,7 @@ export function useAdaptiveConsumerPreferences({
       lastAppliedRef.current.delete(producerId);
       lastLayersRef.current.delete(producerId);
       lastPausedRef.current.delete(producerId);
-      unsupportedLayerProducerIdsRef.current.delete(producerId);
+      unsupportedLayerPreferencesRef.current.delete(producerId);
       inFlightProducerIdsRef.current.delete(producerId);
       preferenceDebugRef.current.delete(producerId);
       refs.adaptivelyPausedConsumerProducerIdsRef.current.delete(producerId);
@@ -866,9 +882,28 @@ export function useAdaptiveConsumerPreferences({
 
       const previousLayers = lastLayersRef.current.get(producerId);
       const wasPaused = lastPausedRef.current.get(producerId) === true;
-      const preferredLayers = unsupportedLayerProducerIdsRef.current.has(
-        producerId,
-      )
+      const desiredLayerSignature = getLayerPreferenceSignature(
+        desired.preferredLayers,
+      );
+      const unsupportedLayerPreference =
+        unsupportedLayerPreferencesRef.current.get(producerId);
+      const shouldSuppressPreferredLayers = Boolean(
+        desired.preferredLayers &&
+          unsupportedLayerPreference &&
+          unsupportedLayerPreference.consumerId === consumer.id &&
+          unsupportedLayerPreference.signature === desiredLayerSignature &&
+          unsupportedLayerPreference.retryAt > now,
+      );
+      if (
+        unsupportedLayerPreference &&
+        (!desired.preferredLayers ||
+          unsupportedLayerPreference.consumerId !== consumer.id ||
+          unsupportedLayerPreference.signature !== desiredLayerSignature ||
+          unsupportedLayerPreference.retryAt <= now)
+      ) {
+        unsupportedLayerPreferencesRef.current.delete(producerId);
+      }
+      const preferredLayers = shouldSuppressPreferredLayers
         ? undefined
         : desired.preferredLayers;
       const preferences = {
@@ -898,9 +933,7 @@ export function useAdaptiveConsumerPreferences({
         bounds,
         layout,
         requestKeyFrame,
-        unsupportedLayers: unsupportedLayerProducerIdsRef.current.has(
-          producerId,
-        ),
+        unsupportedLayers: shouldSuppressPreferredLayers,
       };
       const signature = getPreferenceSignature(consumer.id, preferences);
       if (lastAppliedRef.current.get(producerId) === signature) {
@@ -1147,7 +1180,11 @@ export function useAdaptiveConsumerPreferences({
               }
               writeDebugSnapshot(debugContext);
               if (preferredLayers && isUnsupportedLayerError(response.error)) {
-                unsupportedLayerProducerIdsRef.current.add(producerId);
+                unsupportedLayerPreferencesRef.current.set(producerId, {
+                  consumerId: consumer.id,
+                  signature: getLayerPreferenceSignature(preferredLayers),
+                  retryAt: Date.now() + UNSUPPORTED_LAYER_RETRY_AFTER_MS,
+                });
                 if (preferences.paused === true) {
                   refs.adaptivelyPausedConsumerProducerIdsRef.current.add(
                     producerId,
@@ -1310,7 +1347,7 @@ export function useAdaptiveConsumerPreferences({
       lastAppliedRef.current.clear();
       lastLayersRef.current.clear();
       lastPausedRef.current.clear();
-      unsupportedLayerProducerIdsRef.current.clear();
+      unsupportedLayerPreferencesRef.current.clear();
       preferenceDebugRef.current.clear();
       refs.adaptivelyPausedConsumerProducerIdsRef.current.clear();
       writeDebugSnapshot({

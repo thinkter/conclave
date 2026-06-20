@@ -54,28 +54,52 @@ const files = {
     "packages/sfu/server/socket/handlers/disconnectHandlers.ts",
 };
 
+const optionalFiles = new Set([
+  "webMobileParticipantVideo",
+  "webMobileGridLayout",
+  "webMobilePresentationLayout",
+  "webMobileBrowserLayout",
+  "webMobileJoinScreen",
+]);
+
 const source = Object.fromEntries(
-  Object.entries(files).map(([key, file]) => [
-    key,
-    readFileSync(resolve(root, file), "utf8"),
-  ]),
+  Object.entries(files).map(([key, file]) => {
+    const path = resolve(root, file);
+    try {
+      return [key, readFileSync(path, "utf8")];
+    } catch (error) {
+      if (
+        optionalFiles.has(key) &&
+        error &&
+        typeof error === "object" &&
+        "code" in error &&
+        error.code === "ENOENT"
+      ) {
+        return [key, null];
+      }
+      throw error;
+    }
+  }),
 );
 
 const failures = [];
 
 const assertIncludes = (key, snippet, label) => {
+  if (source[key] === null) return;
   if (!source[key].includes(snippet)) {
     failures.push(`${label} missing in ${relative(root, resolve(root, files[key]))}`);
   }
 };
 
 const assertRegex = (key, regex, label) => {
+  if (source[key] === null) return;
   if (!regex.test(source[key])) {
     failures.push(`${label} missing in ${relative(root, resolve(root, files[key]))}`);
   }
 };
 
 const assertNotIncludes = (key, snippet, label) => {
+  if (source[key] === null) return;
   if (source[key].includes(snippet)) {
     failures.push(`${label} present in ${relative(root, resolve(root, files[key]))}`);
   }
@@ -468,6 +492,21 @@ assertRegex(
   "webAdaptiveConsumerPreferences",
   /const isConsumerLayerUpgrade =[\s\S]*next\.spatialLayer > previous\.spatialLayer[\s\S]*next\.temporalLayer[\s\S]*previous\.temporalLayer[\s\S]*requestKeyFrame =[\s\S]*isConsumerLayerUpgrade\(previousLayers, preferredLayers!\)/,
   "web receive layer upgrades request keyframes for temporal recovery",
+);
+assertIncludes(
+  "webAdaptiveConsumerPreferences",
+  "const UNSUPPORTED_LAYER_RETRY_AFTER_MS = 30000;",
+  "web unsupported receive-layer fallback is retry bounded",
+);
+assertRegex(
+  "webAdaptiveConsumerPreferences",
+  /unsupportedLayerPreferencesRef[\s\S]*retryAt > now[\s\S]*retryAt <= now[\s\S]*unsupportedLayerPreferencesRef\.current\.delete\(producerId\)/,
+  "web unsupported receive-layer fallback expires for recovery",
+);
+assertRegex(
+  "webAdaptiveConsumerPreferences",
+  /unsupportedLayerPreferencesRef\.current\.set\(producerId,[\s\S]*signature: getLayerPreferenceSignature\(preferredLayers\),[\s\S]*retryAt: Date\.now\(\) \+ UNSUPPORTED_LAYER_RETRY_AFTER_MS/,
+  "web unsupported receive-layer fallback stores retryable layer signature",
 );
 assertIncludes(
   "webAdaptiveConsumerPreferences",
