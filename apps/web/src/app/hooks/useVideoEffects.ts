@@ -229,6 +229,8 @@ const OUTPUT_WRITER_BACKPRESSURE_DRAIN_TIMEOUT_MS = 36;
 const OUTPUT_WRITER_PENDING_PRESSURE_MS = 75;
 const OUTPUT_WRITER_FRAME_TIMEOUT_MS = 3000;
 const OUTPUT_WRITER_FAILURE_RELEASE_THRESHOLD = 3;
+const PROCESSED_OUTPUT_STALE_RELEASE_MS = 2500;
+const PROCESSED_OUTPUT_STALE_CHECK_MS = 1000;
 const SEGMENTATION_PROCESSOR_FRAME_TIMEOUT_MS = 6000;
 const SEGMENTATION_PROCESSOR_INITIAL_FRAME_TIMEOUT_MS = 16000;
 const FACE_PROCESSOR_FRAME_TIMEOUT_MS = 6000;
@@ -13090,6 +13092,41 @@ export function useVideoEffects({
       }
     };
 
+    const releaseStaleProcessedOutputIfNeeded = (
+      reason: string,
+      sampleNow = performance.now(),
+    ) => {
+      if (!outputTrackPublished || cancelled || track.readyState !== "live") {
+        return false;
+      }
+      const latestOutputFrameAgeMs =
+        latestOutputFrameAt > 0
+          ? Math.max(0, sampleNow - latestOutputFrameAt)
+          : Number.POSITIVE_INFINITY;
+      if (latestOutputFrameAgeMs < PROCESSED_OUTPUT_STALE_RELEASE_MS) {
+        return false;
+      }
+
+      warnVideoEffects(debugId, "processed_output_stale_release", {
+        reason,
+        latestOutputFrameAgeMs: Number.isFinite(latestOutputFrameAgeMs)
+          ? Math.round(latestOutputFrameAgeMs)
+          : null,
+        thresholdMs: PROCESSED_OUTPUT_STALE_RELEASE_MS,
+        outputMode,
+        outputWriterMode,
+        outputFramesWritten,
+        outputFrameSequence,
+        outputTrack: getTrackDebugSnapshot(track),
+        sourceTrack: getTrackDebugSnapshot(sourceVideoTrack),
+      });
+      releaseOutputTrackToRaw(reason);
+      return true;
+    };
+    const processedOutputStaleCheckIntervalId = window.setInterval(() => {
+      releaseStaleProcessedOutputIfNeeded("processed output stale heartbeat");
+    }, PROCESSED_OUTPUT_STALE_CHECK_MS);
+
     const recordOutputWriterFrameFailure = (err: unknown, phase: string) => {
       outputWriterWriteFailures += 1;
       consecutiveOutputWriterFailures += 1;
@@ -16739,6 +16776,9 @@ export function useVideoEffects({
         }
         outputDelivered = await deliverOutputFrame(now);
         latestOutputFrameVisible = outputDelivered && outputProbe.visible;
+        releaseStaleProcessedOutputIfNeeded(
+          "effects output waiting for visual asset",
+        );
         if (
           currentFrameSequence <= OUTPUT_READY_FRAMES ||
           currentFrameSequence % OUTPUT_VISIBILITY_PROBE_INTERVAL_FRAMES === 0 ||
@@ -16777,6 +16817,9 @@ export function useVideoEffects({
             "degraded",
             "Effects output writer is unavailable; showing raw camera.",
           );
+          releaseStaleProcessedOutputIfNeeded(
+            "effects output writer unavailable",
+          );
         } else {
           recordOutputProbeResult(
             outputProbe,
@@ -16784,7 +16827,12 @@ export function useVideoEffects({
             frameSource,
             currentEffects,
           );
-          if (visibleOutputFrameCount >= OUTPUT_READY_FRAMES) {
+          const staleProcessedOutputReleased =
+            releaseStaleProcessedOutputIfNeeded("processed output frame stale");
+          if (
+            !staleProcessedOutputReleased &&
+            visibleOutputFrameCount >= OUTPUT_READY_FRAMES
+          ) {
             publishOutputTrack();
           }
           if (!outputProbe.visible) {
@@ -17757,6 +17805,7 @@ export function useVideoEffects({
         window.clearTimeout(effectChangeFramePumpTimerId);
         effectChangeFramePumpTimerId = null;
       }
+      window.clearInterval(processedOutputStaleCheckIntervalId);
       if (loopTimerId !== null) {
         window.clearTimeout(loopTimerId);
         loopTimerId = null;

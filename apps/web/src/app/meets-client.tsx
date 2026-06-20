@@ -39,6 +39,7 @@ import { useMeetRooms } from "./hooks/useMeetRooms";
 import { useMeetSocket } from "./hooks/useMeetSocket";
 import { useMeetState } from "./hooks/useMeetState";
 import { useMeetTts } from "./hooks/useMeetTts";
+import { MeetVolumeProvider } from "./hooks/useMeetVolume";
 import {
   useBandwidthHeavyPreloadDeferred,
   useBandwidthHeavyVideoEffectsSuppressed,
@@ -527,6 +528,8 @@ export default function MeetsClient({
     setIsDmEnabled,
     isBrowserAudioMuted,
     setIsBrowserAudioMuted,
+    meetVolume,
+    setMeetVolume,
     hostUserId,
     setHostUserId,
     hostUserIds,
@@ -578,9 +581,8 @@ export default function MeetsClient({
     useBandwidthHeavyPreloadDeferred();
   const shouldSuppressVideoEffectsForBandwidth =
     useBandwidthHeavyVideoEffectsSuppressed();
-  const shouldRunVideoEffects =
+  const shouldRunVisualVideoEffects =
     activeVideoEffectsCount > 0 &&
-    isDocumentVisible &&
     !shouldSuppressVideoEffectsForBandwidth;
   const [videoEffectsBridgeState, setVideoEffectsBridgeState] =
     useState<VideoEffectsBridgeState>(VIDEO_EFFECTS_OFF_STATE);
@@ -593,6 +595,18 @@ export default function MeetsClient({
   const getVideoPublishTrackRef = useRef<
     ((stream?: MediaStream | null) => MediaStreamTrack | null) | null
   >(null);
+  const suppressedProcessedPublishTrackRef = useRef<{
+    trackId: string;
+    processedTrackVersion: number;
+    reason: string;
+  } | null>(null);
+  const publishTrackSwitchRef = useRef<{
+    sequence: number;
+    promise: Promise<void>;
+  }>({
+    sequence: 0,
+    promise: Promise.resolve(),
+  });
   const restoredVideoEffectsPrewarmDoneRef = useRef(false);
   const cameraLiveEffectsPrewarmDoneRef = useRef(false);
 
@@ -886,7 +900,8 @@ export default function MeetsClient({
   const isWebinarAttendee =
     joinMode === "webinar_attendee" || webinarRole === "attendee";
   const ghostEnabled = allowGhostMode && isAdminFlag && isGhostMode;
-  const shouldPublishProcessedVideo = shouldRunVideoEffects;
+  const shouldRunVideoEffects = shouldRunVisualVideoEffects;
+  const shouldPublishProcessedVideo = shouldRunVisualVideoEffects;
   const canSignOut = Boolean(
     currentUser && !currentUser.id?.startsWith("guest-"),
   );
@@ -970,7 +985,7 @@ export default function MeetsClient({
     reactionAssets,
   });
 
-  const { ttsSpeakerId, handleTtsMessage } = useMeetTts();
+  const { ttsSpeakerId, handleTtsMessage } = useMeetTts({ meetVolume });
   const effectiveActiveSpeakerId = ttsSpeakerId ?? activeSpeakerId;
 
   const {
@@ -1010,6 +1025,28 @@ export default function MeetsClient({
     isTtsDisabled,
   });
 
+  const handlePreferredVideoPublishTrackRejected = useCallback(
+    (track: MediaStreamTrack, reason: string) => {
+      const processedTrack = refs.processedVideoTrackRef.current;
+      if (!processedTrack || processedTrack.id !== track.id) return;
+
+      suppressedProcessedPublishTrackRef.current = {
+        trackId: track.id,
+        processedTrackVersion: videoEffectsBridgeState.processedTrackVersion,
+        reason,
+      };
+      warnMeetVideo("suppress_processed_publish_track_after_raw_repair", {
+        reason,
+        processedTrack: getMeetTrackDebugSnapshot(processedTrack),
+        processedTrackVersion: videoEffectsBridgeState.processedTrackVersion,
+      });
+    },
+    [
+      refs.processedVideoTrackRef,
+      videoEffectsBridgeState.processedTrackVersion,
+    ],
+  );
+
   const {
     showPermissionHint,
     requestMediaPermissions,
@@ -1046,11 +1083,14 @@ export default function MeetsClient({
     setSelectedAudioInputDeviceId,
     selectedAudioOutputDeviceId,
     setSelectedAudioOutputDeviceId,
+    meetVolume,
     videoQuality,
     videoQualityRef: refs.videoQualityRef,
     activeVideoEffectsCount,
     shouldUsePreferredVideoPublishTrack: shouldPublishProcessedVideo,
     getVideoPublishTrackRef,
+    onPreferredVideoPublishTrackRejected:
+      handlePreferredVideoPublishTrackRejected,
     socketRef: refs.socketRef,
     deviceRef: refs.deviceRef,
     producerTransportRef: refs.producerTransportRef,
@@ -1226,6 +1266,24 @@ export default function MeetsClient({
         null;
       const producerTrack = refs.videoProducerRef.current?.track ?? null;
       const processedTrack = refs.processedVideoTrackRef.current;
+      const suppressedProcessedPublishTrack =
+        suppressedProcessedPublishTrackRef.current;
+      const processedTrackSuppressed = Boolean(
+        suppressedProcessedPublishTrack &&
+          processedTrack &&
+          suppressedProcessedPublishTrack.trackId === processedTrack.id &&
+          suppressedProcessedPublishTrack.processedTrackVersion ===
+            processedTrackVersion,
+      );
+      if (
+        suppressedProcessedPublishTrack &&
+        (!processedTrack ||
+          suppressedProcessedPublishTrack.trackId !== processedTrack.id ||
+          suppressedProcessedPublishTrack.processedTrackVersion !==
+            processedTrackVersion)
+      ) {
+        suppressedProcessedPublishTrackRef.current = null;
+      }
       const processedSourceTrackId = getVideoEffectsDebugTrackId(
         videoEffectsDebugStats,
         "sourceTrack",
@@ -1280,6 +1338,7 @@ export default function MeetsClient({
       );
       if (
         shouldPublishProcessedVideo &&
+        !processedTrackSuppressed &&
         processedTrackReady &&
         processedTrack &&
         processedTrack.readyState === "live" &&
@@ -1300,12 +1359,14 @@ export default function MeetsClient({
             processedChainedSourceTrackId,
             processedSourceMatchesChainedInput,
             processedTrackOutputIsWarming,
+            suppressedProcessedPublishTrack,
           },
         );
         return processedTrack;
       }
       if (
         shouldPublishProcessedVideo &&
+        !processedTrackSuppressed &&
         !processedTrackReady &&
         processedTrack &&
         processedTrack.readyState === "live" &&
@@ -1322,8 +1383,17 @@ export default function MeetsClient({
           processedChainedSourceTrackId,
           processedSourceMatchesChainedInput,
           processedTrackOutputIsWarming,
+          suppressedProcessedPublishTrack,
         });
         return processedTrack;
+      }
+      if (processedTrackSuppressed) {
+        logMeetVideo("skip_processed_track_suppressed_after_raw_repair", {
+          processedTrack: getMeetTrackDebugSnapshot(processedTrack),
+          producerTrack: getMeetTrackDebugSnapshot(producerTrack),
+          suppressedProcessedPublishTrack,
+          processedTrackVersion,
+        });
       }
       if (processedTrack && !processedTrackReady) {
         logMeetVideo("skip_processed_track_not_ready", {
@@ -1365,15 +1435,18 @@ export default function MeetsClient({
         processedChainedSourceTrackId,
         processedSourceMatchesChainedInput,
         processedTrackOutputIsWarming,
+        suppressedProcessedPublishTrack,
       });
       return rawTrack;
     },
     [
+      processedTrackVersion,
       processedTrackReady,
       refs.localStreamRef,
       refs.processedVideoTrackRef,
       refs.videoProducerRef,
       shouldPublishProcessedVideo,
+      suppressedProcessedPublishTrackRef,
       videoEffectsDebugStats,
     ],
   );
@@ -1664,59 +1737,79 @@ export default function MeetsClient({
       });
       return;
     }
-    const producer = refs.videoProducerRef.current;
-    if (!producer || producer.closed) {
+    const initialProducer = refs.videoProducerRef.current;
+    if (!initialProducer || initialProducer.closed) {
       warnMeetVideo("skip_replace_track_missing_or_closed_producer", {
-        hasProducer: Boolean(producer),
-        producerClosed: producer?.closed,
+        hasProducer: Boolean(initialProducer),
+        producerClosed: initialProducer?.closed,
         processedTrackVersion,
         processedTrackReady,
       });
       return;
     }
 
-    const nextTrack = getVideoPublishTrack(localStream);
-    if (!nextTrack) {
-      warnMeetVideo("skip_replace_track_no_next_track", {
-        producerTrack: getMeetTrackDebugSnapshot(producer.track ?? null),
-        localStream: getMeetStreamDebugSnapshot(localStream),
-        processedTrackVersion,
-        processedTrackReady,
-      });
-      return;
-    }
-    if (nextTrack.readyState !== "live") {
-      warnMeetVideo("skip_replace_track_candidate_not_live", {
-        nextTrack: getMeetTrackDebugSnapshot(nextTrack),
-        producerTrack: getMeetTrackDebugSnapshot(producer.track ?? null),
-        processedTrackVersion,
-        processedTrackReady,
-      });
-      if (refs.processedVideoTrackRef.current?.id === nextTrack.id) {
-        refs.processedVideoTrackRef.current = null;
+    const sequence = publishTrackSwitchRef.current.sequence + 1;
+    const previousSwitch = publishTrackSwitchRef.current.promise;
+    publishTrackSwitchRef.current.sequence = sequence;
+
+    const runSwitch = async () => {
+      await previousSwitch.catch(() => {});
+      if (publishTrackSwitchRef.current.sequence !== sequence) return;
+
+      const producer = refs.videoProducerRef.current;
+      if (!producer || producer.closed || producer.id !== initialProducer.id) {
+        warnMeetVideo("skip_replace_track_producer_changed", {
+          initialProducerId: initialProducer.id,
+          currentProducerId: producer?.id ?? null,
+          producerClosed: producer?.closed ?? null,
+          processedTrackVersion,
+          processedTrackReady,
+        });
+        return;
       }
-      return;
-    }
-    if (producer.track?.id === nextTrack.id) {
-      logMeetVideo("skip_replace_track_same_track", {
-        track: getMeetTrackDebugSnapshot(nextTrack),
+
+      const publishStream = refs.localStreamRef.current ?? localStream;
+      const nextTrack = getVideoPublishTrack(publishStream);
+      if (!nextTrack) {
+        warnMeetVideo("skip_replace_track_no_next_track", {
+          producerTrack: getMeetTrackDebugSnapshot(producer.track ?? null),
+          localStream: getMeetStreamDebugSnapshot(publishStream),
+          processedTrackVersion,
+          processedTrackReady,
+        });
+        return;
+      }
+      if (nextTrack.readyState !== "live") {
+        warnMeetVideo("skip_replace_track_candidate_not_live", {
+          nextTrack: getMeetTrackDebugSnapshot(nextTrack),
+          producerTrack: getMeetTrackDebugSnapshot(producer.track ?? null),
+          processedTrackVersion,
+          processedTrackReady,
+        });
+        if (refs.processedVideoTrackRef.current?.id === nextTrack.id) {
+          refs.processedVideoTrackRef.current = null;
+        }
+        return;
+      }
+      if (producer.track?.id === nextTrack.id) {
+        logMeetVideo("skip_replace_track_same_track", {
+          track: getMeetTrackDebugSnapshot(nextTrack),
+          processedTrackVersion,
+          processedTrackReady,
+        });
+        return;
+      }
+
+      logMeetVideo("replace_track_start", {
+        from: getMeetTrackDebugSnapshot(producer.track ?? null),
+        to: getMeetTrackDebugSnapshot(nextTrack),
         processedTrackVersion,
         processedTrackReady,
       });
-      return;
-    }
-
-    logMeetVideo("replace_track_start", {
-      from: getMeetTrackDebugSnapshot(producer.track ?? null),
-      to: getMeetTrackDebugSnapshot(nextTrack),
-      processedTrackVersion,
-      processedTrackReady,
-    });
-    const isProcessedCandidate =
-      refs.processedVideoTrackRef.current?.id === nextTrack.id;
-    producer
-      .replaceTrack({ track: nextTrack })
-      .then(() => {
+      const isProcessedCandidate =
+        refs.processedVideoTrackRef.current?.id === nextTrack.id;
+      try {
+        await producer.replaceTrack({ track: nextTrack });
         if (typeof window !== "undefined" && isMeetVideoDebugEnabled()) {
           (window as MeetVideoDebugWindow).__conclaveMeetVideoDebug =
             buildMeetVideoDebugSnapshot("replace_track_done");
@@ -1724,8 +1817,7 @@ export default function MeetsClient({
         logMeetVideo("replace_track_done", {
           producerTrack: getMeetTrackDebugSnapshot(producer.track ?? null),
         });
-      })
-      .catch((err) => {
+      } catch (err) {
         if (typeof window !== "undefined" && isMeetVideoDebugEnabled()) {
           (window as MeetVideoDebugWindow).__conclaveMeetVideoDebug =
             buildMeetVideoDebugSnapshot("replace_track_failed");
@@ -1743,11 +1835,12 @@ export default function MeetsClient({
         if (refs.processedVideoTrackRef.current?.id === nextTrack.id) {
           refs.processedVideoTrackRef.current = null;
         }
-        const rawFallbackTrack = getRawVideoPublishTrack(localStream);
+        if (publishTrackSwitchRef.current.sequence !== sequence) return;
+        const rawFallbackTrack = getRawVideoPublishTrack(publishStream);
         if (!rawFallbackTrack || rawFallbackTrack.readyState !== "live") {
           warnMeetVideo("replace_track_raw_fallback_unavailable", {
             rawFallbackTrack: getMeetTrackDebugSnapshot(rawFallbackTrack),
-            localStream: getMeetStreamDebugSnapshot(localStream),
+            localStream: getMeetStreamDebugSnapshot(publishStream),
           });
           return;
         }
@@ -1761,31 +1854,33 @@ export default function MeetsClient({
           from: getMeetTrackDebugSnapshot(producer.track ?? null),
           to: getMeetTrackDebugSnapshot(rawFallbackTrack),
         });
-        producer
-          .replaceTrack({ track: rawFallbackTrack })
-          .then(() => {
-            if (typeof window !== "undefined" && isMeetVideoDebugEnabled()) {
-              (window as MeetVideoDebugWindow).__conclaveMeetVideoDebug =
-                buildMeetVideoDebugSnapshot("replace_track_raw_fallback_done");
-            }
-            logMeetVideo("replace_track_raw_fallback_done", {
-              producerTrack: getMeetTrackDebugSnapshot(producer.track ?? null),
-            });
-          })
-          .catch((fallbackErr) => {
-            warnMeetVideo("replace_track_raw_fallback_failed", {
-              error:
-                fallbackErr instanceof Error
-                  ? {
-                      name: fallbackErr.name,
-                      message: fallbackErr.message,
-                      stack: fallbackErr.stack,
-                    }
-                  : fallbackErr,
-              rawFallbackTrack: getMeetTrackDebugSnapshot(rawFallbackTrack),
-            });
+        try {
+          await producer.replaceTrack({ track: rawFallbackTrack });
+          if (typeof window !== "undefined" && isMeetVideoDebugEnabled()) {
+            (window as MeetVideoDebugWindow).__conclaveMeetVideoDebug =
+              buildMeetVideoDebugSnapshot("replace_track_raw_fallback_done");
+          }
+          logMeetVideo("replace_track_raw_fallback_done", {
+            producerTrack: getMeetTrackDebugSnapshot(producer.track ?? null),
           });
-      });
+        } catch (fallbackErr) {
+          warnMeetVideo("replace_track_raw_fallback_failed", {
+            error:
+              fallbackErr instanceof Error
+                ? {
+                    name: fallbackErr.name,
+                    message: fallbackErr.message,
+                    stack: fallbackErr.stack,
+                  }
+                : fallbackErr,
+            rawFallbackTrack: getMeetTrackDebugSnapshot(rawFallbackTrack),
+          });
+        }
+      }
+    };
+
+    const switchPromise = runSwitch();
+    publishTrackSwitchRef.current.promise = switchPromise;
   }, [
     buildMeetVideoDebugSnapshot,
     connectionState,
@@ -1795,6 +1890,7 @@ export default function MeetsClient({
     localStream,
     processedTrackVersion,
     processedTrackReady,
+    refs.localStreamRef,
     refs.videoProducerRef,
     refs.processedVideoTrackRef,
   ]);
@@ -1941,6 +2037,8 @@ export default function MeetsClient({
     localStream,
     setLocalStream,
     getVideoPublishTrack,
+    onPreferredVideoPublishTrackRejected:
+      handlePreferredVideoPublishTrackRejected,
     dispatchParticipants,
     setDisplayNames,
     setPendingUsers,
@@ -2333,33 +2431,39 @@ export default function MeetsClient({
   });
   connectionQualityDebugRef.current = selfConnectionStats;
   const {
-    quality: selfConnectionQuality,
     publishQuality: selfPublishQuality,
     receiveQuality: selfReceiveQuality,
+    publishEmergencyMode: selfPublishEmergencyMode,
+    receiveEmergencyMode: selfReceiveEmergencyMode,
   } = selfConnectionStats;
-  const selfEmergencyNetworkMode = selfConnectionStats.emergencyMode;
   const hasPoorPublishRecoverySignal =
-    (selfConnectionStats.rttMs !== null &&
-      selfConnectionStats.rttMs >= PUBLISH_RECOVERY_RTT_POOR_MS) ||
-    (selfConnectionStats.packetLoss !== null &&
-      selfConnectionStats.packetLoss >= PUBLISH_RECOVERY_LOSS_POOR) ||
-    (selfConnectionStats.jitterMs !== null &&
-      selfConnectionStats.jitterMs >= PUBLISH_RECOVERY_JITTER_POOR_MS);
+    (selfConnectionStats.publishRttMs !== null &&
+      selfConnectionStats.publishRttMs >= PUBLISH_RECOVERY_RTT_POOR_MS) ||
+    (selfConnectionStats.publishPacketLoss !== null &&
+      selfConnectionStats.publishPacketLoss >= PUBLISH_RECOVERY_LOSS_POOR) ||
+    (selfConnectionStats.publishJitterMs !== null &&
+      selfConnectionStats.publishJitterMs >= PUBLISH_RECOVERY_JITTER_POOR_MS);
   const hasBrowserEmergencySignal =
     selfConnectionStats.browserNetwork.emergency === true;
-  const browserPublishRecoveryQuality = selfConnectionStats.browserNetwork
-    .quality as ConnectionQuality;
-  const selfPublishCapRecoveryQuality: ConnectionQuality =
+  const browserPublishRecoveryQuality = (
+    selfConnectionStats.browserNetwork.quality === "unknown"
+      ? selfConnectionStats.browserNetwork.startupQuality
+      : selfConnectionStats.browserNetwork.quality
+  ) as ConnectionQuality;
+  const browserAllowsPublishCapRecovery =
     !hasBrowserEmergencySignal &&
-    !hasPoorPublishRecoverySignal &&
-    browserPublishRecoveryQuality === "good"
+    selfConnectionStats.browserNetwork.saveData !== true &&
+    (browserPublishRecoveryQuality === "good" ||
+      browserPublishRecoveryQuality === "unknown");
+  const selfPublishCapRecoveryQuality: ConnectionQuality =
+    browserAllowsPublishCapRecovery && !hasPoorPublishRecoverySignal
       ? "good"
       : selfPublishQuality;
   useAdaptiveConsumerPreferences({
     refs,
     enabled: connectionState === "joined",
     connectionQuality: selfReceiveQuality,
-    emergencyMode: selfEmergencyNetworkMode,
+    emergencyMode: selfReceiveEmergencyMode,
     activeSpeakerId: effectiveActiveSpeakerId,
     debugStateRef: adaptiveConsumerDebugRef,
     onVideoAdaptivePauseStateChange: handleVideoAdaptivePauseStateChange,
@@ -2368,7 +2472,7 @@ export default function MeetsClient({
     enabled: connectionState === "joined",
     connectionQuality: selfPublishQuality,
     capRecoveryQuality: selfPublishCapRecoveryQuality,
-    emergencyMode: selfEmergencyNetworkMode,
+    emergencyMode: selfPublishEmergencyMode,
     isCameraOff,
     participantCount,
     audioProducerRef: refs.audioProducerRef,
@@ -2409,7 +2513,12 @@ export default function MeetsClient({
         isAdmin={isAdminFlag}
         uploadAsset={uploadAsset}
       >
-        {content}
+        <MeetVolumeProvider
+          meetVolume={meetVolume}
+          setMeetVolume={setMeetVolume}
+        >
+          {content}
+        </MeetVolumeProvider>
       </AppsProvider>
     </>
   );
@@ -2732,7 +2841,7 @@ export default function MeetsClient({
       <MeetsMainContent
         isJoined={isJoined}
         connectionState={connectionState}
-        selfConnectionQuality={selfConnectionQuality}
+        selfConnectionQuality={selfConnectionStats.quality}
         isLoading={isLoading}
         roomId={roomId}
         setRoomId={setRoomId}

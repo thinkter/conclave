@@ -1,7 +1,8 @@
 "use client";
 
-import { useReducer, useState } from "react";
+import { useCallback, useReducer, useState, type SetStateAction } from "react";
 import { participantReducer } from "../lib/participant-reducer";
+import { clampMeetVolume, DEFAULT_MEET_VOLUME } from "../lib/meet-volume";
 import type {
   AdminNoticeNotification,
   ConnectionState,
@@ -44,6 +45,14 @@ export function useMeetState({ initialRoomId }: UseMeetStateOptions) {
   const [isTtsDisabled, setIsTtsDisabled] = useState(false);
   const [isDmEnabled, setIsDmEnabled] = useState(true);
   const [isBrowserAudioMuted, setIsBrowserAudioMuted] = useState(false);
+  const [meetVolume, setMeetVolumeValue] = useState(DEFAULT_MEET_VOLUME);
+  const setMeetVolume = useCallback((value: SetStateAction<number>) => {
+    setMeetVolumeValue((current) =>
+      clampMeetVolume(
+        typeof value === "function" ? value(current) : value,
+      ),
+    );
+  }, []);
   const [hostUserId, setHostUserId] = useState<string | null>(null);
   const [hostUserIds, setHostUserIds] = useState<string[]>([]);
   const [isNetworkOffline, setIsNetworkOffline] = useState(false);
@@ -107,6 +116,8 @@ export function useMeetState({ initialRoomId }: UseMeetStateOptions) {
     setIsDmEnabled,
     isBrowserAudioMuted,
     setIsBrowserAudioMuted,
+    meetVolume,
+    setMeetVolume,
     hostUserId,
     setHostUserId,
     hostUserIds,

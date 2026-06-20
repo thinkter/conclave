@@ -1,19 +1,25 @@
 import { readFileSync } from "node:fs";
-import { relative, resolve } from "node:path";
+import { dirname, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const root = resolve(import.meta.dirname, "..");
+const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 const files = {
   webConstants: "apps/web/src/app/lib/constants.ts",
   webCodec: "apps/web/src/app/lib/webcam-codec.ts",
   webNetworkInformation: "apps/web/src/app/lib/network-information.ts",
   webConnectionQuality: "apps/web/src/app/hooks/useConnectionQuality.ts",
+  webParticipantMedia: "apps/web/src/app/lib/participant-media.ts",
+  webSmartParticipantOrder:
+    "apps/web/src/app/hooks/useSmartParticipantOrder.ts",
   webAdaptivePublishQuality:
     "apps/web/src/app/hooks/useAdaptivePublishQuality.ts",
   webAdaptiveConsumerPreferences:
     "apps/web/src/app/hooks/useAdaptiveConsumerPreferences.ts",
   webPlaybackRecovery: "apps/web/src/app/lib/playback-recovery.ts",
   webParticipantVideo: "apps/web/src/app/components/ParticipantVideo.tsx",
+  webMobileParticipantVideo:
+    "apps/web/src/app/components/mobile/MobileParticipantVideo.tsx",
   webGridLayout: "apps/web/src/app/components/GridLayout.tsx",
   webPresentationLayout: "apps/web/src/app/components/PresentationLayout.tsx",
   webMobilePresentationLayout:
@@ -21,6 +27,8 @@ const files = {
   webMeetClient: "apps/web/src/app/meets-client.tsx",
   webMeetMedia: "apps/web/src/app/hooks/useMeetMedia.ts",
   webMeetSocket: "apps/web/src/app/hooks/useMeetSocket.ts",
+  webVideoEffects: "apps/web/src/app/hooks/useVideoEffects.ts",
+  meetingParticipantReducer: "packages/meeting-core/src/participant-reducer.ts",
   webJoinScreen: "apps/web/src/app/components/JoinScreen.tsx",
   webMobileJoinScreen: "apps/web/src/app/components/mobile/MobileJoinScreen.tsx",
   webLowBandwidthProbe: "scripts/probe-low-bandwidth-meet.mjs",
@@ -35,7 +43,9 @@ const files = {
   androidReachability:
     "apps/conclave-skip/Sources/Conclave/Skip/NetworkReachabilityMonitor.kt",
   sfuRoom: "packages/sfu/config/classes/Room.ts",
+  sfuClient: "packages/sfu/config/classes/Client.ts",
   sfuConfig: "packages/sfu/config/config.ts",
+  sfuMediaHandlers: "packages/sfu/server/socket/handlers/mediaHandlers.ts",
   sfuDisconnectHandlers:
     "packages/sfu/server/socket/handlers/disconnectHandlers.ts",
 };
@@ -120,6 +130,31 @@ assertNotIncludes(
   "webCodec",
   'PREFERRED_WEBCAM_CODEC_MIME_TYPES = ["video/VP8"]',
   "web must not globally force VP8 webcam codec",
+);
+assertIncludes(
+  "webCodec",
+  "export const shouldUseWebcamSimulcast =",
+  "web webcam simulcast decision is codec/browser-aware",
+);
+assertIncludes(
+  "webCodec",
+  "export const getFallbackWebcamCodec =",
+  "web webcam stalled-sender codec fallback",
+);
+assertRegex(
+  "webCodec",
+  /if \(!preferredCodec \|\| isPreferredVideoCodec\(preferredCodec, "video\/H264"\)\)[\s\S]*return false;/,
+  "web hardware-sensitive H264 webcam publish starts single-layer",
+);
+assertRegex(
+  "webCodec",
+  /forceSingleLayer\?: boolean[\s\S]*if \(!forceSingleLayer && shouldUseWebcamSimulcast\(preferredCodec\)\) \{[\s\S]*buildOptions\(buildWebcamSimulcastEncodings\(quality\)\)[\s\S]*\}[\s\S]*buildOptions\(\[buildWebcamSingleLayerEncoding\(quality\)\]\)/,
+  "web simulcast-friendly webcam publish keeps single-layer fallback",
+);
+assertRegex(
+  "webCodec",
+  /networkProfile !== "good" && hasMultipleSpatialLayers\(producer\)/,
+  "web initial webcam spatial-layer cap only runs on multi-layer producers",
 );
 
 // Webcam publish must keep poor distinct from emergency: poor preserves more
@@ -274,6 +309,7 @@ assertIncludes(
 );
 for (const [key, label] of [
   ["webParticipantVideo", "participant video"],
+  ["webMobileParticipantVideo", "mobile participant video"],
   ["webGridLayout", "grid video"],
   ["webPresentationLayout", "presentation video"],
   ["webMobilePresentationLayout", "mobile presentation video"],
@@ -284,6 +320,26 @@ for (const [key, label] of [
     `web ${label} should not replay on benign suspend events`,
   );
 }
+assertIncludes(
+  "webMobileParticipantVideo",
+  "createPlaybackRecoveryScheduler",
+  "web mobile participant video uses playback recovery scheduler",
+);
+assertIncludes(
+  "webMobileParticipantVideo",
+  "shouldAttemptAnimationFrameReplay",
+  "web mobile participant video retries stalled first-frame playback",
+);
+assertIncludes(
+  "webMobileParticipantVideo",
+  'document.addEventListener("visibilitychange", handleVisibilityChange)',
+  "web mobile participant video retries playback after foregrounding",
+);
+assertRegex(
+  "webMobileParticipantVideo",
+  /<video[\s\S]*autoPlay[\s\S]*muted[\s\S]*playsInline/,
+  "web mobile participant video is muted for autoplay reliability",
+);
 assertRegex(
   "webAdaptiveConsumerPreferences",
   /const effectiveQuality = worstQuality\([\s\S]*options\.quality === "good" \|\| options\.quality === "fair"[\s\S]*\? "unknown"[\s\S]*: getConsumerScoreQualityHint/,
@@ -319,6 +375,26 @@ assertIncludes(
   "const MAX_WEBCAMS_TO_KEEP_FULL_ON_GOOD_LINKS = 4;",
   "web good-link rooms keep small calls at full webcam layers",
 );
+assertIncludes(
+  "webAdaptiveConsumerPreferences",
+  "const fallbackWebcamRanks = new Map<string, number>();",
+  "web missing layout hints use deterministic webcam fallback ranks",
+);
+assertRegex(
+  "webAdaptiveConsumerPreferences",
+  /fallbackWebcamRanks[\s\S]*Array\.from\(refs\.consumersRef\.current\.entries\(\)\)[\s\S]*active: info\.userId === activeSpeakerId[\s\S]*left\.userId\.localeCompare\(right\.userId\)[\s\S]*left\.producerId\.localeCompare\(right\.producerId\)[\s\S]*fallbackWebcamRanks\.set\(candidate\.producerId, index\)/,
+  "web missing layout fallback ranks are stable across clients",
+);
+assertRegex(
+  "webAdaptiveConsumerPreferences",
+  /const fallbackVisible =[\s\S]*options\.fallbackRank !== null[\s\S]*options\.fallbackRank < MAX_WEBCAMS_TO_KEEP_FULL_ON_GOOD_LINKS/,
+  "web missing layout hints do not mark every webcam visible",
+);
+assertIncludes(
+  "webAdaptiveConsumerPreferences",
+  "const isWarm = layout?.warm === true || (!layout && !fallbackVisible);",
+  "web missing layout hints keep non-primary webcams warm instead of full",
+);
 assertRegex(
   "webMeetSocket",
   /const existingWebcamVideoConsumerCount = Array\.from\([\s\S]*producerMapRef\.current\.values\(\)[\s\S]*info\.kind === "video" && info\.type === "webcam"[\s\S]*preferHighWebcamLayer:[\s\S]*joinMode === "webinar_attendee" \|\|[\s\S]*existingWebcamVideoConsumerCount < 4/,
@@ -341,23 +417,143 @@ assertIncludes(
 );
 assertIncludes(
   "webAdaptiveConsumerPreferences",
+  "priority: quality === \"poor\" ? 10 : 25,\n      paused: false,",
+  "web hidden consumers degrade layers instead of pausing",
+);
+assertIncludes(
+  "webAdaptiveConsumerPreferences",
+  "priority: 8,\n        paused: false,",
+  "web emergency receive adaptation keeps extra remote webcams live",
+);
+assertNotIncludes(
+  "webAdaptiveConsumerPreferences",
   "paused: quality === \"poor\"",
-  "web hidden consumers stay warm unless receive quality is poor",
+  "web hidden consumers must not flicker from adaptive pausing",
+);
+assertNotIncludes(
+  "webAdaptiveConsumerPreferences",
+  "priority: 8,\n        paused: true,",
+  "web emergency receive adaptation must not silently pause remote webcams",
+);
+assertNotIncludes(
+  "webParticipantMedia",
+  "participant.isCameraOff || participant.isVideoAdaptivelyPaused",
+  "web adaptive receive state must not hide remote webcam streams",
+);
+assertNotIncludes(
+  "webSmartParticipantOrder",
+  "!participant.isVideoAdaptivelyPaused",
+  "web adaptive receive state must not reshuffle remote webcams as video-off",
+);
+assertIncludes(
+  "webAdaptiveConsumerPreferences",
+  "const CONSUMER_PREFERENCE_ACK_TIMEOUT_MS = 3000;",
+  "web consumer preference updates have ACK timeout",
+);
+assertIncludes(
+  "webAdaptiveConsumerPreferences",
+  'markDeferredForRetry("setConsumerPreferences ack timeout")',
+  "web consumer preference ACK timeout retries stale layer updates",
+);
+assertIncludes(
+  "webAdaptiveConsumerPreferences",
+  'markDeferredForRetry(\n                    "setConsumerPreferences priority-only ack timeout",',
+  "web consumer preference fallback ACK timeout retries stale layer updates",
+);
+assertRegex(
+  "webAdaptiveConsumerPreferences",
+  /scheduledPreferenceTimeoutsRef\.current\.add\(ackTimeoutId\);[\s\S]*scheduledPreferenceTimeoutsRef\.current\.delete\(ackTimeoutId\);[\s\S]*window\.clearTimeout\(ackTimeoutId\);/,
+  "web consumer preference ACK timeout is cleared on response",
 );
 assertIncludes(
   "webConstants",
   "export const BACKGROUND_TRANSPORT_DISCONNECT_GRACE_MS = 18000;",
   "web background transport disconnect grace",
 );
+assertIncludes(
+  "webMeetSocket",
+  "const shouldDeferTransportRecoveryUntilVisible = (): boolean =>",
+  "web hidden-tab transport recovery visibility gate",
+);
+assertRegex(
+  "webMeetSocket",
+  /transport\.connectionState === "disconnected"[\s\S]*shouldDeferTransportRecoveryUntilVisible\(\)[\s\S]*Producer transport recovery deferred until foreground[\s\S]*attemptIceRestart\("producer"\)/,
+  "web hidden producer disconnect does not force background reconnect",
+);
+assertRegex(
+  "webMeetSocket",
+  /transport\.connectionState === "disconnected"[\s\S]*shouldDeferTransportRecoveryUntilVisible\(\)[\s\S]*Consumer transport recovery deferred until foreground[\s\S]*attemptIceRestart\("consumer"\)/,
+  "web hidden consumer disconnect does not force background reconnect",
+);
+assertRegex(
+  "webMeetSocket",
+  /const disconnectedTransportKinds: Array<"producer" \| "consumer"> = \[\];[\s\S]*producerState === "disconnected"[\s\S]*consumerState === "disconnected"[\s\S]*attemptIceRestart\(kind\)[\s\S]*producer sync failed after ICE restart/,
+  "web foreground recovery restarts ICE for disconnected transports",
+);
+assertRegex(
+  "webMeetSocket",
+  /RESTART_ICE_ACK_TIMEOUT_MS[\s\S]*const iceRestartPromiseRef = useRef[\s\S]*Promise<boolean> \| null[\s\S]*const existingRestart = iceRestartPromiseRef\.current\[transportKind\];[\s\S]*if \(existingRestart\) return existingRestart;[\s\S]*window\.setTimeout\([\s\S]*restartIce acknowledgement timeout[\s\S]*socket\.emit\([\s\S]*"restartIce"[\s\S]*window\.clearTimeout\(timeoutId\)[\s\S]*iceRestartPromiseRef\.current\[transportKind\] = restartPromise;[\s\S]*return restartPromise;/,
+  "web ICE restart recovery waits for in-flight restart result",
+);
+assertNotIncludes(
+  "webMeetSocket",
+  "? Promise.resolve(true)\n              : attemptIceRestart(kind)",
+  "web foreground recovery must not treat in-flight ICE restart as success",
+);
 assertRegex(
   "webMeetClient",
-  /const browserPublishRecoveryQuality = selfConnectionStats\.browserNetwork[\s\S]*browserPublishRecoveryQuality === "good"[\s\S]*\? "good"[\s\S]*: selfPublishQuality/,
-  "web cap recovery browser hint only restores good profile",
+  /const hasPoorPublishRecoverySignal =[\s\S]*selfConnectionStats\.publishRttMs[\s\S]*selfConnectionStats\.publishPacketLoss[\s\S]*selfConnectionStats\.publishJitterMs[\s\S]*const browserPublishRecoveryQuality = \([\s\S]*selfConnectionStats\.browserNetwork\.quality === "unknown"[\s\S]*selfConnectionStats\.browserNetwork\.startupQuality[\s\S]*const browserAllowsPublishCapRecovery =[\s\S]*browserPublishRecoveryQuality === "good" \|\|[\s\S]*browserPublishRecoveryQuality === "unknown"[\s\S]*browserAllowsPublishCapRecovery && !hasPoorPublishRecoverySignal[\s\S]*\? "good"[\s\S]*: selfPublishQuality/,
+  "web cap recovery restores good profile when browser hint is good or unknown",
+);
+assertRegex(
+  "webConnectionQuality",
+  /publishRttMs: number \| null;[\s\S]*publishPacketLoss: number \| null;[\s\S]*publishJitterMs: number \| null;[\s\S]*receiveRttMs: number \| null;[\s\S]*receivePacketLoss: number \| null;[\s\S]*receiveJitterMs: number \| null;/,
+  "web connection quality exposes directional transport impairment signals",
+);
+assertNotIncludes(
+  "webMeetClient",
+  "selfConnectionStats.rttMs >= PUBLISH_RECOVERY_RTT_POOR_MS",
+  "web publish cap recovery must not use combined RTT",
+);
+assertNotIncludes(
+  "webMeetClient",
+  "selfConnectionStats.packetLoss >= PUBLISH_RECOVERY_LOSS_POOR",
+  "web publish cap recovery must not use combined packet loss",
+);
+assertNotIncludes(
+  "webMeetClient",
+  "selfConnectionStats.jitterMs >= PUBLISH_RECOVERY_JITTER_POOR_MS",
+  "web publish cap recovery must not use combined jitter",
 );
 assertNotIncludes(
   "webMeetClient",
   "? (selfConnectionStats.browserNetwork.quality as ConnectionQuality)",
   "web raw browser quality must not hold live publish caps down",
+);
+assertRegex(
+  "webMeetClient",
+  /publishEmergencyMode: selfPublishEmergencyMode,[\s\S]*receiveEmergencyMode: selfReceiveEmergencyMode,[\s\S]*useAdaptiveConsumerPreferences\(\{[\s\S]*connectionQuality: selfReceiveQuality,[\s\S]*emergencyMode: selfReceiveEmergencyMode,[\s\S]*useAdaptivePublishQuality\(\{[\s\S]*connectionQuality: selfPublishQuality,[\s\S]*emergencyMode: selfPublishEmergencyMode,/,
+  "web publish and receive adaptation use direction-specific emergency signals",
+);
+assertNotIncludes(
+  "webAdaptivePublishQuality",
+  'if (connectionQuality === "poor") {\n          void applyLiveProducerProfile(emergencyMode ? "emergency" : "poor");\n        }',
+  "web publish caps must wait for poor-link stability window",
+);
+assertRegex(
+  "webAdaptivePublishQuality",
+  /if \(previous\.quality !== connectionQuality\) \{[\s\S]*qualityWindowRef\.current = \{ quality: connectionQuality, since: now \};[\s\S]*writeDebugSnapshot\(now\);[\s\S]*return;/,
+  "web publish quality changes reset stability window before capping",
+);
+assertRegex(
+  "webMeetClient",
+  /suppressedProcessedPublishTrackRef[\s\S]*handlePreferredVideoPublishTrackRejected[\s\S]*suppress_processed_publish_track_after_raw_repair[\s\S]*onPreferredVideoPublishTrackRejected:[\s\S]*handlePreferredVideoPublishTrackRejected[\s\S]*processedTrackSuppressed[\s\S]*skip_processed_track_suppressed_after_raw_repair/,
+  "web processed publish track stays suppressed after raw repair until fresh output",
+);
+assertNotIncludes(
+  "webMeetClient",
+  "const selfEmergencyNetworkMode = selfConnectionStats.emergencyMode;",
+  "web publish/receive adaptation must not share combined emergency mode",
 );
 assertNotIncludes(
   "webMeetMedia",
@@ -371,23 +567,28 @@ assertNotIncludes(
 );
 assertIncludes(
   "webMeetMedia",
-  "Camera constraints update failed; refreshing capture once",
-  "web quality switch refreshes capture when constraints fail",
+  "Camera constraints update failed; keeping current capture",
+  "web quality switch keeps live camera when constraints fail",
 );
-assertIncludes(
+assertNotIncludes(
+  "webMeetMedia",
+  "Camera constraints update failed; refreshing capture once",
+  "web quality switch must not reopen live cameras when constraints fail",
+);
+assertNotIncludes(
   "webMeetMedia",
   "shouldRefreshVideoTrackForQualitySwitch",
-  "web quality switch refreshes capture when constraints undershoot",
+  "web quality switch must not reopen live cameras when settings undershoot",
 );
-assertIncludes(
+assertNotIncludes(
   "webMeetMedia",
   "settings.width <= lowQualityWidth * 1.05",
-  "web standard-quality camera refresh only reopens low-width captures",
+  "web standard-quality camera refresh must not key off low-width captures",
 );
-assertIncludes(
+assertNotIncludes(
   "webMeetMedia",
   "settings.height <= lowQualityHeight * 1.05",
-  "web standard-quality camera refresh only reopens low-height captures",
+  "web standard-quality camera refresh must not key off low-height captures",
 );
 assertIncludes(
   "webMeetMedia",
@@ -419,6 +620,27 @@ assertIncludes(
   "existingTransport.close();",
   "web producer transport recovery closes unusable transports before rebuilding",
 );
+assertIncludes(
+  "webMeetMedia",
+  "const produceCameraTrackWithRawFallback = useCallback(",
+  "web fresh camera producer publish has raw-track fallback helper",
+);
+assertRegex(
+  "webMeetMedia",
+  /produceCameraTrackWithRawFallback[\s\S]*Processed \$\{context\} camera publish failed; retrying raw camera:[\s\S]*track: rawTrack/,
+  "web processed camera publish failures retry raw camera",
+);
+for (const [context, label] of [
+  ["quality-switch", "quality-switch"],
+  ["camera-toggle", "camera-toggle"],
+  ["camera-recovery", "camera-recovery"],
+]) {
+  assertIncludes(
+    "webMeetMedia",
+    `context: "${context}"`,
+    `web ${label} fresh camera produce uses raw fallback`,
+  );
+}
 {
   const text = source.webMeetMedia;
   const start = text.indexOf("const handleLocalTrackEnded = useCallback(");
@@ -476,6 +698,14 @@ assertIncludes(
     if (!section.includes("await ensureProducerTransportRef?.current?.()")) {
       failures.push(
         "web video-quality producer recreation must rebuild failed transports",
+      );
+    }
+    if (
+      !section.includes("shouldUseWebcamSimulcast(preferredWebcamCodec)") ||
+      !section.includes("const needsStandardSimulcastRecreate =")
+    ) {
+      failures.push(
+        "web video-quality producer recreation must skip intentional mobile/H264 single-layer webcam producers",
       );
     }
   }
@@ -659,6 +889,27 @@ assertIncludes(
         "web socket producer transport-close recovery must preserve muted/camera-off intent",
       );
     }
+    const retryIndex = section.indexOf(
+      'publicationWarnings.push("camera publish retry scheduled")',
+    );
+    const failedIndex = section.indexOf(
+      'publicationWarnings.push("camera publish failed")',
+    );
+    if (
+      retryIndex < 0 ||
+      !section.includes("const liveVideoTrack = getFirstLiveTrack(") ||
+      !section.includes("setIsCameraOff(false);") ||
+      !section.includes("requestCameraProducerRecovery();")
+    ) {
+      failures.push(
+        "web initial camera publish failure with live track must preserve camera intent",
+      );
+    }
+    if (failedIndex >= 0 && retryIndex >= 0 && failedIndex < retryIndex) {
+      failures.push(
+        "web initial camera publish failure must retry recovery before marking camera off",
+      );
+    }
   }
 }
 {
@@ -694,6 +945,87 @@ assertIncludes(
 }
 {
   const text = source.webMeetMedia;
+  const start = text.indexOf("const recoverStalledProducer = async");
+  const end = text.indexOf("const pollOutboundProgress = () => {", start);
+  if (start < 0 || end < 0) {
+    failures.push("web camera outbound stall watchdog section missing");
+  } else {
+    const section = text.slice(start, end);
+    if (
+      !section.includes("producer.replaceTrack({ track: rawCameraTrack });") ||
+      !section.includes("closeLocalVideoProducerForReplacement(producer);") ||
+      !section.includes("requestCameraProducerRecovery();") ||
+      !section.includes("cameraRecoveryForceSingleLayerRef.current = true") ||
+      !section.includes("getFallbackWebcamCodec(device, currentCodec)")
+    ) {
+      failures.push(
+        "web stalled camera sender recovery must repair with raw camera and then recreate with single-layer codec fallback",
+      );
+    }
+    const rawRepairIndex = section.indexOf(
+      "producer.replaceTrack({ track: rawCameraTrack });",
+    );
+    const recreateIndex = section.indexOf(
+      "closeLocalVideoProducerForReplacement(producer);",
+    );
+    if (
+      rawRepairIndex >= 0 &&
+      recreateIndex >= 0 &&
+      recreateIndex < rawRepairIndex
+    ) {
+      failures.push(
+        "web stalled camera sender recovery must try raw-track repair before producer recreation",
+      );
+    }
+  }
+  assertIncludes(
+    "webMeetMedia",
+    "CAMERA_OUTBOUND_STALL_SAMPLES_BEFORE_RECOVERY",
+    "web camera outbound stall threshold",
+  );
+  assertRegex(
+    "webMeetMedia",
+    /producer[\s\S]*\.getStats\(\)[\s\S]*readOutboundVideoProgressSample\(report\)[\s\S]*hasOutboundVideoProgress/,
+    "web camera sender watchdog monitors outbound RTP frame progress",
+  );
+  assertRegex(
+    "webMeetMedia",
+    /qualityLimitationReason[\s\S]*isEncoderLimitedOutboundSample[\s\S]*qualityLimitationReason === "bandwidth"[\s\S]*qualityLimitationReason === "cpu"[\s\S]*stalledSamples < CAMERA_OUTBOUND_STALL_SAMPLES_BEFORE_RECOVERY \|\|[\s\S]*isEncoderLimitedOutboundSample\(sample\)/,
+    "web camera sender watchdog must not recreate producers for encoder-limited stalls",
+  );
+  assertRegex(
+    "webMeetMedia",
+    /onPreferredVideoPublishTrackRejected[\s\S]*producer\.replaceTrack\(\{ track: rawCameraTrack \}\);[\s\S]*onPreferredVideoPublishTrackRejected\?\.[\s\S]*camera-outbound-stall-raw-repair/,
+    "web raw camera repair suppresses the rejected processed publish track",
+  );
+  assertRegex(
+    "webMeetMedia",
+    /Processed \$\{context\} camera publish failed; retrying raw camera:[\s\S]*onPreferredVideoPublishTrackRejected\?\.[\s\S]*\`\$\{context\}-raw-produce-fallback\`/,
+    "web raw camera produce fallback suppresses the rejected processed publish track",
+  );
+  assertRegex(
+    "webMeetMedia",
+    /Processed device-switch track failed; retrying raw camera:[\s\S]*onPreferredVideoPublishTrackRejected\?\.[\s\S]*device-switch-raw-replace-fallback/,
+    "web device-switch raw fallback suppresses the rejected processed publish track",
+  );
+  assertRegex(
+    "webMeetMedia",
+    /Processed quality-switch track failed; retrying raw camera:[\s\S]*onPreferredVideoPublishTrackRejected\?\.[\s\S]*quality-switch-raw-replace-fallback/,
+    "web quality-switch raw fallback suppresses the rejected processed publish track",
+  );
+  assertRegex(
+    "webMeetSocket",
+    /onPreferredVideoPublishTrackRejected\?:[\s\S]*Processed camera publish failed; retrying raw camera:[\s\S]*onPreferredVideoPublishTrackRejected\?\.[\s\S]*join-raw-produce-fallback/,
+    "web socket join raw fallback suppresses the rejected processed publish track",
+  );
+  assertRegex(
+    "webMeetClient",
+    /useMeetSocket\(\{[\s\S]*getVideoPublishTrack,[\s\S]*onPreferredVideoPublishTrackRejected:\s*handlePreferredVideoPublishTrackRejected/,
+    "web meet client passes processed-track rejection callback to socket hook",
+  );
+}
+{
+  const text = source.webMeetMedia;
   const start = text.indexOf("const recoverCameraProducer = async () => {");
   const end = text.indexOf("void recoverCameraProducer();", start);
   if (start < 0 || end < 0) {
@@ -705,6 +1037,15 @@ assertIncludes(
     }
     if (!section.includes("await ensureProducerTransportRef?.current?.()")) {
       failures.push("web camera producer recovery must rebuild failed transports");
+    }
+    if (
+      !section.includes("cameraRecoveryCodecOverrideRef.current ??") ||
+      !section.includes("forceSingleLayer,") ||
+      !section.includes("cameraRecoveryForceSingleLayerRef.current = false")
+    ) {
+      failures.push(
+        "web camera producer recovery must consume and clear single-layer codec fallback",
+      );
     }
     const transportSectionEnd = section.indexOf("let videoTrack");
     const transportSection =
@@ -811,7 +1152,7 @@ assertIncludes(
 {
   const text = source.webAdaptivePublishQuality;
   const start = text.indexOf("const applyLiveProducerProfile = useCallback(");
-  const end = text.indexOf("const switchQuality = useCallback(", start);
+  const end = text.indexOf("const restoreStandardCaptureIfNeeded", start);
   if (start < 0 || end < 0) {
     failures.push("web adaptive live-profile section missing");
   } else if (text.slice(start, end).includes("updateVideoQualityRef.current")) {
@@ -820,12 +1161,22 @@ assertIncludes(
     );
   }
 }
+assertRegex(
+  "webAdaptivePublishQuality",
+  /const restoreStandardCaptureIfNeeded = useCallback[\s\S]*videoQualityRef\.current !== "standard"[\s\S]*webcamTrack\?\.readyState !== "live"[\s\S]*await updateVideoQualityRef\.current\("standard", "good"\)[\s\S]*lastStandardCaptureRestoreSignatureRef\.current = signature/,
+  "web adaptive good-link restore refreshes standard capture without reopening camera",
+);
+assertRegex(
+  "webAdaptivePublishQuality",
+  /shouldRestoreStableStandardCapture[\s\S]*capRecoveryQuality === "good"[\s\S]*capRecoveryElapsedMs >= GOOD_LIVE_RESTORE_AFTER_MS[\s\S]*currentPublishQuality === "standard"[\s\S]*void restoreStandardCaptureIfNeeded\(\)\.finally\(\(\) => \{[\s\S]*applyLiveProducerProfile\("good"\)[\s\S]*\} else \{[\s\S]*applyStableLiveProfile\(\);/,
+  "web adaptive good-link capture restore also restores good publish profiles",
+);
 {
   const text = source.webAdaptivePublishQuality;
   const start = text.indexOf(
     "autoDowngradedRef.current ||\n          networkManagedVideoQualityRef?.current === true",
   );
-  const end = text.indexOf("applyStableLiveProfile();", start);
+  const end = text.indexOf("if (shouldRestoreStableStandardCapture)", start);
   if (start < 0 || end < 0) {
     failures.push("web adaptive auto-upgrade section missing");
   } else {
@@ -1048,18 +1399,58 @@ assertIncludes(
 );
 assertRegex(
   "webMeetClient",
-  /const shouldRunVideoEffects =\s*activeVideoEffectsCount > 0 &&\s*isDocumentVisible &&\s*!shouldSuppressVideoEffectsForBandwidth;/,
-  "web meet-shell effects only run when active, visible, and not constrained",
+  /const shouldRunVisualVideoEffects =\s*activeVideoEffectsCount > 0 &&\s*!shouldSuppressVideoEffectsForBandwidth;[\s\S]*const shouldRunVideoEffects = shouldRunVisualVideoEffects;[\s\S]*const shouldPublishProcessedVideo = shouldRunVisualVideoEffects;/,
+  "web meet-shell effects stay active across visibility changes unless constrained",
+);
+assertNotIncludes(
+  "webMeetClient",
+  "activeVideoEffectsCount > 0 &&\n    isDocumentVisible &&\n    !shouldSuppressVideoEffectsForBandwidth",
+  "web hidden tabs must not suspend active video effects",
 );
 assertRegex(
   "webMeetClient",
   /document\.addEventListener\("visibilitychange", syncDocumentVisibility\);[\s\S]*window\.addEventListener\("pageshow", syncDocumentVisibility\);/,
-  "web meet-shell tracks page visibility for processed video publishing",
+  "web meet-shell tracks page visibility for foreground prewarm/debug state",
 );
 assertIncludes(
   "webMeetClient",
-  "const shouldPublishProcessedVideo = shouldRunVideoEffects;",
-  "web hidden tabs publish raw camera while effects pipeline is suspended",
+  "const shouldPublishProcessedVideo = shouldRunVisualVideoEffects;",
+  "web active effects publish processed video regardless of tab visibility",
+);
+assertIncludes(
+  "webVideoEffects",
+  "const PROCESSED_OUTPUT_STALE_RELEASE_MS = 2500;",
+  "web stale processed effects output release threshold",
+);
+assertIncludes(
+  "webVideoEffects",
+  "const PROCESSED_OUTPUT_STALE_CHECK_MS = 1000;",
+  "web stale processed effects output heartbeat interval",
+);
+assertRegex(
+  "webVideoEffects",
+  /const releaseStaleProcessedOutputIfNeeded =[\s\S]*latestOutputFrameAt[\s\S]*PROCESSED_OUTPUT_STALE_RELEASE_MS[\s\S]*releaseOutputTrackToRaw\(reason\);/,
+  "web live-but-stale processed effects output releases to raw publish track",
+);
+assertRegex(
+  "webVideoEffects",
+  /const processedOutputStaleCheckIntervalId = window\.setInterval\(\(\) => \{[\s\S]*releaseStaleProcessedOutputIfNeeded\("processed output stale heartbeat"\);[\s\S]*PROCESSED_OUTPUT_STALE_CHECK_MS[\s\S]*window\.clearInterval\(processedOutputStaleCheckIntervalId\);/,
+  "web stale processed effects output heartbeat survives stalled effects loops",
+);
+assertRegex(
+  "webVideoEffects",
+  /if \(!outputDelivered\) \{[\s\S]*"Effects output writer is unavailable; showing raw camera\."[\s\S]*releaseStaleProcessedOutputIfNeeded\(\s*"effects output writer unavailable",?\s*\);/,
+  "web unavailable effects writer does not leave frozen processed output published",
+);
+assertRegex(
+  "webVideoEffects",
+  /const staleProcessedOutputReleased =[\s\S]*releaseStaleProcessedOutputIfNeeded\("processed output frame stale"\);[\s\S]*!staleProcessedOutputReleased &&[\s\S]*visibleOutputFrameCount >= OUTPUT_READY_FRAMES[\s\S]*publishOutputTrack\(\);/,
+  "web effects output republishes processed video only after fresh frames resume",
+);
+assertRegex(
+  "webMeetClient",
+  /const publishTrackSwitchRef = useRef[\s\S]*sequence: 0,[\s\S]*promise: Promise\.resolve\(\),[\s\S]*const previousSwitch = publishTrackSwitchRef\.current\.promise;[\s\S]*await previousSwitch\.catch\(\(\) => \{\}\);[\s\S]*publishTrackSwitchRef\.current\.sequence !== sequence[\s\S]*const publishStream = refs\.localStreamRef\.current \?\? localStream;[\s\S]*await producer\.replaceTrack\(\{ track: nextTrack \}\);[\s\S]*const rawFallbackTrack = getRawVideoPublishTrack\(publishStream\);[\s\S]*await producer\.replaceTrack\(\{ track: rawFallbackTrack \}\);/,
+  "web processed/raw publish track switches are serialized",
 );
 assertRegex(
   "webMeetClient",
@@ -1151,6 +1542,32 @@ assertRegex(
   /refreshLocalScreenProducerForBandwidthProfile[\s\S]*transport\.produce\([\s\S]*screenShareEncodings\(connectionQuality\)[\s\S]*socket\.closeProducer\(oldProducer\.id\)/,
   "Android screen producer refresh for new bandwidth profile",
 );
+
+assertRegex(
+  "meetingParticipantReducer",
+  /if \(!action\.stream\) \{[\s\S]*currentProducerId[\s\S]*currentProducerId !== action\.producerId[\s\S]*return state;/,
+  "shared participant reducer ignores stale producer close events",
+);
+assertRegex(
+  "webMeetSocket",
+  /announcedRemoteProducersRef[\s\S]*hasReplacementProducer[\s\S]*announcedRemoteProducersRef\.current\.entries\(\)[\s\S]*if \(!hasReplacementProducer\) \{[\s\S]*UPDATE_STREAM[\s\S]*stream: null[\s\S]*if \(info\.kind === "video" && info\.type === "webcam"\) \{[\s\S]*if \(!hasReplacementProducer\)[\s\S]*UPDATE_CAMERA_OFF[\s\S]*announcedRemoteProducersRef\.current\.set\(data\.producerId, data\)/,
+  "web producer replacement announcements suppress transient stream and camera-off clears",
+);
+assertRegex(
+  "sfuClient",
+  /addProducer\(producer: Producer\): Producer \| null[\s\S]*const displacedProducer =[\s\S]*return displacedProducer;/,
+  "SFU client returns displaced producer instead of closing it inline",
+);
+{
+  const text = source.sfuMediaHandlers;
+  const newProducerIndex = text.indexOf('client.socket.emit("newProducer"');
+  const closeIndex = text.indexOf("displacedProducer.close()", newProducerIndex);
+  if (newProducerIndex < 0 || closeIndex < 0 || closeIndex < newProducerIndex) {
+    failures.push(
+      "SFU producer replacement must advertise the new producer before closing the displaced producer",
+    );
+  }
+}
 
 // Native receive adaptation must keep audio crisp, preserve screen shares, and
 // pause extra webcam video only in emergency mode.

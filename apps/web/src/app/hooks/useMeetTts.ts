@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { clampMeetVolume, DEFAULT_MEET_VOLUME } from "../lib/meet-volume";
 
 interface TtsPayload {
   userId: string;
@@ -80,7 +81,13 @@ function pickBestVoice(
   )[0] ?? null;
 }
 
-export function useMeetTts() {
+interface UseMeetTtsOptions {
+  meetVolume?: number;
+}
+
+export function useMeetTts({
+  meetVolume = DEFAULT_MEET_VOLUME,
+}: UseMeetTtsOptions = {}) {
   const [ttsSpeakerId, setTtsSpeakerId] = useState<string | null>(null);
   const activeTokenRef = useRef<number | null>(null);
   const fallbackTimeoutRef = useRef<number | null>(null);
@@ -90,6 +97,7 @@ export function useMeetTts() {
   const isSpeechUnlockedRef = useRef(false);
   const shouldGateSpeechRef = useRef(false);
   const preferredLanguageRef = useRef<string>(getPreferredLanguage());
+  const ttsVolume = clampMeetVolume(meetVolume);
 
   const clearHighlight = useCallback((token: number) => {
     if (activeTokenRef.current !== token) return;
@@ -138,7 +146,7 @@ export function useMeetTts() {
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.rate = TTS_RATE;
       utterance.pitch = TTS_PITCH;
-      utterance.volume = 1;
+      utterance.volume = ttsVolume;
       const selectedVoice = voiceRef.current;
       if (selectedVoice) {
         utterance.voice = selectedVoice;
@@ -156,7 +164,7 @@ export function useMeetTts() {
     } catch (_err) {
       clearHighlight(token);
     }
-  }, [clearHighlight, refreshPreferredVoice]);
+  }, [clearHighlight, refreshPreferredVoice, ttsVolume]);
 
   const flushPendingPayload = useCallback(() => {
     const pendingPayload = pendingPayloadRef.current;

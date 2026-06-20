@@ -6,12 +6,8 @@ import type { Device } from "mediasoup-client";
 import {
   buildCameraVideoConstraints,
   DEFAULT_AUDIO_CONSTRAINTS,
-  EMERGENCY_QUALITY_CONSTRAINTS,
-  LOW_QUALITY_CONSTRAINTS,
   buildMicrophoneOpusCodecOptions,
-  POOR_QUALITY_CONSTRAINTS,
   buildScreenShareAudioOpusCodecOptions,
-  STANDARD_QUALITY_CONSTRAINTS,
 } from "../lib/constants";
 import type {
   MediaState,
@@ -25,6 +21,7 @@ import {
   getBrowserNetworkSnapshot,
   shouldDeferBandwidthHeavyPreload,
 } from "../lib/network-information";
+import { clampMeetVolume, DEFAULT_MEET_VOLUME } from "../lib/meet-volume";
 import { createMeetError } from "../lib/utils";
 import { prewarmVideoEffectsAssetsDeferred } from "../lib/video-effects-lazy";
 import {
@@ -32,9 +29,11 @@ import {
   applyScreenShareTrackNetworkProfile,
   buildScreenShareEncodingForNetworkProfile,
   buildScreenShareVideoConstraintsForNetworkProfile,
+  getFallbackWebcamCodec,
   getPreferredScreenShareCodec,
   getPreferredWebcamCodec,
   produceWebcamTrack,
+  shouldUseWebcamSimulcast,
   type WebcamProducerNetworkProfile,
 } from "../lib/webcam-codec";
 import type { ConnectionQualityStats } from "./useConnectionQuality";
@@ -58,6 +57,7 @@ interface UseMeetMediaOptions {
   setSelectedAudioInputDeviceId: (value: string) => void;
   selectedAudioOutputDeviceId?: string;
   setSelectedAudioOutputDeviceId: (value: string) => void;
+  meetVolume?: number;
   videoQuality: VideoQuality;
   videoQualityRef: React.MutableRefObject<VideoQuality>;
   activeVideoEffectsCount?: number;
@@ -65,6 +65,10 @@ interface UseMeetMediaOptions {
   getVideoPublishTrackRef?: React.MutableRefObject<
     ((stream?: MediaStream | null) => MediaStreamTrack | null) | null
   >;
+  onPreferredVideoPublishTrackRejected?: (
+    track: MediaStreamTrack,
+    reason: string,
+  ) => void;
   socketRef: React.MutableRefObject<Socket | null>;
   deviceRef: React.MutableRefObject<Device | null>;
   producerTransportRef: React.MutableRefObject<Transport | null>;
@@ -103,80 +107,14 @@ const isPublishEmergencyProfile = (
   browserNetwork.emergency ||
   (stats?.publishEmergencyMode === true && stats.publishQuality !== "good");
 
-const getNumericConstraintValue = (
-  value: MediaTrackConstraintSet["width"],
-  key: "ideal" | "max",
-): number | null => {
-  if (typeof value === "number") return value;
-  if (typeof value !== "object" || value === null) return null;
-  const record = value as { ideal?: unknown; max?: unknown };
-  const next = record[key];
-  return typeof next === "number" && Number.isFinite(next) ? next : null;
-};
-
 const getFirstLiveTrack = <T extends MediaStreamTrack>(
   tracks: readonly T[],
 ): T | null => tracks.find((track) => track.readyState === "live") ?? null;
-
-const getQualitySwitchReferenceConstraints = (
-  quality: VideoQuality,
-  profile: WebcamProducerNetworkProfile,
-) => {
-  if (profile === "emergency") return EMERGENCY_QUALITY_CONSTRAINTS;
-  if (profile === "poor") return POOR_QUALITY_CONSTRAINTS;
-  if (quality === "low" || profile === "fair") return LOW_QUALITY_CONSTRAINTS;
-  return STANDARD_QUALITY_CONSTRAINTS;
-};
 
 const shouldUpdateCaptureConstraintsForQualitySwitch = (
   quality: VideoQuality,
   profile: WebcamProducerNetworkProfile,
 ): boolean => quality === "standard" && profile === "good";
-
-const shouldRefreshVideoTrackForQualitySwitch = (
-  track: MediaStreamTrack,
-  quality: VideoQuality,
-  profile: WebcamProducerNetworkProfile,
-): boolean => {
-  let settings: MediaTrackSettings = {};
-  try {
-    settings = track.getSettings();
-  } catch {
-    return false;
-  }
-
-  const constraints = getQualitySwitchReferenceConstraints(quality, profile);
-  const maxWidth = getNumericConstraintValue(constraints.width, "max");
-  const maxHeight = getNumericConstraintValue(constraints.height, "max");
-
-  if (quality === "standard" && profile === "good") {
-    const lowQualityWidth = getNumericConstraintValue(
-      LOW_QUALITY_CONSTRAINTS.width,
-      "ideal",
-    );
-    const lowQualityHeight = getNumericConstraintValue(
-      LOW_QUALITY_CONSTRAINTS.height,
-      "ideal",
-    );
-    return (
-      (typeof settings.width === "number" &&
-        lowQualityWidth !== null &&
-        settings.width <= lowQualityWidth * 1.05) ||
-      (typeof settings.height === "number" &&
-        lowQualityHeight !== null &&
-        settings.height <= lowQualityHeight * 1.05)
-    );
-  }
-
-  return (
-    (typeof settings.width === "number" &&
-      maxWidth !== null &&
-      settings.width > maxWidth * 1.25) ||
-    (typeof settings.height === "number" &&
-      maxHeight !== null &&
-      settings.height > maxHeight * 1.25)
-  );
-};
 
 const getUsableProducerTransport = (
   transport: Transport | null | undefined,
@@ -189,6 +127,123 @@ const getUsableProducerTransport = (
     return null;
   }
   return transport;
+};
+
+type OutboundVideoProgressSample = {
+  frames: number | null;
+  bytes: number | null;
+  qualityLimitationReason: string | null;
+};
+
+type CameraOutboundStallState = {
+  producerId: string | null;
+  trackId: string | null;
+  frames: number | null;
+  bytes: number | null;
+  stalledSamples: number;
+  rawRepairAttempted: boolean;
+  lastRecoveryAtMs: number;
+};
+
+const CAMERA_OUTBOUND_STALL_CHECK_MS = 2000;
+const CAMERA_OUTBOUND_STALL_SAMPLES_BEFORE_RECOVERY = 3;
+const CAMERA_OUTBOUND_STALL_RECOVERY_COOLDOWN_MS = 10000;
+const MIN_OUTBOUND_VIDEO_BYTE_DELTA_FOR_PROGRESS = 1200;
+
+const createCameraOutboundStallState = (
+  producerId: string | null = null,
+  trackId: string | null = null,
+): CameraOutboundStallState => ({
+  producerId,
+  trackId,
+  frames: null,
+  bytes: null,
+  stalledSamples: 0,
+  rawRepairAttempted: false,
+  lastRecoveryAtMs: 0,
+});
+
+const getRtcStatsNumber = (
+  stat: Record<string, unknown>,
+  key: string,
+): number | null => {
+  const value = stat[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+};
+
+const readOutboundVideoProgressSample = (
+  report: RTCStatsReport,
+): OutboundVideoProgressSample => {
+  let frames = 0;
+  let hasFrames = false;
+  let bytes = 0;
+  let hasBytes = false;
+  let qualityLimitationReason: string | null = null;
+
+  report.forEach((entry) => {
+    const stat = entry as unknown as Record<string, unknown>;
+    if (stat.type !== "outbound-rtp") return;
+    const kind = stat.kind ?? stat.mediaType;
+    if (kind !== "video") return;
+    if (stat.isRemote === true) return;
+
+    const frameCount =
+      getRtcStatsNumber(stat, "framesEncoded") ??
+      getRtcStatsNumber(stat, "framesSent");
+    if (frameCount !== null) {
+      frames += Math.max(0, frameCount);
+      hasFrames = true;
+    }
+
+    const byteCount = getRtcStatsNumber(stat, "bytesSent");
+    if (byteCount !== null) {
+      bytes += Math.max(0, byteCount);
+      hasBytes = true;
+    }
+
+    if (
+      typeof stat.qualityLimitationReason === "string" &&
+      stat.qualityLimitationReason &&
+      stat.qualityLimitationReason !== "none"
+    ) {
+      qualityLimitationReason = stat.qualityLimitationReason;
+    }
+  });
+
+  return {
+    frames: hasFrames ? frames : null,
+    bytes: hasBytes ? bytes : null,
+    qualityLimitationReason,
+  };
+};
+
+const isEncoderLimitedOutboundSample = (
+  sample: OutboundVideoProgressSample,
+): boolean =>
+  sample.qualityLimitationReason === "bandwidth" ||
+  sample.qualityLimitationReason === "cpu";
+
+const hasOutboundVideoProgress = (
+  previous: CameraOutboundStallState,
+  sample: OutboundVideoProgressSample,
+): boolean => {
+  if (
+    previous.frames !== null &&
+    sample.frames !== null &&
+    sample.frames > previous.frames
+  ) {
+    return true;
+  }
+
+  if (
+    previous.bytes !== null &&
+    sample.bytes !== null &&
+    sample.bytes - previous.bytes >= MIN_OUTBOUND_VIDEO_BYTE_DELTA_FOR_PROGRESS
+  ) {
+    return true;
+  }
+
+  return false;
 };
 
 export function useMeetMedia({
@@ -210,11 +265,13 @@ export function useMeetMedia({
   setSelectedAudioInputDeviceId,
   selectedAudioOutputDeviceId,
   setSelectedAudioOutputDeviceId,
+  meetVolume = DEFAULT_MEET_VOLUME,
   videoQuality,
   videoQualityRef,
   activeVideoEffectsCount = 0,
   shouldUsePreferredVideoPublishTrack = activeVideoEffectsCount > 0,
   getVideoPublishTrackRef,
+  onPreferredVideoPublishTrackRejected,
   socketRef,
   deviceRef,
   producerTransportRef,
@@ -245,6 +302,7 @@ export function useMeetMedia({
   const audioRecoveryInFlightRef = useRef(false);
   const [audioProducerRecoveryPulse, setAudioProducerRecoveryPulse] =
     useState(0);
+  const notificationVolume = clampMeetVolume(meetVolume);
   const requestAudioProducerRecovery = useCallback(() => {
     setAudioProducerRecoveryPulse((value) => value + 1);
   }, []);
@@ -255,6 +313,13 @@ export function useMeetMedia({
     setCameraProducerRecoveryPulse((value) => value + 1);
   }, []);
   const cameraProducerTrackRepairInFlightRef = useRef(false);
+  const cameraRecoveryCodecOverrideRef = useRef<ReturnType<
+    typeof getPreferredWebcamCodec
+  > | null>(null);
+  const cameraRecoveryForceSingleLayerRef = useRef(false);
+  const cameraOutboundStallStateRef = useRef<CameraOutboundStallState>(
+    createCameraOutboundStallState(),
+  );
   const connectionStateRef = useRef(connectionState);
   if (connectionStateRef.current !== connectionState) {
     connectionStateRef.current = connectionState;
@@ -320,6 +385,7 @@ export function useMeetMedia({
 
   const playNotificationSound = useCallback(
     (type: "join" | "leave" | "waiting" | "handRaise") => {
+      if (notificationVolume <= 0) return;
       const audioContext = getAudioContext();
       if (!audioContext) return;
 
@@ -336,7 +402,8 @@ export function useMeetMedia({
         const duration =
           type === "waiting" ? 0.1 : type === "handRaise" ? 0.12 : 0.12;
         const gap = 0.03;
-        const peakGain = type === "handRaise" ? 0.13 : 0.16;
+        const basePeakGain = type === "handRaise" ? 0.13 : 0.16;
+        const peakGain = basePeakGain * notificationVolume;
 
         frequencies.forEach((frequency, index) => {
           const start = now + index * (duration + gap);
@@ -368,7 +435,7 @@ export function useMeetMedia({
 
       playPattern();
     },
-    [getAudioContext]
+    [getAudioContext, notificationVolume]
   );
 
   const primeAudioOutput = useCallback(() => {
@@ -471,6 +538,68 @@ export function useMeetMedia({
       return rawTrack;
     },
     [getVideoPublishTrackRef, shouldUsePreferredVideoPublishTrack]
+  );
+
+  const produceCameraTrackWithRawFallback = useCallback(
+    async ({
+      transport,
+      publishTrack,
+      rawTrack,
+      quality,
+      networkProfile,
+      paused,
+      preferredCodec,
+      forceSingleLayer = false,
+      context,
+    }: {
+      transport: Transport;
+      publishTrack: MediaStreamTrack;
+      rawTrack: MediaStreamTrack;
+      quality: VideoQuality;
+      networkProfile: WebcamProducerNetworkProfile;
+      paused: boolean;
+      preferredCodec: ReturnType<typeof getPreferredWebcamCodec>;
+      forceSingleLayer?: boolean;
+      context: string;
+    }) => {
+      try {
+        return await produceWebcamTrack({
+          transport,
+          track: publishTrack,
+          quality,
+          networkProfile,
+          paused,
+          preferredCodec,
+          forceSingleLayer,
+        });
+      } catch (err) {
+        if (
+          publishTrack.id === rawTrack.id ||
+          rawTrack.readyState !== "live"
+        ) {
+          throw err;
+        }
+
+        console.warn(
+          `[Meets] Processed ${context} camera publish failed; retrying raw camera:`,
+          err,
+        );
+        onPreferredVideoPublishTrackRejected?.(
+          publishTrack,
+          `${context}-raw-produce-fallback`,
+        );
+        return produceWebcamTrack({
+          transport,
+          track: rawTrack,
+          quality,
+          networkProfile,
+          paused,
+          preferredCodec,
+          forceSingleLayer,
+        });
+      }
+    },
+    [onPreferredVideoPublishTrackRejected],
   );
 
   const stopLocalTrack = useCallback(
@@ -791,6 +920,10 @@ export function useMeetMedia({
                 "[Meets] Processed device-switch track failed; retrying raw camera:",
                 err,
               );
+              onPreferredVideoPublishTrackRejected?.(
+                publishTrack,
+                "device-switch-raw-replace-fallback",
+              );
               await videoProducerRef.current.replaceTrack({
                 track: newVideoTrack,
               });
@@ -816,6 +949,7 @@ export function useMeetMedia({
       buildVideoConstraints,
       localStreamRef,
       waitForPreferredVideoPublishTrack,
+      onPreferredVideoPublishTrackRejected,
     ]
   );
 
@@ -884,7 +1018,6 @@ export function useMeetMedia({
             quality,
             publishNetworkProfile,
           );
-        let shouldRefreshVideoTrack = false;
         if (
           currentTrack &&
           currentTrack.readyState === "live" &&
@@ -896,28 +1029,9 @@ export function useMeetMedia({
           try {
             await currentTrack.applyConstraints(constraints);
           } catch (err) {
-            shouldRefreshVideoTrack = true;
             console.warn(
-              "[Meets] Camera constraints update failed; refreshing capture once:",
+              "[Meets] Camera constraints update failed; keeping current capture:",
               err
-            );
-          }
-          if (
-            !shouldRefreshVideoTrack &&
-            shouldRefreshVideoTrackForQualitySwitch(
-              currentTrack,
-              quality,
-              publishNetworkProfile,
-            )
-          ) {
-            shouldRefreshVideoTrack = true;
-            console.info(
-              "[Meets] Camera track did not reach requested quality; refreshing capture once:",
-              {
-                quality,
-                profile: publishNetworkProfile,
-                settings: currentTrack.getSettings(),
-              },
             );
           }
         }
@@ -928,8 +1042,7 @@ export function useMeetMedia({
 
         if (
           !nextVideoTrack ||
-          nextVideoTrack.readyState !== "live" ||
-          shouldRefreshVideoTrack
+          nextVideoTrack.readyState !== "live"
         ) {
           const currentDeviceId =
             currentTrack?.readyState === "live"
@@ -990,11 +1103,13 @@ export function useMeetMedia({
           publishStream,
           nextVideoTrack,
         );
+        const preferredWebcamCodec = getPreferredWebcamCodec(deviceRef.current);
         const previousEncodingCount =
           previousProducer?.rtpSender?.getParameters().encodings?.length ??
           previousProducer?.rtpParameters.encodings?.length ??
           0;
         const needsStandardSimulcastRecreate =
+          shouldUseWebcamSimulcast(preferredWebcamCodec) &&
           quality === "standard" &&
           Boolean(previousProducer && !previousProducer.closed) &&
           previousEncodingCount > 0 &&
@@ -1013,6 +1128,10 @@ export function useMeetMedia({
               console.warn(
                 "[Meets] Processed quality-switch track failed; retrying raw camera:",
                 err,
+              );
+              onPreferredVideoPublishTrackRejected?.(
+                publishTrack,
+                "quality-switch-raw-replace-fallback",
               );
               await previousProducer.replaceTrack({ track: nextVideoTrack });
             }
@@ -1042,14 +1161,15 @@ export function useMeetMedia({
           }
         }
 
-        const preferredWebcamCodec = getPreferredWebcamCodec(deviceRef.current);
-        const nextProducer = await produceWebcamTrack({
+        const nextProducer = await produceCameraTrackWithRawFallback({
           transport,
-          track: publishTrack,
+          publishTrack,
+          rawTrack: nextVideoTrack,
           quality,
           networkProfile: publishNetworkProfile,
           paused: false,
           preferredCodec: preferredWebcamCodec,
+          context: "quality-switch",
         });
 
         videoProducerRef.current = nextProducer;
@@ -1102,7 +1222,9 @@ export function useMeetMedia({
       intentionalLocalProducerCloseIdsRef,
       localStreamRef,
       waitForPreferredVideoPublishTrack,
+      onPreferredVideoPublishTrackRejected,
       getPublishNetworkProfile,
+      produceCameraTrackWithRawFallback,
       requestCameraProducerRecovery,
     ]
   );
@@ -1658,14 +1780,17 @@ export function useMeetMedia({
           );
 
           const quality = videoQualityRef.current;
+          const networkProfile = getPublishNetworkProfile();
           const preferredWebcamCodec = getPreferredWebcamCodec(deviceRef.current);
-          const videoProducer = await produceWebcamTrack({
+          const videoProducer = await produceCameraTrackWithRawFallback({
             transport,
-            track: publishTrack,
+            publishTrack,
+            rawTrack: videoTrack,
             quality,
-            networkProfile: getPublishNetworkProfile(),
+            networkProfile,
             paused: false,
             preferredCodec: preferredWebcamCodec,
+            context: "camera-toggle",
           });
 
           videoProducerRef.current = videoProducer;
@@ -1717,6 +1842,7 @@ export function useMeetMedia({
     waitForPreferredVideoPublishTrack,
     buildVideoConstraints,
     getPublishNetworkProfile,
+    produceCameraTrackWithRawFallback,
     requestCameraProducerRecovery,
   ]);
 
@@ -1758,6 +1884,12 @@ export function useMeetMedia({
               handleLocalTrackEnded("video", rawCameraTrack);
             };
             await producer.replaceTrack({ track: rawCameraTrack });
+            if (producerTrack && producerTrack.id !== rawCameraTrack.id) {
+              onPreferredVideoPublishTrackRejected?.(
+                producerTrack,
+                "camera-producer-raw-repair",
+              );
+            }
             await applyWebcamProducerNetworkProfile(
               producer,
               videoQualityRef.current,
@@ -1824,6 +1956,281 @@ export function useMeetMedia({
     videoQualityRef,
     handleLocalTrackEnded,
     getPublishNetworkProfile,
+    onPreferredVideoPublishTrackRejected,
+    closeLocalVideoProducerForReplacement,
+    requestCameraProducerRecovery,
+  ]);
+
+  useEffect(() => {
+    if (ghostEnabled || isObserverMode) {
+      cameraOutboundStallStateRef.current = createCameraOutboundStallState();
+      return;
+    }
+    if (connectionState !== "joined" || isCameraOff) {
+      cameraOutboundStallStateRef.current = createCameraOutboundStallState();
+      return;
+    }
+
+    let disposed = false;
+
+    const resetStallState = (
+      producerId: string | null = null,
+      trackId: string | null = null,
+    ) => {
+      cameraOutboundStallStateRef.current =
+        createCameraOutboundStallState(producerId, trackId);
+    };
+
+    const recoverStalledProducer = async ({
+      producer,
+      producerTrack,
+      sample,
+      state,
+    }: {
+      producer: Producer;
+      producerTrack: MediaStreamTrack;
+      sample: OutboundVideoProgressSample;
+      state: CameraOutboundStallState;
+    }) => {
+      if (disposed) return;
+      if (cameraProducerTrackRepairInFlightRef.current) return;
+      if (cameraRecoveryInFlightRef.current) return;
+
+      const now = performance.now();
+      if (
+        state.lastRecoveryAtMs > 0 &&
+        now - state.lastRecoveryAtMs <
+          CAMERA_OUTBOUND_STALL_RECOVERY_COOLDOWN_MS
+      ) {
+        return;
+      }
+
+      const rawCameraTrack = getFirstLiveTrack(
+        localStreamRef.current?.getVideoTracks() ?? [],
+      );
+      if (
+        !rawCameraTrack ||
+        rawCameraTrack.readyState !== "live" ||
+        rawCameraTrack.muted
+      ) {
+        return;
+      }
+
+      cameraProducerTrackRepairInFlightRef.current = true;
+      try {
+        if (
+          disposed ||
+          videoProducerRef.current?.id !== producer.id ||
+          producer.closed
+        ) {
+          return;
+        }
+
+        const shouldTryRawRepair =
+          !state.rawRepairAttempted && producerTrack.id !== rawCameraTrack.id;
+        if (shouldTryRawRepair) {
+          if ("contentHint" in rawCameraTrack) {
+            rawCameraTrack.contentHint = "motion";
+          }
+          rawCameraTrack.onended = () => {
+            handleLocalTrackEnded("video", rawCameraTrack);
+          };
+          await producer.replaceTrack({ track: rawCameraTrack });
+          onPreferredVideoPublishTrackRejected?.(
+            producerTrack,
+            "camera-outbound-stall-raw-repair",
+          );
+          await applyWebcamProducerNetworkProfile(
+            producer,
+            videoQualityRef.current,
+            getPublishNetworkProfile(),
+          );
+          cameraOutboundStallStateRef.current = {
+            ...createCameraOutboundStallState(producer.id, rawCameraTrack.id),
+            frames: sample.frames,
+            bytes: sample.bytes,
+            rawRepairAttempted: true,
+            lastRecoveryAtMs: now,
+          };
+          console.warn(
+            "[Meets] Repaired stalled camera sender with raw camera track:",
+            {
+              producerId: producer.id,
+              previousTrackId: producerTrack.id,
+              rawTrackId: rawCameraTrack.id,
+              stalledSamples: state.stalledSamples,
+              frames: sample.frames,
+              bytes: sample.bytes,
+            },
+          );
+          return;
+        }
+
+        console.warn("[Meets] Recreating stalled camera sender:", {
+          producerId: producer.id,
+          trackId: producerTrack.id,
+          rawTrackId: rawCameraTrack.id,
+          stalledSamples: state.stalledSamples,
+          frames: sample.frames,
+          bytes: sample.bytes,
+        });
+        const currentCodecMimeType =
+          producer.rtpParameters.codecs
+            .find((codec) => codec.mimeType.toLowerCase().startsWith("video/"))
+            ?.mimeType.toLowerCase() ?? null;
+        const device = deviceRef.current;
+        const currentCodec =
+          device?.rtpCapabilities.codecs?.find(
+            (codec) =>
+              currentCodecMimeType !== null &&
+              codec.mimeType.toLowerCase() === currentCodecMimeType,
+          ) ?? getPreferredWebcamCodec(device);
+        const fallbackCodec = getFallbackWebcamCodec(device, currentCodec);
+        cameraRecoveryCodecOverrideRef.current = fallbackCodec ?? currentCodec ?? null;
+        cameraRecoveryForceSingleLayerRef.current = true;
+        console.warn("[Meets] Next camera recovery will use single-layer codec:", {
+          currentCodec: currentCodec?.mimeType ?? currentCodecMimeType,
+          fallbackCodec: fallbackCodec?.mimeType ?? null,
+        });
+        closeLocalVideoProducerForReplacement(producer);
+        resetStallState();
+        requestCameraProducerRecovery();
+      } catch (err) {
+        console.warn(
+          "[Meets] Stalled camera sender recovery failed; recreating producer:",
+          err,
+        );
+        if (videoProducerRef.current?.id === producer.id) {
+          closeLocalVideoProducerForReplacement(producer);
+          resetStallState();
+          requestCameraProducerRecovery();
+        }
+      } finally {
+        cameraProducerTrackRepairInFlightRef.current = false;
+      }
+    };
+
+    const pollOutboundProgress = () => {
+      if (disposed) return;
+      if (
+        typeof document !== "undefined" &&
+        document.visibilityState !== "visible"
+      ) {
+        resetStallState(
+          videoProducerRef.current?.id ?? null,
+          videoProducerRef.current?.track?.id ?? null,
+        );
+        return;
+      }
+      if (
+        cameraProducerTrackRepairInFlightRef.current ||
+        cameraRecoveryInFlightRef.current
+      ) {
+        return;
+      }
+
+      const producer = videoProducerRef.current;
+      const producerTrack = producer?.track ?? null;
+      if (!producer || producer.closed || producer.paused || !producerTrack) {
+        resetStallState();
+        return;
+      }
+      if (
+        producerTrack.readyState !== "live" ||
+        !producerTrack.enabled ||
+        producerTrack.muted
+      ) {
+        resetStallState(producer.id, producerTrack.id);
+        return;
+      }
+
+      void producer
+        .getStats()
+        .then((report) => {
+          if (disposed) return;
+          if (
+            videoProducerRef.current?.id !== producer.id ||
+            producer.closed ||
+            producer.paused ||
+            producer.track?.id !== producerTrack.id ||
+            producerTrack.readyState !== "live" ||
+            !producerTrack.enabled ||
+            producerTrack.muted
+          ) {
+            resetStallState(
+              videoProducerRef.current?.id ?? null,
+              videoProducerRef.current?.track?.id ?? null,
+            );
+            return;
+          }
+
+          const sample = readOutboundVideoProgressSample(report);
+          const currentState = cameraOutboundStallStateRef.current;
+          const previous =
+            currentState.producerId === producer.id &&
+            currentState.trackId === producerTrack.id
+              ? currentState
+              : createCameraOutboundStallState(producer.id, producerTrack.id);
+          const hasBaseline =
+            previous.frames !== null || previous.bytes !== null;
+          const stalledSamples =
+            hasBaseline && !hasOutboundVideoProgress(previous, sample)
+              ? previous.stalledSamples + 1
+              : 0;
+          const nextState: CameraOutboundStallState = {
+            ...previous,
+            producerId: producer.id,
+            trackId: producerTrack.id,
+            frames: sample.frames,
+            bytes: sample.bytes,
+            stalledSamples,
+          };
+          cameraOutboundStallStateRef.current = nextState;
+
+          if (
+            stalledSamples < CAMERA_OUTBOUND_STALL_SAMPLES_BEFORE_RECOVERY ||
+            isEncoderLimitedOutboundSample(sample)
+          ) {
+            return;
+          }
+
+          void recoverStalledProducer({
+            producer,
+            producerTrack,
+            sample,
+            state: nextState,
+          });
+        })
+        .catch(() => {
+          resetStallState(
+            videoProducerRef.current?.id ?? null,
+            videoProducerRef.current?.track?.id ?? null,
+          );
+        });
+    };
+
+    pollOutboundProgress();
+    const interval = window.setInterval(
+      pollOutboundProgress,
+      CAMERA_OUTBOUND_STALL_CHECK_MS,
+    );
+
+    return () => {
+      disposed = true;
+      window.clearInterval(interval);
+    };
+  }, [
+    connectionState,
+    ghostEnabled,
+    isCameraOff,
+    isObserverMode,
+    videoProducerRef,
+    deviceRef,
+    localStreamRef,
+    videoQualityRef,
+    handleLocalTrackEnded,
+    getPublishNetworkProfile,
+    onPreferredVideoPublishTrackRejected,
     closeLocalVideoProducerForReplacement,
     requestCameraProducerRecovery,
   ]);
@@ -1911,14 +2318,21 @@ export function useMeetMedia({
           videoTrack,
         );
         const quality = videoQualityRef.current;
-        const preferredWebcamCodec = getPreferredWebcamCodec(deviceRef.current);
-        const recoveredProducer = await produceWebcamTrack({
+        const networkProfile = getPublishNetworkProfile();
+        const forceSingleLayer = cameraRecoveryForceSingleLayerRef.current;
+        const preferredWebcamCodec =
+          cameraRecoveryCodecOverrideRef.current ??
+          getPreferredWebcamCodec(deviceRef.current);
+        const recoveredProducer = await produceCameraTrackWithRawFallback({
           transport,
-          track: publishTrack,
+          publishTrack,
+          rawTrack: videoTrack,
           quality,
-          networkProfile: getPublishNetworkProfile(),
+          networkProfile,
           paused: false,
           preferredCodec: preferredWebcamCodec,
+          forceSingleLayer,
+          context: "camera-recovery",
         });
 
         if (cancelled) {
@@ -1935,6 +2349,8 @@ export function useMeetMedia({
             requestCameraProducerRecovery();
           }
         });
+        cameraRecoveryCodecOverrideRef.current = null;
+        cameraRecoveryForceSingleLayerRef.current = false;
         setIsCameraOff(false);
       } catch (err) {
         console.error("[Meets] Camera producer recovery failed:", err);
@@ -1986,6 +2402,7 @@ export function useMeetMedia({
     waitForPreferredVideoPublishTrack,
     buildVideoConstraints,
     getPublishNetworkProfile,
+    produceCameraTrackWithRawFallback,
     closeLocalVideoProducerForReplacement,
     requestCameraProducerRecovery,
   ]);

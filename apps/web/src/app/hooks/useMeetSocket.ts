@@ -83,6 +83,7 @@ const DEFAULT_SERVER_RESTART_NOTICE =
 const ADMIN_NOTICE_DURATION_MS = 60000;
 const VIDEO_STALL_KEYFRAME_REQUEST_DELAY_MS = 2500;
 const STALE_CONSUMER_RECOVERY_DELAY_MS = 9000;
+const RESTART_ICE_ACK_TIMEOUT_MS = 5000;
 const PARTICIPANT_RECONNECTING_STATUS_FALLBACK_MS = 30000;
 const PARTICIPANT_RECONNECTING_STATUS_BUFFER_MS = 5000;
 const PARTICIPANT_RECONNECTED_STATUS_MS = 4500;
@@ -105,6 +106,9 @@ const getTransportDisconnectGraceMs = (): number => {
   }
   return TRANSPORT_DISCONNECT_GRACE_MS;
 };
+
+const shouldDeferTransportRecoveryUntilVisible = (): boolean =>
+  typeof document !== "undefined" && document.visibilityState !== "visible";
 
 type InitialConsumerPreferences = {
   preferredLayers?: {
@@ -421,6 +425,10 @@ interface UseMeetSocketOptions {
   localStream: MediaStream | null;
   setLocalStream: React.Dispatch<React.SetStateAction<MediaStream | null>>;
   getVideoPublishTrack?: (stream?: MediaStream | null) => MediaStreamTrack | null;
+  onPreferredVideoPublishTrackRejected?: (
+    track: MediaStreamTrack,
+    reason: string,
+  ) => void;
   dispatchParticipants: (action: ParticipantAction) => void;
   setDisplayNames: React.Dispatch<React.SetStateAction<Map<string, string>>>;
   setPendingUsers: React.Dispatch<React.SetStateAction<Map<string, string>>>;
@@ -510,6 +518,7 @@ export function useMeetSocket({
   localStream,
   setLocalStream,
   getVideoPublishTrack,
+  onPreferredVideoPublishTrackRejected,
   dispatchParticipants,
   setDisplayNames,
   setPendingUsers,
@@ -584,6 +593,9 @@ export function useMeetSocket({
     Map<string, { frames: number; bytes: number; stalls: number }>
   >(new Map());
   const consumerRecoveryInFlightRef = useRef<Set<string>>(new Set());
+  const announcedRemoteProducersRef = useRef<Map<string, ProducerInfo>>(
+    new Map(),
+  );
   const pendingScreenProducerCloseIdsRef = useRef<Set<string>>(new Set());
   const consumeProducerRef = useRef<
     (producerInfo: ProducerInfo) => Promise<void>
@@ -594,6 +606,12 @@ export function useMeetSocket({
   const producerTransportCreatePromiseRef = useRef<Promise<boolean> | null>(
     null,
   );
+  const iceRestartPromiseRef = useRef<
+    Record<"producer" | "consumer", Promise<boolean> | null>
+  >({
+    producer: null,
+    consumer: null,
+  });
 
   const {
     socketRef,
@@ -911,6 +929,7 @@ export function useMeetSocket({
       producerPausedStateRef.current.clear();
       videoFreezeStatsRef.current.clear();
       consumerRecoveryInFlightRef.current.clear();
+      announcedRemoteProducersRef.current.clear();
       consumerTelemetryRef.current.clear();
       producerMapRef.current.clear();
       pendingProducersRef.current.clear();
@@ -1439,35 +1458,62 @@ export function useMeetSocket({
 
       const info = producerMapRef.current.get(producerId);
       if (info) {
-        dispatchParticipants({
-          type: "UPDATE_STREAM",
-          userId: info.userId,
-          kind: info.kind,
-          streamType: info.type,
-          stream: null,
-          producerId: producerId,
-        });
+        const hasReplacementProducer =
+          Array.from(producerMapRef.current.entries()).some(
+            ([otherProducerId, otherInfo]) =>
+              otherProducerId !== producerId &&
+              otherInfo.userId === info.userId &&
+              otherInfo.kind === info.kind &&
+              otherInfo.type === info.type,
+          ) ||
+          Array.from(announcedRemoteProducersRef.current.entries()).some(
+            ([otherProducerId, otherInfo]) =>
+              otherProducerId !== producerId &&
+              otherInfo.producerUserId === info.userId &&
+              otherInfo.kind === info.kind &&
+              otherInfo.type === info.type,
+          );
 
-        if (info.kind === "video" && info.type === "webcam") {
+        if (!hasReplacementProducer) {
           dispatchParticipants({
-            type: "UPDATE_CAMERA_OFF",
+            type: "UPDATE_STREAM",
             userId: info.userId,
-            cameraOff: true,
-          });
-        } else if (info.kind === "audio" && info.type === "webcam") {
-          dispatchParticipants({
-            type: "UPDATE_MUTED",
-            userId: info.userId,
-            muted: true,
+            kind: info.kind,
+            streamType: info.type,
+            stream: null,
+            producerId: producerId,
           });
         }
 
-        if (info.type === "screen" && info.kind === "video") {
+        if (info.kind === "video" && info.type === "webcam") {
+          if (!hasReplacementProducer) {
+            dispatchParticipants({
+              type: "UPDATE_CAMERA_OFF",
+              userId: info.userId,
+              cameraOff: true,
+            });
+          }
+        } else if (info.kind === "audio" && info.type === "webcam") {
+          if (!hasReplacementProducer) {
+            dispatchParticipants({
+              type: "UPDATE_MUTED",
+              userId: info.userId,
+              muted: true,
+            });
+          }
+        }
+
+        if (
+          info.type === "screen" &&
+          info.kind === "video" &&
+          !hasReplacementProducer
+        ) {
           setActiveScreenShareId(null);
         }
 
         producerMapRef.current.delete(producerId);
       }
+      announcedRemoteProducersRef.current.delete(producerId);
     },
     [
       consumersRef,
@@ -1482,6 +1528,7 @@ export function useMeetSocket({
       producerPausedStateRef,
       consumerRecoveryInFlightRef,
       producerMapRef,
+      announcedRemoteProducersRef,
       setActiveScreenShareId,
     ],
   );
@@ -1519,6 +1566,9 @@ export function useMeetSocket({
 
   const attemptIceRestart = useCallback(
     async (transportKind: "producer" | "consumer"): Promise<boolean> => {
+      const existingRestart = iceRestartPromiseRef.current[transportKind];
+      if (existingRestart) return existingRestart;
+
       const socket = socketRef.current;
       if (!socket || !socket.connected) return false;
 
@@ -1533,37 +1583,53 @@ export function useMeetSocket({
       if (inFlight[transportKind]) return false;
       inFlight[transportKind] = true;
 
-      try {
-        const response = await new Promise<RestartIceResponse>(
-          (resolve, reject) => {
-            socket.emit(
-              "restartIce",
-              { transport: transportKind, transportId: transport.id },
-              (res: RestartIceResponse | { error: string }) => {
-                if ("error" in res) {
-                  reject(new Error(res.error));
-                } else {
-                  resolve(res);
-                }
-              },
-            );
-          },
-        );
+      let restartPromise: Promise<boolean>;
+      restartPromise = (async () => {
+        try {
+          const response = await new Promise<RestartIceResponse>(
+            (resolve, reject) => {
+              let settled = false;
+              const timeoutId = window.setTimeout(() => {
+                if (settled) return;
+                settled = true;
+                reject(new Error("restartIce acknowledgement timeout"));
+              }, RESTART_ICE_ACK_TIMEOUT_MS);
+              socket.emit(
+                "restartIce",
+                { transport: transportKind, transportId: transport.id },
+                (res: RestartIceResponse | { error: string }) => {
+                  if (settled) return;
+                  settled = true;
+                  window.clearTimeout(timeoutId);
+                  if ("error" in res) {
+                    reject(new Error(res.error));
+                  } else {
+                    resolve(res);
+                  }
+                },
+              );
+            },
+          );
 
-        await transport.restartIce({ iceParameters: response.iceParameters });
-        console.log(
-          `[Meets] ${transportKind} transport ICE restart succeeded.`,
-        );
-        return true;
-      } catch (err) {
-        console.error(
-          `[Meets] ${transportKind} transport ICE restart failed:`,
-          err,
-        );
-        return false;
-      } finally {
-        inFlight[transportKind] = false;
-      }
+          await transport.restartIce({ iceParameters: response.iceParameters });
+          console.log(
+            `[Meets] ${transportKind} transport ICE restart succeeded.`,
+          );
+          return true;
+        } catch (err) {
+          console.error(
+            `[Meets] ${transportKind} transport ICE restart failed:`,
+            err,
+          );
+          return false;
+        } finally {
+          inFlight[transportKind] = false;
+          iceRestartPromiseRef.current[transportKind] = null;
+        }
+      })();
+
+      iceRestartPromiseRef.current[transportKind] = restartPromise;
+      return restartPromise;
     },
     [
       socketRef,
@@ -1657,6 +1723,12 @@ export function useMeetSocket({
                         !intentionalDisconnectRef.current &&
                         transport.connectionState === "disconnected"
                       ) {
+                        if (shouldDeferTransportRecoveryUntilVisible()) {
+                          console.info(
+                            "[Meets] Producer transport recovery deferred until foreground.",
+                          );
+                          return;
+                        }
                         attemptIceRestart("producer").then((restarted) => {
                           if (!restarted) {
                             const enabledTurnFallback = enableTurnFallback(
@@ -1689,6 +1761,12 @@ export function useMeetSocket({
 
               if (state === "failed") {
                 if (!intentionalDisconnectRef.current) {
+                  if (shouldDeferTransportRecoveryUntilVisible()) {
+                    console.info(
+                      "[Meets] Producer transport failure recovery deferred until foreground.",
+                    );
+                    return;
+                  }
                   attemptIceRestart("producer").then((restarted) => {
                     if (!restarted) {
                       const enabledTurnFallback = enableTurnFallback(
@@ -1840,6 +1918,12 @@ export function useMeetSocket({
                         !intentionalDisconnectRef.current &&
                         transport.connectionState === "disconnected"
                       ) {
+                        if (shouldDeferTransportRecoveryUntilVisible()) {
+                          console.info(
+                            "[Meets] Consumer transport recovery deferred until foreground.",
+                          );
+                          return;
+                        }
                         attemptIceRestart("consumer").then((restarted) => {
                           if (!restarted) {
                             const enabledTurnFallback = enableTurnFallback(
@@ -1867,6 +1951,12 @@ export function useMeetSocket({
 
               if (state === "failed") {
                 if (!intentionalDisconnectRef.current) {
+                  if (shouldDeferTransportRecoveryUntilVisible()) {
+                    console.info(
+                      "[Meets] Consumer transport failure recovery deferred until foreground.",
+                    );
+                    return;
+                  }
                   attemptIceRestart("consumer").then((restarted) => {
                     if (!restarted) {
                       const enabledTurnFallback = enableTurnFallback(
@@ -2043,6 +2133,10 @@ export function useMeetSocket({
                 rawFallbackTrack: summarizeTrackForLog(rawFallbackTrack),
               },
             );
+            onPreferredVideoPublishTrackRejected?.(
+              videoTrack,
+              "join-raw-produce-fallback",
+            );
             try {
               const fallbackVideoProducer = await produceWebcamTrack({
                 transport,
@@ -2080,8 +2174,15 @@ export function useMeetSocket({
           }
 
           if (mediaIntent.isCameraOn) {
-            publicationWarnings.push("camera publish failed");
-            setIsCameraOff(true);
+            const liveVideoTrack = getFirstLiveTrack(stream.getVideoTracks());
+            if (liveVideoTrack) {
+              publicationWarnings.push("camera publish retry scheduled");
+              setIsCameraOff(false);
+              requestCameraProducerRecovery();
+            } else {
+              publicationWarnings.push("camera publish failed");
+              setIsCameraOff(true);
+            }
           }
         }
       } else if (mediaIntent.isCameraOn) {
@@ -2117,6 +2218,7 @@ export function useMeetSocket({
       videoQualityRef,
       deviceRef,
       getVideoPublishTrack,
+      onPreferredVideoPublishTrackRejected,
       dropVideoTracksForCameraOff,
       refs.processedVideoTrackRef,
       resolveMediaPublishIntent,
@@ -2181,6 +2283,9 @@ export function useMeetSocket({
               });
 
               consumersRef.current.set(producerInfo.producerId, consumer);
+              announcedRemoteProducersRef.current.delete(
+                producerInfo.producerId,
+              );
               consumeRetryAttemptsRef.current.delete(producerInfo.producerId);
               producerMapRef.current.set(producerInfo.producerId, {
                 userId: producerInfo.producerUserId,
@@ -2425,6 +2530,7 @@ export function useMeetSocket({
       mutedConsumerSinceRef,
       producerPausedStateRef,
       setProducerPausedState,
+      announcedRemoteProducersRef,
       userId,
     ],
   );
@@ -2621,6 +2727,11 @@ export function useMeetSocket({
       const serverProducerIds = new Set(
         producers.map((producer) => producer.producerId),
       );
+      for (const producerId of announcedRemoteProducersRef.current.keys()) {
+        if (!serverProducerIds.has(producerId)) {
+          announcedRemoteProducersRef.current.delete(producerId);
+        }
+      }
 
       const staleConsumerIds: string[] = [];
       for (const [producerId, consumer] of consumersRef.current.entries()) {
@@ -2763,6 +2874,7 @@ export function useMeetSocket({
     mutedConsumerSinceRef,
     clearStaleConsumerRecoveryTimeout,
     videoFreezeStatsRef,
+    announcedRemoteProducersRef,
   ]);
 
   const applyWebinarFeedProducers = useCallback(
@@ -2804,14 +2916,47 @@ export function useMeetSocket({
       if (!currentRoomIdRef.current) return;
 
       const socket = socketRef.current;
-      const hasTerminalTransportFailure = [
-        producerTransportRef.current?.connectionState,
-        consumerTransportRef.current?.connectionState,
-      ].some((state) => state === "closed" || state === "failed");
+      const producerState = producerTransportRef.current?.connectionState;
+      const consumerState = consumerTransportRef.current?.connectionState;
+      const hasTerminalTransportFailure = [producerState, consumerState].some(
+        (state) => state === "closed" || state === "failed",
+      );
 
       if (!socket?.connected || hasTerminalTransportFailure) {
         console.log(`[Meets] ${reason} recovery triggered reconnect.`);
         handleReconnectRef.current?.();
+        return;
+      }
+
+      const disconnectedTransportKinds: Array<"producer" | "consumer"> = [];
+      if (producerState === "disconnected") {
+        disconnectedTransportKinds.push("producer");
+      }
+      if (consumerState === "disconnected") {
+        disconnectedTransportKinds.push("consumer");
+      }
+
+      if (disconnectedTransportKinds.length > 0) {
+        console.log(`[Meets] ${reason} recovery restarting ICE.`, {
+          transports: disconnectedTransportKinds,
+        });
+        void Promise.all(
+          disconnectedTransportKinds.map((kind) => attemptIceRestart(kind)),
+        ).then((results) => {
+          if (intentionalDisconnectRef.current) return;
+          if (results.every(Boolean)) {
+            void syncProducers()
+              .then(() => flushPendingProducers())
+              .catch((error) => {
+                console.warn(
+                  `[Meets] ${reason} producer sync failed after ICE restart:`,
+                  error,
+                );
+              });
+            return;
+          }
+          handleReconnectRef.current?.();
+        });
         return;
       }
 
@@ -2826,6 +2971,8 @@ export function useMeetSocket({
       currentRoomIdRef,
       flushPendingProducers,
       handleReconnectRef,
+      attemptIceRestart,
+      iceRestartInFlightRef,
       intentionalDisconnectRef,
       producerTransportRef,
       socketRef,
@@ -3333,6 +3480,7 @@ export function useMeetSocket({
                 void syncProducers();
                 return;
               }
+              announcedRemoteProducersRef.current.set(data.producerId, data);
               await consumeProducer(data);
             });
 

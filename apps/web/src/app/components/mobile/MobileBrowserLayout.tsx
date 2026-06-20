@@ -3,6 +3,7 @@
 import { Globe, Loader2, MicOff, VenetianMask } from "lucide-react";
 import { memo, useEffect, useRef, useState, type FormEvent } from "react";
 import { Avatar } from "@conclave/ui-tokens/web";
+import { useMeetVolume } from "../../hooks/useMeetVolume";
 import { useSmartParticipantOrder } from "../../hooks/useSmartParticipantOrder";
 import { getRenderableParticipantVideoStream } from "../../lib/participant-media";
 import type { Participant } from "../../lib/types";
@@ -371,6 +372,7 @@ const VideoThumbnail = memo(function VideoThumbnail({
 
 const AudioPlayer = memo(function AudioPlayer({ stream }: { stream: MediaStream }) {
   const audioRef = useRef<HTMLAudioElement>(null);
+  const { meetVolume } = useMeetVolume();
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -384,6 +386,12 @@ const AudioPlayer = memo(function AudioPlayer({ stream }: { stream: MediaStream 
       }
     };
   }, [stream]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.volume = meetVolume;
+  }, [meetVolume]);
 
   return <audio ref={audioRef} autoPlay />;
 });

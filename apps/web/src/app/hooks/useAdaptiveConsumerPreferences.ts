@@ -62,6 +62,7 @@ const MAX_WEBCAMS_TO_KEEP_FULL_ON_GOOD_LINKS = 4;
 const MAX_CONSUMER_PREFERENCE_UPDATES_PER_CYCLE = 8;
 const CONSUMER_PREFERENCE_EMIT_SPACING_MS = 75;
 const RATE_LIMIT_RETRY_DELAY_MS = 1000;
+const CONSUMER_PREFERENCE_ACK_TIMEOUT_MS = 3000;
 const AUDIO_CONSUMER_PRIORITY = 255;
 const CONSUMER_SCORE_STALE_AFTER_MS = 15000;
 
@@ -373,6 +374,7 @@ const getDesiredPreferences = (
     quality: ConnectionQuality;
     activeSpeakerId: string | null;
     webcamVideoCount: number;
+    fallbackRank: number | null;
     layout: LayoutRole | null;
     emergencyMode: boolean;
     emergencyKeepVideo: boolean;
@@ -413,8 +415,12 @@ const getDesiredPreferences = (
   const layout = options.layout;
   const isPrimary = layout?.primary === true;
   const isLayoutFocus = layout?.focus === true;
-  const isVisible = layout ? layout.visible || isPrimary : true;
-  const isWarm = layout?.warm === true;
+  const fallbackVisible =
+    !layout &&
+    options.fallbackRank !== null &&
+    options.fallbackRank < MAX_WEBCAMS_TO_KEEP_FULL_ON_GOOD_LINKS;
+  const isVisible = layout ? layout.visible || isPrimary : fallbackVisible;
+  const isWarm = layout?.warm === true || (!layout && !fallbackVisible);
   const isHidden = layout?.hidden === true && !isVisible;
   const isFocus = isActiveSpeaker || isLayoutFocus;
 
@@ -423,7 +429,7 @@ const getDesiredPreferences = (
       return {
         preferredLayers: bounds ? buildLayerPreference(0, 0, bounds) : undefined,
         priority: 8,
-        paused: true,
+        paused: false,
       };
     }
 
@@ -438,7 +444,7 @@ const getDesiredPreferences = (
     return {
       preferredLayers: bounds ? buildLayerPreference(0, 0, bounds) : undefined,
       priority: quality === "poor" ? 10 : 25,
-      paused: quality === "poor",
+      paused: false,
     };
   }
 
@@ -702,6 +708,44 @@ export function useAdaptiveConsumerPreferences({
     ).filter(
       (info) => info.kind === "video" && info.type === "webcam",
     ).length;
+    const fallbackWebcamRanks = new Map<string, number>();
+    if (!layoutHints) {
+      Array.from(refs.consumersRef.current.entries())
+        .map(([producerId, consumer]) => {
+          const info = refs.producerMapRef.current.get(producerId);
+          if (
+            !info ||
+            consumer.closed ||
+            info.kind !== "video" ||
+            info.type !== "webcam"
+          ) {
+            return null;
+          }
+          return {
+            producerId,
+            userId: info.userId,
+            active: info.userId === activeSpeakerId,
+          };
+        })
+        .filter(
+          (
+            candidate,
+          ): candidate is {
+            producerId: string;
+            userId: string;
+            active: boolean;
+          } => Boolean(candidate),
+        )
+        .sort(
+          (left, right) =>
+            Number(right.active) - Number(left.active) ||
+            left.userId.localeCompare(right.userId) ||
+            left.producerId.localeCompare(right.producerId),
+        )
+        .forEach((candidate, index) => {
+          fallbackWebcamRanks.set(candidate.producerId, index);
+        });
+    }
     const emergencyVideoKeepProducerIds = new Set<string>();
     if (emergencyMode) {
       const candidates = Array.from(refs.consumersRef.current.entries())
@@ -800,6 +844,7 @@ export function useAdaptiveConsumerPreferences({
         quality: connectionQuality,
         activeSpeakerId,
         webcamVideoCount,
+        fallbackRank: fallbackWebcamRanks.get(producerId) ?? null,
         layout,
         emergencyMode,
         emergencyKeepVideo,
@@ -1004,7 +1049,7 @@ export function useAdaptiveConsumerPreferences({
         debugEntryBase,
       } = update;
 
-      const markDeferredAfterRateLimit = (error: string) => {
+      const markDeferredForRetry = (error: string) => {
         preferenceDebugRef.current.set(producerId, {
           ...debugEntryBase,
           status: "deferred",
@@ -1043,6 +1088,16 @@ export function useAdaptiveConsumerPreferences({
           return;
         }
 
+        let settled = false;
+        const ackTimeoutId = window.setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          scheduledPreferenceTimeoutsRef.current.delete(ackTimeoutId);
+          inFlightProducerIdsRef.current.delete(producerId);
+          markDeferredForRetry("setConsumerPreferences ack timeout");
+        }, CONSUMER_PREFERENCE_ACK_TIMEOUT_MS);
+        scheduledPreferenceTimeoutsRef.current.add(ackTimeoutId);
+
         socket.emit(
           "setConsumerPreferences",
           {
@@ -1055,10 +1110,14 @@ export function useAdaptiveConsumerPreferences({
             requestKeyFrame: debugEntryBase.requestKeyFrame,
           },
           (response: SetConsumerPreferencesResponse) => {
+            if (settled) return;
+            settled = true;
+            scheduledPreferenceTimeoutsRef.current.delete(ackTimeoutId);
+            window.clearTimeout(ackTimeoutId);
             if ("error" in response) {
               if (isConsumerControlRateLimitError(response.error)) {
                 inFlightProducerIdsRef.current.delete(producerId);
-                markDeferredAfterRateLimit(response.error);
+                markDeferredForRetry(response.error);
                 return;
               }
 
@@ -1083,6 +1142,19 @@ export function useAdaptiveConsumerPreferences({
                     producerId,
                   );
                 }
+                let fallbackSettled = false;
+                const fallbackAckTimeoutId = window.setTimeout(() => {
+                  if (fallbackSettled) return;
+                  fallbackSettled = true;
+                  scheduledPreferenceTimeoutsRef.current.delete(
+                    fallbackAckTimeoutId,
+                  );
+                  inFlightProducerIdsRef.current.delete(producerId);
+                  markDeferredForRetry(
+                    "setConsumerPreferences priority-only ack timeout",
+                  );
+                }, CONSUMER_PREFERENCE_ACK_TIMEOUT_MS);
+                scheduledPreferenceTimeoutsRef.current.add(fallbackAckTimeoutId);
                 socket.emit(
                   "setConsumerPreferences",
                   {
@@ -1093,6 +1165,12 @@ export function useAdaptiveConsumerPreferences({
                       : {}),
                   },
                   (priorityOnlyResponse: SetConsumerPreferencesResponse) => {
+                    if (fallbackSettled) return;
+                    fallbackSettled = true;
+                    scheduledPreferenceTimeoutsRef.current.delete(
+                      fallbackAckTimeoutId,
+                    );
+                    window.clearTimeout(fallbackAckTimeoutId);
                     if ("error" in priorityOnlyResponse) {
                       inFlightProducerIdsRef.current.delete(producerId);
                       if (
@@ -1100,7 +1178,7 @@ export function useAdaptiveConsumerPreferences({
                           priorityOnlyResponse.error,
                         )
                       ) {
-                        markDeferredAfterRateLimit(priorityOnlyResponse.error);
+                        markDeferredForRetry(priorityOnlyResponse.error);
                         return;
                       }
 
