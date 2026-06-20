@@ -427,6 +427,11 @@ assertIncludes(
   "isVisible || isFocus ? bounds.maxTemporalLayer : 1",
   "web visible fair-link tiles keep max temporal layer",
 );
+assertRegex(
+  "webAdaptiveConsumerPreferences",
+  /const isConsumerLayerUpgrade =[\s\S]*next\.spatialLayer > previous\.spatialLayer[\s\S]*next\.temporalLayer[\s\S]*previous\.temporalLayer[\s\S]*requestKeyFrame =[\s\S]*isConsumerLayerUpgrade\(previousLayers, preferredLayers!\)/,
+  "web receive layer upgrades request keyframes for temporal recovery",
+);
 assertIncludes(
   "webAdaptiveConsumerPreferences",
   "priority: quality === \"poor\" ? 10 : 25,\n      paused: false,",

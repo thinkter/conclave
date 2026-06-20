@@ -287,6 +287,18 @@ const sameConsumerLayers = (
   );
 };
 
+const isConsumerLayerUpgrade = (
+  previous: ConsumerLayerPreference | undefined,
+  next: ConsumerLayerPreference,
+): boolean => {
+  if (!previous) return true;
+  if (next.spatialLayer > previous.spatialLayer) return true;
+  return (
+    next.spatialLayer === previous.spatialLayer &&
+    (next.temporalLayer ?? -1) > (previous.temporalLayer ?? -1)
+  );
+};
+
 const telemetryConfirmsPreferences = (
   telemetry:
     | {
@@ -867,8 +879,7 @@ export function useAdaptiveConsumerPreferences({
         preferences.paused === false &&
         Boolean(preferredLayers) &&
         (wasPaused ||
-          !previousLayers ||
-          preferredLayers!.spatialLayer > previousLayers.spatialLayer);
+          isConsumerLayerUpgrade(previousLayers, preferredLayers!));
       const debugEntryBase = {
         producerId,
         consumerId: consumer.id,
