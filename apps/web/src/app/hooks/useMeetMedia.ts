@@ -132,6 +132,7 @@ const getUsableProducerTransport = (
 type OutboundVideoProgressSample = {
   frames: number | null;
   bytes: number | null;
+  framesPerSecond: number | null;
   qualityLimitationReason: string | null;
 };
 
@@ -178,6 +179,7 @@ const readOutboundVideoProgressSample = (
   let hasFrames = false;
   let bytes = 0;
   let hasBytes = false;
+  let framesPerSecond: number | null = null;
   let qualityLimitationReason: string | null = null;
 
   report.forEach((entry) => {
@@ -201,6 +203,11 @@ const readOutboundVideoProgressSample = (
       hasBytes = true;
     }
 
+    const currentFramesPerSecond = getRtcStatsNumber(stat, "framesPerSecond");
+    if (currentFramesPerSecond !== null) {
+      framesPerSecond = Math.max(framesPerSecond ?? 0, currentFramesPerSecond);
+    }
+
     if (
       typeof stat.qualityLimitationReason === "string" &&
       stat.qualityLimitationReason &&
@@ -213,6 +220,7 @@ const readOutboundVideoProgressSample = (
   return {
     frames: hasFrames ? frames : null,
     bytes: hasBytes ? bytes : null,
+    framesPerSecond,
     qualityLimitationReason,
   };
 };
@@ -227,13 +235,36 @@ const hasOutboundVideoProgress = (
   previous: CameraOutboundStallState,
   sample: OutboundVideoProgressSample,
 ): boolean => {
-  // When frame counters exist, byte trickle alone is not video progress: RTP
-  // padding/RTX can advance bytes while the camera frame stream is frozen.
+  // When frame counters exist, flat frames alone are not enough to prove a
+  // sender stall: static/low-motion cameras can legitimately stay quiet. Only
+  // count it as stalled when RTP bytes keep moving, which means the sender path
+  // is alive but no new camera frames are being encoded.
   if (
     previous.frames !== null &&
     sample.frames !== null
   ) {
-    return sample.frames > previous.frames;
+    if (sample.frames > previous.frames) return true;
+    if (
+      sample.framesPerSecond !== null &&
+      sample.framesPerSecond > 0
+    ) {
+      return true;
+    }
+    if (
+      previous.bytes !== null &&
+      sample.bytes !== null &&
+      sample.bytes - previous.bytes >= MIN_OUTBOUND_VIDEO_BYTE_DELTA_FOR_PROGRESS
+    ) {
+      return false;
+    }
+    return true;
+  }
+
+  if (
+    sample.framesPerSecond !== null &&
+    sample.framesPerSecond > 0
+  ) {
+    return true;
   }
 
   if (

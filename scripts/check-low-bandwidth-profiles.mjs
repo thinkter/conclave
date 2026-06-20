@@ -1088,8 +1088,8 @@ for (const [context, label] of [
   );
   assertRegex(
     "webMeetMedia",
-    /When frame counters exist, byte trickle alone is not video progress[\s\S]*previous\.frames !== null[\s\S]*sample\.frames !== null[\s\S]*return sample\.frames > previous\.frames;[\s\S]*sample\.bytes - previous\.bytes >= MIN_OUTBOUND_VIDEO_BYTE_DELTA_FOR_PROGRESS/,
-    "web camera sender watchdog must not treat byte trickle as frame progress",
+    /framesPerSecond: number \| null[\s\S]*currentFramesPerSecond = getRtcStatsNumber\(stat, "framesPerSecond"\)[\s\S]*When frame counters exist, flat frames alone are not enough to prove a[\s\S]*sample\.frames > previous\.frames[\s\S]*sample\.framesPerSecond !== null[\s\S]*sample\.bytes - previous\.bytes >= MIN_OUTBOUND_VIDEO_BYTE_DELTA_FOR_PROGRESS[\s\S]*return false;[\s\S]*return true;/,
+    "web camera sender watchdog must not recreate producers from quiet/static frame counters",
   );
   assertRegex(
     "webMeetMedia",
