@@ -1386,10 +1386,20 @@ assertIncludes(
   "const PROCESSED_OUTPUT_STALE_RELEASE_MS = 2500;",
   "web stale processed effects output release threshold",
 );
+assertIncludes(
+  "webVideoEffects",
+  "const PROCESSED_OUTPUT_STALE_CHECK_MS = 1000;",
+  "web stale processed effects output heartbeat interval",
+);
 assertRegex(
   "webVideoEffects",
   /const releaseStaleProcessedOutputIfNeeded =[\s\S]*latestOutputFrameAt[\s\S]*PROCESSED_OUTPUT_STALE_RELEASE_MS[\s\S]*releaseOutputTrackToRaw\(reason\);/,
   "web live-but-stale processed effects output releases to raw publish track",
+);
+assertRegex(
+  "webVideoEffects",
+  /const processedOutputStaleCheckIntervalId = window\.setInterval\(\(\) => \{[\s\S]*releaseStaleProcessedOutputIfNeeded\("processed output stale heartbeat"\);[\s\S]*PROCESSED_OUTPUT_STALE_CHECK_MS[\s\S]*window\.clearInterval\(processedOutputStaleCheckIntervalId\);/,
+  "web stale processed effects output heartbeat survives stalled effects loops",
 );
 assertRegex(
   "webVideoEffects",

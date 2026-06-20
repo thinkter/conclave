@@ -230,6 +230,7 @@ const OUTPUT_WRITER_PENDING_PRESSURE_MS = 75;
 const OUTPUT_WRITER_FRAME_TIMEOUT_MS = 3000;
 const OUTPUT_WRITER_FAILURE_RELEASE_THRESHOLD = 3;
 const PROCESSED_OUTPUT_STALE_RELEASE_MS = 2500;
+const PROCESSED_OUTPUT_STALE_CHECK_MS = 1000;
 const SEGMENTATION_PROCESSOR_FRAME_TIMEOUT_MS = 6000;
 const SEGMENTATION_PROCESSOR_INITIAL_FRAME_TIMEOUT_MS = 16000;
 const FACE_PROCESSOR_FRAME_TIMEOUT_MS = 6000;
@@ -13122,6 +13123,9 @@ export function useVideoEffects({
       releaseOutputTrackToRaw(reason);
       return true;
     };
+    const processedOutputStaleCheckIntervalId = window.setInterval(() => {
+      releaseStaleProcessedOutputIfNeeded("processed output stale heartbeat");
+    }, PROCESSED_OUTPUT_STALE_CHECK_MS);
 
     const recordOutputWriterFrameFailure = (err: unknown, phase: string) => {
       outputWriterWriteFailures += 1;
@@ -17801,6 +17805,7 @@ export function useVideoEffects({
         window.clearTimeout(effectChangeFramePumpTimerId);
         effectChangeFramePumpTimerId = null;
       }
+      window.clearInterval(processedOutputStaleCheckIntervalId);
       if (loopTimerId !== null) {
         window.clearTimeout(loopTimerId);
         loopTimerId = null;
