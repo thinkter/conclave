@@ -1363,6 +1363,12 @@ export function useMeetSocket({
         status.state === "reconnected" &&
         !visibleParticipantReconnectingIdsRef.current.has(targetUserId)
       ) {
+        clearParticipantConnectionStatusTimer(targetUserId);
+        dispatchParticipants({
+          type: "UPDATE_CONNECTION_STATUS",
+          userId: targetUserId,
+          status: null,
+        });
         return;
       }
 

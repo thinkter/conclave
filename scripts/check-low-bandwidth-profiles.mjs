@@ -1481,8 +1481,8 @@ assertRegex(
 );
 assertRegex(
   "webMeetSocket",
-  /status\.state === "reconnected"[\s\S]*!visibleParticipantReconnectingIdsRef\.current\.has\(targetUserId\)[\s\S]*return;[\s\S]*status\.state === "reconnecting"[\s\S]*visibleParticipantReconnectingIdsRef\.current\.add\(targetUserId\)/,
-  "web reconnected badges only show after a visible reconnecting state",
+  /status\.state === "reconnected"[\s\S]*!visibleParticipantReconnectingIdsRef\.current\.has\(targetUserId\)[\s\S]*clearParticipantConnectionStatusTimer\(targetUserId\)[\s\S]*UPDATE_CONNECTION_STATUS[\s\S]*status: null[\s\S]*return;[\s\S]*status\.state === "reconnecting"[\s\S]*visibleParticipantReconnectingIdsRef\.current\.add\(targetUserId\)/,
+  "web unmatched reconnected events clear stale peer badges without showing a new one",
 );
 assertRegex(
   "webMeetSocket",
