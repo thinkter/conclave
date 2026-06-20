@@ -466,10 +466,11 @@ const isLowAvailableBitrate = (
   if (value == null || value <= 0 || value > threshold) return false;
   if (encoderLimited || mediaBitrate == null) return true;
 
-  // RTCPeerConnection.availableOutgoingBitrate can remain low after we
-  // intentionally cap the sender. Only treat it as congestion when media is
-  // actually pressing against that ceiling.
-  return mediaBitrate >= value * AVAILABLE_BITRATE_SATURATION_RATIO;
+  // Available bitrate estimates can remain low after we intentionally cap media.
+  // Do not let our own low-bitrate profile prove that the link is still bad; only
+  // treat the estimate as congestion when media is trying to use a meaningful
+  // fraction of the fair/poor threshold itself.
+  return mediaBitrate >= threshold * AVAILABLE_BITRATE_SATURATION_RATIO;
 };
 
 function windowedPacketLoss(
