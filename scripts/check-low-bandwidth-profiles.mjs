@@ -741,6 +741,16 @@ for (const [context, label] of [
     if (!section.includes("await ensureProducerTransportRef?.current?.()")) {
       failures.push("web audio producer recovery must rebuild failed transports");
     }
+    if (
+      !section.includes("hadLiveAudioTrackBeforeRecovery") ||
+      !section.includes("if (createdTrack)") ||
+      !section.includes("if (!hadLiveAudioTrackBeforeRecovery)") ||
+      section.includes("existingAudioTracks.forEach((track) =>")
+    ) {
+      failures.push(
+        "web audio producer recovery failure must preserve existing live mic capture",
+      );
+    }
     const transportSectionEnd = section.indexOf("let audioTrack");
     const transportSection =
       transportSectionEnd >= 0 ? section.slice(0, transportSectionEnd) : section;

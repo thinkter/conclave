@@ -1532,6 +1532,10 @@ export function useMeetMedia({
 
     const recoverAudioProducer = async () => {
       let createdTrack: MediaStreamTrack | null = null;
+      const hadLiveAudioTrackBeforeRecovery =
+        localStreamRef.current
+          ?.getAudioTracks()
+          .some((track) => track.readyState === "live") === true;
       try {
         let transport = getUsableProducerTransport(
           producerTransportRef.current,
@@ -1607,18 +1611,21 @@ export function useMeetMedia({
       } catch (err) {
         console.error("[Meets] Audio producer recovery failed:", err);
         if (!cancelled) {
-          const existingAudioTracks = localStreamRef.current?.getAudioTracks() ?? [];
-          existingAudioTracks.forEach((track) => {
-            stopLocalTrack(track);
-          });
-          setLocalStream((prev) => {
-            if (!prev) return prev;
-            const remaining = prev
-              .getTracks()
-              .filter((track) => track.kind !== "audio");
-            return new MediaStream(remaining);
-          });
-          setIsMuted(true);
+          if (createdTrack) {
+            stopLocalTrack(createdTrack);
+            const currentStream = localStreamRef.current;
+            if (currentStream?.getTracks().includes(createdTrack)) {
+              const remaining = currentStream
+                .getTracks()
+                .filter((track) => track !== createdTrack);
+              const nextStream = new MediaStream(remaining);
+              localStreamRef.current = nextStream;
+              setLocalStream(nextStream);
+            }
+          }
+          if (!hadLiveAudioTrackBeforeRecovery) {
+            setIsMuted(true);
+          }
           setMeetError(createMeetError(err, "MEDIA_ERROR"));
         }
       } finally {
