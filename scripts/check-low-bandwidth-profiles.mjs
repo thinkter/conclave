@@ -1171,6 +1171,11 @@ assertIncludes(
 );
 assertRegex(
   "webMeetClient",
+  /const publishTrackSwitchRef = useRef[\s\S]*sequence: 0,[\s\S]*promise: Promise\.resolve\(\),[\s\S]*const previousSwitch = publishTrackSwitchRef\.current\.promise;[\s\S]*await previousSwitch\.catch\(\(\) => \{\}\);[\s\S]*publishTrackSwitchRef\.current\.sequence !== sequence[\s\S]*const publishStream = refs\.localStreamRef\.current \?\? localStream;[\s\S]*await producer\.replaceTrack\(\{ track: nextTrack \}\);[\s\S]*const rawFallbackTrack = getRawVideoPublishTrack\(publishStream\);[\s\S]*await producer\.replaceTrack\(\{ track: rawFallbackTrack \}\);/,
+  "web processed/raw publish track switches are serialized",
+);
+assertRegex(
+  "webMeetClient",
   /if \(activeVideoEffectsCount <= 0\) return;[\s\S]*if \(!isDocumentVisible\) return;[\s\S]*if \(shouldSuppressVideoEffectsForBandwidth\) return;[\s\S]*prewarmVideoEffectsRuntimeDeferred/,
   "web meet-shell runtime prewarm constrained-link guard",
 );

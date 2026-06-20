@@ -593,6 +593,13 @@ export default function MeetsClient({
   const getVideoPublishTrackRef = useRef<
     ((stream?: MediaStream | null) => MediaStreamTrack | null) | null
   >(null);
+  const publishTrackSwitchRef = useRef<{
+    sequence: number;
+    promise: Promise<void>;
+  }>({
+    sequence: 0,
+    promise: Promise.resolve(),
+  });
   const restoredVideoEffectsPrewarmDoneRef = useRef(false);
   const cameraLiveEffectsPrewarmDoneRef = useRef(false);
 
@@ -1664,59 +1671,79 @@ export default function MeetsClient({
       });
       return;
     }
-    const producer = refs.videoProducerRef.current;
-    if (!producer || producer.closed) {
+    const initialProducer = refs.videoProducerRef.current;
+    if (!initialProducer || initialProducer.closed) {
       warnMeetVideo("skip_replace_track_missing_or_closed_producer", {
-        hasProducer: Boolean(producer),
-        producerClosed: producer?.closed,
+        hasProducer: Boolean(initialProducer),
+        producerClosed: initialProducer?.closed,
         processedTrackVersion,
         processedTrackReady,
       });
       return;
     }
 
-    const nextTrack = getVideoPublishTrack(localStream);
-    if (!nextTrack) {
-      warnMeetVideo("skip_replace_track_no_next_track", {
-        producerTrack: getMeetTrackDebugSnapshot(producer.track ?? null),
-        localStream: getMeetStreamDebugSnapshot(localStream),
-        processedTrackVersion,
-        processedTrackReady,
-      });
-      return;
-    }
-    if (nextTrack.readyState !== "live") {
-      warnMeetVideo("skip_replace_track_candidate_not_live", {
-        nextTrack: getMeetTrackDebugSnapshot(nextTrack),
-        producerTrack: getMeetTrackDebugSnapshot(producer.track ?? null),
-        processedTrackVersion,
-        processedTrackReady,
-      });
-      if (refs.processedVideoTrackRef.current?.id === nextTrack.id) {
-        refs.processedVideoTrackRef.current = null;
+    const sequence = publishTrackSwitchRef.current.sequence + 1;
+    const previousSwitch = publishTrackSwitchRef.current.promise;
+    publishTrackSwitchRef.current.sequence = sequence;
+
+    const runSwitch = async () => {
+      await previousSwitch.catch(() => {});
+      if (publishTrackSwitchRef.current.sequence !== sequence) return;
+
+      const producer = refs.videoProducerRef.current;
+      if (!producer || producer.closed || producer.id !== initialProducer.id) {
+        warnMeetVideo("skip_replace_track_producer_changed", {
+          initialProducerId: initialProducer.id,
+          currentProducerId: producer?.id ?? null,
+          producerClosed: producer?.closed ?? null,
+          processedTrackVersion,
+          processedTrackReady,
+        });
+        return;
       }
-      return;
-    }
-    if (producer.track?.id === nextTrack.id) {
-      logMeetVideo("skip_replace_track_same_track", {
-        track: getMeetTrackDebugSnapshot(nextTrack),
+
+      const publishStream = refs.localStreamRef.current ?? localStream;
+      const nextTrack = getVideoPublishTrack(publishStream);
+      if (!nextTrack) {
+        warnMeetVideo("skip_replace_track_no_next_track", {
+          producerTrack: getMeetTrackDebugSnapshot(producer.track ?? null),
+          localStream: getMeetStreamDebugSnapshot(publishStream),
+          processedTrackVersion,
+          processedTrackReady,
+        });
+        return;
+      }
+      if (nextTrack.readyState !== "live") {
+        warnMeetVideo("skip_replace_track_candidate_not_live", {
+          nextTrack: getMeetTrackDebugSnapshot(nextTrack),
+          producerTrack: getMeetTrackDebugSnapshot(producer.track ?? null),
+          processedTrackVersion,
+          processedTrackReady,
+        });
+        if (refs.processedVideoTrackRef.current?.id === nextTrack.id) {
+          refs.processedVideoTrackRef.current = null;
+        }
+        return;
+      }
+      if (producer.track?.id === nextTrack.id) {
+        logMeetVideo("skip_replace_track_same_track", {
+          track: getMeetTrackDebugSnapshot(nextTrack),
+          processedTrackVersion,
+          processedTrackReady,
+        });
+        return;
+      }
+
+      logMeetVideo("replace_track_start", {
+        from: getMeetTrackDebugSnapshot(producer.track ?? null),
+        to: getMeetTrackDebugSnapshot(nextTrack),
         processedTrackVersion,
         processedTrackReady,
       });
-      return;
-    }
-
-    logMeetVideo("replace_track_start", {
-      from: getMeetTrackDebugSnapshot(producer.track ?? null),
-      to: getMeetTrackDebugSnapshot(nextTrack),
-      processedTrackVersion,
-      processedTrackReady,
-    });
-    const isProcessedCandidate =
-      refs.processedVideoTrackRef.current?.id === nextTrack.id;
-    producer
-      .replaceTrack({ track: nextTrack })
-      .then(() => {
+      const isProcessedCandidate =
+        refs.processedVideoTrackRef.current?.id === nextTrack.id;
+      try {
+        await producer.replaceTrack({ track: nextTrack });
         if (typeof window !== "undefined" && isMeetVideoDebugEnabled()) {
           (window as MeetVideoDebugWindow).__conclaveMeetVideoDebug =
             buildMeetVideoDebugSnapshot("replace_track_done");
@@ -1724,8 +1751,7 @@ export default function MeetsClient({
         logMeetVideo("replace_track_done", {
           producerTrack: getMeetTrackDebugSnapshot(producer.track ?? null),
         });
-      })
-      .catch((err) => {
+      } catch (err) {
         if (typeof window !== "undefined" && isMeetVideoDebugEnabled()) {
           (window as MeetVideoDebugWindow).__conclaveMeetVideoDebug =
             buildMeetVideoDebugSnapshot("replace_track_failed");
@@ -1743,11 +1769,12 @@ export default function MeetsClient({
         if (refs.processedVideoTrackRef.current?.id === nextTrack.id) {
           refs.processedVideoTrackRef.current = null;
         }
-        const rawFallbackTrack = getRawVideoPublishTrack(localStream);
+        if (publishTrackSwitchRef.current.sequence !== sequence) return;
+        const rawFallbackTrack = getRawVideoPublishTrack(publishStream);
         if (!rawFallbackTrack || rawFallbackTrack.readyState !== "live") {
           warnMeetVideo("replace_track_raw_fallback_unavailable", {
             rawFallbackTrack: getMeetTrackDebugSnapshot(rawFallbackTrack),
-            localStream: getMeetStreamDebugSnapshot(localStream),
+            localStream: getMeetStreamDebugSnapshot(publishStream),
           });
           return;
         }
@@ -1761,31 +1788,33 @@ export default function MeetsClient({
           from: getMeetTrackDebugSnapshot(producer.track ?? null),
           to: getMeetTrackDebugSnapshot(rawFallbackTrack),
         });
-        producer
-          .replaceTrack({ track: rawFallbackTrack })
-          .then(() => {
-            if (typeof window !== "undefined" && isMeetVideoDebugEnabled()) {
-              (window as MeetVideoDebugWindow).__conclaveMeetVideoDebug =
-                buildMeetVideoDebugSnapshot("replace_track_raw_fallback_done");
-            }
-            logMeetVideo("replace_track_raw_fallback_done", {
-              producerTrack: getMeetTrackDebugSnapshot(producer.track ?? null),
-            });
-          })
-          .catch((fallbackErr) => {
-            warnMeetVideo("replace_track_raw_fallback_failed", {
-              error:
-                fallbackErr instanceof Error
-                  ? {
-                      name: fallbackErr.name,
-                      message: fallbackErr.message,
-                      stack: fallbackErr.stack,
-                    }
-                  : fallbackErr,
-              rawFallbackTrack: getMeetTrackDebugSnapshot(rawFallbackTrack),
-            });
+        try {
+          await producer.replaceTrack({ track: rawFallbackTrack });
+          if (typeof window !== "undefined" && isMeetVideoDebugEnabled()) {
+            (window as MeetVideoDebugWindow).__conclaveMeetVideoDebug =
+              buildMeetVideoDebugSnapshot("replace_track_raw_fallback_done");
+          }
+          logMeetVideo("replace_track_raw_fallback_done", {
+            producerTrack: getMeetTrackDebugSnapshot(producer.track ?? null),
           });
-      });
+        } catch (fallbackErr) {
+          warnMeetVideo("replace_track_raw_fallback_failed", {
+            error:
+              fallbackErr instanceof Error
+                ? {
+                    name: fallbackErr.name,
+                    message: fallbackErr.message,
+                    stack: fallbackErr.stack,
+                  }
+                : fallbackErr,
+            rawFallbackTrack: getMeetTrackDebugSnapshot(rawFallbackTrack),
+          });
+        }
+      }
+    };
+
+    const switchPromise = runSwitch();
+    publishTrackSwitchRef.current.promise = switchPromise;
   }, [
     buildMeetVideoDebugSnapshot,
     connectionState,
@@ -1795,6 +1824,7 @@ export default function MeetsClient({
     localStream,
     processedTrackVersion,
     processedTrackReady,
+    refs.localStreamRef,
     refs.videoProducerRef,
     refs.processedVideoTrackRef,
   ]);
