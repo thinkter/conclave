@@ -25,12 +25,6 @@ const promoteNextAdmin = (room: Room): Admin | null => {
   return null;
 };
 
-const SHOULD_SUPPRESS_RECONNECT_NOTICE_REASONS = new Set([
-  "ping timeout",
-  "transport close",
-  "transport error",
-]);
-
 export const registerDisconnectHandlers = (
   context: ConnectionContext,
 ): void => {
@@ -211,7 +205,6 @@ export const registerDisconnectHandlers = (
       };
 
       const graceMs = config.socket.disconnectGraceMs;
-      const reconnectNoticeDelayMs = Math.max(0, graceMs - 1000);
       const immediateReasons = new Set([
         "client namespace disconnect",
         "server namespace disconnect",
@@ -228,30 +221,10 @@ export const registerDisconnectHandlers = (
           graceMs,
           finalizeDisconnect,
         );
-        if (
-          !SHOULD_SUPPRESS_RECONNECT_NOTICE_REASONS.has(reason) &&
-          !context.currentClient.isGhost &&
-          !context.currentClient.isWebinarAttendee
-        ) {
-          room.schedulePendingDisconnectNotification(
-            userId,
-            disconnectedSocketId,
-            reconnectNoticeDelayMs,
-            () => {
-              io.to(roomChannelId).except(disconnectedSocketId).emit(
-                "participantConnectionState",
-                {
-                  userId,
-                  roomId,
-                  state: "reconnecting",
-                  reason,
-                  graceMs,
-                  updatedAt: Date.now(),
-                },
-              );
-            },
-          );
-        }
+        // Browser background throttling can make a healthy hidden tab miss a
+        // socket heartbeat. Keep the grace-window cleanup, but do not show peers
+        // a premature "reconnecting" badge for a client that may recover before
+        // final disconnect.
         Logger.info(
           `Delaying disconnect cleanup for ${userId} in room ${roomId} by ${graceMs}ms.`,
         );

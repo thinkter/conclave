@@ -399,19 +399,19 @@ assertIncludes(
   }
 }
 assertIncludes(
-  "sfuRoom",
-  "schedulePendingDisconnectNotification",
-  "SFU delayed reconnect notification helper",
+  "sfuDisconnectHandlers",
+  "room.scheduleDisconnect",
+  "SFU still delays disconnect cleanup inside the grace window",
 );
-assertIncludes(
+assertNotIncludes(
   "sfuDisconnectHandlers",
   "room.schedulePendingDisconnectNotification",
-  "SFU reconnect badge delayed inside disconnect grace window",
+  "SFU must not show peer-facing reconnect badges for grace-window disconnects",
 );
 assertIncludes(
   "sfuDisconnectHandlers",
-  "const reconnectNoticeDelayMs = Math.max(0, graceMs - 1000);",
-  "SFU reconnect badge appears only at the end of disconnect grace",
+  "Browser background throttling",
+  "SFU documents why grace-window reconnect badges are suppressed",
 );
 assertIncludes(
   "sfuConfig",
@@ -419,19 +419,14 @@ assertIncludes(
   "SFU socket disconnect grace tolerates backgrounded tabs",
 );
 assertIncludes(
-  "sfuDisconnectHandlers",
-  "SHOULD_SUPPRESS_RECONNECT_NOTICE_REASONS",
-  "SFU centralizes ambiguous reconnect badge suppression",
+  "webMeetMedia",
+  "closeLocalVideoProducerForReplacement",
+  "web camera recovery closes stale producer on the SFU before replacement",
 );
 assertIncludes(
-  "sfuDisconnectHandlers",
-  '"transport close"',
-  "SFU suppresses ambiguous transport-close reconnect badges",
-);
-assertIncludes(
-  "sfuDisconnectHandlers",
-  '"transport error"',
-  "SFU suppresses ambiguous transport-error reconnect badges",
+  "webMeetMedia",
+  "intentionalLocalProducerCloseIdsRef.current.add(producer.id)",
+  "web camera recovery marks replacement closes as intentional",
 );
 assertIncludes(
   "iosWebrtc",

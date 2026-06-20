@@ -448,6 +448,24 @@ export function useMeetMedia({
     [intentionalTrackStopsRef]
   );
 
+  const closeLocalVideoProducerForReplacement = useCallback(
+    (producer: Producer) => {
+      intentionalLocalProducerCloseIdsRef.current.add(producer.id);
+      socketRef.current?.emit(
+        "closeProducer",
+        { producerId: producer.id },
+        () => {},
+      );
+      try {
+        producer.close();
+      } catch {}
+      if (videoProducerRef.current?.id === producer.id) {
+        videoProducerRef.current = null;
+      }
+    },
+    [intentionalLocalProducerCloseIdsRef, socketRef, videoProducerRef],
+  );
+
   const consumeIntentionalStop = useCallback(
     (track?: MediaStreamTrack | null) => {
       if (!track) return false;
@@ -1591,10 +1609,7 @@ export function useMeetMedia({
       if (!needsRecovery) return;
 
       if (producer && videoProducerRef.current?.id === producer.id) {
-        try {
-          producer.close();
-        } catch {}
-        videoProducerRef.current = null;
+        closeLocalVideoProducerForReplacement(producer);
       }
 
       console.warn("[Meets] Camera producer recovery triggered:", {
@@ -1628,6 +1643,7 @@ export function useMeetMedia({
     isCameraOff,
     isObserverMode,
     videoProducerRef,
+    closeLocalVideoProducerForReplacement,
   ]);
 
   useEffect(() => {
@@ -1644,12 +1660,7 @@ export function useMeetMedia({
       return;
     }
     if (existingProducer) {
-      try {
-        existingProducer.close();
-      } catch {}
-      if (videoProducerRef.current?.id === existingProducer.id) {
-        videoProducerRef.current = null;
-      }
+      closeLocalVideoProducerForReplacement(existingProducer);
     }
     if (cameraRecoveryInFlightRef.current) return;
 
@@ -1790,6 +1801,7 @@ export function useMeetMedia({
     waitForPreferredVideoPublishTrack,
     buildVideoConstraints,
     getPublishNetworkProfile,
+    closeLocalVideoProducerForReplacement,
   ]);
 
   const stopScreenShareStream = useCallback(
