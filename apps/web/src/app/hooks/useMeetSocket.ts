@@ -425,6 +425,10 @@ interface UseMeetSocketOptions {
   localStream: MediaStream | null;
   setLocalStream: React.Dispatch<React.SetStateAction<MediaStream | null>>;
   getVideoPublishTrack?: (stream?: MediaStream | null) => MediaStreamTrack | null;
+  onPreferredVideoPublishTrackRejected?: (
+    track: MediaStreamTrack,
+    reason: string,
+  ) => void;
   dispatchParticipants: (action: ParticipantAction) => void;
   setDisplayNames: React.Dispatch<React.SetStateAction<Map<string, string>>>;
   setPendingUsers: React.Dispatch<React.SetStateAction<Map<string, string>>>;
@@ -514,6 +518,7 @@ export function useMeetSocket({
   localStream,
   setLocalStream,
   getVideoPublishTrack,
+  onPreferredVideoPublishTrackRejected,
   dispatchParticipants,
   setDisplayNames,
   setPendingUsers,
@@ -2128,6 +2133,10 @@ export function useMeetSocket({
                 rawFallbackTrack: summarizeTrackForLog(rawFallbackTrack),
               },
             );
+            onPreferredVideoPublishTrackRejected?.(
+              videoTrack,
+              "join-raw-produce-fallback",
+            );
             try {
               const fallbackVideoProducer = await produceWebcamTrack({
                 transport,
@@ -2209,6 +2218,7 @@ export function useMeetSocket({
       videoQualityRef,
       deviceRef,
       getVideoPublishTrack,
+      onPreferredVideoPublishTrackRejected,
       dropVideoTracksForCameraOff,
       refs.processedVideoTrackRef,
       resolveMediaPublishIntent,

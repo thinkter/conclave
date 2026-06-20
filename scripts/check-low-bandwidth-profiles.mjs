@@ -941,6 +941,26 @@ for (const [context, label] of [
     /Processed \$\{context\} camera publish failed; retrying raw camera:[\s\S]*onPreferredVideoPublishTrackRejected\?\.[\s\S]*\`\$\{context\}-raw-produce-fallback\`/,
     "web raw camera produce fallback suppresses the rejected processed publish track",
   );
+  assertRegex(
+    "webMeetMedia",
+    /Processed device-switch track failed; retrying raw camera:[\s\S]*onPreferredVideoPublishTrackRejected\?\.[\s\S]*device-switch-raw-replace-fallback/,
+    "web device-switch raw fallback suppresses the rejected processed publish track",
+  );
+  assertRegex(
+    "webMeetMedia",
+    /Processed quality-switch track failed; retrying raw camera:[\s\S]*onPreferredVideoPublishTrackRejected\?\.[\s\S]*quality-switch-raw-replace-fallback/,
+    "web quality-switch raw fallback suppresses the rejected processed publish track",
+  );
+  assertRegex(
+    "webMeetSocket",
+    /onPreferredVideoPublishTrackRejected\?:[\s\S]*Processed camera publish failed; retrying raw camera:[\s\S]*onPreferredVideoPublishTrackRejected\?\.[\s\S]*join-raw-produce-fallback/,
+    "web socket join raw fallback suppresses the rejected processed publish track",
+  );
+  assertRegex(
+    "webMeetClient",
+    /useMeetSocket\(\{[\s\S]*getVideoPublishTrack,[\s\S]*onPreferredVideoPublishTrackRejected:\s*handlePreferredVideoPublishTrackRejected/,
+    "web meet client passes processed-track rejection callback to socket hook",
+  );
 }
 {
   const text = source.webMeetMedia;
@@ -1317,18 +1337,23 @@ assertIncludes(
 );
 assertRegex(
   "webMeetClient",
-  /const shouldRunVisualVideoEffects =\s*activeVideoEffectsCount > 0 &&\s*isDocumentVisible &&\s*!shouldSuppressVideoEffectsForBandwidth;[\s\S]*const shouldRunVideoEffects = shouldRunVisualVideoEffects;[\s\S]*const shouldPublishProcessedVideo = shouldRunVisualVideoEffects;/,
-  "web meet-shell effects only run when active, visible, and not constrained",
+  /const shouldRunVisualVideoEffects =\s*activeVideoEffectsCount > 0 &&\s*!shouldSuppressVideoEffectsForBandwidth;[\s\S]*const shouldRunVideoEffects = shouldRunVisualVideoEffects;[\s\S]*const shouldPublishProcessedVideo = shouldRunVisualVideoEffects;/,
+  "web meet-shell effects stay active across visibility changes unless constrained",
+);
+assertNotIncludes(
+  "webMeetClient",
+  "activeVideoEffectsCount > 0 &&\n    isDocumentVisible &&\n    !shouldSuppressVideoEffectsForBandwidth",
+  "web hidden tabs must not suspend active video effects",
 );
 assertRegex(
   "webMeetClient",
   /document\.addEventListener\("visibilitychange", syncDocumentVisibility\);[\s\S]*window\.addEventListener\("pageshow", syncDocumentVisibility\);/,
-  "web meet-shell tracks page visibility for processed video publishing",
+  "web meet-shell tracks page visibility for foreground prewarm/debug state",
 );
 assertIncludes(
   "webMeetClient",
   "const shouldPublishProcessedVideo = shouldRunVisualVideoEffects;",
-  "web hidden tabs publish raw camera while effects pipeline is suspended",
+  "web active effects publish processed video regardless of tab visibility",
 );
 assertRegex(
   "webMeetClient",

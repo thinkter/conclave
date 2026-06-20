@@ -580,7 +580,6 @@ export default function MeetsClient({
     useBandwidthHeavyVideoEffectsSuppressed();
   const shouldRunVisualVideoEffects =
     activeVideoEffectsCount > 0 &&
-    isDocumentVisible &&
     !shouldSuppressVideoEffectsForBandwidth;
   const [videoEffectsBridgeState, setVideoEffectsBridgeState] =
     useState<VideoEffectsBridgeState>(VIDEO_EFFECTS_OFF_STATE);
@@ -2034,6 +2033,8 @@ export default function MeetsClient({
     localStream,
     setLocalStream,
     getVideoPublishTrack,
+    onPreferredVideoPublishTrackRejected:
+      handlePreferredVideoPublishTrackRejected,
     dispatchParticipants,
     setDisplayNames,
     setPendingUsers,

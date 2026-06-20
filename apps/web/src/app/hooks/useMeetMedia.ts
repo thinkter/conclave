@@ -914,6 +914,10 @@ export function useMeetMedia({
                 "[Meets] Processed device-switch track failed; retrying raw camera:",
                 err,
               );
+              onPreferredVideoPublishTrackRejected?.(
+                publishTrack,
+                "device-switch-raw-replace-fallback",
+              );
               await videoProducerRef.current.replaceTrack({
                 track: newVideoTrack,
               });
@@ -939,6 +943,7 @@ export function useMeetMedia({
       buildVideoConstraints,
       localStreamRef,
       waitForPreferredVideoPublishTrack,
+      onPreferredVideoPublishTrackRejected,
     ]
   );
 
@@ -1118,6 +1123,10 @@ export function useMeetMedia({
                 "[Meets] Processed quality-switch track failed; retrying raw camera:",
                 err,
               );
+              onPreferredVideoPublishTrackRejected?.(
+                publishTrack,
+                "quality-switch-raw-replace-fallback",
+              );
               await previousProducer.replaceTrack({ track: nextVideoTrack });
             }
           }
@@ -1207,6 +1216,7 @@ export function useMeetMedia({
       intentionalLocalProducerCloseIdsRef,
       localStreamRef,
       waitForPreferredVideoPublishTrack,
+      onPreferredVideoPublishTrackRejected,
       getPublishNetworkProfile,
       produceCameraTrackWithRawFallback,
       requestCameraProducerRecovery,
