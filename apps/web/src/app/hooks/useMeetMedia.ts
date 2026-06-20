@@ -235,6 +235,9 @@ export function useMeetMedia({
   const audioRecoveryInFlightRef = useRef(false);
   const [audioProducerRecoveryPulse, setAudioProducerRecoveryPulse] =
     useState(0);
+  const requestAudioProducerRecovery = useCallback(() => {
+    setAudioProducerRecoveryPulse((value) => value + 1);
+  }, []);
   const cameraRecoveryInFlightRef = useRef(false);
   const [cameraProducerRecoveryPulse, setCameraProducerRecoveryPulse] =
     useState(0);
@@ -2087,6 +2090,7 @@ export function useMeetMedia({
     handleAudioOutputDeviceChange,
     updateVideoQuality,
     updateVideoQualityRef,
+    requestAudioProducerRecovery,
     toggleMute,
     toggleCamera,
     toggleScreenShare,

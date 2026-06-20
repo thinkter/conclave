@@ -456,6 +456,7 @@ interface UseMeetSocketOptions {
     ) => Promise<void>
   >;
   requestMediaPermissions: () => Promise<MediaStream | null>;
+  requestAudioProducerRecovery: () => void;
   stopLocalTrack: (track?: MediaStreamTrack | null) => void;
   handleLocalTrackEnded: (
     kind: "audio" | "video",
@@ -536,6 +537,7 @@ export function useMeetSocket({
   videoQualityRef,
   updateVideoQualityRef,
   requestMediaPermissions,
+  requestAudioProducerRecovery,
   stopLocalTrack,
   handleLocalTrackEnded,
   playNotificationSound,
@@ -549,6 +551,7 @@ export function useMeetSocket({
   bypassMediaPermissions = false,
 }: UseMeetSocketOptions) {
   const participantIdsRef = useRef<Set<string>>(new Set([userId]));
+  const isMutedRef = useRef(isMuted);
   const isCameraOffRef = useRef(isCameraOff);
   const serverRoomIdRef = useRef<string | null>(null);
   const foregroundRecoveryTimeoutRef = useRef<number | null>(null);
@@ -625,6 +628,10 @@ export function useMeetSocket({
   useEffect(() => {
     participantIdsRef.current = new Set([userId]);
   }, [userId]);
+
+  useEffect(() => {
+    isMutedRef.current = isMuted;
+  }, [isMuted]);
 
   useEffect(() => {
     isCameraOffRef.current = isCameraOff;
@@ -3364,9 +3371,22 @@ export function useMeetSocket({
                     if (audioProducerRef.current?.id === producerId) {
                       audioProducerRef.current = null;
                     }
+                    const liveAudioTrack = getFirstLiveTrack(
+                      localStreamRef.current?.getAudioTracks() ?? [],
+                    );
+                    const shouldRecoverAudio =
+                      !isMutedRef.current && liveAudioTrack !== null;
+                    if (shouldRecoverAudio && liveAudioTrack) {
+                      liveAudioTrack.enabled = true;
+                      isMutedRef.current = false;
+                      setIsMuted(false);
+                      requestAudioProducerRecovery();
+                      return;
+                    }
                     localStreamRef.current?.getAudioTracks().forEach((track) => {
                       track.enabled = false;
                     });
+                    isMutedRef.current = true;
                     setIsMuted(true);
                     return;
                   }
@@ -4332,6 +4352,7 @@ export function useMeetSocket({
       shouldPlayJoinLeaveSound,
       applyWebinarFeedProducers,
       producerMapRef,
+      requestAudioProducerRecovery,
       reconnectAttemptsRef,
       screenAudioProducerRef,
       screenProducerRef,

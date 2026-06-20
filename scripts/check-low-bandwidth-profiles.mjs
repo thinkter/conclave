@@ -499,6 +499,45 @@ assertIncludes(
   }
 }
 {
+  const mediaText = source.webMeetMedia;
+  if (!mediaText.includes("const requestAudioProducerRecovery = useCallback(")) {
+    failures.push(
+      "web media hook must expose explicit audio producer recovery pulse",
+    );
+  }
+  if (!source.webMeetClient.includes("requestAudioProducerRecovery,")) {
+    failures.push(
+      "web meet client must pass audio producer recovery pulse to socket hook",
+    );
+  }
+
+  const socketText = source.webMeetSocket;
+  const start = socketText.indexOf('"producerClosed"');
+  const end = socketText.indexOf('"userJoined"', start);
+  if (start < 0 || end < 0) {
+    failures.push("web producer-closed socket handler missing");
+  } else {
+    const section = socketText.slice(start, end);
+    if (!section.includes("const liveAudioTrack = getFirstLiveTrack(")) {
+      failures.push(
+        "web local audio producer-close recovery must inspect live mic tracks",
+      );
+    }
+    if (
+      !section.includes("!isMutedRef.current && liveAudioTrack !== null")
+    ) {
+      failures.push(
+        "web local audio producer-close recovery must preserve unmuted mic intent",
+      );
+    }
+    if (!section.includes("requestAudioProducerRecovery();")) {
+      failures.push(
+        "web local audio producer-close recovery must pulse audio producer recovery",
+      );
+    }
+  }
+}
+{
   const text = source.webMeetMedia;
   const start = text.indexOf("const recoverCameraProducer = async () => {");
   const end = text.indexOf("void recoverCameraProducer();", start);
