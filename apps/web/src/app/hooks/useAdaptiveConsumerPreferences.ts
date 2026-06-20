@@ -374,6 +374,7 @@ const getDesiredPreferences = (
     quality: ConnectionQuality;
     activeSpeakerId: string | null;
     webcamVideoCount: number;
+    fallbackRank: number | null;
     layout: LayoutRole | null;
     emergencyMode: boolean;
     emergencyKeepVideo: boolean;
@@ -414,8 +415,12 @@ const getDesiredPreferences = (
   const layout = options.layout;
   const isPrimary = layout?.primary === true;
   const isLayoutFocus = layout?.focus === true;
-  const isVisible = layout ? layout.visible || isPrimary : true;
-  const isWarm = layout?.warm === true;
+  const fallbackVisible =
+    !layout &&
+    options.fallbackRank !== null &&
+    options.fallbackRank < MAX_WEBCAMS_TO_KEEP_FULL_ON_GOOD_LINKS;
+  const isVisible = layout ? layout.visible || isPrimary : fallbackVisible;
+  const isWarm = layout?.warm === true || (!layout && !fallbackVisible);
   const isHidden = layout?.hidden === true && !isVisible;
   const isFocus = isActiveSpeaker || isLayoutFocus;
 
@@ -703,6 +708,21 @@ export function useAdaptiveConsumerPreferences({
     ).filter(
       (info) => info.kind === "video" && info.type === "webcam",
     ).length;
+    const fallbackWebcamRanks = new Map<string, number>();
+    if (!layoutHints) {
+      refs.consumersRef.current.forEach((consumer, producerId) => {
+        const info = refs.producerMapRef.current.get(producerId);
+        if (
+          !info ||
+          consumer.closed ||
+          info.kind !== "video" ||
+          info.type !== "webcam"
+        ) {
+          return;
+        }
+        fallbackWebcamRanks.set(producerId, fallbackWebcamRanks.size);
+      });
+    }
     const emergencyVideoKeepProducerIds = new Set<string>();
     if (emergencyMode) {
       const candidates = Array.from(refs.consumersRef.current.entries())
@@ -801,6 +821,7 @@ export function useAdaptiveConsumerPreferences({
         quality: connectionQuality,
         activeSpeakerId,
         webcamVideoCount,
+        fallbackRank: fallbackWebcamRanks.get(producerId) ?? null,
         layout,
         emergencyMode,
         emergencyKeepVideo,

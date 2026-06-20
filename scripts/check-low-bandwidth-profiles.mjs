@@ -319,6 +319,21 @@ assertIncludes(
   "const MAX_WEBCAMS_TO_KEEP_FULL_ON_GOOD_LINKS = 4;",
   "web good-link rooms keep small calls at full webcam layers",
 );
+assertIncludes(
+  "webAdaptiveConsumerPreferences",
+  "const fallbackWebcamRanks = new Map<string, number>();",
+  "web missing layout hints use deterministic webcam fallback ranks",
+);
+assertRegex(
+  "webAdaptiveConsumerPreferences",
+  /const fallbackVisible =[\s\S]*options\.fallbackRank !== null[\s\S]*options\.fallbackRank < MAX_WEBCAMS_TO_KEEP_FULL_ON_GOOD_LINKS/,
+  "web missing layout hints do not mark every webcam visible",
+);
+assertIncludes(
+  "webAdaptiveConsumerPreferences",
+  "const isWarm = layout?.warm === true || (!layout && !fallbackVisible);",
+  "web missing layout hints keep non-primary webcams warm instead of full",
+);
 assertRegex(
   "webMeetSocket",
   /const existingWebcamVideoConsumerCount = Array\.from\([\s\S]*producerMapRef\.current\.values\(\)[\s\S]*info\.kind === "video" && info\.type === "webcam"[\s\S]*preferHighWebcamLayer:[\s\S]*joinMode === "webinar_attendee" \|\|[\s\S]*existingWebcamVideoConsumerCount < 4/,
