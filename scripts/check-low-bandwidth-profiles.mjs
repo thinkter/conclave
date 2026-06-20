@@ -419,6 +419,27 @@ assertIncludes(
   "existingTransport.close();",
   "web producer transport recovery closes unusable transports before rebuilding",
 );
+assertIncludes(
+  "webMeetMedia",
+  "const produceCameraTrackWithRawFallback = useCallback(",
+  "web fresh camera producer publish has raw-track fallback helper",
+);
+assertRegex(
+  "webMeetMedia",
+  /produceCameraTrackWithRawFallback[\s\S]*Processed \$\{context\} camera publish failed; retrying raw camera:[\s\S]*track: rawTrack/,
+  "web processed camera publish failures retry raw camera",
+);
+for (const [context, label] of [
+  ["quality-switch", "quality-switch"],
+  ["camera-toggle", "camera-toggle"],
+  ["camera-recovery", "camera-recovery"],
+]) {
+  assertIncludes(
+    "webMeetMedia",
+    `context: "${context}"`,
+    `web ${label} fresh camera produce uses raw fallback`,
+  );
+}
 {
   const text = source.webMeetMedia;
   const start = text.indexOf("const handleLocalTrackEnded = useCallback(");
@@ -657,6 +678,27 @@ assertIncludes(
     ) {
       failures.push(
         "web socket producer transport-close recovery must preserve muted/camera-off intent",
+      );
+    }
+    const retryIndex = section.indexOf(
+      'publicationWarnings.push("camera publish retry scheduled")',
+    );
+    const failedIndex = section.indexOf(
+      'publicationWarnings.push("camera publish failed")',
+    );
+    if (
+      retryIndex < 0 ||
+      !section.includes("const liveVideoTrack = getFirstLiveTrack(") ||
+      !section.includes("setIsCameraOff(false);") ||
+      !section.includes("requestCameraProducerRecovery();")
+    ) {
+      failures.push(
+        "web initial camera publish failure with live track must preserve camera intent",
+      );
+    }
+    if (failedIndex >= 0 && retryIndex >= 0 && failedIndex < retryIndex) {
+      failures.push(
+        "web initial camera publish failure must retry recovery before marking camera off",
       );
     }
   }

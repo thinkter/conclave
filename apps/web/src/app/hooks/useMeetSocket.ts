@@ -2080,8 +2080,15 @@ export function useMeetSocket({
           }
 
           if (mediaIntent.isCameraOn) {
-            publicationWarnings.push("camera publish failed");
-            setIsCameraOff(true);
+            const liveVideoTrack = getFirstLiveTrack(stream.getVideoTracks());
+            if (liveVideoTrack) {
+              publicationWarnings.push("camera publish retry scheduled");
+              setIsCameraOff(false);
+              requestCameraProducerRecovery();
+            } else {
+              publicationWarnings.push("camera publish failed");
+              setIsCameraOff(true);
+            }
           }
         }
       } else if (mediaIntent.isCameraOn) {

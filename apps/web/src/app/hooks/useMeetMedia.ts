@@ -473,6 +473,60 @@ export function useMeetMedia({
     [getVideoPublishTrackRef, shouldUsePreferredVideoPublishTrack]
   );
 
+  const produceCameraTrackWithRawFallback = useCallback(
+    async ({
+      transport,
+      publishTrack,
+      rawTrack,
+      quality,
+      networkProfile,
+      paused,
+      preferredCodec,
+      context,
+    }: {
+      transport: Transport;
+      publishTrack: MediaStreamTrack;
+      rawTrack: MediaStreamTrack;
+      quality: VideoQuality;
+      networkProfile: WebcamProducerNetworkProfile;
+      paused: boolean;
+      preferredCodec: ReturnType<typeof getPreferredWebcamCodec>;
+      context: string;
+    }) => {
+      try {
+        return await produceWebcamTrack({
+          transport,
+          track: publishTrack,
+          quality,
+          networkProfile,
+          paused,
+          preferredCodec,
+        });
+      } catch (err) {
+        if (
+          publishTrack.id === rawTrack.id ||
+          rawTrack.readyState !== "live"
+        ) {
+          throw err;
+        }
+
+        console.warn(
+          `[Meets] Processed ${context} camera publish failed; retrying raw camera:`,
+          err,
+        );
+        return produceWebcamTrack({
+          transport,
+          track: rawTrack,
+          quality,
+          networkProfile,
+          paused,
+          preferredCodec,
+        });
+      }
+    },
+    [],
+  );
+
   const stopLocalTrack = useCallback(
     (track?: MediaStreamTrack | null) => {
       if (!track) return;
@@ -1043,13 +1097,15 @@ export function useMeetMedia({
         }
 
         const preferredWebcamCodec = getPreferredWebcamCodec(deviceRef.current);
-        const nextProducer = await produceWebcamTrack({
+        const nextProducer = await produceCameraTrackWithRawFallback({
           transport,
-          track: publishTrack,
+          publishTrack,
+          rawTrack: nextVideoTrack,
           quality,
           networkProfile: publishNetworkProfile,
           paused: false,
           preferredCodec: preferredWebcamCodec,
+          context: "quality-switch",
         });
 
         videoProducerRef.current = nextProducer;
@@ -1103,6 +1159,7 @@ export function useMeetMedia({
       localStreamRef,
       waitForPreferredVideoPublishTrack,
       getPublishNetworkProfile,
+      produceCameraTrackWithRawFallback,
       requestCameraProducerRecovery,
     ]
   );
@@ -1658,14 +1715,17 @@ export function useMeetMedia({
           );
 
           const quality = videoQualityRef.current;
+          const networkProfile = getPublishNetworkProfile();
           const preferredWebcamCodec = getPreferredWebcamCodec(deviceRef.current);
-          const videoProducer = await produceWebcamTrack({
+          const videoProducer = await produceCameraTrackWithRawFallback({
             transport,
-            track: publishTrack,
+            publishTrack,
+            rawTrack: videoTrack,
             quality,
-            networkProfile: getPublishNetworkProfile(),
+            networkProfile,
             paused: false,
             preferredCodec: preferredWebcamCodec,
+            context: "camera-toggle",
           });
 
           videoProducerRef.current = videoProducer;
@@ -1717,6 +1777,7 @@ export function useMeetMedia({
     waitForPreferredVideoPublishTrack,
     buildVideoConstraints,
     getPublishNetworkProfile,
+    produceCameraTrackWithRawFallback,
     requestCameraProducerRecovery,
   ]);
 
@@ -1911,14 +1972,17 @@ export function useMeetMedia({
           videoTrack,
         );
         const quality = videoQualityRef.current;
+        const networkProfile = getPublishNetworkProfile();
         const preferredWebcamCodec = getPreferredWebcamCodec(deviceRef.current);
-        const recoveredProducer = await produceWebcamTrack({
+        const recoveredProducer = await produceCameraTrackWithRawFallback({
           transport,
-          track: publishTrack,
+          publishTrack,
+          rawTrack: videoTrack,
           quality,
-          networkProfile: getPublishNetworkProfile(),
+          networkProfile,
           paused: false,
           preferredCodec: preferredWebcamCodec,
+          context: "camera-recovery",
         });
 
         if (cancelled) {
@@ -1986,6 +2050,7 @@ export function useMeetMedia({
     waitForPreferredVideoPublishTrack,
     buildVideoConstraints,
     getPublishNetworkProfile,
+    produceCameraTrackWithRawFallback,
     closeLocalVideoProducerForReplacement,
     requestCameraProducerRecovery,
   ]);
