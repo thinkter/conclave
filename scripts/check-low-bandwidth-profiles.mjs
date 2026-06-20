@@ -730,6 +730,11 @@ for (const [context, label] of [
     }
   }
 }
+assertRegex(
+  "webMeetMedia",
+  /const recoverAudioProducer = async \(\) => \{[\s\S]*const removeCreatedTrackFromLocalStream = \(\) => \{[\s\S]*stopLocalTrack\(createdTrack\);[\s\S]*createdTrack = null;[\s\S]*if \(cancelled\) \{[\s\S]*audioProducer\.close\(\);[\s\S]*removeCreatedTrackFromLocalStream\(\);[\s\S]*catch \(err\) \{[\s\S]*removeCreatedTrackFromLocalStream\(\);/,
+  "web cancelled audio recovery stops recovery-created mic tracks",
+);
 {
   const text = source.webMeetMedia;
   const start = text.indexOf("const handleLocalTrackEnded = useCallback(");
@@ -852,7 +857,7 @@ for (const [context, label] of [
     if (!text.includes("audioProducerRecoveryPulse,")) {
       failures.push("web audio producer recovery must be pulse-triggered");
     }
-    if (!section.includes("setAudioProducerRecoveryPulse((value) => value + 1)")) {
+    if (!section.includes("requestAudioProducerRecovery();")) {
       failures.push(
         "web audio producer transport close must trigger producer recovery",
       );
@@ -909,6 +914,27 @@ for (const [context, label] of [
   if (!source.webMeetClient.includes("requestCameraProducerRecovery,")) {
     failures.push(
       "web meet client must pass camera producer recovery pulse to socket hook",
+    );
+  }
+  if (
+    !mediaText.includes("mediaRecoveryBlockedRef?: React.MutableRefObject<boolean>") ||
+    !mediaText.includes("const isMediaRecoveryBlocked = useCallback(") ||
+    !source.webMeetClient.includes(
+      "mediaRecoveryBlockedRef: refs.reconnectInFlightRef",
+    )
+  ) {
+    failures.push(
+      "web media recovery must be blocked by the internal reconnect-in-flight ref",
+    );
+  }
+  if (
+    !mediaText.includes("if (isMediaRecoveryBlocked()) return;") ||
+    !/if \(isMediaRecoveryBlocked\(\)\) \{\s*removeCreatedTrackFromLocalStream\(\);\s*return;/.test(
+      mediaText,
+    )
+  ) {
+    failures.push(
+      "web media recovery must stop rebuilding producers once reconnect cleanup starts",
     );
   }
 
@@ -1084,6 +1110,7 @@ for (const [context, label] of [
     const recreateIndex = section.indexOf(
       "closeLocalVideoProducerForReplacement(producer);",
     );
+    const hiddenGuardIndex = section.indexOf("if (!allowProducerRecreate)");
     if (
       rawRepairIndex >= 0 &&
       recreateIndex >= 0 &&
@@ -1091,6 +1118,24 @@ for (const [context, label] of [
     ) {
       failures.push(
         "web stalled camera sender recovery must try raw-track repair before producer recreation",
+      );
+    }
+    if (
+      rawRepairIndex >= 0 &&
+      hiddenGuardIndex >= 0 &&
+      rawRepairIndex < hiddenGuardIndex
+    ) {
+      failures.push(
+        "web hidden-tab camera stalls must hit the no-recreate guard before raw-track repair",
+      );
+    }
+    if (
+      !section.includes(
+        "!isMediaRecoveryBlocked() &&\n          videoProducerRef.current?.id === producer.id",
+      )
+    ) {
+      failures.push(
+        "web stalled camera sender recovery failure must honor reconnect recovery block",
       );
     }
   }
@@ -1128,6 +1173,11 @@ for (const [context, label] of [
     "webMeetMedia",
     /onPreferredVideoPublishTrackRejected[\s\S]*producer\.replaceTrack\(\{ track: rawCameraTrack \}\);[\s\S]*onPreferredVideoPublishTrackRejected\?\.[\s\S]*camera-outbound-stall-raw-repair/,
     "web raw camera repair suppresses the rejected processed publish track",
+  );
+  assertRegex(
+    "webMeetMedia",
+    /const recoverCameraProducer = async \(\) => \{[\s\S]*const removeCreatedTrackFromLocalStream = \(\) => \{[\s\S]*stopLocalTrack\(createdTrack\);[\s\S]*createdTrack = null;[\s\S]*if \(cancelled\) \{[\s\S]*recoveredProducer\.close\(\);[\s\S]*removeCreatedTrackFromLocalStream\(\);[\s\S]*catch \(err\) \{[\s\S]*removeCreatedTrackFromLocalStream\(\);/,
+    "web cancelled camera recovery stops recovery-created camera tracks",
   );
   assertRegex(
     "webMeetMedia",
@@ -1379,6 +1429,11 @@ assertRegex(
   "webMeetSocket",
   /status\.state === "reconnected"[\s\S]*!visibleParticipantReconnectingIdsRef\.current\.has\(targetUserId\)[\s\S]*return;[\s\S]*status\.state === "reconnecting"[\s\S]*visibleParticipantReconnectingIdsRef\.current\.add\(targetUserId\)/,
   "web reconnected badges only show after a visible reconnecting state",
+);
+assertRegex(
+  "webMeetSocket",
+  /if \(!preserveMeetingState\) \{[\s\S]*participantConnectionStatusTimeoutsRef\.current\.values\(\)[\s\S]*participantConnectionStatusTimeoutsRef\.current\.clear\(\);[\s\S]*visibleParticipantReconnectingIdsRef\.current\.clear\(\);[\s\S]*\}[\s\S]*staleConsumerRecoveryTimeoutsRef/,
+  "web state-preserving reconnect cleanup keeps peer reconnect status timers",
 );
 assertRegex(
   "webMeetSocket",
@@ -1752,6 +1807,36 @@ assertRegex(
   /STALE_REPLACEMENT_CLEANUP_DELAY_MS[\s\S]*else if \(!replacementState\.hasConsumedReplacement\)[\s\S]*window\.setTimeout[\s\S]*latestReplacementState = getMatchingReplacementState\(\)[\s\S]*latestReplacementState\.hasConsumedReplacement[\s\S]*clearClosedProducerState\([\s\S]*latestReplacementState\.hasPendingReplacement/,
   "web stale producer replacement cleanup clears frozen old streams if the replacement never consumes",
 );
+{
+  const text = source.webMeetSocket;
+  const start = text.indexOf("const handleProducerClosed = useCallback(");
+  const end = text.indexOf("const queueProducerConsumeRetry = useCallback", start);
+  if (start < 0 || end < 0) {
+    failures.push("web producer-close replacement cleanup section missing");
+  } else {
+    const section = text.slice(start, end);
+    const infoIndex = section.indexOf(
+      "const info = producerMapRef.current.get(producerId);",
+    );
+    const clearIndex = section.indexOf(
+      "clearStaleReplacementCleanupTimeout(producerId);",
+    );
+    if (infoIndex < 0 || clearIndex < 0 || clearIndex < infoIndex) {
+      failures.push(
+        "web duplicate producerClosed events must not cancel pending replacement cleanup after producer info is gone",
+      );
+    }
+    if (
+      !/const clearClosedProducerState = \(hasPendingReplacement: boolean\) => \{[\s\S]*UPDATE_STREAM[\s\S]*if \(info\.kind === "video" && info\.type === "screen"\) \{[\s\S]*setActiveScreenShareId\(null\);[\s\S]*if \(!hasPendingReplacement\)/.test(
+        section,
+      )
+    ) {
+      failures.push(
+        "web stale screen-share replacements must clear active screen share even while a replacement is pending",
+      );
+    }
+  }
+}
 assertRegex(
   "sfuClient",
   /addProducer\(producer: Producer\): Producer \| null[\s\S]*const displacedProducer =[\s\S]*return displacedProducer;/,

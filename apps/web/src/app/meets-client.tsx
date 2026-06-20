@@ -1102,6 +1102,7 @@ export default function MeetsClient({
     intentionalTrackStopsRef: refs.intentionalTrackStopsRef,
     permissionHintTimeoutRef: refs.permissionHintTimeoutRef,
     audioContextRef: refs.audioContextRef,
+    mediaRecoveryBlockedRef: refs.reconnectInFlightRef,
   });
 
   // Record the picked camera so the dropdown reflects the selection, then run

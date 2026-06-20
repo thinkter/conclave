@@ -88,6 +88,7 @@ interface UseMeetMediaOptions {
   >;
   permissionHintTimeoutRef: React.MutableRefObject<number | null>;
   audioContextRef: React.MutableRefObject<AudioContext | null>;
+  mediaRecoveryBlockedRef?: React.MutableRefObject<boolean>;
 }
 
 const getStartupAwarePublishQuality = (
@@ -319,6 +320,7 @@ export function useMeetMedia({
   intentionalTrackStopsRef,
   permissionHintTimeoutRef,
   audioContextRef,
+  mediaRecoveryBlockedRef,
 }: UseMeetMediaOptions) {
   const [mediaState, setMediaState] = useState<MediaState>({
     hasAudioPermission: false,
@@ -332,18 +334,24 @@ export function useMeetMedia({
     ) => Promise<void>
   >(async () => {});
   const audioRecoveryInFlightRef = useRef(false);
+  const isMediaRecoveryBlocked = useCallback(
+    () => mediaRecoveryBlockedRef?.current === true,
+    [mediaRecoveryBlockedRef],
+  );
   const [audioProducerRecoveryPulse, setAudioProducerRecoveryPulse] =
     useState(0);
   const notificationVolume = clampMeetVolume(meetVolume);
   const requestAudioProducerRecovery = useCallback(() => {
+    if (isMediaRecoveryBlocked()) return;
     setAudioProducerRecoveryPulse((value) => value + 1);
-  }, []);
+  }, [isMediaRecoveryBlocked]);
   const cameraRecoveryInFlightRef = useRef(false);
   const [cameraProducerRecoveryPulse, setCameraProducerRecoveryPulse] =
     useState(0);
   const requestCameraProducerRecovery = useCallback(() => {
+    if (isMediaRecoveryBlocked()) return;
     setCameraProducerRecoveryPulse((value) => value + 1);
-  }, []);
+  }, [isMediaRecoveryBlocked]);
   const cameraProducerTrackRepairInFlightRef = useRef(false);
   const cameraRecoveryCodecOverrideRef = useRef<ReturnType<
     typeof getPreferredWebcamCodec
@@ -1530,10 +1538,12 @@ export function useMeetMedia({
     if (ghostEnabled || isObserverMode) return;
     if (connectionState !== "joined") return;
     if (isMuted) return;
+    if (isMediaRecoveryBlocked()) return;
 
     let disposed = false;
     const requestRecovery = (reason: "initial" | "watchdog") => {
       if (disposed || audioRecoveryInFlightRef.current) return;
+      if (isMediaRecoveryBlocked()) return;
 
       const producer = audioProducerRef.current;
       const producerTrack = producer?.track ?? null;
@@ -1575,6 +1585,7 @@ export function useMeetMedia({
     ghostEnabled,
     isMuted,
     isObserverMode,
+    isMediaRecoveryBlocked,
     audioProducerRef,
     resetAudioProducer,
     requestAudioProducerRecovery,
@@ -1584,6 +1595,7 @@ export function useMeetMedia({
     if (ghostEnabled || isObserverMode) return;
     if (connectionState !== "joined") return;
     if (isMuted) return;
+    if (isMediaRecoveryBlocked()) return;
     if (audioProducerRef.current) {
       const existingProducer = audioProducerRef.current;
       if (
@@ -1606,7 +1618,23 @@ export function useMeetMedia({
         localStreamRef.current
           ?.getAudioTracks()
           .some((track) => track.readyState === "live") === true;
+      const removeCreatedTrackFromLocalStream = () => {
+        if (!createdTrack) return;
+        stopLocalTrack(createdTrack);
+        const currentStream = localStreamRef.current;
+        if (currentStream?.getTracks().includes(createdTrack)) {
+          const remaining = currentStream
+            .getTracks()
+            .filter((track) => track !== createdTrack);
+          const nextStream = new MediaStream(remaining);
+          localStreamRef.current = nextStream;
+          setLocalStream(nextStream);
+        }
+        createdTrack = null;
+      };
+
       try {
+        if (isMediaRecoveryBlocked()) return;
         let transport = getUsableProducerTransport(
           producerTransportRef.current,
         );
@@ -1635,6 +1663,10 @@ export function useMeetMedia({
         if (!audioTrack) {
           throw new Error("No audio track available for recovery");
         }
+        if (isMediaRecoveryBlocked()) {
+          removeCreatedTrackFromLocalStream();
+          return;
+        }
 
         markAudioTrackForSpeech(audioTrack);
         audioTrack.onended = () => {
@@ -1654,6 +1686,10 @@ export function useMeetMedia({
           localStreamRef.current = nextStream;
           setLocalStream(nextStream);
         }
+        if (isMediaRecoveryBlocked()) {
+          removeCreatedTrackFromLocalStream();
+          return;
+        }
 
         const audioProducer = await transport.produce({
           track: audioTrack,
@@ -1668,6 +1704,7 @@ export function useMeetMedia({
           try {
             audioProducer.close();
           } catch {}
+          removeCreatedTrackFromLocalStream();
           return;
         }
 
@@ -1675,24 +1712,13 @@ export function useMeetMedia({
         audioProducer.on("transportclose", () => {
           if (audioProducerRef.current?.id === audioProducer.id) {
             audioProducerRef.current = null;
-            setAudioProducerRecoveryPulse((value) => value + 1);
+            requestAudioProducerRecovery();
           }
         });
       } catch (err) {
         console.error("[Meets] Audio producer recovery failed:", err);
+        removeCreatedTrackFromLocalStream();
         if (!cancelled) {
-          if (createdTrack) {
-            stopLocalTrack(createdTrack);
-            const currentStream = localStreamRef.current;
-            if (currentStream?.getTracks().includes(createdTrack)) {
-              const remaining = currentStream
-                .getTracks()
-                .filter((track) => track !== createdTrack);
-              const nextStream = new MediaStream(remaining);
-              localStreamRef.current = nextStream;
-              setLocalStream(nextStream);
-            }
-          }
           if (!hadLiveAudioTrackBeforeRecovery) {
             setIsMuted(true);
           }
@@ -1714,6 +1740,7 @@ export function useMeetMedia({
     connectionState,
     audioProducerRecoveryPulse,
     isMuted,
+    isMediaRecoveryBlocked,
     selectedAudioInputDeviceId,
     handleLocalTrackEnded,
     stopLocalTrack,
@@ -1728,6 +1755,7 @@ export function useMeetMedia({
     resetAudioProducer,
     getPublishNetworkProfile,
     markAudioTrackForSpeech,
+    requestAudioProducerRecovery,
   ]);
 
   const toggleCamera = useCallback(async () => {
@@ -1929,10 +1957,17 @@ export function useMeetMedia({
     if (ghostEnabled || isObserverMode) return;
     if (connectionState !== "joined") return;
     if (isCameraOff) return;
+    if (isMediaRecoveryBlocked()) return;
 
     let disposed = false;
     const requestRecovery = (reason: "initial" | "watchdog") => {
-      if (disposed || cameraRecoveryInFlightRef.current) return;
+      if (
+        disposed ||
+        cameraRecoveryInFlightRef.current ||
+        isMediaRecoveryBlocked()
+      ) {
+        return;
+      }
 
       const producer = videoProducerRef.current;
       const producerTrack = producer?.track ?? null;
@@ -1953,7 +1988,11 @@ export function useMeetMedia({
         cameraProducerTrackRepairInFlightRef.current = true;
         void (async () => {
           try {
-            if (videoProducerRef.current?.id !== producer.id || producer.closed) {
+            if (
+              videoProducerRef.current?.id !== producer.id ||
+              producer.closed ||
+              isMediaRecoveryBlocked()
+            ) {
               return;
             }
             if ("contentHint" in rawCameraTrack) {
@@ -1985,7 +2024,10 @@ export function useMeetMedia({
               "[Meets] Camera producer raw-track repair failed; recreating producer:",
               err,
             );
-            if (videoProducerRef.current?.id === producer.id) {
+            if (
+              !isMediaRecoveryBlocked() &&
+              videoProducerRef.current?.id === producer.id
+            ) {
               closeLocalVideoProducerForReplacement(producer);
               requestCameraProducerRecovery();
             }
@@ -2029,6 +2071,7 @@ export function useMeetMedia({
     connectionState,
     ghostEnabled,
     isCameraOff,
+    isMediaRecoveryBlocked,
     isObserverMode,
     videoProducerRef,
     localStreamRef,
@@ -2045,7 +2088,11 @@ export function useMeetMedia({
       cameraOutboundStallStateRef.current = createCameraOutboundStallState();
       return;
     }
-    if (connectionState !== "joined" || isCameraOff) {
+    if (
+      connectionState !== "joined" ||
+      isCameraOff ||
+      isMediaRecoveryBlocked()
+    ) {
       cameraOutboundStallStateRef.current = createCameraOutboundStallState();
       return;
     }
@@ -2076,6 +2123,13 @@ export function useMeetMedia({
       if (disposed) return;
       if (cameraProducerTrackRepairInFlightRef.current) return;
       if (cameraRecoveryInFlightRef.current) return;
+      if (isMediaRecoveryBlocked()) {
+        cameraOutboundStallStateRef.current = {
+          ...state,
+          lastRecoveryAtMs: performance.now(),
+        };
+        return;
+      }
 
       const now = performance.now();
       if (
@@ -2102,8 +2156,28 @@ export function useMeetMedia({
         if (
           disposed ||
           videoProducerRef.current?.id !== producer.id ||
-          producer.closed
+          producer.closed ||
+          isMediaRecoveryBlocked()
         ) {
+          return;
+        }
+
+        if (!allowProducerRecreate) {
+          cameraOutboundStallStateRef.current = {
+            ...state,
+            lastRecoveryAtMs: now,
+          };
+          console.warn(
+            "[Meets] Camera sender stalled in background; keeping producer open.",
+            {
+              producerId: producer.id,
+              trackId: producerTrack.id,
+              rawTrackId: rawCameraTrack.id,
+              stalledSamples: state.stalledSamples,
+              frames: sample.frames,
+              bytes: sample.bytes,
+            },
+          );
           return;
         }
 
@@ -2147,25 +2221,6 @@ export function useMeetMedia({
           return;
         }
 
-        if (!allowProducerRecreate) {
-          cameraOutboundStallStateRef.current = {
-            ...state,
-            lastRecoveryAtMs: now,
-          };
-          console.warn(
-            "[Meets] Camera sender stalled in background; keeping producer open.",
-            {
-              producerId: producer.id,
-              trackId: producerTrack.id,
-              rawTrackId: rawCameraTrack.id,
-              stalledSamples: state.stalledSamples,
-              frames: sample.frames,
-              bytes: sample.bytes,
-            },
-          );
-          return;
-        }
-
         console.warn("[Meets] Recreating stalled camera sender:", {
           producerId: producer.id,
           trackId: producerTrack.id,
@@ -2186,7 +2241,8 @@ export function useMeetMedia({
               codec.mimeType.toLowerCase() === currentCodecMimeType,
           ) ?? getPreferredWebcamCodec(device);
         const fallbackCodec = getFallbackWebcamCodec(device, currentCodec);
-        cameraRecoveryCodecOverrideRef.current = fallbackCodec ?? currentCodec ?? null;
+        cameraRecoveryCodecOverrideRef.current =
+          fallbackCodec ?? currentCodec ?? null;
         cameraRecoveryForceSingleLayerRef.current = true;
         console.warn("[Meets] Next camera recovery will use single-layer codec:", {
           currentCodec: currentCodec?.mimeType ?? currentCodecMimeType,
@@ -2200,7 +2256,10 @@ export function useMeetMedia({
           "[Meets] Stalled camera sender recovery failed; recreating producer:",
           err,
         );
-        if (videoProducerRef.current?.id === producer.id) {
+        if (
+          !isMediaRecoveryBlocked() &&
+          videoProducerRef.current?.id === producer.id
+        ) {
           closeLocalVideoProducerForReplacement(producer);
           resetStallState();
           requestCameraProducerRecovery();
@@ -2212,6 +2271,10 @@ export function useMeetMedia({
 
     const pollOutboundProgress = () => {
       if (disposed) return;
+      if (isMediaRecoveryBlocked()) {
+        resetStallState();
+        return;
+      }
       if (
         cameraProducerTrackRepairInFlightRef.current ||
         cameraRecoveryInFlightRef.current
@@ -2237,7 +2300,7 @@ export function useMeetMedia({
       void producer
         .getStats()
         .then((report) => {
-          if (disposed) return;
+          if (disposed || isMediaRecoveryBlocked()) return;
           if (
             videoProducerRef.current?.id !== producer.id ||
             producer.closed ||
@@ -2318,6 +2381,7 @@ export function useMeetMedia({
     ghostEnabled,
     isCameraOff,
     isObserverMode,
+    isMediaRecoveryBlocked,
     videoProducerRef,
     deviceRef,
     localStreamRef,
@@ -2333,6 +2397,7 @@ export function useMeetMedia({
     if (ghostEnabled || isObserverMode) return;
     if (connectionState !== "joined") return;
     if (isCameraOff) return;
+    if (isMediaRecoveryBlocked()) return;
     const existingProducer = videoProducerRef.current;
     const existingTrack = existingProducer?.track ?? null;
     if (
@@ -2357,7 +2422,23 @@ export function useMeetMedia({
         localStreamRef.current
           ?.getVideoTracks()
           .some((track) => track.readyState === "live") === true;
+      const removeCreatedTrackFromLocalStream = () => {
+        if (!createdTrack) return;
+        stopLocalTrack(createdTrack);
+        const currentStream = localStreamRef.current;
+        if (currentStream?.getTracks().includes(createdTrack)) {
+          const remaining = currentStream
+            .getTracks()
+            .filter((track) => track !== createdTrack);
+          const nextStream = new MediaStream(remaining);
+          localStreamRef.current = nextStream;
+          setLocalStream(nextStream);
+        }
+        createdTrack = null;
+      };
+
       try {
+        if (isMediaRecoveryBlocked()) return;
         let transport = getUsableProducerTransport(producerTransportRef.current);
         if (!transport) {
           const transportReady =
@@ -2384,6 +2465,10 @@ export function useMeetMedia({
         if (!videoTrack) {
           throw new Error("No video track available for recovery");
         }
+        if (isMediaRecoveryBlocked()) {
+          removeCreatedTrackFromLocalStream();
+          return;
+        }
 
         if ("contentHint" in videoTrack) {
           videoTrack.contentHint = "motion";
@@ -2404,6 +2489,10 @@ export function useMeetMedia({
           const nextStream = new MediaStream([...remainingTracks, videoTrack]);
           localStreamRef.current = nextStream;
           setLocalStream(nextStream);
+        }
+        if (isMediaRecoveryBlocked()) {
+          removeCreatedTrackFromLocalStream();
+          return;
         }
 
         const publishStream =
@@ -2436,6 +2525,7 @@ export function useMeetMedia({
           try {
             recoveredProducer.close();
           } catch {}
+          removeCreatedTrackFromLocalStream();
           return;
         }
 
@@ -2449,19 +2539,8 @@ export function useMeetMedia({
         setIsCameraOff(false);
       } catch (err) {
         console.error("[Meets] Camera producer recovery failed:", err);
+        removeCreatedTrackFromLocalStream();
         if (!cancelled) {
-          if (createdTrack) {
-            stopLocalTrack(createdTrack);
-            const currentStream = localStreamRef.current;
-            if (currentStream?.getTracks().includes(createdTrack)) {
-              const remaining = currentStream
-                .getTracks()
-                .filter((track) => track !== createdTrack);
-              const nextStream = new MediaStream(remaining);
-              localStreamRef.current = nextStream;
-              setLocalStream(nextStream);
-            }
-          }
           if (!hadLiveCameraTrackBeforeRecovery) {
             setIsCameraOff(true);
           }
@@ -2487,6 +2566,7 @@ export function useMeetMedia({
     connectionState,
     cameraProducerRecoveryPulse,
     isCameraOff,
+    isMediaRecoveryBlocked,
     handleLocalTrackEnded,
     stopLocalTrack,
     setLocalStream,

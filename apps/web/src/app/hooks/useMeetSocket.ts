@@ -923,11 +923,15 @@ export function useMeetSocket({
         window.clearTimeout(timeoutId);
       }
       videoStallRecoveryTimeoutsRef.current.clear();
-      for (const timeoutId of participantConnectionStatusTimeoutsRef.current.values()) {
-        window.clearTimeout(timeoutId);
+      if (!preserveMeetingState) {
+        const statusTimeouts =
+          participantConnectionStatusTimeoutsRef.current.values();
+        for (const timeoutId of statusTimeouts) {
+          window.clearTimeout(timeoutId);
+        }
+        participantConnectionStatusTimeoutsRef.current.clear();
+        visibleParticipantReconnectingIdsRef.current.clear();
       }
-      participantConnectionStatusTimeoutsRef.current.clear();
-      visibleParticipantReconnectingIdsRef.current.clear();
       for (const timeoutId of staleConsumerRecoveryTimeoutsRef.current.values()) {
         window.clearTimeout(timeoutId);
       }
@@ -1463,7 +1467,6 @@ export function useMeetSocket({
 
   const handleProducerClosed = useCallback(
     (producerId: string) => {
-      clearStaleReplacementCleanupTimeout(producerId);
       pendingProducersRef.current.delete(producerId);
       consumeRetryAttemptsRef.current.delete(producerId);
       const scheduledRecoveryTimeout =
@@ -1494,6 +1497,7 @@ export function useMeetSocket({
 
       const info = producerMapRef.current.get(producerId);
       if (info) {
+        clearStaleReplacementCleanupTimeout(producerId);
         const getMatchingReplacementState = () => {
           const hasConsumedReplacement = Array.from(
             producerMapRef.current.entries(),
@@ -1531,6 +1535,10 @@ export function useMeetSocket({
             producerId: producerId,
           });
 
+          if (info.kind === "video" && info.type === "screen") {
+            setActiveScreenShareId(null);
+          }
+
           if (!hasPendingReplacement) {
             if (info.kind === "video" && info.type === "webcam") {
               dispatchParticipants({
@@ -1544,8 +1552,6 @@ export function useMeetSocket({
                 userId: info.userId,
                 muted: true,
               });
-            } else if (info.type === "screen" && info.kind === "video") {
-              setActiveScreenShareId(null);
             }
           }
         };
