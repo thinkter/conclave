@@ -1148,6 +1148,28 @@ assertRegex(
       );
     }
   }
+
+  const produceStart = socketText.indexOf("const produce = useCallback(");
+  const produceEnd = socketText.indexOf(
+    "const consumeProducer = useCallback",
+    produceStart,
+  );
+  if (produceStart < 0 || produceEnd < 0) {
+    failures.push("web local producer publish helper missing");
+  } else {
+    const section = socketText.slice(produceStart, produceEnd);
+    if (
+      !section.includes("microphone publish retry scheduled") ||
+      !section.includes("audioTrack.enabled = true;") ||
+      !section.includes("isMutedRef.current = false;") ||
+      !section.includes("setIsMuted(false);") ||
+      !section.includes("requestAudioProducerRecovery();")
+    ) {
+      failures.push(
+        "web reconnect join audio publish failures must preserve unmuted intent and queue producer recovery",
+      );
+    }
+  }
 }
 {
   const text = source.webMeetMedia;
@@ -2000,6 +2022,11 @@ assertRegex(
   "meetingParticipantReducer",
   /if \(!action\.stream\) \{[\s\S]*currentProducerId[\s\S]*currentProducerId !== action\.producerId[\s\S]*return state;/,
   "shared participant reducer ignores stale producer close events",
+);
+assertRegex(
+  "meetingParticipantReducer",
+  /case "UPDATE_CONNECTION_STATUS":[\s\S]*const participant = state\.get\(action\.userId\);[\s\S]*if \(!participant && !action\.status\) return state;/,
+  "shared participant reducer ignores stale connection-status clears for missing participants",
 );
 assertRegex(
   "webMeetSocket",

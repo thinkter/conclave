@@ -2238,8 +2238,17 @@ export function useMeetSocket({
         } catch (err) {
           console.error("[Meets] Failed to produce audio:", err);
           if (mediaIntent.isMicOn) {
-            publicationWarnings.push("microphone publish failed");
-            setIsMuted(true);
+            if (audioTrack.readyState === "live") {
+              publicationWarnings.push("microphone publish retry scheduled");
+              audioTrack.enabled = true;
+              isMutedRef.current = false;
+              setIsMuted(false);
+              requestAudioProducerRecovery();
+            } else {
+              publicationWarnings.push("microphone publish failed");
+              isMutedRef.current = true;
+              setIsMuted(true);
+            }
           }
         }
       } else if (mediaIntent.isMicOn) {
@@ -2255,6 +2264,7 @@ export function useMeetSocket({
         } else {
           publicationWarnings.push("microphone track missing");
         }
+        isMutedRef.current = true;
         setIsMuted(true);
       }
 

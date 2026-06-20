@@ -225,6 +225,8 @@ export function participantReducer(
     }
     case "UPDATE_CONNECTION_STATUS": {
       const participant = state.get(action.userId);
+      if (!participant && !action.status) return state;
+
       const previous = participant?.connectionStatus;
       const previousGraceMs =
         previous?.state === "reconnecting" ? previous.graceMs : undefined;
