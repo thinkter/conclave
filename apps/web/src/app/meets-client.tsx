@@ -1935,7 +1935,7 @@ export default function MeetsClient({
     setIsTtsDisabled,
     setIsDmEnabled,
     setActiveScreenShareId,
-    setVideoQuality: setNetworkManagedVideoQuality,
+    setNetworkManagedVideoQuality,
     videoQualityRef: refs.videoQualityRef,
     updateVideoQualityRef,
     requestMediaPermissions,

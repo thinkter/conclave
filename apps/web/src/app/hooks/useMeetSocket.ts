@@ -420,7 +420,7 @@ interface UseMeetSocketOptions {
   setIsTtsDisabled: (value: boolean) => void;
   setIsDmEnabled: (value: boolean) => void;
   setActiveScreenShareId: (value: string | null) => void;
-  setVideoQuality: (value: VideoQuality) => void;
+  setNetworkManagedVideoQuality: (value: VideoQuality) => void;
   videoQualityRef: React.MutableRefObject<VideoQuality>;
   updateVideoQualityRef: React.MutableRefObject<
     (
@@ -505,7 +505,7 @@ export function useMeetSocket({
   setIsTtsDisabled,
   setIsDmEnabled,
   setActiveScreenShareId,
-  setVideoQuality,
+  setNetworkManagedVideoQuality,
   videoQualityRef,
   updateVideoQualityRef,
   requestMediaPermissions,
@@ -3604,12 +3604,12 @@ export function useMeetSocket({
                 console.log(`[Meets] Setting video quality to: ${quality}`);
                 const previousQuality = videoQualityRef.current;
                 videoQualityRef.current = quality;
-                setVideoQuality(quality);
+                setNetworkManagedVideoQuality(quality);
                 try {
                   await updateVideoQualityRef.current(quality);
                 } catch (error) {
                   videoQualityRef.current = previousQuality;
-                  setVideoQuality(previousQuality);
+                  setNetworkManagedVideoQuality(previousQuality);
                   console.warn("[Meets] Failed to apply SFU video quality:", error);
                 }
               },
@@ -4076,7 +4076,7 @@ export function useMeetSocket({
       setMeetError,
       setPendingUsers,
       setWaitingMessage,
-      setVideoQuality,
+      setNetworkManagedVideoQuality,
       socketRef,
       stopLocalTrack,
       syncProducers,
