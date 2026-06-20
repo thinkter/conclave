@@ -22,6 +22,7 @@ const files = {
   webMeetClient: "apps/web/src/app/meets-client.tsx",
   webMeetMedia: "apps/web/src/app/hooks/useMeetMedia.ts",
   webMeetSocket: "apps/web/src/app/hooks/useMeetSocket.ts",
+  webVideoEffects: "apps/web/src/app/hooks/useVideoEffects.ts",
   meetingParticipantReducer: "packages/meeting-core/src/participant-reducer.ts",
   webJoinScreen: "apps/web/src/app/components/JoinScreen.tsx",
   webMobileJoinScreen: "apps/web/src/app/components/mobile/MobileJoinScreen.tsx",
@@ -1379,6 +1380,26 @@ assertIncludes(
   "webMeetClient",
   "const shouldPublishProcessedVideo = shouldRunVisualVideoEffects;",
   "web active effects publish processed video regardless of tab visibility",
+);
+assertIncludes(
+  "webVideoEffects",
+  "const PROCESSED_OUTPUT_STALE_RELEASE_MS = 2500;",
+  "web stale processed effects output release threshold",
+);
+assertRegex(
+  "webVideoEffects",
+  /const releaseStaleProcessedOutputIfNeeded =[\s\S]*latestOutputFrameAt[\s\S]*PROCESSED_OUTPUT_STALE_RELEASE_MS[\s\S]*releaseOutputTrackToRaw\(reason\);/,
+  "web live-but-stale processed effects output releases to raw publish track",
+);
+assertRegex(
+  "webVideoEffects",
+  /if \(!outputDelivered\) \{[\s\S]*"Effects output writer is unavailable; showing raw camera\."[\s\S]*releaseStaleProcessedOutputIfNeeded\(\s*"effects output writer unavailable",?\s*\);/,
+  "web unavailable effects writer does not leave frozen processed output published",
+);
+assertRegex(
+  "webVideoEffects",
+  /const staleProcessedOutputReleased =[\s\S]*releaseStaleProcessedOutputIfNeeded\("processed output frame stale"\);[\s\S]*!staleProcessedOutputReleased &&[\s\S]*visibleOutputFrameCount >= OUTPUT_READY_FRAMES[\s\S]*publishOutputTrack\(\);/,
+  "web effects output republishes processed video only after fresh frames resume",
 );
 assertRegex(
   "webMeetClient",
