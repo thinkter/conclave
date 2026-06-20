@@ -1518,6 +1518,47 @@ export function useMeetSocket({
     [producerMapRef, setProducerPausedState],
   );
 
+  const closeConsumerForSameProducerReconsume = useCallback(
+    (producerId: string) => {
+      pendingProducersRef.current.delete(producerId);
+      consumeRetryAttemptsRef.current.delete(producerId);
+      const scheduledRecoveryTimeout =
+        videoStallRecoveryTimeoutsRef.current.get(producerId);
+      if (scheduledRecoveryTimeout != null) {
+        window.clearTimeout(scheduledRecoveryTimeout);
+        videoStallRecoveryTimeoutsRef.current.delete(producerId);
+      }
+      clearStaleConsumerRecoveryTimeout(producerId);
+      clearStaleReplacementCleanupTimeout(producerId);
+      mutedConsumerSinceRef.current.delete(producerId);
+      adaptivelyPausedConsumerProducerIdsRef.current.delete(producerId);
+      consumerTelemetryRef.current.delete(producerId);
+      videoFreezeStatsRef.current.delete(producerId);
+
+      const consumer = consumersRef.current.get(producerId);
+      if (!consumer) return;
+      try {
+        consumer.track.onmute = null;
+        consumer.track.onunmute = null;
+        consumer.track.stop();
+        consumer.close();
+      } catch {}
+      consumersRef.current.delete(producerId);
+    },
+    [
+      adaptivelyPausedConsumerProducerIdsRef,
+      clearStaleConsumerRecoveryTimeout,
+      clearStaleReplacementCleanupTimeout,
+      consumeRetryAttemptsRef,
+      consumerTelemetryRef,
+      consumersRef,
+      mutedConsumerSinceRef,
+      pendingProducersRef,
+      videoFreezeStatsRef,
+      videoStallRecoveryTimeoutsRef,
+    ],
+  );
+
   const handleProducerClosed = useCallback(
     (producerId: string) => {
       pendingProducersRef.current.delete(producerId);
@@ -2724,7 +2765,7 @@ export function useMeetSocket({
         console.warn(
           `[Meets] Recovering stale ${producerInfo.kind} consumer ${producerInfo.producerId}: ${reason}`,
         );
-        handleProducerClosed(producerInfo.producerId);
+        closeConsumerForSameProducerReconsume(producerInfo.producerId);
         await consumeProducer(producerInfo);
       } catch (error) {
         console.error(
@@ -2740,7 +2781,7 @@ export function useMeetSocket({
       consumerRecoveryInFlightRef,
       socketRef,
       consumerTransportRef,
-      handleProducerClosed,
+      closeConsumerForSameProducerReconsume,
       consumeProducer,
       queueProducerConsumeRetry,
     ],

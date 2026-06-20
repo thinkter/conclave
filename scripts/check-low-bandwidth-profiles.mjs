@@ -1514,10 +1514,23 @@ assertRegex(
   const end = text.indexOf("recoverStaleConsumerRef.current", start);
   if (start < 0 || end < 0) {
     failures.push("web stale consumer recovery section missing");
-  } else if (text.slice(start, end).includes("handleReconnectRef.current")) {
-    failures.push(
-      "web stale consumer recovery must not trigger full meeting reconnect",
-    );
+  } else {
+    const section = text.slice(start, end);
+    if (section.includes("handleReconnectRef.current")) {
+      failures.push(
+        "web stale consumer recovery must not trigger full meeting reconnect",
+      );
+    }
+    if (
+      section.includes("handleProducerClosed(producerInfo.producerId)") ||
+      !section.includes(
+        "closeConsumerForSameProducerReconsume(producerInfo.producerId)",
+      )
+    ) {
+      failures.push(
+        "web stale consumer recovery must not schedule stream cleanup while re-consuming the same producer",
+      );
+    }
   }
 }
 {
@@ -2029,6 +2042,31 @@ assertRegex(
     ) {
       failures.push(
         "web screen-share replacements must move active state to pending replacements and clear never-consumed replacements",
+      );
+    }
+  }
+}
+{
+  const text = source.webMeetSocket;
+  const start = text.indexOf(
+    "const closeConsumerForSameProducerReconsume = useCallback(",
+  );
+  const end = text.indexOf("const handleProducerClosed = useCallback", start);
+  if (start < 0 || end < 0) {
+    failures.push("web same-producer consumer reconsume cleanup helper missing");
+  } else {
+    const section = text.slice(start, end);
+    if (
+      !section.includes("clearStaleReplacementCleanupTimeout(producerId);") ||
+      !section.includes("consumer.track.onmute = null;") ||
+      !section.includes("consumer.track.onunmute = null;") ||
+      !section.includes("consumer.track.stop();") ||
+      !section.includes("consumersRef.current.delete(producerId);") ||
+      section.includes('type: "UPDATE_STREAM"') ||
+      section.includes("producerMapRef.current.delete(producerId)")
+    ) {
+      failures.push(
+        "web same-producer consumer reconsume must close only stale consumer resources without clearing participant streams",
       );
     }
   }
