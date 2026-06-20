@@ -820,6 +820,50 @@ for (const [context, label] of [
 }
 {
   const text = source.webMeetMedia;
+  const start = text.indexOf("const recoverStalledProducer = async");
+  const end = text.indexOf("const pollOutboundProgress = () => {", start);
+  if (start < 0 || end < 0) {
+    failures.push("web camera outbound stall watchdog section missing");
+  } else {
+    const section = text.slice(start, end);
+    if (
+      !section.includes("producer.replaceTrack({ track: rawCameraTrack });") ||
+      !section.includes("closeLocalVideoProducerForReplacement(producer);") ||
+      !section.includes("requestCameraProducerRecovery();")
+    ) {
+      failures.push(
+        "web stalled camera sender recovery must repair with raw camera before recreating the producer",
+      );
+    }
+    const rawRepairIndex = section.indexOf(
+      "producer.replaceTrack({ track: rawCameraTrack });",
+    );
+    const recreateIndex = section.indexOf(
+      "closeLocalVideoProducerForReplacement(producer);",
+    );
+    if (
+      rawRepairIndex >= 0 &&
+      recreateIndex >= 0 &&
+      recreateIndex < rawRepairIndex
+    ) {
+      failures.push(
+        "web stalled camera sender recovery must try raw-track repair before producer recreation",
+      );
+    }
+  }
+  assertIncludes(
+    "webMeetMedia",
+    "CAMERA_OUTBOUND_STALL_SAMPLES_BEFORE_RECOVERY",
+    "web camera outbound stall threshold",
+  );
+  assertRegex(
+    "webMeetMedia",
+    /producer[\s\S]*\.getStats\(\)[\s\S]*readOutboundVideoProgressSample\(report\)[\s\S]*hasOutboundVideoProgress/,
+    "web camera sender watchdog monitors outbound RTP frame progress",
+  );
+}
+{
+  const text = source.webMeetMedia;
   const start = text.indexOf("const recoverCameraProducer = async () => {");
   const end = text.indexOf("void recoverCameraProducer();", start);
   if (start < 0 || end < 0) {

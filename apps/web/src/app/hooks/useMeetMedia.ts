@@ -192,6 +192,106 @@ const getUsableProducerTransport = (
   return transport;
 };
 
+type OutboundVideoProgressSample = {
+  frames: number | null;
+  bytes: number | null;
+};
+
+type CameraOutboundStallState = {
+  producerId: string | null;
+  trackId: string | null;
+  frames: number | null;
+  bytes: number | null;
+  stalledSamples: number;
+  rawRepairAttempted: boolean;
+  lastRecoveryAtMs: number;
+};
+
+const CAMERA_OUTBOUND_STALL_CHECK_MS = 2000;
+const CAMERA_OUTBOUND_STALL_SAMPLES_BEFORE_RECOVERY = 3;
+const CAMERA_OUTBOUND_STALL_RECOVERY_COOLDOWN_MS = 10000;
+const MIN_OUTBOUND_VIDEO_BYTE_DELTA_FOR_PROGRESS = 1200;
+
+const createCameraOutboundStallState = (
+  producerId: string | null = null,
+  trackId: string | null = null,
+): CameraOutboundStallState => ({
+  producerId,
+  trackId,
+  frames: null,
+  bytes: null,
+  stalledSamples: 0,
+  rawRepairAttempted: false,
+  lastRecoveryAtMs: 0,
+});
+
+const getRtcStatsNumber = (
+  stat: Record<string, unknown>,
+  key: string,
+): number | null => {
+  const value = stat[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+};
+
+const readOutboundVideoProgressSample = (
+  report: RTCStatsReport,
+): OutboundVideoProgressSample => {
+  let frames = 0;
+  let hasFrames = false;
+  let bytes = 0;
+  let hasBytes = false;
+
+  report.forEach((entry) => {
+    const stat = entry as unknown as Record<string, unknown>;
+    if (stat.type !== "outbound-rtp") return;
+    const kind = stat.kind ?? stat.mediaType;
+    if (kind !== "video") return;
+    if (stat.isRemote === true) return;
+
+    const frameCount =
+      getRtcStatsNumber(stat, "framesEncoded") ??
+      getRtcStatsNumber(stat, "framesSent");
+    if (frameCount !== null) {
+      frames += Math.max(0, frameCount);
+      hasFrames = true;
+    }
+
+    const byteCount = getRtcStatsNumber(stat, "bytesSent");
+    if (byteCount !== null) {
+      bytes += Math.max(0, byteCount);
+      hasBytes = true;
+    }
+  });
+
+  return {
+    frames: hasFrames ? frames : null,
+    bytes: hasBytes ? bytes : null,
+  };
+};
+
+const hasOutboundVideoProgress = (
+  previous: CameraOutboundStallState,
+  sample: OutboundVideoProgressSample,
+): boolean => {
+  if (
+    previous.frames !== null &&
+    sample.frames !== null &&
+    sample.frames > previous.frames
+  ) {
+    return true;
+  }
+
+  if (
+    previous.bytes !== null &&
+    sample.bytes !== null &&
+    sample.bytes - previous.bytes >= MIN_OUTBOUND_VIDEO_BYTE_DELTA_FOR_PROGRESS
+  ) {
+    return true;
+  }
+
+  return false;
+};
+
 export function useMeetMedia({
   ghostEnabled,
   isObserverMode = false,
@@ -256,6 +356,9 @@ export function useMeetMedia({
     setCameraProducerRecoveryPulse((value) => value + 1);
   }, []);
   const cameraProducerTrackRepairInFlightRef = useRef(false);
+  const cameraOutboundStallStateRef = useRef<CameraOutboundStallState>(
+    createCameraOutboundStallState(),
+  );
   const connectionStateRef = useRef(connectionState);
   if (connectionStateRef.current !== connectionState) {
     connectionStateRef.current = connectionState;
@@ -1876,6 +1979,256 @@ export function useMeetMedia({
       disposed = true;
       window.clearTimeout(initialTimeout);
       window.clearInterval(watchdogInterval);
+    };
+  }, [
+    connectionState,
+    ghostEnabled,
+    isCameraOff,
+    isObserverMode,
+    videoProducerRef,
+    localStreamRef,
+    videoQualityRef,
+    handleLocalTrackEnded,
+    getPublishNetworkProfile,
+    closeLocalVideoProducerForReplacement,
+    requestCameraProducerRecovery,
+  ]);
+
+  useEffect(() => {
+    if (ghostEnabled || isObserverMode) {
+      cameraOutboundStallStateRef.current = createCameraOutboundStallState();
+      return;
+    }
+    if (connectionState !== "joined" || isCameraOff) {
+      cameraOutboundStallStateRef.current = createCameraOutboundStallState();
+      return;
+    }
+
+    let disposed = false;
+
+    const resetStallState = (
+      producerId: string | null = null,
+      trackId: string | null = null,
+    ) => {
+      cameraOutboundStallStateRef.current =
+        createCameraOutboundStallState(producerId, trackId);
+    };
+
+    const recoverStalledProducer = async ({
+      producer,
+      producerTrack,
+      sample,
+      state,
+    }: {
+      producer: Producer;
+      producerTrack: MediaStreamTrack;
+      sample: OutboundVideoProgressSample;
+      state: CameraOutboundStallState;
+    }) => {
+      if (disposed) return;
+      if (cameraProducerTrackRepairInFlightRef.current) return;
+      if (cameraRecoveryInFlightRef.current) return;
+
+      const now = performance.now();
+      if (
+        state.lastRecoveryAtMs > 0 &&
+        now - state.lastRecoveryAtMs <
+          CAMERA_OUTBOUND_STALL_RECOVERY_COOLDOWN_MS
+      ) {
+        return;
+      }
+
+      const rawCameraTrack = getFirstLiveTrack(
+        localStreamRef.current?.getVideoTracks() ?? [],
+      );
+      if (
+        !rawCameraTrack ||
+        rawCameraTrack.readyState !== "live" ||
+        rawCameraTrack.muted
+      ) {
+        return;
+      }
+
+      cameraProducerTrackRepairInFlightRef.current = true;
+      try {
+        if (
+          disposed ||
+          videoProducerRef.current?.id !== producer.id ||
+          producer.closed
+        ) {
+          return;
+        }
+
+        const shouldTryRawRepair =
+          !state.rawRepairAttempted && producerTrack.id !== rawCameraTrack.id;
+        if (shouldTryRawRepair) {
+          if ("contentHint" in rawCameraTrack) {
+            rawCameraTrack.contentHint = "motion";
+          }
+          rawCameraTrack.onended = () => {
+            handleLocalTrackEnded("video", rawCameraTrack);
+          };
+          await producer.replaceTrack({ track: rawCameraTrack });
+          await applyWebcamProducerNetworkProfile(
+            producer,
+            videoQualityRef.current,
+            getPublishNetworkProfile(),
+          );
+          cameraOutboundStallStateRef.current = {
+            ...createCameraOutboundStallState(producer.id, rawCameraTrack.id),
+            frames: sample.frames,
+            bytes: sample.bytes,
+            rawRepairAttempted: true,
+            lastRecoveryAtMs: now,
+          };
+          console.warn(
+            "[Meets] Repaired stalled camera sender with raw camera track:",
+            {
+              producerId: producer.id,
+              previousTrackId: producerTrack.id,
+              rawTrackId: rawCameraTrack.id,
+              stalledSamples: state.stalledSamples,
+              frames: sample.frames,
+              bytes: sample.bytes,
+            },
+          );
+          return;
+        }
+
+        console.warn("[Meets] Recreating stalled camera sender:", {
+          producerId: producer.id,
+          trackId: producerTrack.id,
+          rawTrackId: rawCameraTrack.id,
+          stalledSamples: state.stalledSamples,
+          frames: sample.frames,
+          bytes: sample.bytes,
+        });
+        closeLocalVideoProducerForReplacement(producer);
+        resetStallState();
+        requestCameraProducerRecovery();
+      } catch (err) {
+        console.warn(
+          "[Meets] Stalled camera sender recovery failed; recreating producer:",
+          err,
+        );
+        if (videoProducerRef.current?.id === producer.id) {
+          closeLocalVideoProducerForReplacement(producer);
+          resetStallState();
+          requestCameraProducerRecovery();
+        }
+      } finally {
+        cameraProducerTrackRepairInFlightRef.current = false;
+      }
+    };
+
+    const pollOutboundProgress = () => {
+      if (disposed) return;
+      if (
+        typeof document !== "undefined" &&
+        document.visibilityState !== "visible"
+      ) {
+        resetStallState(
+          videoProducerRef.current?.id ?? null,
+          videoProducerRef.current?.track?.id ?? null,
+        );
+        return;
+      }
+      if (
+        cameraProducerTrackRepairInFlightRef.current ||
+        cameraRecoveryInFlightRef.current
+      ) {
+        return;
+      }
+
+      const producer = videoProducerRef.current;
+      const producerTrack = producer?.track ?? null;
+      if (!producer || producer.closed || producer.paused || !producerTrack) {
+        resetStallState();
+        return;
+      }
+      if (
+        producerTrack.readyState !== "live" ||
+        !producerTrack.enabled ||
+        producerTrack.muted
+      ) {
+        resetStallState(producer.id, producerTrack.id);
+        return;
+      }
+
+      void producer
+        .getStats()
+        .then((report) => {
+          if (disposed) return;
+          if (
+            videoProducerRef.current?.id !== producer.id ||
+            producer.closed ||
+            producer.paused ||
+            producer.track?.id !== producerTrack.id ||
+            producerTrack.readyState !== "live" ||
+            !producerTrack.enabled ||
+            producerTrack.muted
+          ) {
+            resetStallState(
+              videoProducerRef.current?.id ?? null,
+              videoProducerRef.current?.track?.id ?? null,
+            );
+            return;
+          }
+
+          const sample = readOutboundVideoProgressSample(report);
+          const currentState = cameraOutboundStallStateRef.current;
+          const previous =
+            currentState.producerId === producer.id &&
+            currentState.trackId === producerTrack.id
+              ? currentState
+              : createCameraOutboundStallState(producer.id, producerTrack.id);
+          const hasBaseline =
+            previous.frames !== null || previous.bytes !== null;
+          const stalledSamples =
+            hasBaseline && !hasOutboundVideoProgress(previous, sample)
+              ? previous.stalledSamples + 1
+              : 0;
+          const nextState: CameraOutboundStallState = {
+            ...previous,
+            producerId: producer.id,
+            trackId: producerTrack.id,
+            frames: sample.frames,
+            bytes: sample.bytes,
+            stalledSamples,
+          };
+          cameraOutboundStallStateRef.current = nextState;
+
+          if (
+            stalledSamples <
+            CAMERA_OUTBOUND_STALL_SAMPLES_BEFORE_RECOVERY
+          ) {
+            return;
+          }
+
+          void recoverStalledProducer({
+            producer,
+            producerTrack,
+            sample,
+            state: nextState,
+          });
+        })
+        .catch(() => {
+          resetStallState(
+            videoProducerRef.current?.id ?? null,
+            videoProducerRef.current?.track?.id ?? null,
+          );
+        });
+    };
+
+    pollOutboundProgress();
+    const interval = window.setInterval(
+      pollOutboundProgress,
+      CAMERA_OUTBOUND_STALL_CHECK_MS,
+    );
+
+    return () => {
+      disposed = true;
+      window.clearInterval(interval);
     };
   }, [
     connectionState,
