@@ -1687,6 +1687,11 @@ assertIncludes(
   "const PARTICIPANT_RECONNECTING_STATUS_FALLBACK_MS = 30000;",
   "web reconnecting participant badges have a grace-window fallback TTL",
 );
+assertIncludes(
+  "webMeetSocket",
+  "const participantConnectionStatusExpiresAtRef = useRef<Map<string, number>>(",
+  "web reconnecting participant badges track absolute expiry for hidden-tab timer throttling",
+);
 assertRegex(
   "webMeetSocket",
   /status\.state === "reconnected"[\s\S]*PARTICIPANT_RECONNECTED_STATUS_MS[\s\S]*PARTICIPANT_RECONNECTING_STATUS_FALLBACK_MS[\s\S]*PARTICIPANT_RECONNECTING_STATUS_BUFFER_MS/,
@@ -1694,7 +1699,27 @@ assertRegex(
 );
 assertRegex(
   "webMeetSocket",
-  /status\.state === "reconnected"[\s\S]*!visibleParticipantReconnectingIdsRef\.current\.has\(targetUserId\)[\s\S]*clearParticipantConnectionStatusTimer\(targetUserId\)[\s\S]*UPDATE_CONNECTION_STATUS[\s\S]*status: null[\s\S]*return;[\s\S]*status\.state === "reconnecting"[\s\S]*visibleParticipantReconnectingIdsRef\.current\.add\(targetUserId\)/,
+  /const clearParticipantConnectionStatus = useCallback[\s\S]*clearParticipantConnectionStatusTimer\(targetUserId\);[\s\S]*visibleParticipantReconnectingIdsRef\.current\.delete\(targetUserId\);[\s\S]*UPDATE_CONNECTION_STATUS[\s\S]*status: null/,
+  "web authoritative participant events clear visible reconnect status, not just timers",
+);
+assertRegex(
+  "webMeetSocket",
+  /"userJoined"[\s\S]*clearParticipantConnectionStatus\(joinedUserId\);[\s\S]*type: "ADD_PARTICIPANT"/,
+  "web userJoined clears stale reconnect badges for already-present participants",
+);
+assertRegex(
+  "webMeetSocket",
+  /"displayNameSnapshot"[\s\S]*clearParticipantConnectionStatus\(snapshotUserId\);[\s\S]*type: "ADD_PARTICIPANT"/,
+  "web participant snapshots clear stale reconnect badges for already-present participants",
+);
+assertRegex(
+  "webMeetSocket",
+  /foregroundRecoveryTimeoutRef\.current = window\.setTimeout\(\(\) => \{[\s\S]*clearExpiredParticipantConnectionStatuses\(\);[\s\S]*recoverActiveMeeting\("foreground"\)/,
+  "web foreground recovery sweeps expired reconnect badges after hidden-tab timer throttling",
+);
+assertRegex(
+  "webMeetSocket",
+  /status\.state === "reconnected"[\s\S]*!visibleParticipantReconnectingIdsRef\.current\.has\(targetUserId\)[\s\S]*clearParticipantConnectionStatus\(targetUserId\);[\s\S]*return;[\s\S]*status\.state === "reconnecting"[\s\S]*visibleParticipantReconnectingIdsRef\.current\.add\(targetUserId\)/,
   "web unmatched reconnected events clear stale peer badges without showing a new one",
 );
 assertRegex(

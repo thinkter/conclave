@@ -612,6 +612,9 @@ export function useMeetSocket({
   const participantConnectionStatusTimeoutsRef = useRef<Map<string, number>>(
     new Map(),
   );
+  const participantConnectionStatusExpiresAtRef = useRef<Map<string, number>>(
+    new Map(),
+  );
   const visibleParticipantReconnectingIdsRef = useRef<Set<string>>(new Set());
   const staleConsumerRecoveryTimeoutsRef = useRef<Map<string, number>>(
     new Map(),
@@ -982,6 +985,7 @@ export function useMeetSocket({
           window.clearTimeout(timeoutId);
         }
         participantConnectionStatusTimeoutsRef.current.clear();
+        participantConnectionStatusExpiresAtRef.current.clear();
         visibleParticipantReconnectingIdsRef.current.clear();
       }
       for (const timeoutId of staleConsumerRecoveryTimeoutsRef.current.values()) {
@@ -1363,6 +1367,7 @@ export function useMeetSocket({
     (targetUserId: string) => {
       const timeoutId =
         participantConnectionStatusTimeoutsRef.current.get(targetUserId);
+      participantConnectionStatusExpiresAtRef.current.delete(targetUserId);
       if (!timeoutId) return;
       window.clearTimeout(timeoutId);
       participantConnectionStatusTimeoutsRef.current.delete(targetUserId);
@@ -1370,18 +1375,38 @@ export function useMeetSocket({
     [],
   );
 
+  const clearParticipantConnectionStatus = useCallback(
+    (targetUserId: string) => {
+      clearParticipantConnectionStatusTimer(targetUserId);
+      participantConnectionStatusExpiresAtRef.current.delete(targetUserId);
+      visibleParticipantReconnectingIdsRef.current.delete(targetUserId);
+      dispatchParticipants({
+        type: "UPDATE_CONNECTION_STATUS",
+        userId: targetUserId,
+        status: null,
+      });
+    },
+    [clearParticipantConnectionStatusTimer, dispatchParticipants],
+  );
+
+  const clearExpiredParticipantConnectionStatuses = useCallback(() => {
+    const now = Date.now();
+    for (const [
+      targetUserId,
+      expiresAt,
+    ] of participantConnectionStatusExpiresAtRef.current) {
+      if (expiresAt > now) continue;
+      clearParticipantConnectionStatus(targetUserId);
+    }
+  }, [clearParticipantConnectionStatus]);
+
   const applyParticipantConnectionStatus = useCallback(
     (targetUserId: string, status: ParticipantConnectionStatus) => {
       if (
         status.state === "reconnected" &&
         !visibleParticipantReconnectingIdsRef.current.has(targetUserId)
       ) {
-        clearParticipantConnectionStatusTimer(targetUserId);
-        dispatchParticipants({
-          type: "UPDATE_CONNECTION_STATUS",
-          userId: targetUserId,
-          status: null,
-        });
+        clearParticipantConnectionStatus(targetUserId);
         return;
       }
 
@@ -1399,6 +1424,7 @@ export function useMeetSocket({
 
       const clearStatus = () => {
         participantConnectionStatusTimeoutsRef.current.delete(targetUserId);
+        participantConnectionStatusExpiresAtRef.current.delete(targetUserId);
         visibleParticipantReconnectingIdsRef.current.delete(targetUserId);
         dispatchParticipants({
           type: "UPDATE_CONNECTION_STATUS",
@@ -1418,10 +1444,18 @@ export function useMeetSocket({
                 Math.max(0, Date.now() - (status.updatedAt ?? Date.now())),
             );
 
+      participantConnectionStatusExpiresAtRef.current.set(
+        targetUserId,
+        Date.now() + timeoutMs,
+      );
       const timeoutId = window.setTimeout(clearStatus, timeoutMs);
       participantConnectionStatusTimeoutsRef.current.set(targetUserId, timeoutId);
     },
-    [clearParticipantConnectionStatusTimer, dispatchParticipants],
+    [
+      clearParticipantConnectionStatus,
+      clearParticipantConnectionStatusTimer,
+      dispatchParticipants,
+    ],
   );
 
   const isRoomEvent = useCallback(
@@ -3906,7 +3940,7 @@ export function useMeetSocket({
                   window.clearTimeout(leaveTimeout);
                   leaveTimeoutsRef.current.delete(joinedUserId);
                 }
-                clearParticipantConnectionStatusTimer(joinedUserId);
+                clearParticipantConnectionStatus(joinedUserId);
                 dispatchParticipants({
                   type: "ADD_PARTICIPANT",
                   userId: joinedUserId,
@@ -3931,8 +3965,7 @@ export function useMeetSocket({
                   next.delete(leftUserId);
                   return next;
                 });
-                clearParticipantConnectionStatusTimer(leftUserId);
-                visibleParticipantReconnectingIdsRef.current.delete(leftUserId);
+                clearParticipantConnectionStatus(leftUserId);
 
                 const producersToClose = Array.from(
                   producerMapRef.current.entries(),
@@ -4037,7 +4070,7 @@ export function useMeetSocket({
                         window.clearTimeout(leaveTimeout);
                         leaveTimeoutsRef.current.delete(snapshotUserId);
                       }
-                      clearParticipantConnectionStatusTimer(snapshotUserId);
+                      clearParticipantConnectionStatus(snapshotUserId);
                       dispatchParticipants({
                         type: "ADD_PARTICIPANT",
                         userId: snapshotUserId,
@@ -4057,7 +4090,7 @@ export function useMeetSocket({
                     window.clearTimeout(leaveTimeout);
                     leaveTimeoutsRef.current.delete(previousUserId);
                   }
-                  clearParticipantConnectionStatusTimer(previousUserId);
+                  clearParticipantConnectionStatus(previousUserId);
                   const producersToClose = Array.from(
                     producerMapRef.current.entries(),
                   )
@@ -4772,7 +4805,7 @@ export function useMeetSocket({
       joinOptionsRef,
       joinRoomInternal,
       leaveTimeoutsRef,
-      clearParticipantConnectionStatusTimer,
+      clearParticipantConnectionStatus,
       localStream,
       localStreamRef,
       prejoinMediaIntentRef,
@@ -4996,6 +5029,7 @@ export function useMeetSocket({
 
       foregroundRecoveryTimeoutRef.current = window.setTimeout(() => {
         foregroundRecoveryTimeoutRef.current = null;
+        clearExpiredParticipantConnectionStatuses();
         recoverActiveMeeting("foreground");
       }, 150);
     };
@@ -5026,7 +5060,7 @@ export function useMeetSocket({
         foregroundRecoveryTimeoutRef.current = null;
       }
     };
-  }, [recoverActiveMeeting]);
+  }, [clearExpiredParticipantConnectionStatuses, recoverActiveMeeting]);
 
   const handleRedirectCallback = useCallback(
     async (newRoomId: string) => {
