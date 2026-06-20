@@ -1326,6 +1326,60 @@ export function useMeetMedia({
     if (ghostEnabled || isObserverMode) return;
     if (connectionState !== "joined") return;
     if (isMuted) return;
+
+    let disposed = false;
+    const requestRecovery = (reason: "initial" | "watchdog") => {
+      if (disposed || audioRecoveryInFlightRef.current) return;
+
+      const producer = audioProducerRef.current;
+      const producerTrack = producer?.track ?? null;
+      const needsRecovery =
+        !producer || producer.closed || producerTrack?.readyState !== "live";
+      if (!needsRecovery) return;
+
+      if (producer && audioProducerRef.current?.id === producer.id) {
+        resetAudioProducer(producer);
+      }
+
+      console.warn("[Meets] Audio producer recovery triggered:", {
+        reason,
+        hasProducer: Boolean(producer),
+        producerClosed: producer?.closed ?? null,
+        producerId: producer?.id ?? null,
+        trackId: producerTrack?.id ?? null,
+        trackState: producerTrack?.readyState ?? null,
+      });
+      requestAudioProducerRecovery();
+    };
+
+    const initialTimeout = window.setTimeout(
+      () => requestRecovery("initial"),
+      250,
+    );
+    const watchdogInterval = window.setInterval(
+      () => requestRecovery("watchdog"),
+      1500,
+    );
+
+    return () => {
+      disposed = true;
+      window.clearTimeout(initialTimeout);
+      window.clearInterval(watchdogInterval);
+    };
+  }, [
+    connectionState,
+    ghostEnabled,
+    isMuted,
+    isObserverMode,
+    audioProducerRef,
+    resetAudioProducer,
+    requestAudioProducerRecovery,
+  ]);
+
+  useEffect(() => {
+    if (ghostEnabled || isObserverMode) return;
+    if (connectionState !== "joined") return;
+    if (isMuted) return;
     if (audioProducerRef.current) {
       const existingProducer = audioProducerRef.current;
       if (

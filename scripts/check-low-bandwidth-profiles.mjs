@@ -504,6 +504,36 @@ assertIncludes(
   }
 }
 {
+  const text = source.webMeetMedia;
+  const start = text.indexOf('"[Meets] Audio producer recovery triggered:"');
+  const end = text.indexOf("const recoverAudioProducer = async () => {", start);
+  if (start < 0 || end < 0) {
+    failures.push("web audio producer recovery watchdog missing");
+  } else {
+    const section = text.slice(start, end);
+    if (!section.includes("requestAudioProducerRecovery();")) {
+      failures.push(
+        "web audio producer watchdog must pulse producer recovery",
+      );
+    }
+    if (!section.includes('connectionState !== "joined"')) {
+      failures.push(
+        "web audio producer watchdog must only run in joined meetings",
+      );
+    }
+    if (!section.includes("if (isMuted) return;")) {
+      failures.push(
+        "web audio producer watchdog must preserve muted intent",
+      );
+    }
+    if (!section.includes("window.setInterval(")) {
+      failures.push(
+        "web audio producer watchdog must retry after transport rebuild delays",
+      );
+    }
+  }
+}
+{
   const mediaText = source.webMeetMedia;
   if (!mediaText.includes("const requestAudioProducerRecovery = useCallback(")) {
     failures.push(
