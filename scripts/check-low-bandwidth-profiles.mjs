@@ -658,6 +658,37 @@ assertIncludes(
 }
 {
   const text = source.webMeetMedia;
+  const audioWatchdogStart = text.indexOf(
+    'const requestRecovery = (reason: "initial" | "watchdog") => {',
+  );
+  const start = text.indexOf(
+    'const requestRecovery = (reason: "initial" | "watchdog") => {',
+    audioWatchdogStart + 1,
+  );
+  const end = text.indexOf("const initialTimeout = window.setTimeout", start);
+  if (start < 0 || end < 0) {
+    failures.push("web camera producer watchdog section missing");
+  } else {
+    const section = text.slice(start, end);
+    if (
+      !section.includes("const rawCameraTrack = getFirstLiveTrack(") ||
+      !section.includes("await producer.replaceTrack({ track: rawCameraTrack });")
+    ) {
+      failures.push(
+        "web camera producer watchdog must repair dead published tracks with live raw camera before recreating",
+      );
+    }
+    const repairIndex = section.indexOf("await producer.replaceTrack");
+    const closeIndex = section.indexOf("closeLocalVideoProducerForReplacement");
+    if (closeIndex >= 0 && repairIndex >= 0 && closeIndex < repairIndex) {
+      failures.push(
+        "web camera producer watchdog must try raw-track repair before closing the producer",
+      );
+    }
+  }
+}
+{
+  const text = source.webMeetMedia;
   const start = text.indexOf("const recoverCameraProducer = async () => {");
   const end = text.indexOf("void recoverCameraProducer();", start);
   if (start < 0 || end < 0) {

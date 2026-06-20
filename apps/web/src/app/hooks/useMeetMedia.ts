@@ -114,6 +114,10 @@ const getNumericConstraintValue = (
   return typeof next === "number" && Number.isFinite(next) ? next : null;
 };
 
+const getFirstLiveTrack = <T extends MediaStreamTrack>(
+  tracks: readonly T[],
+): T | null => tracks.find((track) => track.readyState === "live") ?? null;
+
 const getQualitySwitchReferenceConstraints = (
   quality: VideoQuality,
   profile: WebcamProducerNetworkProfile,
@@ -250,6 +254,7 @@ export function useMeetMedia({
   const requestCameraProducerRecovery = useCallback(() => {
     setCameraProducerRecoveryPulse((value) => value + 1);
   }, []);
+  const cameraProducerTrackRepairInFlightRef = useRef(false);
   const connectionStateRef = useRef(connectionState);
   if (connectionStateRef.current !== connectionState) {
     connectionStateRef.current = connectionState;
@@ -1730,6 +1735,56 @@ export function useMeetMedia({
         !producer || producer.closed || producerTrack?.readyState !== "live";
       if (!needsRecovery) return;
 
+      const rawCameraTrack = getFirstLiveTrack(
+        localStreamRef.current?.getVideoTracks() ?? [],
+      );
+      if (
+        producer &&
+        !producer.closed &&
+        rawCameraTrack &&
+        producerTrack?.readyState !== "live"
+      ) {
+        if (cameraProducerTrackRepairInFlightRef.current) return;
+        cameraProducerTrackRepairInFlightRef.current = true;
+        void (async () => {
+          try {
+            if (videoProducerRef.current?.id !== producer.id || producer.closed) {
+              return;
+            }
+            if ("contentHint" in rawCameraTrack) {
+              rawCameraTrack.contentHint = "motion";
+            }
+            rawCameraTrack.onended = () => {
+              handleLocalTrackEnded("video", rawCameraTrack);
+            };
+            await producer.replaceTrack({ track: rawCameraTrack });
+            await applyWebcamProducerNetworkProfile(
+              producer,
+              videoQualityRef.current,
+              getPublishNetworkProfile(),
+            );
+            console.info("[Meets] Repaired camera producer with raw track:", {
+              reason,
+              producerId: producer.id,
+              previousTrackId: producerTrack?.id ?? null,
+              rawTrackId: rawCameraTrack.id,
+            });
+          } catch (err) {
+            console.warn(
+              "[Meets] Camera producer raw-track repair failed; recreating producer:",
+              err,
+            );
+            if (videoProducerRef.current?.id === producer.id) {
+              closeLocalVideoProducerForReplacement(producer);
+              requestCameraProducerRecovery();
+            }
+          } finally {
+            cameraProducerTrackRepairInFlightRef.current = false;
+          }
+        })();
+        return;
+      }
+
       if (producer && videoProducerRef.current?.id === producer.id) {
         closeLocalVideoProducerForReplacement(producer);
       }
@@ -1765,6 +1820,10 @@ export function useMeetMedia({
     isCameraOff,
     isObserverMode,
     videoProducerRef,
+    localStreamRef,
+    videoQualityRef,
+    handleLocalTrackEnded,
+    getPublishNetworkProfile,
     closeLocalVideoProducerForReplacement,
     requestCameraProducerRecovery,
   ]);
