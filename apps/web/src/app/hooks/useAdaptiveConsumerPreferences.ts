@@ -429,7 +429,7 @@ const getDesiredPreferences = (
       return {
         preferredLayers: bounds ? buildLayerPreference(0, 0, bounds) : undefined,
         priority: 8,
-        paused: true,
+        paused: false,
       };
     }
 
@@ -444,7 +444,7 @@ const getDesiredPreferences = (
     return {
       preferredLayers: bounds ? buildLayerPreference(0, 0, bounds) : undefined,
       priority: quality === "poor" ? 10 : 25,
-      paused: quality === "poor",
+      paused: false,
     };
   }
 

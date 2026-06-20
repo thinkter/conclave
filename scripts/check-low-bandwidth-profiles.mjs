@@ -390,8 +390,23 @@ assertIncludes(
 );
 assertIncludes(
   "webAdaptiveConsumerPreferences",
+  "priority: quality === \"poor\" ? 10 : 25,\n      paused: false,",
+  "web hidden consumers degrade layers instead of pausing",
+);
+assertIncludes(
+  "webAdaptiveConsumerPreferences",
+  "priority: 8,\n        paused: false,",
+  "web emergency receive adaptation keeps extra remote webcams live",
+);
+assertNotIncludes(
+  "webAdaptiveConsumerPreferences",
   "paused: quality === \"poor\"",
-  "web hidden consumers stay warm unless receive quality is poor",
+  "web hidden consumers must not flicker from adaptive pausing",
+);
+assertNotIncludes(
+  "webAdaptiveConsumerPreferences",
+  "priority: 8,\n        paused: true,",
+  "web emergency receive adaptation must not silently pause remote webcams",
 );
 assertIncludes(
   "webAdaptiveConsumerPreferences",
