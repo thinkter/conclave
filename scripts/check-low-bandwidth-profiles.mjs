@@ -30,6 +30,7 @@ const files = {
     "apps/web/src/app/components/mobile/MobileBrowserLayout.tsx",
   webMeetsMainContent: "apps/web/src/app/components/MeetsMainContent.tsx",
   webMeetClient: "apps/web/src/app/meets-client.tsx",
+  webMeetClientPage: "apps/web/src/app/meets-client-page.tsx",
   webMeetMedia: "apps/web/src/app/hooks/useMeetMedia.ts",
   webMeetSocket: "apps/web/src/app/hooks/useMeetSocket.ts",
   webVideoEffects: "apps/web/src/app/hooks/useVideoEffects.ts",
@@ -1772,12 +1773,12 @@ assertRegex(
 );
 assertRegex(
   "webMeetSocket",
-  /const handleReconnect = useCallback\(async \(\) => \{[\s\S]*reconnectInFlightRef\.current = true;[\s\S]*const shouldSurfaceReconnectState =[\s\S]*cleanupRoomResources\(\{[\s\S]*preserveMeetingState: true[\s\S]*await joinRoomInternal[\s\S]*\} finally \{[\s\S]*reconnectInFlightRef\.current = false;/,
-  "web hidden-tab reconnect keeps internal media recovery blocked across cleanup and rejoin",
+  /const reconnectGenerationRef = useRef\(0\);[\s\S]*const handleReconnect = useCallback\(async \(options\?: \{ immediate\?: boolean \}\) => \{[\s\S]*const reconnectGeneration = reconnectGenerationRef\.current;[\s\S]*reconnectInFlightRef\.current = true;[\s\S]*reconnectGeneration !== reconnectGenerationRef\.current[\s\S]*cleanupRoomResources\(\{[\s\S]*preserveMeetingState: true[\s\S]*await joinRoomInternal[\s\S]*\} finally \{[\s\S]*if \(reconnectGeneration === reconnectGenerationRef\.current\) \{[\s\S]*reconnectInFlightRef\.current = false;/,
+  "web hidden-tab reconnect keeps internal media recovery blocked and ignores stale manual-retry loops",
 );
 assertRegex(
   "webMeetSocket",
-  /meet_reconnect_success[\s\S]*attempt: reconnectAttemptsRef\.current[\s\S]*reconnectAttemptsRef\.current = 0;[\s\S]*return;/,
+  /meet_reconnect_success[\s\S]*attempt,[\s\S]*reconnectAttemptsRef\.current = 0;[\s\S]*return;/,
   "web successful reconnect resets retry attempts after reused-socket rejoins",
 );
 assertRegex(
@@ -1792,8 +1793,168 @@ assertIncludes(
 );
 assertIncludes(
   "webMeetsMainContent",
+  "retryReconnect",
+  "web reconnect recovery overlay uses the reconnect retry path",
+);
+assertIncludes(
+  "webMeetSocket",
+  "const retryReconnect = useCallback",
+  "web reconnect flow exposes manual reconnect retry",
+);
+assertIncludes(
+  "webMeetSocket",
+  "buildReconnectRecoveryStatus",
+  "web reconnect flow tracks visible retry status",
+);
+assertIncludes(
+  "webMeetSocket",
+  "reconnectBackoffCancelRef",
+  "web reconnect flow can cancel backoff without starting a concurrent reconnect",
+);
+assertIncludes(
+  "webMeetSocket",
+  "manualReconnectRetryRequestedRef",
+  "web reconnect flow tracks manual retry requests inside the active reconnect loop",
+);
+assertIncludes(
+  "webMeetSocket",
+  "waitForReconnectBackoff(delay)",
+  "web reconnect flow uses cancellable backoff waits",
+);
+assertIncludes(
+  "webMeetSocket",
+  "getResponseStatusFromError",
+  "web reconnect flow can distinguish API join-info failures from transport failures",
+);
+assertIncludes(
+  "webMeetSocket",
+  "isRecoverableReconnectFailure",
+  "web reconnect flow classifies recoverable transport failures explicitly",
+);
+assertIncludes(
+  "webMeetSocket",
+  "const isRecoverableJoinInfoStatus = (status: number): boolean =>\n  status >= 500 && status < 600;",
+  "web reconnect flow must retry transient 5xx join-info failures",
+);
+assertIncludes(
+  "webMeetClientPage",
+  "error.responseStatus = response.status;",
+  "web join-info fetch preserves HTTP response status for reconnect classification",
+);
+assertIncludes(
+  "webMeetSocket",
+  "describeReconnectFailure",
+  "web reconnect flow surfaces clean retry failure reasons",
+);
+assertNotIncludes(
+  "webMeetSocket",
+  "Camera or microphone access was lost during reconnect.",
+  "web reconnect copy must not blame camera or microphone loss",
+);
+assertNotIncludes(
+  "webMeetSocket",
+  'throw new Error("Missing live local media for reconnect")',
+  "web reconnect must not fail the room reconnect when local media is temporarily unavailable",
+);
+assertRegex(
+  "webMeetSocket",
+  /const shouldRetryLocalMediaAfterJoin =[\s\S]*!stream[\s\S]*await joinRoomInternal\(reconnectRoomId, stream, joinOptions\)[\s\S]*if \(shouldRetryLocalMediaAfterJoin\) \{[\s\S]*requestAudioProducerRecovery\(\);[\s\S]*requestCameraProducerRecovery\(\);/,
+  "web reconnect must rejoin first and queue local media recovery when devices are not ready",
+);
+assertIncludes(
+  "webMeetSocket",
+  "reconnectGenerationRef.current += 1;",
+  "web reconnect retry cancels stale reconnect loops",
+);
+assertIncludes(
+  "webMeetSocket",
+  "await handleReconnect({ immediate: true });",
+  "web reconnect retry skips the first automatic backoff",
+);
+assertRegex(
+  "webMeetSocket",
+  /if \(reconnectInFlightRef\.current\) \{[\s\S]*manualReconnectRetryRequestedRef\.current = true;[\s\S]*cancelBackoff\(\);[\s\S]*return;/,
+  "web reconnect retry must request a fresh cycle without starting a concurrent reconnect",
+);
+assertRegex(
+  "webMeetSocket",
+  /if \(manualReconnectRetryRequestedRef\.current\) \{[\s\S]*manualReconnectRetryRequestedRef\.current = false;[\s\S]*reconnectAttemptsRef\.current = 0;[\s\S]*skipNextDelay = true;[\s\S]*continue;/,
+  "web reconnect retry must restart the active loop from attempt one after cancelled backoff",
+);
+{
+  const text = source.webMeetSocket ?? "";
+  const start = text.indexOf("const retryReconnect = useCallback");
+  const end = text.indexOf("useEffect(() => {\n    if (shouldAutoJoinRef.current)", start);
+  const section = start >= 0 && end > start ? text.slice(start, end) : "";
+  if (!section) {
+    failures.push("web reconnect retry callback missing in apps/web/src/app/hooks/useMeetSocket.ts");
+  } else {
+    if (section.includes("reconnectInFlightRef.current = false")) {
+      failures.push(
+        "web reconnect retry must not clear the in-flight guard before the active reconnect finishes",
+      );
+    }
+    if (!section.includes("if (reconnectInFlightRef.current)")) {
+      failures.push(
+        "web reconnect retry must respect the in-flight reconnect guard",
+      );
+    }
+  }
+}
+assertRegex(
+  "webMeetSocket",
+  /connect_error[\s\S]*describeReconnectFailure\(err\)[\s\S]*code: "CONNECTION_FAILED"[\s\S]*recoverable: true/,
+  "web socket reconnect failures must remain recoverable",
+);
+assertRegex(
+  "webMeetSocket",
+  /Failed to get join info:[\s\S]*const isRecoverable = isRecoverableReconnectFailure\(err\);[\s\S]*code: "CONNECTION_FAILED"[\s\S]*recoverable: isRecoverable/,
+  "web join-info failures must preserve terminal API errors",
+);
+assertRegex(
+  "webMeetSocket",
+  /if \(!isRecoverable\) \{[\s\S]*setMeetError\(\{[\s\S]*code: "CONNECTION_FAILED"[\s\S]*recoverable: false/,
+  "web reconnect loop must stop retrying terminal join-info failures",
+);
+assertRegex(
+  "webMeetSocket",
+  /updateReconnectRecoveryStatus\([\s\S]*"failed"[\s\S]*Could not reconnect after several attempts[\s\S]*setMeetError\(\{[\s\S]*code: "CONNECTION_FAILED"[\s\S]*recoverable: true/,
+  "web reconnect give-up state must keep manual retry available",
+);
+assertIncludes(
+  "webMeetClient",
+  "const reconnectRecoveryStatus = socket.reconnectRecoveryStatus;",
+  "web reconnect client passes retry status to the overlay",
+);
+assertIncludes(
+  "webMeetsMainContent",
   "void joinRoomById(roomId);",
-  "web reconnect recovery overlay can retry without leaving the meeting surface",
+  "web reconnect recovery overlay has a join fallback without leaving the meeting surface",
+);
+assertIncludes(
+  "webMeetsMainContent",
+  "reconnectRecoveryStatus",
+  "web reconnect recovery overlay reads retry status",
+);
+assertIncludes(
+  "webMeetsMainContent",
+  "reconnectRetryAt",
+  "web reconnect recovery overlay reads retry deadline",
+);
+assertIncludes(
+  "webMeetsMainContent",
+  "setReconnectCountdownSeconds",
+  "web reconnect recovery overlay renders a live countdown",
+);
+assertIncludes(
+  "webMeetsMainContent",
+  "Last error",
+  "web reconnect recovery overlay surfaces the last retry error",
+);
+assertIncludes(
+  "webMeetsMainContent",
+  "disabled={isReconnectRetryBusy}",
+  "web reconnect recovery overlay disables retry during active reconnect attempts",
 );
 assertIncludes(
   "webMeetsMainContent",

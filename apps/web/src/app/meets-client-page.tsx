@@ -91,7 +91,11 @@ export default function MeetsClientPage({
       });
 
       if (!response.ok) {
-        throw new Error(await readError(response));
+        const error = new Error(await readError(response)) as Error & {
+          responseStatus?: number;
+        };
+        error.responseStatus = response.status;
+        throw error;
       }
 
       return response.json();

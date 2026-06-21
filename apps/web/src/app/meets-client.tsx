@@ -2247,6 +2247,8 @@ export default function MeetsClient({
   }, [isAdminFlag, connectionState, refreshRooms]);
 
   const joinRoomById = socket.joinRoomById;
+  const retryReconnect = socket.retryReconnect;
+  const reconnectRecoveryStatus = socket.reconnectRecoveryStatus;
   const getMeetingConfig = socket.getMeetingConfig;
   const getWebinarConfig = socket.getWebinarConfig;
 
@@ -2726,6 +2728,8 @@ export default function MeetsClient({
         roomId={roomId}
         setRoomId={setRoomId}
         joinRoomById={joinRoomById}
+        retryReconnect={retryReconnect}
+        reconnectRecoveryStatus={reconnectRecoveryStatus}
         hideJoinUI={hideJoinUI || joinMode === "webinar_attendee"}
         isWebinarAttendee={isWebinarAttendee}
         enableRoomRouting={enableRoomRouting}

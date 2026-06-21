@@ -63,6 +63,9 @@ struct JoinView: View {
     @State private var authProviderRefreshGeneration = 0
     @State private var inputFocusClearGeneration = 0
     @State private var cameraPreviewGeneration = 0
+#if SKIP
+    @State private var shouldRestoreCameraPreviewAfterJoinError = false
+#endif
 #if !SKIP
     @FocusState private var focusedInput: FocusedInput?
 #endif
@@ -2294,14 +2297,19 @@ struct JoinView: View {
         "sfu-admin",
         "sign-in"
     ]
-    private let localConclaveWebHosts: Set<String> = [
-        "localhost",
-        "127.0.0.1",
-        "0.0.0.0",
-        "10.0.2.2",
-        "[::1]",
-        "::1"
-    ]
+    private let localConclaveWebHosts: Set<String> = {
+        var hosts: Set<String> = [
+            "localhost",
+            "127.0.0.1",
+            "0.0.0.0",
+            "[::1]",
+            "::1"
+        ]
+        #if DEBUG
+        hosts.insert(SfuJoinService.androidEmulatorLoopbackHost())
+        #endif
+        return hosts
+    }()
     private let cameraPermissionMessage = "Allow camera access in Settings, then try again."
     private let microphonePermissionMessage = "Allow microphone access in Settings, then try again."
     private let noCameraMessage = "No camera is available on this device."
@@ -2597,9 +2605,9 @@ struct JoinView: View {
     private func stopPreviewCapture(preserveToggle: Bool = false) {
         cameraPreviewGeneration += 1
 #if SKIP
-        if !preserveToggle {
-            isCameraOn = false
-        }
+        shouldRestoreCameraPreviewAfterJoinError = preserveToggle && isCameraOn
+        PermissionHelper.onCameraPermissionResult = nil
+        isCameraOn = false
 #else
         if let captureSession {
             stopPreviewSession(captureSession)
@@ -2612,8 +2620,13 @@ struct JoinView: View {
     }
 
     private func restartCameraPreviewIfNeeded(afterJoinFormError message: String?) {
-        guard message?.isEmpty == false, isCameraOn else { return }
-#if !SKIP
+        guard message?.isEmpty == false else { return }
+#if SKIP
+        guard shouldRestoreCameraPreviewAfterJoinError else { return }
+        shouldRestoreCameraPreviewAfterJoinError = false
+        requestAndroidCameraPermission()
+#else
+        guard isCameraOn else { return }
         guard captureSession == nil else { return }
         setupCamera()
 #endif
