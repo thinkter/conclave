@@ -1384,7 +1384,9 @@ assertRegex(
     const recreateIndex = section.indexOf(
       "closeLocalVideoProducerForReplacement(producer);",
     );
-    const hiddenGuardIndex = section.indexOf("if (!allowProducerRecreate)");
+    const backgroundDeferIndex = section.indexOf(
+      "Camera sender stalled in background; deferring track repair until foreground",
+    );
     if (
       rawRepairIndex >= 0 &&
       recreateIndex >= 0 &&
@@ -1405,13 +1407,9 @@ assertRegex(
         "web stalled camera sender recovery must soft-refresh preferred camera before any destructive producer recreation",
       );
     }
-    if (
-      rawRepairIndex >= 0 &&
-      hiddenGuardIndex >= 0 &&
-      hiddenGuardIndex < rawRepairIndex
-    ) {
+    if (backgroundDeferIndex < 0 || backgroundDeferIndex > rawRepairIndex) {
       failures.push(
-        "web hidden-tab camera stalls must try preferred-track repair before the no-recreate guard",
+        "web hidden-tab camera stalls must defer track repair before preferred-track replacement",
       );
     }
     if (
@@ -1441,12 +1439,12 @@ assertRegex(
   );
   assertRegex(
     "webMeetMedia",
-    /allowProducerRecreate: boolean[\s\S]*if \(!allowProducerRecreate\) \{[\s\S]*Camera sender stalled in background; keeping producer open/,
-    "web hidden camera sender watchdog repairs preferred tracks without background producer recreation",
+    /isDocumentVisibleForMediaRecovery[\s\S]*document\.visibilityState === "visible"[\s\S]*if \(!isDocumentVisibleForMediaRecovery\(\)\) \{[\s\S]*Camera sender stalled in background; deferring track repair until foreground/,
+    "web hidden camera sender watchdog defers track repair and producer recreation",
   );
   assertRegex(
     "webMeetMedia",
-    /const allowProducerRecreate =[\s\S]*document\.visibilityState === "visible"[\s\S]*recoverStalledProducer\(\{[\s\S]*allowProducerRecreate/,
+    /const allowProducerRecreate = isDocumentVisibleForMediaRecovery\(\);[\s\S]*recoverStalledProducer\(\{[\s\S]*allowProducerRecreate/,
     "web camera sender watchdog passes foreground state to stalled recovery",
   );
   assertRegex(
@@ -1660,18 +1658,18 @@ assertRegex(
 );
 assertRegex(
   "webAdaptivePublishQuality",
-  /getStandardCaptureRestoreSignature[\s\S]*settings\.width[\s\S]*settings\.height[\s\S]*settings\.frameRate[\s\S]*const signature = getStandardCaptureRestoreSignature\([\s\S]*webcamProducer\.id,[\s\S]*webcamTrack/,
+  /getStandardCaptureRestoreSignature[\s\S]*settings\.width[\s\S]*settings\.height[\s\S]*settings\.frameRate[\s\S]*const signature = getStandardCaptureRestoreSignature\(webcamTrack\)/,
   "web adaptive good-link restore signature tracks live capture settings",
 );
 assertRegex(
   "webAdaptivePublishQuality",
-  /const restoreStandardCaptureIfNeeded = useCallback[\s\S]*videoQualityRef\.current !== "standard"[\s\S]*webcamTrack\?\.readyState !== "live"[\s\S]*if \(needsStandardCaptureRestore\(webcamTrack\)\) \{[\s\S]*await updateVideoQualityRef\.current\("standard", "good"\)[\s\S]*\} else \{[\s\S]*await applyWebcamProducerNetworkProfile\([\s\S]*webcamProducer,[\s\S]*"standard",[\s\S]*"good",[\s\S]*\);[\s\S]*lastStandardCaptureRestoreSignatureRef\.current = signature/,
+  /const restoreStandardCaptureIfNeeded = useCallback[\s\S]*document\.visibilityState !== "visible"[\s\S]*videoQualityRef\.current !== "standard"[\s\S]*webcamTrack\?\.readyState !== "live"[\s\S]*needsCaptureRestore[\s\S]*lastStandardCaptureRestoreAttemptRef[\s\S]*STANDARD_CAPTURE_RESTORE_COOLDOWN_MS[\s\S]*await updateVideoQualityRef\.current\("standard", "good"\)[\s\S]*await applyWebcamProducerNetworkProfile\([\s\S]*webcamProducer,[\s\S]*"standard",[\s\S]*"good",[\s\S]*getStandardCaptureRestoreSignature\(activeTrack\)/,
   "web adaptive good-link restore avoids camera constraint churn when capture is already standard",
 );
 assertRegex(
   "webAdaptivePublishQuality",
-  /STANDARD_CAPTURE_RESTORE_RETRY_MS[\s\S]*standardCaptureRestoreRetryTimeoutRef[\s\S]*scheduleRestoreRetry[\s\S]*updateInFlightRef\.current[\s\S]*scheduleRestoreRetry\(\)[\s\S]*Adaptive standard camera capture restore failed[\s\S]*scheduleRestoreRetry\(\)/,
-  "web adaptive good-link standard capture restore retries after in-flight or failed restore",
+  /STANDARD_CAPTURE_RESTORE_RETRY_MS[\s\S]*STANDARD_CAPTURE_RESTORE_FAILURE_RETRY_MS[\s\S]*STANDARD_CAPTURE_RESTORE_COOLDOWN_MS[\s\S]*standardCaptureRestoreRetryTimeoutRef[\s\S]*scheduleRestoreRetry[\s\S]*updateInFlightRef\.current[\s\S]*scheduleRestoreRetry\(\)[\s\S]*Adaptive standard camera capture restore failed[\s\S]*scheduleRestoreRetry\(STANDARD_CAPTURE_RESTORE_FAILURE_RETRY_MS\)/,
+  "web adaptive good-link standard capture restore retries after in-flight and backs off failed restore",
 );
 assertRegex(
   "webAdaptivePublishQuality",

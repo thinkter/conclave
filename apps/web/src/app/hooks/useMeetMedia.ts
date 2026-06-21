@@ -244,6 +244,9 @@ const isEncoderLimitedOutboundSample = (
   sample.qualityLimitationReason === "bandwidth" ||
   sample.qualityLimitationReason === "cpu";
 
+const isDocumentVisibleForMediaRecovery = (): boolean =>
+  typeof document === "undefined" || document.visibilityState === "visible";
+
 const hasOutboundVideoProgress = (
   previous: CameraOutboundStallState,
   sample: OutboundVideoProgressSample,
@@ -2336,6 +2339,24 @@ export function useMeetMedia({
         return;
       }
 
+      if (!isDocumentVisibleForMediaRecovery()) {
+        cameraOutboundStallStateRef.current = {
+          ...state,
+          lastRecoveryAtMs: now,
+        };
+        console.warn(
+          "[Meets] Camera sender stalled in background; deferring track repair until foreground.",
+          {
+            producerId: producer.id,
+            trackId: producerTrack.id,
+            stalledSamples: state.stalledSamples,
+            frames: sample.frames,
+            bytes: sample.bytes,
+          },
+        );
+        return;
+      }
+
       const rawCameraTrack = getFirstLiveTrack(
         localStreamRef.current?.getVideoTracks() ?? [],
       );
@@ -2540,9 +2561,7 @@ export function useMeetMedia({
           }
 
           const sample = readOutboundVideoProgressSample(report);
-          const allowProducerRecreate =
-            typeof document === "undefined" ||
-            document.visibilityState === "visible";
+          const allowProducerRecreate = isDocumentVisibleForMediaRecovery();
           const currentState = cameraOutboundStallStateRef.current;
           const previous =
             currentState.producerId === producer.id &&
