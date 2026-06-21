@@ -3335,10 +3335,6 @@ export function useMeetSocket({
 
   const applyWebinarFeedProducers = useCallback(
     async (producers: ProducerInfo[]) => {
-      for (const producer of producers) {
-        markRemoteParticipantPresent(producer.producerUserId);
-      }
-
       const serverProducerIds = new Set(
         producers.map((producer) => producer.producerId),
       );
@@ -3349,12 +3345,7 @@ export function useMeetSocket({
       }
       await Promise.all(producers.map((producer) => consumeProducer(producer)));
     },
-    [
-      consumeProducer,
-      handleProducerClosed,
-      markRemoteParticipantPresent,
-      producerMapRef,
-    ],
+    [consumeProducer, handleProducerClosed, producerMapRef],
   );
 
   const startProducerSync = useCallback(() => {

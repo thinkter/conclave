@@ -731,16 +731,9 @@ export const registerJoinRoomHandler = (context: ConnectionContext): void => {
               });
             }
           } else if (!context.currentClient.isWebinarAttendee) {
-            for (const [clientId, client] of context.currentRoom.clients) {
-              if (clientId === userId || client.isWebinarAttendee) {
-                continue;
-              }
-              client.socket.emit("userJoined", {
-                userId,
-                displayName: resolvedDisplayName,
-                roomId: context.currentRoom.id,
-              });
-            }
+            emitUserJoined(context.currentRoom, userId, resolvedDisplayName, {
+              excludeUserId: userId,
+            });
           }
         } else if (wasReconnectNoticeEmitted) {
           Logger.info(`User ${userId} reconnected to room ${roomId}.`);
