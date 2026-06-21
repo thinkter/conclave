@@ -30,6 +30,7 @@ const files = {
     "apps/web/src/app/components/mobile/MobileBrowserLayout.tsx",
   webMeetsMainContent: "apps/web/src/app/components/MeetsMainContent.tsx",
   webMeetClient: "apps/web/src/app/meets-client.tsx",
+  webMeetClientPage: "apps/web/src/app/meets-client-page.tsx",
   webMeetMedia: "apps/web/src/app/hooks/useMeetMedia.ts",
   webMeetSocket: "apps/web/src/app/hooks/useMeetSocket.ts",
   webVideoEffects: "apps/web/src/app/hooks/useVideoEffects.ts",
@@ -1812,8 +1813,28 @@ assertIncludes(
 );
 assertIncludes(
   "webMeetSocket",
+  "manualReconnectRetryRequestedRef",
+  "web reconnect flow tracks manual retry requests inside the active reconnect loop",
+);
+assertIncludes(
+  "webMeetSocket",
   "waitForReconnectBackoff(delay)",
   "web reconnect flow uses cancellable backoff waits",
+);
+assertIncludes(
+  "webMeetSocket",
+  "getResponseStatusFromError",
+  "web reconnect flow can distinguish API join-info failures from transport failures",
+);
+assertIncludes(
+  "webMeetSocket",
+  "isRecoverableReconnectFailure",
+  "web reconnect flow classifies recoverable transport failures explicitly",
+);
+assertIncludes(
+  "webMeetClientPage",
+  "error.responseStatus = response.status;",
+  "web join-info fetch preserves HTTP response status for reconnect classification",
 );
 assertIncludes(
   "webMeetSocket",
@@ -1845,6 +1866,16 @@ assertIncludes(
   "await handleReconnect({ immediate: true });",
   "web reconnect retry skips the first automatic backoff",
 );
+assertRegex(
+  "webMeetSocket",
+  /if \(reconnectInFlightRef\.current\) \{[\s\S]*manualReconnectRetryRequestedRef\.current = true;[\s\S]*cancelBackoff\(\);[\s\S]*return;/,
+  "web reconnect retry must request a fresh cycle without starting a concurrent reconnect",
+);
+assertRegex(
+  "webMeetSocket",
+  /if \(manualReconnectRetryRequestedRef\.current\) \{[\s\S]*manualReconnectRetryRequestedRef\.current = false;[\s\S]*reconnectAttemptsRef\.current = 0;[\s\S]*skipNextDelay = true;[\s\S]*continue;/,
+  "web reconnect retry must restart the active loop from attempt one after cancelled backoff",
+);
 {
   const text = source.webMeetSocket ?? "";
   const start = text.indexOf("const retryReconnect = useCallback");
@@ -1872,7 +1903,17 @@ assertRegex(
 );
 assertRegex(
   "webMeetSocket",
-  /setReconnectRecoveryStatus\([\s\S]*"failed"[\s\S]*Could not reconnect after several attempts[\s\S]*setMeetError\(\{[\s\S]*code: "CONNECTION_FAILED"[\s\S]*recoverable: true/,
+  /Failed to get join info:[\s\S]*const isRecoverable = isRecoverableReconnectFailure\(err\);[\s\S]*code: "CONNECTION_FAILED"[\s\S]*recoverable: isRecoverable/,
+  "web join-info failures must preserve terminal API errors",
+);
+assertRegex(
+  "webMeetSocket",
+  /if \(!isRecoverable\) \{[\s\S]*setMeetError\(\{[\s\S]*code: "CONNECTION_FAILED"[\s\S]*recoverable: false/,
+  "web reconnect loop must stop retrying terminal join-info failures",
+);
+assertRegex(
+  "webMeetSocket",
+  /updateReconnectRecoveryStatus\([\s\S]*"failed"[\s\S]*Could not reconnect after several attempts[\s\S]*setMeetError\(\{[\s\S]*code: "CONNECTION_FAILED"[\s\S]*recoverable: true/,
   "web reconnect give-up state must keep manual retry available",
 );
 assertIncludes(
