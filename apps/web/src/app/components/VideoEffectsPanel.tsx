@@ -1053,7 +1053,7 @@ export default function VideoEffectsPanel({
   const panelClassName =
     isDialogVariant
       ? "video-effects-panel-dialog fixed z-50 flex flex-col overflow-hidden text-[#fafafa]"
-      : "fixed right-0 top-0 bottom-0 z-40 flex w-[380px] flex-col overflow-hidden border-l border-white/[0.14] bg-[#18181b] text-[#fafafa] animate-[meet-panel-in_120ms_cubic-bezier(0.22,1,0.36,1)]";
+      : "safe-area-pt safe-area-pb fixed right-0 top-0 bottom-0 z-40 flex w-full sm:w-[380px] flex-col overflow-hidden border-l border-white/[0.14] bg-[#18181b] text-[#fafafa] animate-[meet-panel-in_120ms_cubic-bezier(0.22,1,0.36,1)]";
 
   const panel = (
     <aside

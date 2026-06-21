@@ -409,6 +409,17 @@ export interface ChatMessage {
   isDirect?: boolean;
   dmTargetUserId?: string;
   dmTargetDisplayName?: string;
+  replyTo?: ChatReplyPreview;
+}
+
+export interface ChatReplyPreview {
+  id: string;
+  userId: string;
+  displayName: string;
+  content: string;
+  hasGif?: boolean;
+  isDirect?: boolean;
+  dmTargetUserId?: string;
 }
 
 export interface ChatGifAttachment {
@@ -425,6 +436,7 @@ export interface ChatGifAttachment {
 export interface SendChatData {
   content?: string;
   gif?: ChatGifAttachment;
+  replyTo?: ChatReplyPreview;
 }
 
 export interface ChatMessageNotification extends ChatMessage {}

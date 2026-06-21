@@ -189,6 +189,7 @@ function useClickOutside(
 function ControlsBar(props: ControlsBarProps) {
   const config = buildControlsConfig(props);
   const {
+    compact = false,
     roomId,
     reactionOptions,
     onSendReaction,
@@ -240,6 +241,13 @@ function ControlsBar(props: ControlsBarProps) {
     enabled: hasEffects,
     delay: 1800,
   });
+  const hasChatControl = config.left.some(
+    (row) => row.id === "chat" && !row.disabled,
+  );
+  const gifsTip = useOneTimeHint("chat-gifs", {
+    enabled: !compact && hasChatControl && !props.isChatOpen,
+    delay: 2400,
+  });
 
   const lastReactionRef = useRef(0);
   const handleReaction = useCallback(
@@ -272,15 +280,17 @@ function ControlsBar(props: ControlsBarProps) {
   const VolumeIcon = meetVolumePercent === 0 ? VolumeX : Volume2;
 
   return (
-    <div className="relative grid w-full grid-cols-[1fr_auto_1fr] items-center gap-2 px-4 py-3">
-      {/* Equal side columns keep center controls from overlapping side content. */}
-      <div className="flex min-w-0 items-center justify-self-start">
-        <MeetingClock roomId={roomId} />
+    <div className="relative flex w-full items-center gap-2 px-4 py-3 sm:grid sm:grid-cols-[1fr_auto_1fr]">
+      {/* Equal side columns keep center controls from overlapping side content
+          at sm+; below that the clock is dropped and the center group grows
+          to fill the row (flex-1) so the bar can't overlap itself. */}
+      <div className="flex min-w-0 shrink-0 items-center justify-self-start">
+        {!compact && <MeetingClock roomId={roomId} />}
       </div>
 
-      <div className="flex items-center justify-self-center gap-2.5">
+      <div className="flex flex-1 items-center justify-center justify-self-center gap-2.5">
         {config.center.map((d) => {
-          if (d.id === "mic" && hasAudioDevicePicker) {
+          if (d.id === "mic" && hasAudioDevicePicker && !compact) {
             return (
               <MediaClusterButton
                 key={d.id}
@@ -295,7 +305,7 @@ function ControlsBar(props: ControlsBarProps) {
               />
             );
           }
-          if (d.id === "camera" && hasVideoDevicePicker) {
+          if (d.id === "camera" && hasVideoDevicePicker && !compact) {
             return (
               <MediaClusterButton
                 key={d.id}
@@ -313,56 +323,58 @@ function ControlsBar(props: ControlsBarProps) {
           return <BarButton key={d.id} d={d} />;
         })}
 
-        <div ref={reactionRef} className="relative">
-          <HotkeyTooltip label="Reactions" hotkey="">
-            <ControlButton
-              icon={Smile}
-              variant={reactionsOpen ? "active" : "default"}
-              size={48}
-              iconSize={ICON}
-              label="Reactions"
-              disabled={isGhostMode}
-              onClick={() => setReactionsOpen((v) => !v)}
-            />
-          </HotkeyTooltip>
-          {reactionsOpen && (
-            <div className={popoverWrapClass + " left-1/2 -translate-x-1/2"}>
-            <div
-              className={popoverPanelClass + " flex items-center gap-1"}
-              style={{ backgroundColor: color.surfaceRaised, borderColor: color.border }}
-            >
-              {reactionOptions.length === 0 ? (
-                <span
-                  className="px-3 py-1.5 text-[13px]"
-                  style={{ color: color.textFaint }}
-                >
-                  No reactions available
-                </span>
-              ) : null}
-              {reactionOptions.map((reaction) => (
-                <button
-                  key={reaction.id}
-                  onClick={() => handleReaction(reaction)}
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-lg transition-[background-color] duration-[120ms] hover:bg-white/[0.08]"
-                  title={`React with ${reaction.label}`}
-                  aria-label={`React with ${reaction.label}`}
-                >
-                  {reaction.kind === "emoji" ? (
-                    reaction.value
-                  ) : (
-                    <img
-                      src={reaction.value}
-                      alt={reaction.label}
-                      className="h-5 w-5 object-contain"
-                      loading="lazy"
-                    />
-                  )}
-                </button>
-              ))}
-            </div>
-            </div>
-          )}
-        </div>
+        {!compact && (
+          <div ref={reactionRef} className="relative">
+            <HotkeyTooltip label="Reactions" hotkey="">
+              <ControlButton
+                icon={Smile}
+                variant={reactionsOpen ? "active" : "default"}
+                size={48}
+                iconSize={ICON}
+                label="Reactions"
+                disabled={isGhostMode}
+                onClick={() => setReactionsOpen((v) => !v)}
+              />
+            </HotkeyTooltip>
+            {reactionsOpen && (
+              <div className={popoverWrapClass + " left-1/2 -translate-x-1/2"}>
+              <div
+                className={popoverPanelClass + " flex items-center gap-1"}
+                style={{ backgroundColor: color.surfaceRaised, borderColor: color.border }}
+              >
+                {reactionOptions.length === 0 ? (
+                  <span
+                    className="px-3 py-1.5 text-[13px]"
+                    style={{ color: color.textFaint }}
+                  >
+                    No reactions available
+                  </span>
+                ) : null}
+                {reactionOptions.map((reaction) => (
+                  <button
+                    key={reaction.id}
+                    onClick={() => handleReaction(reaction)}
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-lg transition-[background-color] duration-[120ms] hover:bg-white/[0.08]"
+                    title={`React with ${reaction.label}`}
+                    aria-label={`React with ${reaction.label}`}
+                  >
+                    {reaction.kind === "emoji" ? (
+                      reaction.value
+                    ) : (
+                      <img
+                        src={reaction.value}
+                        alt={reaction.label}
+                        className="h-5 w-5 object-contain"
+                        loading="lazy"
+                      />
+                    )}
+                  </button>
+                ))}
+              </div>
+              </div>
+            )}
+          </div>
+        )}
 
         <div ref={moreRef} className="relative">
           <ControlButton
@@ -392,6 +404,36 @@ function ControlsBar(props: ControlsBarProps) {
               className={popoverPanelClass + " w-full"}
               style={{ backgroundColor: color.surfaceRaised, borderColor: color.border }}
             >
+              {compact && !isGhostMode && reactionOptions.length > 0 && (
+                <div
+                  className="mb-1 flex items-center gap-1 overflow-x-auto border-b px-1 pb-1.5"
+                  style={{ borderColor: color.border }}
+                >
+                  {reactionOptions.map((reaction) => (
+                    <button
+                      key={reaction.id}
+                      onClick={() => {
+                        handleReaction(reaction);
+                        setMoreOpen(false);
+                      }}
+                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-lg transition-[background-color] duration-[120ms] hover:bg-white/[0.08]"
+                      title={`React with ${reaction.label}`}
+                      aria-label={`React with ${reaction.label}`}
+                    >
+                      {reaction.kind === "emoji" ? (
+                        reaction.value
+                      ) : (
+                        <img
+                          src={reaction.value}
+                          alt={reaction.label}
+                          className="h-5 w-5 object-contain"
+                          loading="lazy"
+                        />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
               {config.overflow.map((row) => (
                 <OverflowItem
                   key={row.id}
@@ -441,10 +483,40 @@ function ControlsBar(props: ControlsBarProps) {
         </HotkeyTooltip>
       </div>
 
-      <div className="flex min-w-0 items-center justify-self-end gap-0.5">
-        {config.left.map((d) => (
-          <PanelButton key={d.id} d={d} />
-        ))}
+      <div className="flex min-w-0 shrink-0 items-center justify-self-end gap-0.5">
+        {config.left.map((d) => {
+          if (d.id !== "chat") {
+            return <PanelButton key={d.id} d={d} />;
+          }
+
+          return (
+            <div key={d.id} className="relative flex">
+              <PanelButton
+                d={{
+                  ...d,
+                  onPress: () => {
+                    gifsTip.dismiss();
+                    d.onPress?.();
+                  },
+                }}
+              />
+              {gifsTip.visible &&
+              !props.isChatOpen &&
+              !filtersTip.visible &&
+              !moreOpen &&
+              !reactionsOpen &&
+              !browserOpen ? (
+                <Coachmark
+                  title="GIFs are here!"
+                  description="You can send your fav reactions on Conclave"
+                  onDismiss={gifsTip.dismiss}
+                  arrowLeft="calc(100% - 1.25rem)"
+                  className="!left-auto right-0 !translate-x-0"
+                />
+              ) : null}
+            </div>
+          );
+        })}
 
         {showHost && onToggleHostControls && (
           <button
@@ -482,6 +554,14 @@ function OverflowItem({ row, onActivate }: { row: OverflowRow; onActivate: () =>
     >
       <Icon size={MENU_ICON} strokeWidth={STROKE} className="shrink-0" />
       <span className="flex-1">{row.label}</span>
+      {typeof row.badge === "number" && row.badge > 0 ? (
+        <span
+          className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-semibold leading-none text-white"
+          style={{ backgroundColor: color.accent }}
+        >
+          {row.badge > 9 ? "9+" : row.badge}
+        </span>
+      ) : null}
     </button>
   );
 }

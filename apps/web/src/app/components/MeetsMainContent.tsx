@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch, PointerEvent, SetStateAction } from "react";
+import { Loader2, LogOut, RefreshCw } from "lucide-react";
 import type { Socket } from "socket.io-client";
 import type { RoomInfo } from "@/lib/sfu-types";
 import ChatOverlay from "./ChatOverlay";
@@ -21,18 +22,22 @@ import ScreenShareAudioPlayers from "./ScreenShareAudioPlayers";
 import SystemAudioPlayers from "./SystemAudioPlayers";
 import WhiteboardLayout from "./WhiteboardLayout";
 import ParticipantVideo from "./ParticipantVideo";
-import MeetingIdentity from "./MeetingIdentity";
 import ToastQueue from "./ToastQueue";
+import AndroidUpsellSheet from "./AndroidUpsellSheet";
 import type { BrowserState } from "../hooks/useSharedBrowser";
-import type { ConnectionQuality } from "../hooks/useConnectionQuality";
 import type {
   VideoEffectsDebugStats,
   VideoEffectsRuntimeStatus,
 } from "../hooks/useVideoEffects";
 import type {
+  CapturedSurfaceControlState,
+  CaptureControllerLike,
+} from "../lib/captured-surface-control";
+import type {
   AdminNoticeNotification,
   ChatGifAttachment,
   ChatMessage,
+  ChatReplyPreview,
   ConnectionState,
   MeetError,
   MeetingConfigSnapshot,
@@ -76,6 +81,8 @@ const DevMeetToolsPanel = dynamic(() => import("./DevMeetToolsPanel"), {
 
 interface MeetsMainContentProps {
   isJoined: boolean;
+  /** True under the phone-width breakpoint — gates compact control/panel layout. */
+  isMobile?: boolean;
   connectionState: ConnectionState;
   isLoading: boolean;
   roomId: string;
@@ -103,6 +110,8 @@ interface MeetsMainContentProps {
   setIsGhostMode: Dispatch<SetStateAction<boolean>>;
   presentationStream: MediaStream | null;
   presenterName: string;
+  screenShareControlState: CapturedSurfaceControlState;
+  screenShareCaptureController: CaptureControllerLike | null;
   localStream: MediaStream | null;
   videoEffects: VideoEffectsState;
   onVideoEffectsChange: Dispatch<SetStateAction<VideoEffectsState>>;
@@ -153,6 +162,9 @@ interface MeetsMainContentProps {
   sendChatGif: (gif: ChatGifAttachment) => void;
   chatOverlayMessages: ChatMessage[];
   setChatOverlayMessages: Dispatch<SetStateAction<ChatMessage[]>>;
+  replyTarget: ChatReplyPreview | null;
+  onReplyToMessage: (message: ChatMessage) => void;
+  onCancelReply: () => void;
   socket: Socket | null;
   setPendingUsers: Dispatch<SetStateAction<Map<string, string>>>;
   resolveDisplayName: (userId: string) => string;
@@ -216,7 +228,6 @@ interface MeetsMainContentProps {
   ) => Promise<WebinarConfigSnapshot | null>;
   onGenerateWebinarLink?: () => Promise<WebinarLinkResponse | null>;
   onRotateWebinarLink?: () => Promise<WebinarLinkResponse | null>;
-  selfConnectionQuality?: ConnectionQuality;
 }
 
 const MEET_VIEW_STORAGE_KEY = "conclave:meet-view";
@@ -301,6 +312,7 @@ const getPipCornerClass = (corner: PipCorner): string => {
 
 export default function MeetsMainContent({
   isJoined,
+  isMobile = false,
   connectionState,
   isLoading,
   roomId,
@@ -324,6 +336,8 @@ export default function MeetsMainContent({
   setIsGhostMode,
   presentationStream,
   presenterName,
+  screenShareControlState,
+  screenShareCaptureController,
   localStream,
   videoEffects,
   onVideoEffectsChange,
@@ -374,6 +388,9 @@ export default function MeetsMainContent({
   sendChatGif,
   chatOverlayMessages,
   setChatOverlayMessages,
+  replyTarget,
+  onReplyToMessage,
+  onCancelReply,
   socket,
   setPendingUsers,
   resolveDisplayName,
@@ -431,7 +448,6 @@ export default function MeetsMainContent({
   onUpdateWebinarConfig,
   onGenerateWebinarLink,
   onRotateWebinarLink,
-  selfConnectionQuality = "unknown",
 }: MeetsMainContentProps) {
   const {
     state: appsState,
@@ -500,12 +516,43 @@ export default function MeetsMainContent({
   const [isHostControlsOpen, setIsHostControlsOpen] = useState(false);
   const [isVideoEffectsOpen, setIsVideoEffectsOpen] = useState(false);
   const [isViewPanelOpen, setIsViewPanelOpen] = useState(false);
+  const [canReserveDockedPanel, setCanReserveDockedPanel] = useState(false);
+  const [showAndroidUpsell, setShowAndroidUpsell] = useState(false);
   const [viewSettings, setViewSettings] = useState<MeetViewSettings>(
     readStoredMeetViewSettings,
   );
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mediaQuery = window.matchMedia("(min-width: 640px)");
+    const updateReserveBreakpoint = () => {
+      setCanReserveDockedPanel(mediaQuery.matches);
+    };
+
+    updateReserveBreakpoint();
+    mediaQuery.addEventListener("change", updateReserveBreakpoint);
+    return () => {
+      mediaQuery.removeEventListener("change", updateReserveBreakpoint);
+    };
+  }, []);
+  useEffect(() => {
     writeStoredMeetViewSettings(viewSettings);
   }, [viewSettings]);
+  useEffect(() => {
+    if (typeof navigator === "undefined" || typeof window === "undefined") return;
+    const isAndroid = /android/i.test(navigator.userAgent);
+    const dismissed = window.localStorage.getItem(
+      "conclave_android_upsell_dismissed",
+    );
+    if (isAndroid && !dismissed) {
+      setShowAndroidUpsell(true);
+    }
+  }, []);
+  const dismissAndroidUpsell = useCallback(() => {
+    setShowAndroidUpsell(false);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("conclave_android_upsell_dismissed", "1");
+    }
+  }, []);
   const [devPresentationStream, setDevPresentationStream] =
     useState<MediaStream | null>(null);
   const [devCameraStream, setDevCameraStream] =
@@ -519,6 +566,10 @@ export default function MeetsMainContent({
       !hasLiveDevCamera &&
       (cameraPermissionState === "prompt" ||
         cameraPermissionState === "denied"));
+  // You're the one sharing your screen — the stage tile defaults to a
+  // chooser instead of mirroring your own share back at you (see
+  // GridLayout's `isLocalPresenter` handling).
+  const isLocalPresenter = isScreenSharing && Boolean(presentationStream);
   const effectivePresentationStream =
     presentationStream ?? devPresentationStream;
   const effectivePresenterName = presentationStream
@@ -1025,6 +1076,7 @@ export default function MeetsMainContent({
     return videoParticipant?.screenShareStream ?? null;
   }, [participantsArray]);
   const dockedPanelReserve =
+    canReserveDockedPanel &&
     isJoined &&
     !isWebinarAttendee &&
     (isChatOpen ||
@@ -1037,6 +1089,28 @@ export default function MeetsMainContent({
   const mainContentStyle = isJoined
     ? { paddingRight: `calc(1rem + ${dockedPanelReserve}px)` }
     : undefined;
+  const isRecoveringMeeting = isJoined && connectionState !== "joined";
+  const isTerminalMeetingError =
+    Boolean(meetError) && meetError?.recoverable === false;
+  const canRetryRecovery =
+    !isTerminalMeetingError &&
+    (connectionState === "disconnected" || connectionState === "error");
+  const recoveryTitle = isNetworkOffline
+    ? "Waiting for internet"
+    : isTerminalMeetingError
+      ? "Meeting unavailable"
+    : canRetryRecovery
+      ? "Connection interrupted"
+      : "Reconnecting";
+  const recoveryDetail = isNetworkOffline
+    ? "We are keeping the room open and will restore media when your connection returns."
+    : connectionState === "connected" || connectionState === "joining"
+      ? "Connection is back. Restoring media, participants, and room state."
+      : isTerminalMeetingError
+        ? meetError?.message
+      : canRetryRecovery
+        ? (meetError?.message ?? "We could not restore the connection yet.")
+        : "Keeping your meeting open while the connection is restored.";
 
   return (
     <div
@@ -1045,12 +1119,74 @@ export default function MeetsMainContent({
       }`}
       style={mainContentStyle}
     >
-      {isJoined && (!isWebinarAttendee || serverRestartNotice) && (
+      {isJoined &&
+        !isRecoveringMeeting &&
+        (!isWebinarAttendee || serverRestartNotice) && (
         <ConnectionBanner
           state={connectionState}
           isOffline={isNetworkOffline}
           serverRestartNotice={serverRestartNotice}
         />
+      )}
+      {isRecoveringMeeting && (
+        <div
+          className="absolute inset-0 z-[95] flex items-start justify-center bg-[#050506]/45 px-4 pt-[clamp(5.5rem,16vh,8.5rem)] backdrop-blur-[1.5px]"
+          aria-live="assertive"
+          aria-label="Reconnecting to the meeting"
+        >
+          <section
+            className="w-full max-w-[520px] rounded-lg border border-[#fafafa]/12 bg-[#111113]/95 p-4 text-left shadow-[0_18px_80px_rgba(0,0,0,0.42)]"
+            style={{ fontFamily: "'PolySans Trial', sans-serif" }}
+          >
+            <div className="flex items-start gap-3.5">
+              <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#F95F4A]/24 bg-[#F95F4A]/10">
+                <Loader2
+                  size={19}
+                  strokeWidth={1.8}
+                  className="animate-spin text-[#F95F4A]"
+                />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2
+                    className="text-[16px] leading-tight text-[#fafafa]"
+                    style={{ fontFamily: "'PolySans Bulky Wide', sans-serif" }}
+                  >
+                    {recoveryTitle}
+                  </h2>
+                  <span className="rounded-full border border-[#F95F4A]/20 bg-[#F95F4A]/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.12em] text-[#F95F4A]">
+                    Meeting still open
+                  </span>
+                </div>
+                <p className="mt-1.5 text-[12.5px] leading-snug text-[#fafafa]/64">
+                  {recoveryDetail}
+                </p>
+              </div>
+            </div>
+            <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
+              {canRetryRecovery ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    void joinRoomById(roomId);
+                  }}
+                  className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-[#F95F4A] px-3.5 text-[12.5px] font-medium text-white transition-[filter] hover:brightness-110"
+                >
+                  <RefreshCw size={14} strokeWidth={1.8} />
+                  Retry now
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={leaveRoom}
+                className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-[#fafafa]/12 px-3.5 text-[12.5px] font-medium text-[#fafafa]/76 transition-colors hover:border-[#fafafa]/24 hover:bg-[#fafafa]/[0.06] hover:text-[#fafafa]"
+              >
+                <LogOut size={14} strokeWidth={1.8} />
+                Leave
+              </button>
+            </div>
+          </section>
+        </div>
       )}
       {isJoined && <AdminNoticePill notice={adminNotice} />}
       <SystemAudioPlayers
@@ -1077,15 +1213,6 @@ export default function MeetsMainContent({
         <ReactionOverlay
           reactions={reactions}
           getDisplayName={resolveDisplayName}
-        />
-      )}
-      {isJoined && !isWebinarAttendee && (
-        <MeetingIdentity
-          connectionState={connectionState}
-          serverRestartNotice={serverRestartNotice}
-          isScreenSharing={isScreenSharing}
-          isGhost={ghostEnabled}
-          connectionQuality={selfConnectionQuality}
         />
       )}
       {isDevToolsEnabled && isJoined && !isWebinarAttendee && (
@@ -1336,8 +1463,19 @@ export default function MeetsMainContent({
           onViewSettingsChange={setViewSettings}
           presentationStream={effectivePresentationStream}
           presenterName={effectivePresenterName}
+          isLocalPresenter={isLocalPresenter}
+          screenShareControlState={screenShareControlState}
+          screenShareCaptureController={screenShareCaptureController}
           getDisplayName={resolveDisplayName}
           sidePanelReserve={dockedPanelReserve}
+          isMobile={isMobile}
+        />
+      )}
+
+      {!isWebinarAttendee && (
+        <AndroidUpsellSheet
+          isOpen={showAndroidUpsell}
+          onClose={dismissAndroidUpsell}
         />
       )}
 
@@ -1376,8 +1514,9 @@ export default function MeetsMainContent({
             </div>
           </div>
         ) : (
-          <div className="flex w-full flex-col items-center gap-2">
+          <div className="safe-area-pb flex w-full flex-col items-center gap-2">
             <ControlsBar
+                compact={isMobile}
                 roomId={roomId}
                 isMuted={isMuted}
                 isMuteTogglePending={isMuteTogglePending}
@@ -1491,6 +1630,9 @@ export default function MeetsMainContent({
           isDmEnabled={isDmEnabled}
           isAdmin={isAdmin}
           mentionableParticipants={mentionableParticipants}
+          replyTarget={replyTarget}
+          onReply={onReplyToMessage}
+          onCancelReply={onCancelReply}
         />
       )}
 

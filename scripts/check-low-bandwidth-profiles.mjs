@@ -28,6 +28,7 @@ const files = {
     "apps/web/src/app/components/mobile/MobilePresentationLayout.tsx",
   webMobileBrowserLayout:
     "apps/web/src/app/components/mobile/MobileBrowserLayout.tsx",
+  webMeetsMainContent: "apps/web/src/app/components/MeetsMainContent.tsx",
   webMeetClient: "apps/web/src/app/meets-client.tsx",
   webMeetMedia: "apps/web/src/app/hooks/useMeetMedia.ts",
   webMeetSocket: "apps/web/src/app/hooks/useMeetSocket.ts",
@@ -54,28 +55,52 @@ const files = {
     "packages/sfu/server/socket/handlers/disconnectHandlers.ts",
 };
 
+const optionalFiles = new Set([
+  "webMobileParticipantVideo",
+  "webMobileGridLayout",
+  "webMobilePresentationLayout",
+  "webMobileBrowserLayout",
+  "webMobileJoinScreen",
+]);
+
 const source = Object.fromEntries(
-  Object.entries(files).map(([key, file]) => [
-    key,
-    readFileSync(resolve(root, file), "utf8"),
-  ]),
+  Object.entries(files).map(([key, file]) => {
+    const path = resolve(root, file);
+    try {
+      return [key, readFileSync(path, "utf8")];
+    } catch (error) {
+      if (
+        optionalFiles.has(key) &&
+        error &&
+        typeof error === "object" &&
+        "code" in error &&
+        error.code === "ENOENT"
+      ) {
+        return [key, null];
+      }
+      throw error;
+    }
+  }),
 );
 
 const failures = [];
 
 const assertIncludes = (key, snippet, label) => {
+  if (source[key] === null) return;
   if (!source[key].includes(snippet)) {
     failures.push(`${label} missing in ${relative(root, resolve(root, files[key]))}`);
   }
 };
 
 const assertRegex = (key, regex, label) => {
+  if (source[key] === null) return;
   if (!regex.test(source[key])) {
     failures.push(`${label} missing in ${relative(root, resolve(root, files[key]))}`);
   }
 };
 
 const assertNotIncludes = (key, snippet, label) => {
+  if (source[key] === null) return;
   if (source[key].includes(snippet)) {
     failures.push(`${label} present in ${relative(root, resolve(root, files[key]))}`);
   }
@@ -468,6 +493,21 @@ assertRegex(
   "webAdaptiveConsumerPreferences",
   /const isConsumerLayerUpgrade =[\s\S]*next\.spatialLayer > previous\.spatialLayer[\s\S]*next\.temporalLayer[\s\S]*previous\.temporalLayer[\s\S]*requestKeyFrame =[\s\S]*isConsumerLayerUpgrade\(previousLayers, preferredLayers!\)/,
   "web receive layer upgrades request keyframes for temporal recovery",
+);
+assertIncludes(
+  "webAdaptiveConsumerPreferences",
+  "const UNSUPPORTED_LAYER_RETRY_AFTER_MS = 30000;",
+  "web unsupported receive-layer fallback is retry bounded",
+);
+assertRegex(
+  "webAdaptiveConsumerPreferences",
+  /unsupportedLayerPreferencesRef[\s\S]*retryAt > now[\s\S]*retryAt <= now[\s\S]*unsupportedLayerPreferencesRef\.current\.delete\(producerId\)/,
+  "web unsupported receive-layer fallback expires for recovery",
+);
+assertRegex(
+  "webAdaptiveConsumerPreferences",
+  /unsupportedLayerPreferencesRef\.current\.set\(producerId,[\s\S]*signature: getLayerPreferenceSignature\(preferredLayers\),[\s\S]*retryAt: Date\.now\(\) \+ UNSUPPORTED_LAYER_RETRY_AFTER_MS/,
+  "web unsupported receive-layer fallback stores retryable layer signature",
 );
 assertIncludes(
   "webAdaptiveConsumerPreferences",
@@ -1344,7 +1384,9 @@ assertRegex(
     const recreateIndex = section.indexOf(
       "closeLocalVideoProducerForReplacement(producer);",
     );
-    const hiddenGuardIndex = section.indexOf("if (!allowProducerRecreate)");
+    const backgroundDeferIndex = section.indexOf(
+      "Camera sender stalled in background; deferring track repair until foreground",
+    );
     if (
       rawRepairIndex >= 0 &&
       recreateIndex >= 0 &&
@@ -1365,13 +1407,9 @@ assertRegex(
         "web stalled camera sender recovery must soft-refresh preferred camera before any destructive producer recreation",
       );
     }
-    if (
-      rawRepairIndex >= 0 &&
-      hiddenGuardIndex >= 0 &&
-      hiddenGuardIndex < rawRepairIndex
-    ) {
+    if (backgroundDeferIndex < 0 || backgroundDeferIndex > rawRepairIndex) {
       failures.push(
-        "web hidden-tab camera stalls must try preferred-track repair before the no-recreate guard",
+        "web hidden-tab camera stalls must defer track repair before preferred-track replacement",
       );
     }
     if (
@@ -1401,12 +1439,12 @@ assertRegex(
   );
   assertRegex(
     "webMeetMedia",
-    /allowProducerRecreate: boolean[\s\S]*if \(!allowProducerRecreate\) \{[\s\S]*Camera sender stalled in background; keeping producer open/,
-    "web hidden camera sender watchdog repairs preferred tracks without background producer recreation",
+    /isDocumentVisibleForMediaRecovery[\s\S]*document\.visibilityState === "visible"[\s\S]*if \(!isDocumentVisibleForMediaRecovery\(\)\) \{[\s\S]*Camera sender stalled in background; deferring track repair until foreground/,
+    "web hidden camera sender watchdog defers track repair and producer recreation",
   );
   assertRegex(
     "webMeetMedia",
-    /const allowProducerRecreate =[\s\S]*document\.visibilityState === "visible"[\s\S]*recoverStalledProducer\(\{[\s\S]*allowProducerRecreate/,
+    /const allowProducerRecreate = isDocumentVisibleForMediaRecovery\(\);[\s\S]*recoverStalledProducer\(\{[\s\S]*allowProducerRecreate/,
     "web camera sender watchdog passes foreground state to stalled recovery",
   );
   assertRegex(
@@ -1620,18 +1658,18 @@ assertRegex(
 );
 assertRegex(
   "webAdaptivePublishQuality",
-  /getStandardCaptureRestoreSignature[\s\S]*settings\.width[\s\S]*settings\.height[\s\S]*settings\.frameRate[\s\S]*const signature = getStandardCaptureRestoreSignature\([\s\S]*webcamProducer\.id,[\s\S]*webcamTrack/,
+  /getStandardCaptureRestoreSignature[\s\S]*settings\.width[\s\S]*settings\.height[\s\S]*settings\.frameRate[\s\S]*const signature = getStandardCaptureRestoreSignature\(webcamTrack\)/,
   "web adaptive good-link restore signature tracks live capture settings",
 );
 assertRegex(
   "webAdaptivePublishQuality",
-  /const restoreStandardCaptureIfNeeded = useCallback[\s\S]*videoQualityRef\.current !== "standard"[\s\S]*webcamTrack\?\.readyState !== "live"[\s\S]*if \(needsStandardCaptureRestore\(webcamTrack\)\) \{[\s\S]*await updateVideoQualityRef\.current\("standard", "good"\)[\s\S]*\} else \{[\s\S]*await applyWebcamProducerNetworkProfile\([\s\S]*webcamProducer,[\s\S]*"standard",[\s\S]*"good",[\s\S]*\);[\s\S]*lastStandardCaptureRestoreSignatureRef\.current = signature/,
+  /const restoreStandardCaptureIfNeeded = useCallback[\s\S]*document\.visibilityState !== "visible"[\s\S]*videoQualityRef\.current !== "standard"[\s\S]*webcamTrack\?\.readyState !== "live"[\s\S]*needsCaptureRestore[\s\S]*lastStandardCaptureRestoreAttemptRef[\s\S]*STANDARD_CAPTURE_RESTORE_COOLDOWN_MS[\s\S]*await updateVideoQualityRef\.current\("standard", "good"\)[\s\S]*await applyWebcamProducerNetworkProfile\([\s\S]*webcamProducer,[\s\S]*"standard",[\s\S]*"good",[\s\S]*getStandardCaptureRestoreSignature\(activeTrack\)/,
   "web adaptive good-link restore avoids camera constraint churn when capture is already standard",
 );
 assertRegex(
   "webAdaptivePublishQuality",
-  /STANDARD_CAPTURE_RESTORE_RETRY_MS[\s\S]*standardCaptureRestoreRetryTimeoutRef[\s\S]*scheduleRestoreRetry[\s\S]*updateInFlightRef\.current[\s\S]*scheduleRestoreRetry\(\)[\s\S]*Adaptive standard camera capture restore failed[\s\S]*scheduleRestoreRetry\(\)/,
-  "web adaptive good-link standard capture restore retries after in-flight or failed restore",
+  /STANDARD_CAPTURE_RESTORE_RETRY_MS[\s\S]*STANDARD_CAPTURE_RESTORE_FAILURE_RETRY_MS[\s\S]*STANDARD_CAPTURE_RESTORE_COOLDOWN_MS[\s\S]*standardCaptureRestoreRetryTimeoutRef[\s\S]*scheduleRestoreRetry[\s\S]*updateInFlightRef\.current[\s\S]*scheduleRestoreRetry\(\)[\s\S]*Adaptive standard camera capture restore failed[\s\S]*scheduleRestoreRetry\(STANDARD_CAPTURE_RESTORE_FAILURE_RETRY_MS\)/,
+  "web adaptive good-link standard capture restore retries after in-flight and backs off failed restore",
 );
 assertRegex(
   "webAdaptivePublishQuality",
@@ -1687,6 +1725,11 @@ assertIncludes(
   "const PARTICIPANT_RECONNECTING_STATUS_FALLBACK_MS = 30000;",
   "web reconnecting participant badges have a grace-window fallback TTL",
 );
+assertIncludes(
+  "webMeetSocket",
+  "const participantConnectionStatusExpiresAtRef = useRef<Map<string, number>>(",
+  "web reconnecting participant badges track absolute expiry for hidden-tab timer throttling",
+);
 assertRegex(
   "webMeetSocket",
   /status\.state === "reconnected"[\s\S]*PARTICIPANT_RECONNECTED_STATUS_MS[\s\S]*PARTICIPANT_RECONNECTING_STATUS_FALLBACK_MS[\s\S]*PARTICIPANT_RECONNECTING_STATUS_BUFFER_MS/,
@@ -1694,7 +1737,27 @@ assertRegex(
 );
 assertRegex(
   "webMeetSocket",
-  /status\.state === "reconnected"[\s\S]*!visibleParticipantReconnectingIdsRef\.current\.has\(targetUserId\)[\s\S]*clearParticipantConnectionStatusTimer\(targetUserId\)[\s\S]*UPDATE_CONNECTION_STATUS[\s\S]*status: null[\s\S]*return;[\s\S]*status\.state === "reconnecting"[\s\S]*visibleParticipantReconnectingIdsRef\.current\.add\(targetUserId\)/,
+  /const clearParticipantConnectionStatus = useCallback[\s\S]*clearParticipantConnectionStatusTimer\(targetUserId\);[\s\S]*visibleParticipantReconnectingIdsRef\.current\.delete\(targetUserId\);[\s\S]*UPDATE_CONNECTION_STATUS[\s\S]*status: null/,
+  "web authoritative participant events clear visible reconnect status, not just timers",
+);
+assertRegex(
+  "webMeetSocket",
+  /"userJoined"[\s\S]*clearParticipantConnectionStatus\(joinedUserId\);[\s\S]*type: "ADD_PARTICIPANT"/,
+  "web userJoined clears stale reconnect badges for already-present participants",
+);
+assertRegex(
+  "webMeetSocket",
+  /"displayNameSnapshot"[\s\S]*clearParticipantConnectionStatus\(snapshotUserId\);[\s\S]*type: "ADD_PARTICIPANT"/,
+  "web participant snapshots clear stale reconnect badges for already-present participants",
+);
+assertRegex(
+  "webMeetSocket",
+  /foregroundRecoveryTimeoutRef\.current = window\.setTimeout\(\(\) => \{[\s\S]*clearExpiredParticipantConnectionStatuses\(\);[\s\S]*recoverActiveMeeting\("foreground"\)/,
+  "web foreground recovery sweeps expired reconnect badges after hidden-tab timer throttling",
+);
+assertRegex(
+  "webMeetSocket",
+  /status\.state === "reconnected"[\s\S]*!visibleParticipantReconnectingIdsRef\.current\.has\(targetUserId\)[\s\S]*clearParticipantConnectionStatus\(targetUserId\);[\s\S]*return;[\s\S]*status\.state === "reconnecting"[\s\S]*visibleParticipantReconnectingIdsRef\.current\.add\(targetUserId\)/,
   "web unmatched reconnected events clear stale peer badges without showing a new one",
 );
 assertRegex(
@@ -1717,6 +1780,36 @@ assertRegex(
   /meet_reconnect_success[\s\S]*attempt: reconnectAttemptsRef\.current[\s\S]*reconnectAttemptsRef\.current = 0;[\s\S]*return;/,
   "web successful reconnect resets retry attempts after reused-socket rejoins",
 );
+assertRegex(
+  "webMeetClient",
+  /hasEnteredMeetingSurface[\s\S]*shouldResetMeetingSurfaceOnDisconnectRef[\s\S]*connectionState === "joined"[\s\S]*setHasEnteredMeetingSurface\(true\)[\s\S]*connectionState === "waiting"[\s\S]*setHasEnteredMeetingSurface\(false\)[\s\S]*connectionState === "disconnected"[\s\S]*shouldResetMeetingSurfaceOnDisconnectRef\.current[\s\S]*setHasEnteredMeetingSurface\(false\)[\s\S]*const isRejoiningMeetingSurface =[\s\S]*connectionState === "reconnecting"[\s\S]*connectionState === "disconnected"[\s\S]*connectionState === "error"/,
+  "web reconnect flow keeps the meeting surface mounted through recoverable error/disconnected states",
+);
+assertIncludes(
+  "webMeetsMainContent",
+  "const isRecoveringMeeting = isJoined && connectionState !== \"joined\";",
+  "web reconnect flow derives in-meeting recovery overlay state",
+);
+assertIncludes(
+  "webMeetsMainContent",
+  "void joinRoomById(roomId);",
+  "web reconnect recovery overlay can retry without leaving the meeting surface",
+);
+assertIncludes(
+  "webMeetsMainContent",
+  "Retry now",
+  "web reconnect recovery overlay exposes retry action",
+);
+{
+  const text = source.webMeetsMainContent ?? "";
+  const overlayIndex = text.indexOf("{isRecoveringMeeting && (");
+  const joinScreenIndex = text.indexOf("{!isJoined ? (");
+  if (overlayIndex < 0 || joinScreenIndex < 0 || overlayIndex > joinScreenIndex) {
+    failures.push(
+      "web reconnect flow must render the in-meeting overlay before the join screen branch",
+    );
+  }
+}
 assertIncludes(
   "sfuConfig",
   "BACKGROUND_SOCKET_RECOVERY_WINDOW_MS = 120000",

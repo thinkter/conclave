@@ -19,7 +19,7 @@ function MeetsHeader({ isJoined }: MeetsHeaderProps) {
   // JoinScreen preview tile, so the frame stays clean (no leetspeak wordmark,
   // no duplicate sign-out, no uppercase tracking).
   return (
-    <header className="fixed left-0 right-0 top-0 z-[100] pointer-events-none">
+    <header className="safe-area-pt fixed left-0 right-0 top-0 z-[100] pointer-events-none">
       <div className="flex items-center px-5 py-4 pointer-events-auto">
         <a href="/" className="flex items-center" aria-label="Conclave home">
           <Image

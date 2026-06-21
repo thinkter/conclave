@@ -44,6 +44,8 @@ const POOR_LIVE_CAP_AFTER_MS = 2500;
 const GOOD_LIVE_RESTORE_AFTER_MS = 15000;
 const MAX_AUTO_UPGRADE_PARTICIPANTS = 4;
 const STANDARD_CAPTURE_RESTORE_RETRY_MS = 1000;
+const STANDARD_CAPTURE_RESTORE_FAILURE_RETRY_MS = 15000;
+const STANDARD_CAPTURE_RESTORE_COOLDOWN_MS = 120000;
 const STANDARD_CAPTURE_MIN_WIDTH = 960;
 const STANDARD_CAPTURE_MIN_HEIGHT = 540;
 const STANDARD_CAPTURE_MIN_FRAMERATE = 24;
@@ -94,13 +96,9 @@ const needsStandardCaptureRestore = (track: MediaStreamTrack): boolean => {
   );
 };
 
-const getStandardCaptureRestoreSignature = (
-  producerId: string,
-  track: MediaStreamTrack,
-): string => {
+const getStandardCaptureRestoreSignature = (track: MediaStreamTrack): string => {
   const settings = track.getSettings();
   return [
-    producerId,
     "standard",
     "good",
     settings.width ?? "unknown-width",
@@ -219,7 +217,10 @@ export function useAdaptivePublishQuality({
     screen: string | null;
     screenAudio: string | null;
   }>({ audio: null, webcam: null, screen: null, screenAudio: null });
-  const lastStandardCaptureRestoreSignatureRef = useRef<string | null>(null);
+  const lastStandardCaptureRestoreAttemptRef = useRef<{
+    signature: string;
+    at: number;
+  } | null>(null);
   const standardCaptureRestoreRetryTimeoutRef = useRef<number | null>(null);
 
   const writeDebugSnapshot = useCallback(
@@ -378,7 +379,9 @@ export function useAdaptivePublishQuality({
   );
 
   const restoreStandardCaptureIfNeeded = useCallback(async () => {
-    const scheduleRestoreRetry = () => {
+    const scheduleRestoreRetry = (
+      delayMs = STANDARD_CAPTURE_RESTORE_RETRY_MS,
+    ) => {
       if (
         typeof window === "undefined" ||
         standardCaptureRestoreRetryTimeoutRef.current !== null
@@ -388,10 +391,16 @@ export function useAdaptivePublishQuality({
       standardCaptureRestoreRetryTimeoutRef.current = window.setTimeout(() => {
         standardCaptureRestoreRetryTimeoutRef.current = null;
         void restoreStandardCaptureIfNeeded();
-      }, STANDARD_CAPTURE_RESTORE_RETRY_MS);
+      }, delayMs);
     };
 
     if (isCameraOff) return;
+    if (
+      typeof document !== "undefined" &&
+      document.visibilityState !== "visible"
+    ) {
+      return;
+    }
     if (updateInFlightRef.current) {
       scheduleRestoreRetry();
       return;
@@ -408,17 +417,24 @@ export function useAdaptivePublishQuality({
       return;
     }
 
-    const signature = getStandardCaptureRestoreSignature(
-      webcamProducer.id,
-      webcamTrack,
-    );
-    if (lastStandardCaptureRestoreSignatureRef.current === signature) {
+    const signature = getStandardCaptureRestoreSignature(webcamTrack);
+    const needsCaptureRestore = needsStandardCaptureRestore(webcamTrack);
+    const lastAttempt = lastStandardCaptureRestoreAttemptRef.current;
+    if (
+      needsCaptureRestore &&
+      lastAttempt?.signature === signature &&
+      Date.now() - lastAttempt.at < STANDARD_CAPTURE_RESTORE_COOLDOWN_MS
+    ) {
       return;
     }
 
     updateInFlightRef.current = true;
     try {
-      if (needsStandardCaptureRestore(webcamTrack)) {
+      if (needsCaptureRestore) {
+        lastStandardCaptureRestoreAttemptRef.current = {
+          signature,
+          at: Date.now(),
+        };
         await updateVideoQualityRef.current("standard", "good");
       } else {
         await applyWebcamProducerNetworkProfile(
@@ -427,15 +443,24 @@ export function useAdaptivePublishQuality({
           "good",
         );
       }
-      lastStandardCaptureRestoreSignatureRef.current = signature;
-      lastAppliedProfilesRef.current.webcam = signature;
+      const activeProducer = videoProducerRef.current;
+      const activeTrack = activeProducer?.track ?? null;
+      if (activeTrack?.readyState === "live") {
+        lastStandardCaptureRestoreAttemptRef.current = {
+          signature: getStandardCaptureRestoreSignature(activeTrack),
+          at: Date.now(),
+        };
+      }
+      if (activeProducer && !activeProducer.closed) {
+        lastAppliedProfilesRef.current.webcam = `${activeProducer.id}:standard:good`;
+      }
       writeDebugSnapshot();
     } catch (error) {
       console.warn(
         "[Meets] Adaptive standard camera capture restore failed:",
         error,
       );
-      scheduleRestoreRetry();
+      scheduleRestoreRetry(STANDARD_CAPTURE_RESTORE_FAILURE_RETRY_MS);
     } finally {
       updateInFlightRef.current = false;
       writeDebugSnapshot();
@@ -527,7 +552,7 @@ export function useAdaptivePublishQuality({
         screen: null,
         screenAudio: null,
       };
-      lastStandardCaptureRestoreSignatureRef.current = null;
+      lastStandardCaptureRestoreAttemptRef.current = null;
       if (standardCaptureRestoreRetryTimeoutRef.current !== null) {
         window.clearTimeout(standardCaptureRestoreRetryTimeoutRef.current);
         standardCaptureRestoreRetryTimeoutRef.current = null;

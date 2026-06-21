@@ -152,7 +152,7 @@ function BrowserLayout({
     const localName = getDisplayName(currentUserId) || userEmail;
 
     return (
-        <div className="mt-5 flex flex-1 min-h-0 min-w-0 gap-4 overflow-hidden">
+        <div className="mt-5 flex flex-1 min-h-0 min-w-0 flex-col gap-4 overflow-hidden sm:flex-row">
             <div
                 className="flex-1 min-h-0 min-w-0 rounded-2xl overflow-hidden relative flex flex-col"
                 style={{
@@ -323,8 +323,8 @@ function BrowserLayout({
                 </div>
             </div>
 
-            <div className="w-64 shrink-0 flex flex-col gap-3 overflow-y-auto overflow-x-visible px-1">
-                <div className={`acm-video-tile h-36 shrink-0 ${isLocalActiveSpeaker ? "speaking" : ""}`}>
+            <div className="flex h-36 w-full shrink-0 flex-row gap-3 overflow-x-auto overflow-y-visible pb-1 sm:h-auto sm:w-64 sm:flex-col sm:overflow-y-auto sm:overflow-x-visible sm:px-1 sm:pb-0">
+                <div className={`acm-video-tile h-36 w-48 shrink-0 sm:w-auto ${isLocalActiveSpeaker ? "speaking" : ""}`}>
                     <video
                         ref={localVideoRef}
                         autoPlay

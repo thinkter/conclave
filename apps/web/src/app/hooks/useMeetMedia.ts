@@ -23,6 +23,13 @@ import {
 } from "../lib/network-information";
 import { clampMeetVolume, DEFAULT_MEET_VOLUME } from "../lib/meet-volume";
 import { createMeetError } from "../lib/utils";
+import {
+  createCapturedSurfaceControlState,
+  createCaptureController,
+  getCapturedDisplaySurface,
+  getDefaultCapturedSurfaceControlState,
+  type CaptureControllerLike,
+} from "../lib/captured-surface-control";
 import { prewarmVideoEffectsAssetsDeferred } from "../lib/video-effects-lazy";
 import {
   applyWebcamProducerNetworkProfile,
@@ -80,6 +87,7 @@ interface UseMeetMediaOptions {
   screenProducerRef: React.MutableRefObject<Producer | null>;
   screenAudioProducerRef: React.MutableRefObject<Producer | null>;
   screenShareStreamRef: React.MutableRefObject<MediaStream | null>;
+  screenShareCaptureControllerRef: React.MutableRefObject<CaptureControllerLike | null>;
   intentionalLocalProducerCloseIdsRef: React.MutableRefObject<Set<string>>;
   localStreamRef: React.MutableRefObject<MediaStream | null>;
   connectionQualityRef?: React.MutableRefObject<ConnectionQualityStats | null>;
@@ -236,6 +244,9 @@ const isEncoderLimitedOutboundSample = (
   sample.qualityLimitationReason === "bandwidth" ||
   sample.qualityLimitationReason === "cpu";
 
+const isDocumentVisibleForMediaRecovery = (): boolean =>
+  typeof document === "undefined" || document.visibilityState === "visible";
+
 const hasOutboundVideoProgress = (
   previous: CameraOutboundStallState,
   sample: OutboundVideoProgressSample,
@@ -317,6 +328,7 @@ export function useMeetMedia({
   screenProducerRef,
   screenAudioProducerRef,
   screenShareStreamRef,
+  screenShareCaptureControllerRef,
   intentionalLocalProducerCloseIdsRef,
   localStreamRef,
   connectionQualityRef,
@@ -330,6 +342,13 @@ export function useMeetMedia({
     hasVideoPermission: false,
   });
   const [showPermissionHint, setShowPermissionHint] = useState(false);
+  const [screenShareControlState, setScreenShareControlState] = useState(
+    getDefaultCapturedSurfaceControlState,
+  );
+  const resetScreenShareControlState = useCallback(() => {
+    screenShareCaptureControllerRef.current = null;
+    setScreenShareControlState(getDefaultCapturedSurfaceControlState());
+  }, [screenShareCaptureControllerRef]);
   const updateVideoQualityRef = useRef<
     (
       quality: VideoQuality,
@@ -346,6 +365,13 @@ export function useMeetMedia({
   const cameraRecoveryInFlightRef = useRef(false);
   const [cameraProducerRecoveryPulse, setCameraProducerRecoveryPulse] =
     useState(0);
+
+  useEffect(() => {
+    if (!isScreenSharing) {
+      resetScreenShareControlState();
+    }
+  }, [isScreenSharing, resetScreenShareControlState]);
+
   const pendingAudioProducerRecoveryRef = useRef(false);
   const pendingCameraProducerRecoveryRef = useRef(false);
   const [blockedProducerRecoveryFlushPulse, setBlockedProducerRecoveryFlushPulse] =
@@ -2313,6 +2339,24 @@ export function useMeetMedia({
         return;
       }
 
+      if (!isDocumentVisibleForMediaRecovery()) {
+        cameraOutboundStallStateRef.current = {
+          ...state,
+          lastRecoveryAtMs: now,
+        };
+        console.warn(
+          "[Meets] Camera sender stalled in background; deferring track repair until foreground.",
+          {
+            producerId: producer.id,
+            trackId: producerTrack.id,
+            stalledSamples: state.stalledSamples,
+            frames: sample.frames,
+            bytes: sample.bytes,
+          },
+        );
+        return;
+      }
+
       const rawCameraTrack = getFirstLiveTrack(
         localStreamRef.current?.getVideoTracks() ?? [],
       );
@@ -2517,9 +2561,7 @@ export function useMeetMedia({
           }
 
           const sample = readOutboundVideoProgressSample(report);
-          const allowProducerRecreate =
-            typeof document === "undefined" ||
-            document.visibilityState === "visible";
+          const allowProducerRecreate = isDocumentVisibleForMediaRecovery();
           const currentState = cameraOutboundStallStateRef.current;
           const previous =
             currentState.producerId === producer.id &&
@@ -2871,11 +2913,47 @@ export function useMeetMedia({
           screenNetworkProfile,
         );
 
-      const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: videoConstraints,
+      let captureController = createCaptureController();
+      const displayVideoConstraints: MediaTrackConstraints = {
+        ...videoConstraints,
+        displaySurface: "browser",
+      };
+      const displayMediaOptions: DisplayMediaStreamOptions & {
+        controller?: CaptureControllerLike;
+      } = {
+        video: displayVideoConstraints,
         audio: true,
-      });
+        ...(captureController ? { controller: captureController } : {}),
+      };
+
+      let stream: MediaStream;
+      try {
+        stream =
+          await navigator.mediaDevices.getDisplayMedia(displayMediaOptions);
+      } catch (err) {
+        if (!captureController || (err as Error).name !== "TypeError") {
+          throw err;
+        }
+        captureController = null;
+        stream = await navigator.mediaDevices.getDisplayMedia({
+          video: displayVideoConstraints,
+          audio: true,
+        });
+      }
       const track = stream.getVideoTracks()[0];
+      if (!track) {
+        throw new Error("Screen share did not include a video track");
+      }
+      const displaySurface = getCapturedDisplaySurface(track);
+      screenShareCaptureControllerRef.current = captureController;
+      setScreenShareControlState(
+        createCapturedSurfaceControlState(captureController, displaySurface),
+      );
+      if (captureController?.setFocusBehavior) {
+        try {
+          captureController.setFocusBehavior("focus-capturing-application");
+        } catch {}
+      }
       if (track && "contentHint" in track) {
         track.contentHint = "detail";
       }
@@ -2999,6 +3077,7 @@ export function useMeetMedia({
     screenProducerRef,
     screenAudioProducerRef,
     screenShareStreamRef,
+    screenShareCaptureControllerRef,
     socketRef,
     setMeetError,
     ensureProducerTransportRef,
@@ -3014,6 +3093,7 @@ export function useMeetMedia({
   return {
     mediaState,
     showPermissionHint,
+    screenShareControlState,
     isMuteTogglePending,
     requestMediaPermissions,
     handleAudioInputDeviceChange,

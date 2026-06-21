@@ -75,19 +75,11 @@ function ViewOptionButton<T extends string>({
       aria-pressed={selected}
       data-testid={testId}
       {...(dataAttribute ? { [dataAttribute]: id } : {})}
-      className={`relative flex min-h-[72px] flex-col items-start justify-between rounded-[14px] border p-3 text-left transition-[background-color,border-color,box-shadow] duration-[120ms] ${
+      className={`relative flex min-h-[72px] flex-col items-start justify-between rounded-[14px] border p-3 text-left transition-[background-color,border-color] duration-[120ms] ${
         selected
-          ? ""
-          : "border-white/[0.10] bg-[#131316] hover:border-white/[0.18] hover:bg-[#1f1f23]"
+          ? "border-[#F95F4A] bg-[#232327]"
+          : "border-white/10 bg-[#131316] hover:border-white/[0.18] hover:bg-[#1f1f23]"
       }`}
-      style={
-        selected
-          ? {
-              backgroundColor: "#211817",
-              borderColor: "rgba(249, 95, 74, 0.7)",
-            }
-          : undefined
-      }
     >
       <Icon
         size={19}
@@ -135,10 +127,10 @@ export default function MeetViewPanel({
   return (
     <aside
       data-testid="meet-view-panel"
-      className="fixed bottom-24 right-4 top-4 z-40 flex w-[360px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-[18px] border border-white/[0.10] bg-[#18181b] text-[#fafafa] animate-[meet-panel-in_180ms_cubic-bezier(0.22,1,0.36,1)]"
+      className="fixed right-0 top-0 bottom-0 z-40 flex w-[360px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden border-l border-white/10 bg-[#18181b] text-[#fafafa] animate-[meet-panel-in_120ms_cubic-bezier(0.22,1,0.36,1)]"
       aria-label="Adjust view"
     >
-      <header className="flex items-center justify-between border-b border-white/[0.08] px-4 py-4">
+      <header className="flex items-center justify-between border-b border-white/10 px-4 py-4">
         <div>
           <h2 className="text-[16px] font-semibold leading-tight">
             Adjust view
@@ -181,7 +173,7 @@ export default function MeetViewPanel({
           </div>
         </section>
 
-        <section className="border-t border-white/[0.08] px-4 py-4">
+        <section className="border-t border-white/10 px-4 py-4">
           <div className="flex items-center justify-between gap-3">
             <label
               htmlFor="meet-max-tiles"
@@ -211,7 +203,7 @@ export default function MeetViewPanel({
           />
         </section>
 
-        <section className="border-t border-white/[0.08] px-4 py-3">
+        <section className="border-t border-white/10 px-4 py-3">
           <div className="flex w-full items-center justify-between gap-3 px-1 py-1.5">
             <span className="text-[13px] font-medium text-[#fafafa]">
               Hide tiles without video
@@ -224,7 +216,7 @@ export default function MeetViewPanel({
           </div>
         </section>
 
-        <section className="border-t border-white/[0.08] px-4 py-4">
+        <section className="border-t border-white/10 px-4 py-4">
           <h3 className="mb-2 text-[12px] font-semibold uppercase tracking-[0.14em] text-[#a1a1aa]">
             Self view
           </h3>

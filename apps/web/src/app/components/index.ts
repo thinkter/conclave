@@ -3,10 +3,6 @@
 export { default as ChatOverlay } from "./ChatOverlay";
 export { default as ChatPanel } from "./ChatPanel";
 export { default as ConnectionBanner } from "./ConnectionBanner";
-export {
-  default as ConnectionIndicator,
-  ConnectionQualityIndicator,
-} from "./ConnectionIndicator";
 export { default as ControlsBar } from "./ControlsBar";
 export { default as GridLayout } from "./GridLayout";
 export { default as JoinScreen } from "./JoinScreen";

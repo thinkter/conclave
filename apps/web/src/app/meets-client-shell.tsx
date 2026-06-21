@@ -1,14 +1,7 @@
 import { headers as nextHeaders } from "next/headers";
-import { Roboto } from "next/font/google";
 import { auth } from "@/lib/auth";
 import MeetsClientPage from "./meets-client-page";
 import type { JoinMode } from "./lib/types";
-
-const roboto = Roboto({
-  subsets: ["latin"],
-  weight: ["400", "500", "700"],
-  display: "swap",
-});
 
 type MeetsClientShellProps = {
   initialRoomId?: string;
@@ -68,7 +61,6 @@ export default async function MeetsClientShell({
       hideJoinUI={hideJoinUI}
       user={resolvedUser}
       isAdmin={isAdmin}
-      fontClassName={roboto.className}
     />
   );
 }
