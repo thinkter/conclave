@@ -101,6 +101,8 @@ const PARTICIPANT_RECONNECTED_STATUS_MS = 4500;
 const PRODUCER_CLOSE_REPLACEMENT_GRACE_MS = 1500;
 const STALE_REPLACEMENT_CLEANUP_DELAY_MS = 5000;
 const SCREEN_SHARE_STALE_REPLACEMENT_CLEANUP_DELAY_MS = 1500;
+const CLOSE_CONSUMER_RETRY_DELAY_MS = 500;
+const CLOSE_CONSUMER_MAX_ATTEMPTS = 4;
 const TURN_URL_PATTERN = /^turns?:/i;
 const TRANSPORT_CC_FEEDBACK_TYPE = "transport-cc";
 
@@ -699,6 +701,7 @@ export function useMeetSocket({
   const staleReplacementCleanupTimeoutsRef = useRef<Map<string, number>>(
     new Map(),
   );
+  const closeConsumerRetryTimeoutsRef = useRef<Map<string, number>>(new Map());
   const mutedConsumerSinceRef = useRef<Map<string, number>>(new Map());
   const producerPausedStateRef = useRef<Map<string, boolean>>(new Map());
   // Per-video-consumer decode progress for the freeze watchdog: last
@@ -1133,6 +1136,10 @@ export function useMeetSocket({
         window.clearTimeout(timeoutId);
       }
       staleReplacementCleanupTimeoutsRef.current.clear();
+      for (const timeoutId of closeConsumerRetryTimeoutsRef.current.values()) {
+        window.clearTimeout(timeoutId);
+      }
+      closeConsumerRetryTimeoutsRef.current.clear();
       mutedConsumerSinceRef.current.clear();
       producerPausedStateRef.current.clear();
       videoFreezeStatsRef.current.clear();
@@ -1282,6 +1289,7 @@ export function useMeetSocket({
       consumeRetryAttemptsRef,
       videoStallRecoveryTimeoutsRef,
       staleConsumerRecoveryTimeoutsRef,
+      closeConsumerRetryTimeoutsRef,
       mutedConsumerSinceRef,
       producerPausedStateRef,
       consumerRecoveryInFlightRef,
@@ -1928,11 +1936,50 @@ export function useMeetSocket({
   const closeServerConsumer = useCallback(
     (consumerId?: string | null) => {
       if (!consumerId) return;
-      const socket = socketRef.current;
-      if (!socket?.connected) return;
-      socket.emit("closeConsumer", { consumerId }, () => {});
+
+      const existingTimeout =
+        closeConsumerRetryTimeoutsRef.current.get(consumerId);
+      if (existingTimeout != null) {
+        window.clearTimeout(existingTimeout);
+        closeConsumerRetryTimeoutsRef.current.delete(consumerId);
+      }
+
+      const closeWithRetry = (attempt: number) => {
+        const socket = socketRef.current;
+        if (!socket?.connected) return;
+
+        socket.emit(
+          "closeConsumer",
+          { consumerId },
+          (response: { success: boolean } | { error: string }) => {
+            closeConsumerRetryTimeoutsRef.current.delete(consumerId);
+            if (!("error" in response)) return;
+
+            if (
+              attempt + 1 >= CLOSE_CONSUMER_MAX_ATTEMPTS ||
+              !/too many consumer control requests|retry shortly/i.test(
+                response.error,
+              )
+            ) {
+              console.warn("[Meets] Failed to close server consumer:", {
+                consumerId,
+                error: response.error,
+              });
+              return;
+            }
+
+            const timeoutId = window.setTimeout(() => {
+              closeConsumerRetryTimeoutsRef.current.delete(consumerId);
+              closeWithRetry(attempt + 1);
+            }, CLOSE_CONSUMER_RETRY_DELAY_MS);
+            closeConsumerRetryTimeoutsRef.current.set(consumerId, timeoutId);
+          },
+        );
+      };
+
+      closeWithRetry(0);
     },
-    [socketRef],
+    [closeConsumerRetryTimeoutsRef, socketRef],
   );
 
   const dropDepartedProducer = useCallback(
