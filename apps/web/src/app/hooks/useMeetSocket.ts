@@ -3422,11 +3422,13 @@ export function useMeetSocket({
 
   const applyWebinarFeedProducers = useCallback(
     async (producers: ProducerInfo[]) => {
+      const departedProducerIds = new Set<string>();
       const activeProducers = producers.filter((producer) => {
         const isDeparted = shouldIgnoreDepartedParticipant(
           producer.producerUserId,
         );
         if (isDeparted) {
+          departedProducerIds.add(producer.producerId);
           dropDepartedProducer(producer);
         }
         return !isDeparted;
@@ -3435,6 +3437,7 @@ export function useMeetSocket({
         activeProducers.map((producer) => producer.producerId),
       );
       for (const producerId of producerMapRef.current.keys()) {
+        if (departedProducerIds.has(producerId)) continue;
         if (!serverProducerIds.has(producerId)) {
           handleProducerClosed(producerId);
         }
