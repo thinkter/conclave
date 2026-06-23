@@ -28,4 +28,20 @@ describe("SFU_EVENTS", () => {
       ]),
     );
   });
+
+  it("keeps native media lifecycle events in the shared registry", () => {
+    const clientEvents = new Set(Object.values(SFU_EVENTS.clientToServer));
+    const serverEvents = new Set(Object.values(SFU_EVENTS.serverToClient));
+
+    expect(Array.from(clientEvents)).toEqual(
+      expect.arrayContaining(["closeConsumer"]),
+    );
+    expect(Array.from(serverEvents)).toEqual(
+      expect.arrayContaining([
+        "participantConnectionState",
+        "consumerTelemetry",
+        "producerClosed",
+      ]),
+    );
+  });
 });
