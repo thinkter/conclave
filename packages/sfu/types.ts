@@ -432,6 +432,8 @@ export interface ChatReplyPreview {
   dmTargetUserId?: string;
 }
 
+export type ChatGifAttachmentKind = "gif" | "sticker" | "clip";
+
 export interface ChatGifAttachment {
   id: string;
   title: string;
@@ -440,6 +442,12 @@ export interface ChatGifAttachment {
   pageUrl?: string;
   width?: number;
   height?: number;
+  // Which Klipy media catalog this came from. Absent on legacy messages,
+  // which should be treated as "gif". Clips additionally carry `videoUrl`.
+  kind?: ChatGifAttachmentKind;
+  // Direct MP4 URL for clips. `url` remains a renderable image (the clip's
+  // animated GIF) so clients that don't understand clips still show something.
+  videoUrl?: string;
   source: "klipy";
 }
 

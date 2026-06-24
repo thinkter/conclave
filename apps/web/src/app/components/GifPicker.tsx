@@ -11,10 +11,13 @@ import {
 } from "react";
 import type { ChatGifAttachment } from "../lib/types";
 import {
-  klipyGifResultToAttachment,
-  type KlipyGifResult,
-  type KlipyGifSearchResponse,
+  klipyMediaResultToAttachment,
+  type KlipyMediaKind,
+  type KlipyMediaResult,
+  type KlipyMediaSearchResponse,
 } from "../lib/klipy-gifs";
+import Coachmark from "./Coachmark";
+import { useOneTimeHint } from "../hooks/useOneTimeHint";
 
 interface GifPickerProps {
   disabled?: boolean;
@@ -23,7 +26,17 @@ interface GifPickerProps {
 }
 
 const SEARCH_DEBOUNCE_MS = 250;
-const GIFS_PER_PAGE = 16;
+const ITEMS_PER_PAGE = 16;
+
+const MEDIA_TABS: ReadonlyArray<{
+  kind: KlipyMediaKind;
+  label: string;
+  noun: string;
+}> = [
+  { kind: "gifs", label: "GIFs", noun: "GIFs" },
+  { kind: "stickers", label: "Stickers", noun: "stickers" },
+  { kind: "clips", label: "Clips", noun: "clips" },
+];
 
 function GifPicker({
   disabled = false,
@@ -33,14 +46,27 @@ function GifPicker({
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [isOpen, setIsOpen] = useState(false);
+  const [mediaKind, setMediaKind] = useState<KlipyMediaKind>("gifs");
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [gifs, setGifs] = useState<KlipyGifResult[]>([]);
+  const [items, setItems] = useState<KlipyMediaResult[]>([]);
   const [page, setPage] = useState(1);
   const [hasNext, setHasNext] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const noun = useMemo(
+    () => MEDIA_TABS.find((tab) => tab.kind === mediaKind)?.noun ?? "results",
+    [mediaKind],
+  );
+
+  // Announce the newly added stickers + clips catalogs on the picker itself, so
+  // even people who already dismissed the original "GIFs are here" tip see it.
+  const stickersClipsTip = useOneTimeHint("chat-stickers-clips", {
+    enabled: !disabled && !isOpen,
+    delay: 900,
+  });
 
   useEffect(() => {
     if (!disabled) return;
@@ -88,13 +114,14 @@ function GifPicker({
     if (!isOpen) return;
 
     const controller = new AbortController();
-    const loadGifs = async () => {
+    const loadItems = async () => {
       setIsLoading(true);
       setError(null);
       try {
         const params = new URLSearchParams({
+          media: mediaKind,
           page: "1",
-          limit: String(GIFS_PER_PAGE),
+          limit: String(ITEMS_PER_PAGE),
         });
         if (debouncedQuery) {
           params.set("q", debouncedQuery);
@@ -104,18 +131,20 @@ function GifPicker({
           signal: controller.signal,
         });
         if (!response.ok) {
-          throw new Error("GIF search failed.");
+          throw new Error(`${noun} search failed.`);
         }
-        const body = (await response.json()) as KlipyGifSearchResponse;
-        setGifs(body.gifs);
+        const body = (await response.json()) as KlipyMediaSearchResponse;
+        setItems(body.items);
         setPage(body.page);
         setHasNext(body.hasNext);
       } catch (loadError) {
         if (controller.signal.aborted) return;
-        setGifs([]);
+        setItems([]);
         setHasNext(false);
         setError(
-          loadError instanceof Error ? loadError.message : "GIF search failed.",
+          loadError instanceof Error
+            ? loadError.message
+            : `${noun} search failed.`,
         );
       } finally {
         if (!controller.signal.aborted) {
@@ -124,9 +153,9 @@ function GifPicker({
       }
     };
 
-    void loadGifs();
+    void loadItems();
     return () => controller.abort();
-  }, [debouncedQuery, isOpen]);
+  }, [debouncedQuery, isOpen, mediaKind, noun]);
 
   const loadMore = useCallback(async () => {
     if (isLoading || isLoadingMore || !hasNext) return;
@@ -135,8 +164,9 @@ function GifPicker({
     setError(null);
     try {
       const params = new URLSearchParams({
+        media: mediaKind,
         page: String(page + 1),
-        limit: String(GIFS_PER_PAGE),
+        limit: String(ITEMS_PER_PAGE),
       });
       if (debouncedQuery) {
         params.set("q", debouncedQuery);
@@ -144,22 +174,22 @@ function GifPicker({
 
       const response = await fetch(`/api/klipy/gifs?${params.toString()}`);
       if (!response.ok) {
-        throw new Error("More GIFs failed to load.");
+        throw new Error(`More ${noun} failed to load.`);
       }
-      const body = (await response.json()) as KlipyGifSearchResponse;
-      setGifs((prev) => [...prev, ...body.gifs]);
+      const body = (await response.json()) as KlipyMediaSearchResponse;
+      setItems((prev) => [...prev, ...body.items]);
       setPage(body.page);
       setHasNext(body.hasNext);
     } catch (loadError) {
       setError(
         loadError instanceof Error
           ? loadError.message
-          : "More GIFs failed to load.",
+          : `More ${noun} failed to load.`,
       );
     } finally {
       setIsLoadingMore(false);
     }
-  }, [debouncedQuery, hasNext, isLoading, isLoadingMore, page]);
+  }, [debouncedQuery, hasNext, isLoading, isLoadingMore, mediaKind, noun, page]);
 
   const panelClassName = useMemo(
     () =>
@@ -169,10 +199,19 @@ function GifPicker({
     [variant],
   );
 
-  const handleSelect = (gif: KlipyGifResult) => {
-    onSelect(klipyGifResultToAttachment(gif));
+  const handleSelectMedia = (item: KlipyMediaResult) => {
+    onSelect(klipyMediaResultToAttachment(item));
     setIsOpen(false);
     setQuery("");
+  };
+
+  const handleSelectTab = (kind: KlipyMediaKind) => {
+    if (kind === mediaKind) return;
+    setMediaKind(kind);
+    setItems([]);
+    setPage(1);
+    setHasNext(false);
+    setError(null);
   };
 
   return (
@@ -180,10 +219,13 @@ function GifPicker({
       <button
         type="button"
         disabled={disabled}
-        onClick={() => setIsOpen((prev) => !prev)}
-        aria-label="Search GIFs"
+        onClick={() => {
+          if (!isOpen) stickersClipsTip.dismiss();
+          setIsOpen((prev) => !prev);
+        }}
+        aria-label="GIFs, stickers, and clips"
         aria-expanded={isOpen}
-        title="Search GIFs"
+        title="GIFs, stickers, and clips"
         className={`inline-flex h-8 w-8 items-center justify-center rounded-lg transition-[background-color,color,opacity] ${
           isOpen
             ? "bg-white/[0.12] text-[#fafafa]"
@@ -192,6 +234,16 @@ function GifPicker({
       >
         <Images size={18} strokeWidth={1.75} />
       </button>
+
+      {stickersClipsTip.visible && !isOpen ? (
+        <Coachmark
+          title="Stickers & clips, too"
+          description="Browse Klipy stickers and short video clips right here."
+          onDismiss={stickersClipsTip.dismiss}
+          arrowLeft="1rem"
+          className="!left-0 !translate-x-0"
+        />
+      ) : null}
 
       {isOpen ? (
         <div
@@ -217,7 +269,7 @@ function GifPicker({
                 ref={inputRef}
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                aria-label="Search Klipy GIFs"
+                aria-label={`Search Klipy ${noun}`}
                 className="w-full bg-transparent text-[13px] text-[#fafafa] focus:outline-none"
               />
             </div>
@@ -225,7 +277,7 @@ function GifPicker({
               <button
                 type="button"
                 onClick={() => setQuery("")}
-                aria-label="Clear GIF search"
+                aria-label="Clear search"
                 className="inline-flex h-6 w-6 items-center justify-center rounded-md text-[#a1a1aa] transition-colors hover:bg-white/[0.08] hover:text-[#fafafa]"
               >
                 <X size={14} strokeWidth={1.75} />
@@ -233,35 +285,79 @@ function GifPicker({
             ) : null}
           </div>
 
-          <div className="max-h-[18rem] overflow-y-auto p-2">
+          <div
+            role="tablist"
+            aria-label="Media type"
+            className="flex items-center gap-1 border-b border-white/10 px-2 py-1.5"
+          >
+            {MEDIA_TABS.map((tab) => {
+              const isActive = tab.kind === mediaKind;
+              return (
+                <button
+                  key={tab.kind}
+                  type="button"
+                  role="tab"
+                  aria-selected={isActive}
+                  onClick={() => handleSelectTab(tab.kind)}
+                  className={`inline-flex h-7 flex-1 items-center justify-center rounded-md text-[12px] font-medium transition-colors ${
+                    isActive
+                      ? "bg-white/[0.12] text-[#fafafa]"
+                      : "text-[#a1a1aa] hover:bg-white/[0.06] hover:text-[#fafafa]"
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="h-[18rem] overflow-y-auto p-2">
             {isLoading ? (
-              <div className="flex h-32 items-center justify-center text-[#a1a1aa]">
+              <div className="flex h-full items-center justify-center text-[#a1a1aa]">
                 <Loader2 size={20} strokeWidth={1.75} className="animate-spin" />
               </div>
             ) : error ? (
-              <div className="flex h-32 items-center justify-center px-4 text-center text-[13px] text-[#a1a1aa]">
+              <div className="flex h-full items-center justify-center px-4 text-center text-[13px] text-[#a1a1aa]">
                 {error}
               </div>
-            ) : gifs.length === 0 ? (
-              <div className="flex h-32 items-center justify-center px-4 text-center text-[13px] text-[#a1a1aa]">
-                No GIFs found
+            ) : items.length === 0 ? (
+              <div className="flex h-full items-center justify-center px-4 text-center text-[13px] text-[#a1a1aa]">
+                No {noun} found
               </div>
             ) : (
               <div className="grid grid-cols-2 gap-1.5">
-                {gifs.map((gif) => (
+                {items.map((item) => (
                   <button
-                    key={`${gif.id}-${gif.url}`}
+                    key={`${item.id}-${item.url}`}
                     type="button"
-                    onClick={() => handleSelect(gif)}
+                    onClick={() => handleSelectMedia(item)}
                     className="group relative aspect-[4/3] overflow-hidden rounded-lg bg-black/30 outline-none ring-1 ring-white/[0.06] transition-[filter,ring-color] hover:brightness-110 hover:ring-white/20 focus-visible:ring-2 focus-visible:ring-[#F95F4A]"
-                    title={gif.title}
+                    title={item.title}
                   >
-                    <img
-                      src={gif.previewUrl}
-                      alt={gif.title}
-                      loading="lazy"
-                      className="h-full w-full object-cover"
-                    />
+                    {item.kind === "clip" && item.videoUrl ? (
+                      <video
+                        src={item.videoUrl}
+                        poster={item.previewUrl}
+                        muted
+                        loop
+                        autoPlay
+                        playsInline
+                        preload="metadata"
+                        aria-label={item.title}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <img
+                        src={item.previewUrl}
+                        alt={item.title}
+                        loading="lazy"
+                        className={`h-full w-full ${
+                          item.kind === "sticker"
+                            ? "object-contain"
+                            : "object-cover"
+                        }`}
+                      />
+                    )}
                   </button>
                 ))}
               </div>
