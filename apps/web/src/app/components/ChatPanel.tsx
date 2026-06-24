@@ -716,9 +716,11 @@ function ChatPanel({
                     >
                       <div
                         className={`inline-block min-w-0 max-w-full overflow-hidden rounded-[18px] ${
-                          isOwn
-                            ? "bg-[#F95F4A] text-white"
-                            : "bg-white/[0.05] text-[#fafafa]"
+                          msg.gif
+                            ? "text-white"
+                            : isOwn
+                              ? "bg-[#F95F4A] text-white"
+                              : "bg-white/[0.05] text-[#fafafa]"
                         } ${
                           isOwn && groupedWithPrevious ? "rounded-tr-md" : ""
                         } ${

@@ -1,24 +1,40 @@
-import type { ChatGifAttachment } from "./types";
+import type { ChatGifAttachment, ChatGifAttachmentKind } from "./types";
 
-export interface KlipyGifResult extends ChatGifAttachment {
+// The Klipy catalogs we surface in the picker. These map to the plural path
+// segments used by the Klipy API (`/gifs`, `/stickers`, `/clips`).
+export type KlipyMediaKind = "gifs" | "stickers" | "clips";
+
+// The singular `ChatGifAttachment.kind` each catalog produces once sent.
+export const KLIPY_ATTACHMENT_KIND: Record<
+  KlipyMediaKind,
+  ChatGifAttachmentKind
+> = {
+  gifs: "gif",
+  stickers: "sticker",
+  clips: "clip",
+};
+
+export interface KlipyMediaResult extends ChatGifAttachment {
   previewUrl: string;
 }
 
-export interface KlipyGifSearchResponse {
-  gifs: KlipyGifResult[];
+export interface KlipyMediaSearchResponse {
+  items: KlipyMediaResult[];
   page: number;
   hasNext: boolean;
 }
 
-export const klipyGifResultToAttachment = (
-  gif: KlipyGifResult,
+export const klipyMediaResultToAttachment = (
+  item: KlipyMediaResult,
 ): ChatGifAttachment => ({
-  id: gif.id,
-  title: gif.title,
-  url: gif.url,
-  previewUrl: gif.previewUrl,
-  pageUrl: gif.pageUrl,
-  width: gif.width,
-  height: gif.height,
+  id: item.id,
+  title: item.title,
+  url: item.url,
+  previewUrl: item.previewUrl,
+  ...(item.pageUrl ? { pageUrl: item.pageUrl } : {}),
+  ...(item.width ? { width: item.width } : {}),
+  ...(item.height ? { height: item.height } : {}),
+  ...(item.kind ? { kind: item.kind } : {}),
+  ...(item.videoUrl ? { videoUrl: item.videoUrl } : {}),
   source: "klipy",
 });

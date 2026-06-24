@@ -5,7 +5,13 @@ import type {
 } from "./types";
 
 export type ParticipantAction =
-  | { type: "ADD_PARTICIPANT"; userId: string; isGhost?: boolean }
+  | {
+      type: "ADD_PARTICIPANT";
+      userId: string;
+      isGhost?: boolean;
+      addIfMissing?: boolean;
+      reviveIfPresent?: boolean;
+    }
   | { type: "REMOVE_PARTICIPANT"; userId: string }
   | { type: "MARK_LEAVING"; userId: string }
   | {
@@ -83,6 +89,13 @@ export function participantReducer(
     case "ADD_PARTICIPANT": {
       const existing = state.get(action.userId);
       if (existing) {
+        if (
+          action.addIfMissing === false &&
+          existing.isLeaving &&
+          !action.reviveIfPresent
+        ) {
+          return state;
+        }
         const nextGhost = action.isGhost ?? existing.isGhost;
         // Re-add of an already-present, non-leaving participant with the same
         // ghost flag is a no-op (server re-sync) — keep the same reference.
@@ -96,6 +109,7 @@ export function participantReducer(
           connectionStatus: undefined,
         });
       }
+      if (action.addIfMissing === false) return state;
       return withParticipant(
         state,
         action.userId,

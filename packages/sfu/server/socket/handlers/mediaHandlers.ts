@@ -1,5 +1,6 @@
 import type { Consumer, ConsumerLayers } from "mediasoup/types";
 import type {
+  CloseConsumerData,
   ConsumeData,
   ConsumeResponse,
   ConsumerTelemetryNotification,
@@ -707,6 +708,58 @@ export const registerMediaHandlers = (context: ConnectionContext): void => {
           { room, client: currentClient, consumer },
           wasPaused ? "resume" : "preferences",
         );
+        respond(callback, { success: true });
+      } catch (error) {
+        respond(callback, { error: (error as Error).message });
+      }
+    },
+  );
+
+  socket.on(
+    "closeConsumer",
+    (
+      data: CloseConsumerData,
+      callback: (response: { success: boolean } | { error: string }) => void,
+    ) => {
+      try {
+        const room = context.currentRoom;
+        const currentClient = context.currentClient;
+        if (!room || !currentClient) {
+          respond(callback, { error: "Not in a room" });
+          return;
+        }
+
+        if (!takeToken(socket, "closeConsumer", RATE_LIMITS.consumerControl)) {
+          respond(callback, {
+            error: "Too many consumer control requests; please retry shortly",
+          });
+          return;
+        }
+
+        const consumerId = normalizeMediaId(data?.consumerId);
+        if (!consumerId) {
+          respond(callback, { error: "Consumer ID is required" });
+          return;
+        }
+
+        const consumer = currentClient.getConsumerById(consumerId);
+        if (!consumer) {
+          respond(callback, { success: true });
+          return;
+        }
+
+        consumer.close();
+        try {
+          emitConsumerTelemetry({ room, client: currentClient, consumer }, "closed");
+        } catch (telemetryError) {
+          Logger.warn(
+            `Failed to emit close telemetry for consumer ${consumerId}: ${
+              telemetryError instanceof Error
+                ? telemetryError.message
+                : String(telemetryError)
+            }`,
+          );
+        }
         respond(callback, { success: true });
       } catch (error) {
         respond(callback, { error: (error as Error).message });
