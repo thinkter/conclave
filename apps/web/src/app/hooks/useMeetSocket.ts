@@ -103,6 +103,7 @@ const STALE_REPLACEMENT_CLEANUP_DELAY_MS = 5000;
 const SCREEN_SHARE_STALE_REPLACEMENT_CLEANUP_DELAY_MS = 1500;
 const CLOSE_CONSUMER_RETRY_DELAY_MS = 500;
 const CLOSE_CONSUMER_MAX_ATTEMPTS = 4;
+const CLOSE_CONSUMER_RETRY_WINDOW_MS = 30000;
 const TURN_URL_PATTERN = /^turns?:/i;
 const TRANSPORT_CC_FEEDBACK_TYPE = "transport-cc";
 
@@ -1956,7 +1957,16 @@ export function useMeetSocket({
         closeConsumerRetryTimeoutsRef.current.delete(consumerId);
       }
 
+      const retryStartedAt = Date.now();
       const scheduleCloseRetry = (attempt: number) => {
+        if (Date.now() - retryStartedAt >= CLOSE_CONSUMER_RETRY_WINDOW_MS) {
+          closeConsumerRetryTimeoutsRef.current.delete(consumerId);
+          console.warn("[Meets] Gave up closing server consumer after retry window:", {
+            consumerId,
+          });
+          return;
+        }
+
         const timeoutId = window.setTimeout(() => {
           closeConsumerRetryTimeoutsRef.current.delete(consumerId);
           closeWithRetry(attempt);
