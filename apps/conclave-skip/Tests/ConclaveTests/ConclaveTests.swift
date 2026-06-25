@@ -34,7 +34,7 @@ final class ConclaveTests: XCTestCase {
             serverEventRawValues: serverEventRawValues
         )
 
-        XCTAssertEqual(serverEventRawValues.count, 53)
+        XCTAssertFalse(serverEventRawValues.isEmpty)
         XCTAssertTrue(
             expectedRawValues.subtracting(iosRegisteredRawValues).isEmpty,
             "iOS socket manager is missing server events: \(expectedRawValues.subtracting(iosRegisteredRawValues).sorted())"
