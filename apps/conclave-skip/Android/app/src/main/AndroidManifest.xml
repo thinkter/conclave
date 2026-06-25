@@ -5,6 +5,16 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.any" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
+    <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
+    <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
     
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
@@ -58,6 +68,17 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="https" android:host="conclave.acmvit.in" android:pathPrefix="/w/" />
                 <data android:scheme="https" android:host="conclave.acmvit.in" android:pathPattern="/.*-.*-.*" />
+                <data android:scheme="https" android:host="conclave.acmvit.in" android:path="/sign-in" />
+                <data android:scheme="https" android:host="conclave.acmvit.in" android:pathPrefix="/sign-in/" />
+            </intent-filter>
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="www.conclave.acmvit.in" android:pathPrefix="/w/" />
+                <data android:scheme="https" android:host="www.conclave.acmvit.in" android:pathPattern="/.*-.*-.*" />
+                <data android:scheme="https" android:host="www.conclave.acmvit.in" android:path="/sign-in" />
+                <data android:scheme="https" android:host="www.conclave.acmvit.in" android:pathPrefix="/sign-in/" />
             </intent-filter>
         </activity>
         

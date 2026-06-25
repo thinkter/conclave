@@ -76,3 +76,4 @@ Carthage/Build/
 **/fastlane/test_output
 
 .asc
+.xcode-derived-data

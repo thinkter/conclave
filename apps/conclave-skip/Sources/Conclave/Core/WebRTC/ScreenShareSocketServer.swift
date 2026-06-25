@@ -338,8 +338,9 @@ final class ScreenShareSocketServer: @unchecked Sendable {
             let now = Date().timeIntervalSince1970
             if now - lastDecodeFailureLogAt >= 1.0 {
                 lastDecodeFailureLogAt = now
-                NSLog("[ScreenShare] decode failed: jpegBytes=%d w=%d h=%d orient=%d",
-                      jpeg.count, width, height, orientation)
+                debugLog(
+                    "[ScreenShare] decode failed: jpegBytes=\(jpeg.count) w=\(width) h=\(height) orient=\(orientation)"
+                )
             }
             return
         }

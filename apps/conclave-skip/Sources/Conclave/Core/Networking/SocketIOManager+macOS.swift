@@ -14,8 +14,8 @@ final class SocketIOManager {
     var onReconnectFailed: (() -> Void)?
 
     var onWaitingRoomStatus: ((WaitingRoomStatusNotification) -> Void)?
-    var onJoinApproved: (() -> Void)?
-    var onJoinRejected: (() -> Void)?
+    var onJoinApproved: ((JoinDecisionNotification) -> Void)?
+    var onJoinRejected: ((JoinDecisionNotification) -> Void)?
     var onHostAssigned: ((HostAssignedNotification) -> Void)?
     var onHostChanged: ((HostChangedNotification) -> Void)?
     var onAdminUsersChanged: ((AdminUsersChangedNotification) -> Void)?
@@ -30,6 +30,7 @@ final class SocketIOManager {
     var onWebinarConfigChanged: ((WebinarConfigSnapshot) -> Void)?
     var onWebinarAttendeeCountChanged: ((WebinarAttendeeCountChangedNotification) -> Void)?
     var onWebinarFeedChanged: ((WebinarFeedChangedNotification) -> Void)?
+    var onWebinarParticipantJoined: ((WebinarParticipantJoinedNotification) -> Void)?
     var onBrowserState: ((BrowserStateNotification) -> Void)?
     var onBrowserClosed: ((BrowserClosedNotification) -> Void)?
     var onAppsState: ((AppsStateNotification) -> Void)?
@@ -46,6 +47,7 @@ final class SocketIOManager {
 
     var onNewProducer: ((ProducerInfo) -> Void)?
     var onProducerClosed: ((ProducerClosedNotification) -> Void)?
+    var onConsumerTelemetry: ((ConsumerTelemetryNotification) -> Void)?
 
     var onChatMessage: ((ChatMessage) -> Void)?
     var onChatHistorySnapshot: ((ChatHistorySnapshotNotification) -> Void)?
@@ -110,6 +112,7 @@ final class SocketIOManager {
         throw NSError(domain: "Conclave", code: -1, userInfo: [NSLocalizedDescriptionKey: "SocketIO not available on macOS"])
     }
     func resumeConsumer(consumerId: String, requestKeyFrame: Bool = false) async throws { }
+    func closeConsumer(consumerId: String) { }
     func setConsumerPreferences(
         consumerId: String,
         spatialLayer: Int? = nil,
@@ -124,18 +127,31 @@ final class SocketIOManager {
     func toggleCamera(producerId: String, paused: Bool) async throws { }
     func closeProducer(producerId: String) async throws { }
 
-    func sendChat(content: String, recipient: String? = nil) async throws -> ChatMessage {
-        ChatMessage(userId: "local", displayName: "You", content: content)
+    func sendChat(content: String, gif: ChatGifAttachment? = nil, recipient: String? = nil, replyTo: ChatReplyPreview? = nil) async throws -> ChatMessage {
+        ChatMessage(userId: "local", displayName: "You", content: content, gif: gif)
     }
     func sendReaction(emoji: String?, kind: String?, value: String?, label: String?) async throws { }
     func setHandRaised(_ raised: Bool) async throws { }
     func updateDisplayName(_ name: String) async throws { }
 
-    func lockRoom(_ locked: Bool) async throws { }
-    func lockChat(_ locked: Bool) async throws { }
-    func setNoGuests(_ noGuests: Bool) async throws { }
-    func setDmEnabled(_ enabled: Bool) async throws { }
-    func setTtsDisabled(_ disabled: Bool) async throws { }
+    func lockRoom(_ locked: Bool) async throws -> RoomPolicyMutationResponse {
+        RoomPolicyMutationResponse(success: true, error: nil, changed: nil, locked: locked, noGuests: nil, disabled: nil, enabled: nil, policies: nil)
+    }
+    func lockChat(_ locked: Bool) async throws -> RoomPolicyMutationResponse {
+        RoomPolicyMutationResponse(success: true, error: nil, changed: nil, locked: locked, noGuests: nil, disabled: nil, enabled: nil, policies: nil)
+    }
+    func setNoGuests(_ noGuests: Bool) async throws -> RoomPolicyMutationResponse {
+        RoomPolicyMutationResponse(success: true, error: nil, changed: nil, locked: nil, noGuests: noGuests, disabled: nil, enabled: nil, policies: nil)
+    }
+    func setDmEnabled(_ enabled: Bool) async throws -> RoomPolicyMutationResponse {
+        RoomPolicyMutationResponse(success: true, error: nil, changed: nil, locked: nil, noGuests: nil, disabled: nil, enabled: enabled, policies: nil)
+    }
+    func setTtsDisabled(_ disabled: Bool) async throws -> RoomPolicyMutationResponse {
+        RoomPolicyMutationResponse(success: true, error: nil, changed: nil, locked: nil, noGuests: nil, disabled: disabled, enabled: nil, policies: nil)
+    }
+    func setReactionsDisabled(_ disabled: Bool) async throws -> RoomPolicyMutationResponse {
+        RoomPolicyMutationResponse(success: true, error: nil, changed: nil, locked: nil, noGuests: nil, disabled: disabled, enabled: nil, policies: nil)
+    }
     func getMeetingConfig() async throws -> MeetingConfigSnapshot { MeetingConfigSnapshot(roomId: nil, requiresInviteCode: nil) }
     func updateMeetingConfig(inviteCode: String?) async throws -> MeetingConfigSnapshot { MeetingConfigSnapshot(roomId: nil, requiresInviteCode: inviteCode != nil) }
     func getWebinarConfig() async throws -> WebinarConfigSnapshot {
@@ -157,7 +173,7 @@ final class SocketIOManager {
         WebinarConfigSnapshot(roomId: nil, enabled: nil, publicAccess: nil, locked: nil, maxAttendees: nil, attendeeCount: nil, requiresInviteCode: inviteCode != nil, linkSlug: nil, feedMode: nil)
     }
     func updateWebinarLinkSlug(_ linkSlug: String?) async throws -> WebinarConfigSnapshot {
-        WebinarConfigSnapshot(roomId: nil, enabled: nil, publicAccess: nil, locked: nil, maxAttendees: nil, attendeeCount: nil, requiresInviteCode: nil, linkSlug: linkSlug, feedMode: nil)
+        WebinarConfigSnapshot(roomId: nil, enabled: nil, publicAccess: nil, locked: nil, maxAttendees: nil, attendeeCount: nil, requiresInviteCode: nil, linkSlug: linkSlug, feedMode: nil, hasLinkSlug: true)
     }
     func generateWebinarLink() async throws -> WebinarLinkResponse {
         WebinarLinkResponse(slug: "", link: "", publicAccess: false, linkVersion: 0)
@@ -202,19 +218,22 @@ final class SocketIOManager {
         CloseRemoteProducerResponse(success: true, error: nil, userId: nil, kind: nil, type: nil)
     }
     func muteUser(userId: String) async throws -> AdminMediaActionResponse {
-        AdminMediaActionResponse(success: true, error: nil, userId: userId, affectedProducers: nil, producers: nil)
+        AdminMediaActionResponse(success: true, error: nil, userId: userId, affectedProducers: nil, producers: nil, closed: nil, producerId: nil)
+    }
+    func muteUserAudio(userId: String) async throws -> AdminMediaActionResponse {
+        AdminMediaActionResponse(success: true, error: nil, userId: userId, affectedProducers: nil, producers: nil, closed: nil, producerId: nil)
     }
     func muteAll() async throws -> AdminBulkMediaActionResponse {
         AdminBulkMediaActionResponse(success: true, error: nil, count: nil, affectedProducers: nil, users: nil)
     }
     func closeUserVideo(userId: String) async throws -> AdminMediaActionResponse {
-        AdminMediaActionResponse(success: true, error: nil, userId: userId, affectedProducers: nil, producers: nil)
+        AdminMediaActionResponse(success: true, error: nil, userId: userId, affectedProducers: nil, producers: nil, closed: nil, producerId: nil)
     }
     func closeUserMedia(userId: String, kinds: [String]? = nil, types: [String]? = nil, reason: String? = nil) async throws -> AdminMediaActionResponse {
-        AdminMediaActionResponse(success: true, error: nil, userId: userId, affectedProducers: nil, producers: nil)
+        AdminMediaActionResponse(success: true, error: nil, userId: userId, affectedProducers: nil, producers: nil, closed: nil, producerId: nil)
     }
     func stopUserScreenShare(userId: String) async throws -> AdminMediaActionResponse {
-        AdminMediaActionResponse(success: true, error: nil, userId: userId, affectedProducers: nil, producers: nil)
+        AdminMediaActionResponse(success: true, error: nil, userId: userId, affectedProducers: nil, producers: nil, closed: nil, producerId: nil)
     }
     func closeAllVideo() async throws -> AdminBulkMediaActionResponse {
         AdminBulkMediaActionResponse(success: true, error: nil, count: nil, affectedProducers: nil, users: nil)
@@ -223,6 +242,20 @@ final class SocketIOManager {
         AdminBulkMediaActionResponse(success: true, error: nil, count: nil, affectedProducers: nil, users: nil)
     }
     func clearRaisedHands() async throws { }
+    func getAdminRoomState() async throws -> AdminRoomSnapshot {
+        AdminRoomSnapshot(
+            id: nil,
+            hostUserId: nil,
+            adminUserIds: nil,
+            screenShareProducerId: nil,
+            quality: nil,
+            policies: nil,
+            access: nil,
+            appsState: nil,
+            participants: nil,
+            pendingUsers: nil
+        )
+    }
     func getAccessLists() async throws -> AdminAccessListSnapshot {
         AdminAccessListSnapshot(allowedUserKeys: [], lockedAllowedUserKeys: [], blockedUserKeys: [])
     }
@@ -247,6 +280,15 @@ final class SocketIOManager {
     func endRoomNow(message: String?) async throws -> AdminEndRoomResponse {
         try await endRoom(message: message, delayMs: 0)
     }
-    func promoteHost(userId: String) async throws { }
+    func promoteHost(userId: String) async throws -> PromoteHostResponse {
+        PromoteHostResponse(
+            success: true,
+            hostUserId: nil,
+            hostUserIds: [userId],
+            promotedUserId: userId,
+            promotedUserKey: nil,
+            error: nil
+        )
+    }
 }
 #endif

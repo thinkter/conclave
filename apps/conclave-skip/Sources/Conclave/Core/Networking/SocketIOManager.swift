@@ -1,5 +1,26 @@
-#if os(iOS) && !SKIP && canImport(SocketIO)
 import Foundation
+
+enum SocketFireAndForgetEmitPolicy {
+    static func shouldEmit(isConnected: Bool, activeRoomId: String?, hasSocket: Bool) -> Bool {
+        guard isConnected, hasSocket else { return false }
+        let roomId = activeRoomId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return !roomId.isEmpty
+    }
+
+    static func normalizedAppId(_ appId: String) -> String? {
+        let trimmed = appId.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+}
+
+enum SocketRoomEventPolicy {
+    static func shouldAllowMissingTerminalRoomId(activeRoomAliasCount: Int, pendingRoomAliasCount: Int) -> Bool {
+        (activeRoomAliasCount > 0 && pendingRoomAliasCount == 0) ||
+            (activeRoomAliasCount == 0 && pendingRoomAliasCount > 0)
+    }
+}
+
+#if os(iOS) && !SKIP && canImport(SocketIO)
 import Combine
 import SocketIO
 
@@ -14,6 +35,7 @@ private enum SocketEvent {
     static let consume = SfuClientEvent.consume.rawValue
     static let resumeConsumer = SfuClientEvent.resumeConsumer.rawValue
     static let setConsumerPreferences = SfuClientEvent.setConsumerPreferences.rawValue
+    static let closeConsumer = SfuClientEvent.closeConsumer.rawValue
     static let getProducers = SfuClientEvent.getProducers.rawValue
     static let toggleMute = SfuClientEvent.toggleMute.rawValue
     static let toggleCamera = SfuClientEvent.toggleCamera.rawValue
@@ -38,12 +60,14 @@ private enum SocketEvent {
     static let closeAllVideo = SfuClientEvent.closeAllVideo.rawValue
     static let promoteHost = SfuClientEvent.promoteHost.rawValue
     static let adminMuteUser = SfuClientEvent.adminMuteUser.rawValue
+    static let adminMuteUserAudio = SfuClientEvent.adminMuteUserAudio.rawValue
     static let adminCloseUserVideo = SfuClientEvent.adminCloseUserVideo.rawValue
     static let adminCloseUserMedia = SfuClientEvent.adminCloseUserMedia.rawValue
     static let adminStopUserScreenShare = SfuClientEvent.adminStopUserScreenShare.rawValue
     static let adminStopAllScreenShare = SfuClientEvent.adminStopAllScreenShare.rawValue
     static let adminClearRaisedHands = SfuClientEvent.adminClearRaisedHands.rawValue
     static let adminBroadcastNotice = SfuClientEvent.adminBroadcastNotice.rawValue
+    static let adminGetRoomState = SfuClientEvent.adminGetRoomState.rawValue
     static let adminGetAccessLists = SfuClientEvent.adminGetAccessLists.rawValue
     static let adminAllowUsers = SfuClientEvent.adminAllowUsers.rawValue
     static let adminBlockUsers = SfuClientEvent.adminBlockUsers.rawValue
@@ -75,6 +99,7 @@ private enum SocketEvent {
     static let displayNameUpdated = SfuServerEvent.displayNameUpdated.rawValue
     static let newProducer = SfuServerEvent.newProducer.rawValue
     static let producerClosed = SfuServerEvent.producerClosed.rawValue
+    static let consumerTelemetry = SfuServerEvent.consumerTelemetry.rawValue
     static let chatMessage = SfuServerEvent.chatMessage.rawValue
     static let chatHistorySnapshot = SfuServerEvent.chatHistorySnapshot.rawValue
     static let reaction = SfuServerEvent.reaction.rawValue
@@ -99,8 +124,7 @@ private enum SocketEvent {
     static let adminUsersChanged = SfuServerEvent.adminUsersChanged.rawValue
     static let participantMuted = SfuServerEvent.participantMuted.rawValue
     static let participantCameraOff = SfuServerEvent.participantCameraOff.rawValue
-    // SFU emits this today, but the generated event registry does not include it yet.
-    static let participantConnectionState = "participantConnectionState"
+    static let participantConnectionState = SfuServerEvent.participantConnectionState.rawValue
     static let setVideoQuality = SfuServerEvent.setVideoQuality.rawValue
     static let redirect = SfuServerEvent.redirect.rawValue
     static let kicked = SfuServerEvent.kicked.rawValue
@@ -117,6 +141,7 @@ private enum SocketEvent {
     static let webinarConfigChanged = SfuServerEvent.webinarConfigChanged.rawValue
     static let webinarAttendeeCountChanged = SfuServerEvent.webinarAttendeeCountChanged.rawValue
     static let webinarFeedChanged = SfuServerEvent.webinarFeedChanged.rawValue
+    static let webinarParticipantJoined = SfuServerEvent.webinarParticipantJoined.rawValue
     static let browserState = SfuServerEvent.browserState.rawValue
     static let browserClosed = SfuServerEvent.browserClosed.rawValue
     static let appsState = SfuServerEvent.appsState.rawValue
@@ -182,8 +207,8 @@ final class SocketIOManager {
 
     // Room events
     var onWaitingRoomStatus: ((WaitingRoomStatusNotification) -> Void)?
-    var onJoinApproved: (() -> Void)?
-    var onJoinRejected: (() -> Void)?
+    var onJoinApproved: ((JoinDecisionNotification) -> Void)?
+    var onJoinRejected: ((JoinDecisionNotification) -> Void)?
     var onHostAssigned: ((HostAssignedNotification) -> Void)?
     var onHostChanged: ((HostChangedNotification) -> Void)?
     var onAdminUsersChanged: ((AdminUsersChangedNotification) -> Void)?
@@ -198,6 +223,7 @@ final class SocketIOManager {
     var onWebinarConfigChanged: ((WebinarConfigSnapshot) -> Void)?
     var onWebinarAttendeeCountChanged: ((WebinarAttendeeCountChangedNotification) -> Void)?
     var onWebinarFeedChanged: ((WebinarFeedChangedNotification) -> Void)?
+    var onWebinarParticipantJoined: ((WebinarParticipantJoinedNotification) -> Void)?
     var onBrowserState: ((BrowserStateNotification) -> Void)?
     var onBrowserClosed: ((BrowserClosedNotification) -> Void)?
     var onAppsState: ((AppsStateNotification) -> Void)?
@@ -216,6 +242,7 @@ final class SocketIOManager {
     // Producer events
     var onNewProducer: ((ProducerInfo) -> Void)?
     var onProducerClosed: ((ProducerClosedNotification) -> Void)?
+    var onConsumerTelemetry: ((ConsumerTelemetryNotification) -> Void)?
 
     // Chat/Reactions
     var onChatMessage: ((ChatMessage) -> Void)?
@@ -249,12 +276,16 @@ final class SocketIOManager {
     private var activeRoomId: String?
     private var activeRoomAliases: Set<String> = []
     private var pendingRoomAliases: Set<String> = []
+    private var pendingResolvedRoomAlias: String?
     private var activeAuthToken: String?
     private var activeSfuURL: String?
     private var pendingConnectFailure: (@MainActor (Error) -> Void)?
     private var pendingConnectAttemptId: UUID?
     private static let connectTimeout: TimeInterval = 15
     private static let maxJoinRoomRedirects = 1
+    private static let closeConsumerMaxAttempts = 4
+    private static let closeConsumerRetryDelayNanoseconds: UInt64 = 500_000_000
+    private static let closeConsumerRetryWindowSeconds: TimeInterval = 30
 
     // MARK: - Connection
 
@@ -341,11 +372,13 @@ final class SocketIOManager {
 
                 let timeout = DispatchWorkItem { [weak self] in
                     guard let self else { return }
+                    guard self.socket === socket,
+                          self.manager === manager,
+                          self.pendingConnectAttemptId == connectAttemptId else { return }
                     let error = SocketError.timeout
                     self.connectionError = error
                     self.onError?(error)
                     finish(.failure(error))
-                    self.disconnect()
                 }
                 timeoutWorkItem = timeout
                 DispatchQueue.main.asyncAfter(deadline: .now() + Self.connectTimeout, execute: timeout)
@@ -428,6 +461,7 @@ final class SocketIOManager {
         activeRoomId = nil
         activeRoomAliases.removeAll()
         pendingRoomAliases.removeAll()
+        pendingResolvedRoomAlias = nil
         activeAuthToken = nil
         activeSfuURL = nil
         pendingConnectAttemptId = nil
@@ -452,6 +486,7 @@ final class SocketIOManager {
         activeRoomId = nil
         activeRoomAliases.removeAll()
         pendingRoomAliases.removeAll()
+        pendingResolvedRoomAlias = nil
         activeAuthToken = nil
         activeSfuURL = nil
         isConnected = false
@@ -499,12 +534,14 @@ final class SocketIOManager {
         activeRoomId = nil
         activeRoomAliases.removeAll()
         pendingRoomAliases = roomAliasSet(requestedRoomId: roomId, resolvedRoomId: nil)
+        pendingResolvedRoomAlias = nil
 
         do {
             let data = try await emitAllowingServerError(event: SocketEvent.joinRoom, payload: request)
             if let errorAck = try? JSONDecoder().decode(JoinRoomErrorAck.self, from: data),
                let errorMessage = errorAck.error {
                 pendingRoomAliases.removeAll()
+                pendingResolvedRoomAlias = nil
                 if let redirectUrl = normalizedJoinRedirectURL(errorAck.redirectUrl) {
                     throw JoinRoomRedirectAck(message: errorMessage, redirectUrl: redirectUrl)
                 }
@@ -517,14 +554,17 @@ final class SocketIOManager {
                 activeRoomId = nil
                 activeRoomAliases.removeAll()
                 pendingRoomAliases = roomAliasSet(requestedRoomId: roomId, resolvedRoomId: resolvedRoomId)
+                pendingResolvedRoomAlias = nil
             } else {
                 activeRoomId = resolvedRoomId
                 activeRoomAliases = roomAliasSet(requestedRoomId: roomId, resolvedRoomId: resolvedRoomId)
                 pendingRoomAliases.removeAll()
+                pendingResolvedRoomAlias = nil
             }
             return response
         } catch {
             pendingRoomAliases.removeAll()
+            pendingResolvedRoomAlias = nil
             throw error
         }
     }
@@ -604,6 +644,19 @@ final class SocketIOManager {
         _ = try await emit(event: SocketEvent.resumeConsumer, payload: request)
     }
 
+    func closeConsumer(consumerId: String) {
+        let trimmedConsumerId = consumerId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let socket, isConnected, !trimmedConsumerId.isEmpty else { return }
+        Task { @MainActor [weak self] in
+            await self?.closeConsumerWithRetry(
+                consumerId: trimmedConsumerId,
+                socket: socket,
+                attempt: 0,
+                startedAt: Date()
+            )
+        }
+    }
+
     func setConsumerPreferences(
         consumerId: String,
         spatialLayer: Int? = nil,
@@ -666,8 +719,8 @@ final class SocketIOManager {
 
     // MARK: - Chat
 
-    func sendChat(content: String, recipient: String? = nil) async throws -> ChatMessage {
-        let request = SendChatRequest(content: content, recipient: recipient)
+    func sendChat(content: String, gif: ChatGifAttachment? = nil, recipient: String? = nil, replyTo: ChatReplyPreview? = nil) async throws -> ChatMessage {
+        let request = SendChatRequest(content: content, gif: gif, recipient: recipient, replyTo: replyTo)
         let data = try await emit(event: SocketEvent.sendChat, payload: request)
         let response = try JSONDecoder().decode(SendChatResponse.self, from: data)
         guard let message = response.message else {
@@ -698,28 +751,34 @@ final class SocketIOManager {
 
     // MARK: - Admin Actions
 
-    func lockRoom(_ locked: Bool) async throws {
-        _ = try await emit(event: SocketEvent.lockRoom, payload: ["locked": locked])
+    func lockRoom(_ locked: Bool) async throws -> RoomPolicyMutationResponse {
+        let data = try await emit(event: SocketEvent.lockRoom, payload: ["locked": locked])
+        return try JSONDecoder().decode(RoomPolicyMutationResponse.self, from: data)
     }
 
-    func lockChat(_ locked: Bool) async throws {
-        _ = try await emit(event: SocketEvent.lockChat, payload: ["locked": locked])
+    func lockChat(_ locked: Bool) async throws -> RoomPolicyMutationResponse {
+        let data = try await emit(event: SocketEvent.lockChat, payload: ["locked": locked])
+        return try JSONDecoder().decode(RoomPolicyMutationResponse.self, from: data)
     }
 
-    func setNoGuests(_ noGuests: Bool) async throws {
-        _ = try await emit(event: SocketEvent.setNoGuests, payload: ["noGuests": noGuests])
+    func setNoGuests(_ noGuests: Bool) async throws -> RoomPolicyMutationResponse {
+        let data = try await emit(event: SocketEvent.setNoGuests, payload: ["noGuests": noGuests])
+        return try JSONDecoder().decode(RoomPolicyMutationResponse.self, from: data)
     }
 
-    func setDmEnabled(_ enabled: Bool) async throws {
-        _ = try await emit(event: SocketEvent.setDmEnabled, payload: ["enabled": enabled])
+    func setDmEnabled(_ enabled: Bool) async throws -> RoomPolicyMutationResponse {
+        let data = try await emit(event: SocketEvent.setDmEnabled, payload: ["enabled": enabled])
+        return try JSONDecoder().decode(RoomPolicyMutationResponse.self, from: data)
     }
 
-    func setTtsDisabled(_ disabled: Bool) async throws {
-        _ = try await emit(event: SocketEvent.setTtsDisabled, payload: ["disabled": disabled])
+    func setTtsDisabled(_ disabled: Bool) async throws -> RoomPolicyMutationResponse {
+        let data = try await emit(event: SocketEvent.setTtsDisabled, payload: ["disabled": disabled])
+        return try JSONDecoder().decode(RoomPolicyMutationResponse.self, from: data)
     }
 
-    func setReactionsDisabled(_ disabled: Bool) async throws {
-        _ = try await emit(event: SocketEvent.setReactionsDisabled, payload: ["disabled": disabled])
+    func setReactionsDisabled(_ disabled: Bool) async throws -> RoomPolicyMutationResponse {
+        let data = try await emit(event: SocketEvent.setReactionsDisabled, payload: ["disabled": disabled])
+        return try JSONDecoder().decode(RoomPolicyMutationResponse.self, from: data)
     }
 
     func getMeetingConfig() async throws -> MeetingConfigSnapshot {
@@ -797,6 +856,11 @@ final class SocketIOManager {
     }
 
     func sendBrowserActivity() {
+        guard SocketFireAndForgetEmitPolicy.shouldEmit(
+            isConnected: isConnected,
+            activeRoomId: activeRoomId,
+            hasSocket: socket != nil
+        ) else { return }
         socket?.emit(SocketEvent.browserActivity)
     }
 
@@ -835,6 +899,12 @@ final class SocketIOManager {
     }
 
     func sendAppYjsUpdate(appId: String, update: Data) {
+        guard SocketFireAndForgetEmitPolicy.shouldEmit(
+            isConnected: isConnected,
+            activeRoomId: activeRoomId,
+            hasSocket: socket != nil
+        ),
+              let appId = SocketFireAndForgetEmitPolicy.normalizedAppId(appId) else { return }
         let request = AppsUpdateRequest(appId: appId, update: update.base64EncodedString())
         if let payload = try? jsonObject(from: request) {
             socket?.emit(SocketEvent.appsYjsUpdate, payload)
@@ -842,6 +912,12 @@ final class SocketIOManager {
     }
 
     func sendAppAwareness(appId: String, awarenessUpdate: Data, clientId: Int? = nil) {
+        guard SocketFireAndForgetEmitPolicy.shouldEmit(
+            isConnected: isConnected,
+            activeRoomId: activeRoomId,
+            hasSocket: socket != nil
+        ),
+              let appId = SocketFireAndForgetEmitPolicy.normalizedAppId(appId) else { return }
         let request = AppsAwarenessRequest(
             appId: appId,
             awarenessUpdate: awarenessUpdate.base64EncodedString(),
@@ -883,6 +959,11 @@ final class SocketIOManager {
 
     func muteUser(userId: String) async throws -> AdminMediaActionResponse {
         let data = try await emit(event: SocketEvent.adminMuteUser, payload: ["userId": userId])
+        return try JSONDecoder().decode(AdminMediaActionResponse.self, from: data)
+    }
+
+    func muteUserAudio(userId: String) async throws -> AdminMediaActionResponse {
+        let data = try await emit(event: SocketEvent.adminMuteUserAudio, payload: ["userId": userId])
         return try JSONDecoder().decode(AdminMediaActionResponse.self, from: data)
     }
 
@@ -931,6 +1012,11 @@ final class SocketIOManager {
         _ = try await emitAckOnly(event: SocketEvent.adminClearRaisedHands)
     }
 
+    func getAdminRoomState() async throws -> AdminRoomSnapshot {
+        let data = try await emitAckOnly(event: SocketEvent.adminGetRoomState)
+        return try JSONDecoder().decode(AdminRoomStateResponse.self, from: data).room
+    }
+
     func getAccessLists() async throws -> AdminAccessListSnapshot {
         let data = try await emitAckOnly(event: SocketEvent.adminGetAccessLists)
         return try JSONDecoder().decode(AdminAccessListsResponse.self, from: data).access
@@ -976,8 +1062,9 @@ final class SocketIOManager {
         try await endRoom(message: message, delayMs: 0)
     }
 
-    func promoteHost(userId: String) async throws {
-        _ = try await emit(event: SocketEvent.promoteHost, payload: ["userId": userId])
+    func promoteHost(userId: String) async throws -> PromoteHostResponse {
+        let data = try await emit(event: SocketEvent.promoteHost, payload: ["userId": userId])
+        return try JSONDecoder().decode(PromoteHostResponse.self, from: data)
     }
 
     private func decodeAdminAccessMutation(_ data: Data) throws -> AdminAccessListSnapshot {
@@ -1114,11 +1201,68 @@ final class SocketIOManager {
         return response.config
     }
 
+    private func closeConsumerWithRetry(
+        consumerId: String,
+        socket expectedSocket: SocketIOClient,
+        attempt: Int,
+        startedAt: Date
+    ) async {
+        guard socket === expectedSocket,
+              isConnected,
+              !consumerId.isEmpty else { return }
+
+        do {
+            _ = try await emitSocketData(
+                event: SocketEvent.closeConsumer,
+                payloadObject: ["consumerId": consumerId],
+                socket: expectedSocket
+            )
+        } catch {
+            guard Self.shouldRetryCloseConsumer(
+                error.localizedDescription,
+                attempt: attempt,
+                startedAt: startedAt
+            ) else { return }
+
+            try? await Task.sleep(nanoseconds: Self.closeConsumerRetryDelayNanoseconds)
+            guard socket === expectedSocket else { return }
+            await closeConsumerWithRetry(
+                consumerId: consumerId,
+                socket: expectedSocket,
+                attempt: attempt + 1,
+                startedAt: startedAt
+            )
+        }
+    }
+
+    static func shouldRetryCloseConsumer(
+        _ message: String,
+        attempt: Int,
+        startedAt: Date,
+        now: Date = Date()
+    ) -> Bool {
+        guard attempt + 1 < closeConsumerMaxAttempts else { return false }
+        guard now.timeIntervalSince(startedAt) < closeConsumerRetryWindowSeconds else { return false }
+        return isCloseConsumerRetryableError(message)
+    }
+
+    static func isCloseConsumerRetryableError(_ message: String) -> Bool {
+        let normalized = message.lowercased()
+        return normalized.contains("too many consumer control requests") ||
+            normalized.contains("retry shortly")
+    }
+
     private func emitSocketData(event: String, payloadObject: SocketData) async throws -> Data {
         guard let socket = socket else {
             throw SocketError.notConnected
         }
+        return try await emitSocketData(event: event, payloadObject: payloadObject, socket: socket)
+    }
 
+    private func emitSocketData(event: String, payloadObject: SocketData, socket: SocketIOClient) async throws -> Data {
+        guard self.socket === socket else {
+            throw SocketError.notConnected
+        }
         return try await withCheckedThrowingContinuation { continuation in
             socket.emitWithAck(event, payloadObject).timingOut(after: 30) { [weak self] data in
                 guard let self else {
@@ -1267,8 +1411,7 @@ final class SocketIOManager {
     }
 
     private func normalizedRoomId(_ roomId: String?) -> String? {
-        let trimmed = roomId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return trimmed.isEmpty ? nil : trimmed
+        NativeRoomIdNormalizer.normalize(roomId)
     }
 
     private func normalizedJoinRedirectURL(_ value: String?) -> String? {
@@ -1298,18 +1441,24 @@ final class SocketIOManager {
         return aliases
     }
 
-    private func eventRoomIdMatchesActiveOrPending(_ roomId: String?) -> Bool {
+    private func eventRoomIdMatchesActiveOrPending(_ roomId: String?, allowMissingRoomId: Bool = false) -> Bool {
         guard let roomId = normalizedRoomId(roomId) else {
-            return !activeRoomAliases.isEmpty || !pendingRoomAliases.isEmpty
+            return allowMissingRoomId && (!activeRoomAliases.isEmpty || !pendingRoomAliases.isEmpty)
         }
         if activeRoomAliases.contains(roomId) || pendingRoomAliases.contains(roomId) {
             return true
         }
-        if !pendingRoomAliases.isEmpty {
-            pendingRoomAliases.insert(roomId)
-            return true
-        }
-        return false
+        return learnPendingResolvedRoomAlias(roomId)
+    }
+
+    private func terminalRoomEventMatchesActiveOrPending(_ roomId: String?) -> Bool {
+        eventRoomIdMatchesActiveOrPending(
+            roomId,
+            allowMissingRoomId: SocketRoomEventPolicy.shouldAllowMissingTerminalRoomId(
+                activeRoomAliasCount: activeRoomAliases.count,
+                pendingRoomAliasCount: pendingRoomAliases.count
+            )
+        )
     }
 
     private func pendingRoomEventMatches(_ roomId: String?) -> Bool {
@@ -1318,6 +1467,15 @@ final class SocketIOManager {
         if pendingRoomAliases.contains(roomId) {
             return true
         }
+        return learnPendingResolvedRoomAlias(roomId)
+    }
+
+    private func learnPendingResolvedRoomAlias(_ roomId: String) -> Bool {
+        guard !pendingRoomAliases.isEmpty else { return false }
+        if let pendingResolvedRoomAlias {
+            return pendingResolvedRoomAlias == roomId
+        }
+        pendingResolvedRoomAlias = roomId
         pendingRoomAliases.insert(roomId)
         return true
     }
@@ -1444,7 +1602,6 @@ final class SocketIOManager {
         socket.on(SocketEvent.userJoined) { [weak self] data, _ in
             guard let self, let first = data.first,
                   self.socket === socket,
-                  self.activeRoomId != nil,
                   let notification = self.decode(UserJoinedNotification.self, from: first),
                   self.eventRoomIdMatchesActiveOrPending(notification.roomId) else { return }
             self.onUserJoined?(notification)
@@ -1453,7 +1610,6 @@ final class SocketIOManager {
         socket.on(SocketEvent.userLeft) { [weak self] data, _ in
             guard let self, let first = data.first,
                   self.socket === socket,
-                  self.activeRoomId != nil,
                   let notification = self.decode(UserLeftNotification.self, from: first),
                   self.eventRoomIdMatchesActiveOrPending(notification.roomId) else { return }
             self.onUserLeft?(notification)
@@ -1478,9 +1634,12 @@ final class SocketIOManager {
         socket.on(SocketEvent.newProducer) { [weak self] data, _ in
             guard let self, let first = data.first,
                   self.socket === socket,
-                  let activeRoomId = self.activeRoomId,
                   let notification = self.decode(NewProducerNotification.self, from: first),
-                  self.eventRoomIdMatchesActiveOrPending(notification.roomId) else { return }
+                  self.eventRoomIdMatchesActiveOrPending(notification.roomId),
+                  let roomId = notification.roomId ??
+                    self.activeRoomId ??
+                    self.pendingResolvedRoomAlias ??
+                    self.pendingRoomAliases.first else { return }
 
             let info = ProducerInfo(
                 producerId: notification.producerId,
@@ -1488,7 +1647,7 @@ final class SocketIOManager {
                 kind: notification.kind,
                 type: notification.type,
                 paused: notification.paused,
-                roomId: notification.roomId ?? activeRoomId
+                roomId: roomId
             )
             self.onNewProducer?(info)
         }
@@ -1496,16 +1655,23 @@ final class SocketIOManager {
         socket.on(SocketEvent.producerClosed) { [weak self] data, _ in
             guard let self, let first = data.first,
                   self.socket === socket,
-                  self.activeRoomId != nil,
                   let notification = self.decode(ProducerClosedNotification.self, from: first),
                   self.eventRoomIdMatchesActiveOrPending(notification.roomId) else { return }
             self.onProducerClosed?(notification)
         }
 
-        socket.on(SocketEvent.adminProducerClosed) { [weak self] data, _ in
+        socket.on(SocketEvent.consumerTelemetry) { [weak self] data, _ in
             guard let self, let first = data.first,
                   self.socket === socket,
                   self.activeRoomId != nil,
+                  let notification = self.decode(ConsumerTelemetryNotification.self, from: first),
+                  self.eventRoomIdMatchesActiveOrPending(notification.roomId) else { return }
+            self.onConsumerTelemetry?(notification)
+        }
+
+        socket.on(SocketEvent.adminProducerClosed) { [weak self] data, _ in
+            guard let self, let first = data.first,
+                  self.socket === socket,
                   let notification = self.decode(AdminProducerClosedNotification.self, from: first),
                   self.eventRoomIdMatchesActiveOrPending(notification.roomId) else { return }
             self.onProducerClosed?(
@@ -1523,7 +1689,7 @@ final class SocketIOManager {
                   self.socket === socket,
                   let notification = self.decode(ChatMessageNotification.self, from: first),
                   let activeRoomId = self.activeRoomId,
-                  self.eventRoomIdMatchesActiveOrPending(notification.roomId) else { return }
+                  self.eventRoomIdMatchesActiveOrPending(notification.roomId, allowMissingRoomId: true) else { return }
 
             self.onChatMessage?(notification.chatMessage(taggedRoomId: activeRoomId))
         }
@@ -1573,7 +1739,6 @@ final class SocketIOManager {
         socket.on(SocketEvent.handRaised) { [weak self] data, _ in
             guard let self, let first = data.first,
                   self.socket === socket,
-                  self.activeRoomId != nil,
                   let notification = self.decode(HandRaisedNotification.self, from: first),
                   self.eventRoomIdMatchesActiveOrPending(notification.roomId) else { return }
             self.onHandRaised?(notification)
@@ -1677,16 +1842,20 @@ final class SocketIOManager {
 
         socket.on(SocketEvent.joinApproved) { [weak self] data, _ in
             guard let self,
-                  self.socket === socket,
-                  self.pendingRoomEventMatches(data.first.flatMap { self.decode(JoinDecisionNotification.self, from: $0) }?.roomId) else { return }
-            self.onJoinApproved?()
+                  self.socket === socket else { return }
+            let notification = data.first.flatMap { self.decode(JoinDecisionNotification.self, from: $0) }
+                ?? JoinDecisionNotification(roomId: nil)
+            guard self.pendingRoomEventMatches(notification.roomId) else { return }
+            self.onJoinApproved?(notification)
         }
 
         socket.on(SocketEvent.joinRejected) { [weak self] data, _ in
             guard let self,
-                  self.socket === socket,
-                  self.pendingRoomEventMatches(data.first.flatMap { self.decode(JoinDecisionNotification.self, from: $0) }?.roomId) else { return }
-            self.onJoinRejected?()
+                  self.socket === socket else { return }
+            let notification = data.first.flatMap { self.decode(JoinDecisionNotification.self, from: $0) }
+                ?? JoinDecisionNotification(roomId: nil)
+            guard self.pendingRoomEventMatches(notification.roomId) else { return }
+            self.onJoinRejected?(notification)
         }
 
         socket.on(SocketEvent.waitingRoomStatus) { [weak self] data, _ in
@@ -1766,7 +1935,7 @@ final class SocketIOManager {
                   self.socket === socket else { return }
             let notification = data.first.flatMap { self.decode(KickedNotification.self, from: $0) }
                 ?? KickedNotification(reason: nil, roomId: nil)
-            guard self.eventRoomIdMatchesActiveOrPending(notification.roomId) else { return }
+            guard self.terminalRoomEventMatchesActiveOrPending(notification.roomId) else { return }
             self.onKicked?(notification)
         }
 
@@ -1775,7 +1944,7 @@ final class SocketIOManager {
                   self.socket === socket else { return }
             let notification = data.first.flatMap { self.decode(RoomClosedNotification.self, from: $0) }
                 ?? RoomClosedNotification(roomId: nil, reason: nil)
-            guard self.eventRoomIdMatchesActiveOrPending(notification.roomId) else { return }
+            guard self.terminalRoomEventMatchesActiveOrPending(notification.roomId) else { return }
             self.onRoomClosed?(notification)
         }
 
@@ -1784,7 +1953,7 @@ final class SocketIOManager {
                   self.socket === socket else { return }
             let notification = data.first.flatMap { self.decode(RoomEndedNotification.self, from: $0) }
                 ?? RoomEndedNotification(roomId: nil, message: nil, endedBy: nil)
-            guard self.eventRoomIdMatchesActiveOrPending(notification.roomId) else { return }
+            guard self.terminalRoomEventMatchesActiveOrPending(notification.roomId) else { return }
             self.onRoomEnded?(notification)
         }
 
@@ -1792,7 +1961,7 @@ final class SocketIOManager {
             guard let self, let first = data.first,
                   self.socket === socket,
                   let notification = self.decode(ServerRestartingNotification.self, from: first),
-                  self.eventRoomIdMatchesActiveOrPending(notification.roomId) else { return }
+                  self.eventRoomIdMatchesActiveOrPending(notification.roomId, allowMissingRoomId: true) else { return }
             self.onServerRestarting?(notification)
         }
 
@@ -1824,7 +1993,7 @@ final class SocketIOManager {
             guard let self, let first = data.first,
                   self.socket === socket,
                   let snapshot = self.decode(MeetingConfigSnapshot.self, from: first),
-                  self.eventRoomIdMatchesActiveOrPending(snapshot.roomId) else { return }
+                  self.eventRoomIdMatchesActiveOrPending(snapshot.roomId, allowMissingRoomId: true) else { return }
             self.onMeetingConfigChanged?(snapshot)
         }
 
@@ -1832,7 +2001,7 @@ final class SocketIOManager {
             guard let self, let first = data.first,
                   self.socket === socket,
                   let snapshot = self.decode(WebinarConfigSnapshot.self, from: first),
-                  self.eventRoomIdMatchesActiveOrPending(snapshot.roomId) else { return }
+                  self.eventRoomIdMatchesActiveOrPending(snapshot.roomId, allowMissingRoomId: true) else { return }
             self.onWebinarConfigChanged?(snapshot)
         }
 
@@ -1852,6 +2021,14 @@ final class SocketIOManager {
             self.onWebinarFeedChanged?(notification)
         }
 
+        socket.on(SocketEvent.webinarParticipantJoined) { [weak self] data, _ in
+            guard let self, let first = data.first,
+                  self.socket === socket,
+                  let notification = self.decode(WebinarParticipantJoinedNotification.self, from: first),
+                  self.eventRoomIdMatchesActiveOrPending(notification.roomId) else { return }
+            self.onWebinarParticipantJoined?(notification)
+        }
+
         socket.on(SocketEvent.browserState) { [weak self] data, _ in
             guard let self, let first = data.first,
                   self.socket === socket,
@@ -1865,7 +2042,7 @@ final class SocketIOManager {
                   self.socket === socket else { return }
             let notification = data.first.flatMap { self.decode(BrowserClosedNotification.self, from: $0) }
                 ?? BrowserClosedNotification(closedBy: nil, roomId: nil)
-            guard self.eventRoomIdMatchesActiveOrPending(notification.roomId) else { return }
+            guard self.terminalRoomEventMatchesActiveOrPending(notification.roomId) else { return }
             self.onBrowserClosed?(notification)
         }
 
@@ -1881,7 +2058,7 @@ final class SocketIOManager {
             guard let self, let first = data.first,
                   self.socket === socket,
                   let notification = self.decodeAppsYjsUpdate(from: first),
-                  self.eventRoomIdMatchesActiveOrPending(notification.roomId) else { return }
+                  self.eventRoomIdMatchesActiveOrPending(notification.roomId, allowMissingRoomId: true) else { return }
             self.onAppsYjsUpdate?(notification)
         }
 
@@ -1889,7 +2066,7 @@ final class SocketIOManager {
             guard let self, let first = data.first,
                   self.socket === socket,
                   let notification = self.decodeAppsAwareness(from: first),
-                  self.eventRoomIdMatchesActiveOrPending(notification.roomId) else { return }
+                  self.eventRoomIdMatchesActiveOrPending(notification.roomId, allowMissingRoomId: true) else { return }
             self.onAppsAwareness?(notification)
         }
 
