@@ -2685,6 +2685,21 @@ final class MeetingViewModel {
         userId.contains("#")
     }
 
+    private func isActiveScreenShareOwner(userId: String, stateId: String? = nil) -> Bool {
+        guard let activeScreenShareUserId = state.activeScreenShareUserId else { return false }
+        if participantIdsMatch(userId, activeScreenShareUserId) { return true }
+        guard let stateId else { return false }
+        return participantIdsMatch(stateId, activeScreenShareUserId)
+    }
+
+    private func clearRemoteScreenShareState(for userId: String, stateId explicitStateId: String? = nil) {
+        let stateId = explicitStateId ?? participantStateId(for: userId)
+        state.participants[stateId]?.isScreenSharing = false
+        if isActiveScreenShareOwner(userId: userId, stateId: stateId) {
+            state.activeScreenShareUserId = nil
+        }
+    }
+
     private func participantStateId(for userId: String) -> String {
         let normalized = userId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalized.isEmpty else { return userId }
@@ -4131,10 +4146,7 @@ final class MeetingViewModel {
             case .camera:
                 state.participants[stateId]?.isCameraOff = true
             case .screen:
-                state.participants[stateId]?.isScreenSharing = false
-                if state.activeScreenShareUserId == userId || state.activeScreenShareUserId == stateId {
-                    state.activeScreenShareUserId = nil
-                }
+                clearRemoteScreenShareState(for: userId, stateId: stateId)
             }
         }
     }
@@ -4186,10 +4198,7 @@ final class MeetingViewModel {
         } else if producer.kind == "video", producer.type == ProducerType.webcam.rawValue {
             state.participants[stateId]?.isCameraOff = true
         } else if producer.kind == "video", producer.type == ProducerType.screen.rawValue {
-            state.participants[stateId]?.isScreenSharing = false
-            if state.activeScreenShareUserId == userId || state.activeScreenShareUserId == stateId {
-                state.activeScreenShareUserId = nil
-            }
+            clearRemoteScreenShareState(for: userId, stateId: stateId)
         }
     }
 
@@ -4302,11 +4311,9 @@ final class MeetingViewModel {
 
         let stateId = participantStateId(for: producerUserId)
         let screenTrackKey = "\(producerUserId)-\(ProducerType.screen.rawValue)"
-        if (state.activeScreenShareUserId == producerUserId ||
-            state.activeScreenShareUserId == stateId),
+        if isActiveScreenShareOwner(userId: producerUserId, stateId: stateId),
            webRTCClient.remoteVideoTrack(forUserId: screenTrackKey) == nil {
-            state.activeScreenShareUserId = nil
-            state.participants[stateId]?.isScreenSharing = false
+            clearRemoteScreenShareState(for: producerUserId, stateId: stateId)
         }
     }
 
@@ -4372,11 +4379,7 @@ final class MeetingViewModel {
             clearHeldActiveSpeakerIfNeeded(stateId)
         } else if producer.kind == "video" {
             if producer.type == ProducerType.screen.rawValue {
-                if state.activeScreenShareUserId == producerUserId ||
-                    state.activeScreenShareUserId == stateId {
-                    state.activeScreenShareUserId = nil
-                }
-                state.participants[stateId]?.isScreenSharing = false
+                clearRemoteScreenShareState(for: producerUserId, stateId: stateId)
             } else {
                 state.participants[stateId]?.isCameraOff = true
             }
@@ -4515,18 +4518,14 @@ final class MeetingViewModel {
                 let isActiveScreenShare = producer.paused != true
                 if isActiveScreenShare {
                     if let previous = state.activeScreenShareUserId,
-                       previous != producerUserId,
-                       previous != stateId {
+                       !participantIdsMatch(previous, producerUserId),
+                       !participantIdsMatch(previous, stateId) {
                         state.participants[participantStateId(for: previous)]?.isScreenSharing = false
                     }
                     state.participants[stateId]?.isScreenSharing = true
                     state.activeScreenShareUserId = stateId
                 } else {
-                    state.participants[stateId]?.isScreenSharing = false
-                    if state.activeScreenShareUserId == producerUserId ||
-                        state.activeScreenShareUserId == stateId {
-                        state.activeScreenShareUserId = nil
-                    }
+                    clearRemoteScreenShareState(for: producerUserId, stateId: stateId)
                 }
             } else {
                 state.participants[stateId]?.isCameraOff = producer.paused ?? false

@@ -1887,6 +1887,71 @@ final class ConclaveTests: XCTestCase {
     }
 
     @MainActor
+    func testPausedRemoteScreenProducerClearsBaseActiveScreenShareAlias() throws {
+        let viewModel = MeetingViewModel()
+        viewModel.state = MeetingState(userId: "local@example.com#local-session", sessionId: "local-session")
+        viewModel.state.sfuUserId = "local@example.com"
+        viewModel.state.roomId = "room-a"
+        viewModel.state.connectionState = ConnectionState.joined
+        let presenterId = "presenter@example.com#web-session"
+        viewModel.state.activeScreenShareUserId = "presenter@example.com"
+        viewModel.state.participants[presenterId] = Participant(
+            id: presenterId,
+            displayName: "Presenter",
+            isScreenSharing: true
+        )
+
+        viewModel.handleProducerState(ProducerInfo(
+            producerId: "presenter-screen",
+            producerUserId: presenterId,
+            kind: "video",
+            type: ProducerType.screen.rawValue,
+            paused: true,
+            roomId: "room-a"
+        ))
+
+        XCTAssertNil(viewModel.state.activeScreenShareUserId)
+        XCTAssertFalse(viewModel.state.participants[presenterId]?.isScreenSharing == true)
+        XCTAssertNil(viewModel.state.presentationScreenShareUserId)
+    }
+
+    @MainActor
+    func testPausedRemoteScreenProducerDoesNotClearDifferentSessionPresenter() throws {
+        let viewModel = MeetingViewModel()
+        viewModel.state = MeetingState(userId: "local@example.com#local-session", sessionId: "local-session")
+        viewModel.state.sfuUserId = "local@example.com"
+        viewModel.state.roomId = "room-a"
+        viewModel.state.connectionState = ConnectionState.joined
+        let activePresenterId = "presenter@example.com#active-session"
+        let pausedPresenterId = "presenter@example.com#old-session"
+        viewModel.state.activeScreenShareUserId = activePresenterId
+        viewModel.state.participants[activePresenterId] = Participant(
+            id: activePresenterId,
+            displayName: "Presenter",
+            isScreenSharing: true
+        )
+        viewModel.state.participants[pausedPresenterId] = Participant(
+            id: pausedPresenterId,
+            displayName: "Presenter",
+            isScreenSharing: true
+        )
+
+        viewModel.handleProducerState(ProducerInfo(
+            producerId: "old-presenter-screen",
+            producerUserId: pausedPresenterId,
+            kind: "video",
+            type: ProducerType.screen.rawValue,
+            paused: true,
+            roomId: "room-a"
+        ))
+
+        XCTAssertEqual(viewModel.state.activeScreenShareUserId, activePresenterId)
+        XCTAssertTrue(viewModel.state.participants[activePresenterId]?.isScreenSharing == true)
+        XCTAssertFalse(viewModel.state.participants[pausedPresenterId]?.isScreenSharing == true)
+        XCTAssertEqual(viewModel.state.presentationScreenShareUserId, activePresenterId)
+    }
+
+    @MainActor
     func testRemoteProducerCloseWaitsForReplacementBeforeMarkingCameraOff() async throws {
         let viewModel = MeetingViewModel()
         viewModel.state = MeetingState(userId: "local@example.com#local-session", sessionId: "local-session")
