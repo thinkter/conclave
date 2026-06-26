@@ -152,6 +152,21 @@ enum JoinGuestSignInFooterPolicy {
     }
 }
 
+enum JoinPrejoinActionPolicy {
+    static func canStartOrJoin(
+        displayName: String,
+        currentUserId: String?,
+        isBlocked: Bool
+    ) -> Bool {
+        JoinGuestContinuationPolicy.canContinue(
+            guestName: "",
+            displayName: displayName,
+            currentUserId: currentUserId,
+            isBlocked: isBlocked
+        )
+    }
+}
+
 enum JoinAdminIntentPolicy {
     static func shouldRequestAdminJoin(
         resolvedClientId: String,
@@ -303,7 +318,7 @@ struct JoinView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 #endif
 
-    @State private var phase: JoinPhase = .welcome
+    @State private var phase: JoinPhase = .join
     @State private var roomCode = ""
     @State private var inviteCode = ""
     @State private var guestName = ""
@@ -367,7 +382,7 @@ struct JoinView: View {
     }
     
     enum JoinPhase {
-        case welcome, auth, join
+        case auth, join
     }
     
     enum JoinTab {
@@ -449,10 +464,6 @@ struct JoinView: View {
                 
                 VStack(spacing: 0) {
                     switch phase {
-                    case .welcome:
-                        welcomePhase
-                            .transition(.opacity)
-                        
                     case .auth:
                         authPhase(geometry: geometry)
                             .transition(.asymmetric(
@@ -536,54 +547,6 @@ struct JoinView: View {
         }
     }
     
-    // MARK: - Welcome Phase
-    
-    private var welcomePhase: some View {
-        VStack(spacing: 0) {
-            Spacer()
-
-            VStack(spacing: 16) {
-                VStack(spacing: 10) {
-                    Text("Welcome to")
-                        .font(ACMFont.trial(17))
-                        .foregroundStyle(ACMColors.textMuted)
-
-                    Text("Conclave")
-                        .font(ACMFont.wide(42))
-                        .foregroundStyle(ACMColors.text)
-                }
-
-                Text("ACM-VIT's video conferencing,\nreimagined.")
-                    .font(ACMFont.trial(15))
-                    .foregroundStyle(ACMColors.textFaint)
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(5)
-                    .padding(.top, 2)
-            }
-
-            Spacer()
-
-            joinActionSurface(
-                accessibilityLabel: "Get started",
-                isEnabled: true,
-                action: enterAuthPhase
-            ) {
-                HStack(spacing: 8) {
-                    Text("Get started")
-                        .font(ACMFont.trial(16, weight: .medium))
-                    ACMSystemIcon.icon("arrow.forward", android: "arrow.forward", size: 15, tint: "white")
-                }
-                .foregroundStyle(Color.white)
-                .frame(maxWidth: .infinity)
-                .frame(height: 54)
-                .acmColorBackground(ACMColors.primaryOrange)
-                .clipShape(RoundedRectangle(cornerRadius: ACMRadius.lg))
-            }
-            .padding(.horizontal, 24)
-            .padding(.bottom, 24)
-        }
-    }
-        
     private func authPhase(geometry: GeometryProxy) -> some View {
         let horizontalPadding = min(24.0, geometry.size.width * 0.08)
         let contentWidth = max(240.0, min(360.0, geometry.size.width - horizontalPadding * 2.0))
@@ -761,7 +724,7 @@ struct JoinView: View {
                 Button {
                     authTransitionGeneration += 1
                     finishSignInAttempt()
-                    phase = .welcome
+                    phase = .join
                 } label: {
                     Text("Back")
                         .font(ACMFont.trial(14, weight: .medium))
@@ -1232,7 +1195,7 @@ struct JoinView: View {
     private var startMeetingButton: some View {
         joinActionSurface(
             accessibilityLabel: "Start meeting",
-            isEnabled: !isJoinInProgress && !isRefreshingStoredAuth && !isSigningOut && !isDeletingAccount && !isContinuingAsGuest,
+            isEnabled: isPrejoinActionEnabled,
             action: triggerCreateRoom
         ) {
             HStack(spacing: 8) {
@@ -1554,7 +1517,19 @@ struct JoinView: View {
         if shouldRenderInviteCodeInput && trimWhitespaceAndNewlines(inviteCode).isEmpty {
             return false
         }
-        return !isJoinInProgress && !isRefreshingStoredAuth && !isSigningOut && !isDeletingAccount && !isContinuingAsGuest
+        return isPrejoinActionEnabled
+    }
+
+    private var isPrejoinActionEnabled: Bool {
+        JoinPrejoinActionPolicy.canStartOrJoin(
+            displayName: displayNameInput,
+            currentUserId: appState.currentUser?.id,
+            isBlocked: isPrejoinActionBlocked
+        )
+    }
+
+    private var isPrejoinActionBlocked: Bool {
+        isJoinInProgress || isRefreshingStoredAuth || isSigningOut || isDeletingAccount || isContinuingAsGuest
     }
 
     private var shouldRenderInviteCodeInput: Bool {
@@ -2324,17 +2299,13 @@ struct JoinView: View {
     }
 
     private func triggerCreateRoom() {
-        guard !isJoinInProgress, !isRefreshingStoredAuth, !isSigningOut, !isDeletingAccount, !isContinuingAsGuest else { return }
+        guard isPrejoinActionEnabled else { return }
         clearInputFocus()
         let generation = nextPrejoinAuthRefreshGeneration()
         Task { @MainActor in
             guard await refreshAuthenticationBeforeJoinIfNeeded(generation: generation) else { return }
             guard shouldApplyPrejoinAuthRefresh(generation),
-                  !isJoinInProgress,
-                  !isRefreshingStoredAuth,
-                  !isSigningOut,
-                  !isDeletingAccount,
-                  !isContinuingAsGuest else { return }
+                  isPrejoinActionEnabled else { return }
             handleCreateRoom()
         }
     }
@@ -2915,11 +2886,6 @@ struct JoinView: View {
               !isDeletingAccount,
               !isContinuingAsGuest else { return }
         guard appState.pendingJoinURLString != nil else { return }
-        guard appState.isAuthenticated || appState.currentUser != nil else {
-            enterAuthPhase()
-            activeTab = .join
-            return
-        }
         guard let joinLink = appState.consumePendingJoinURLString() else { return }
         applyJoinLink(joinLink)
     }

@@ -199,6 +199,40 @@ final class ConclaveTests: XCTestCase {
         ))
     }
 
+    func testJoinPrejoinActionsRequireNameOrIdentityLikeWebLobby() throws {
+        XCTAssertFalse(JoinPrejoinActionPolicy.canStartOrJoin(
+            displayName: "   ",
+            currentUserId: nil,
+            isBlocked: false
+        ))
+        XCTAssertTrue(JoinPrejoinActionPolicy.canStartOrJoin(
+            displayName: "  Native Guest  ",
+            currentUserId: nil,
+            isBlocked: false
+        ))
+        XCTAssertTrue(JoinPrejoinActionPolicy.canStartOrJoin(
+            displayName: "   ",
+            currentUserId: "auth-user-123",
+            isBlocked: false
+        ))
+        XCTAssertFalse(JoinPrejoinActionPolicy.canStartOrJoin(
+            displayName: "Native Guest",
+            currentUserId: nil,
+            isBlocked: true
+        ))
+    }
+
+    func testNativeJoinScreenStartsOnFlatLobbyLikeWeb() throws {
+        let source = try sourceFileContents("Sources/Conclave/Features/Join/JoinView.swift")
+
+        XCTAssertTrue(source.contains("@State private var phase: JoinPhase = .join"))
+        XCTAssertTrue(source.contains("case auth, join"))
+        XCTAssertFalse(source.contains("case welcome"))
+        XCTAssertFalse(source.contains("private var welcomePhase"))
+        XCTAssertFalse(source.contains("Get started"))
+        XCTAssertFalse(source.contains("guard appState.isAuthenticated || appState.currentUser != nil"))
+    }
+
     func testJoinGuestSignInFooterStaysVisibleForNoGuestsRecoveryOnCompact() throws {
         XCTAssertTrue(JoinGuestSignInFooterPolicy.shouldShow(
             hasSignedInAccount: false,
