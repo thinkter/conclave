@@ -27,6 +27,24 @@ copy_privacy_manifest() {
   fi
 }
 
+set_media_purpose_strings() {
+  plist_path="$1"
+
+  set_plist_string "${plist_path}" "NSCameraUsageDescription" "Conclave uses the camera so you can turn on your video in a meeting."
+  set_plist_string "${plist_path}" "NSMicrophoneUsageDescription" "Conclave uses the microphone so you can be heard in a meeting."
+  set_plist_string "${plist_path}" "NSLocalNetworkUsageDescription" "Conclave uses the local network to connect meeting audio and video to other people, for faster and more reliable meetings."
+}
+
+set_file_purpose_strings() {
+  plist_path="$1"
+
+  set_plist_string "${plist_path}" "NSDocumentsFolderUsageDescription" "Conclave accesses files in Documents only when you choose a file to share or attach in a meeting."
+  set_plist_string "${plist_path}" "NSDownloadsFolderUsageDescription" "Conclave accesses files in Downloads only when you choose a file to share or attach in a meeting."
+  set_plist_string "${plist_path}" "NSDesktopFolderUsageDescription" "Conclave accesses files on the Desktop only when you choose a file to share or attach in a meeting."
+  set_plist_string "${plist_path}" "NSNetworkVolumesUsageDescription" "Conclave accesses network volumes only when you choose a file from one to share or attach in a meeting."
+  set_plist_string "${plist_path}" "NSRemovableVolumesUsageDescription" "Conclave accesses removable volumes only when you choose a file from one to share or attach in a meeting."
+}
+
 resign_framework_if_needed() {
   framework_path="$1"
 
@@ -56,11 +74,9 @@ patch_conclave_framework() {
     return
   fi
 
-  set_plist_string "${plist_path}" "NSCameraUsageDescription" "Conclave uses the camera so you can turn on your video in a meeting."
-  set_plist_string "${plist_path}" "NSMicrophoneUsageDescription" "Conclave uses the microphone so you can be heard in a meeting."
+  set_media_purpose_strings "${plist_path}"
   set_plist_string "${plist_path}" "NSBluetoothAlwaysUsageDescription" "Conclave uses Bluetooth so you can route meeting audio through supported headphones and speakers."
   set_plist_string "${plist_path}" "NSBluetoothPeripheralUsageDescription" "Conclave uses Bluetooth so you can route meeting audio through supported headphones and speakers."
-  set_plist_string "${plist_path}" "NSLocalNetworkUsageDescription" "Conclave uses the local network to connect meeting audio and video to other people, for faster and more reliable meetings."
   set_plist_string "${plist_path}" "NSScreenCaptureUsageDescription" "Conclave uses screen capture so you can share your screen in a meeting."
   set_plist_string "${plist_path}" "NSPhotoLibraryUsageDescription" "Conclave uses photo library access only when you choose an image from your library."
   set_plist_string "${plist_path}" "NSPhotoLibraryAddUsageDescription" "Conclave saves images to your photo library only when you choose to save them."
@@ -68,11 +84,7 @@ patch_conclave_framework() {
   set_plist_string "${plist_path}" "NSLocationAlwaysAndWhenInUseUsageDescription" "Conclave uses background location only while a location-sharing action you started remains active."
   set_plist_string "${plist_path}" "NSLocationAlwaysUsageDescription" "Conclave uses background location only while a location-sharing action you started remains active."
   set_plist_string "${plist_path}" "NSFaceIDUsageDescription" "Conclave uses Face ID only when you choose biometric verification for account access."
-  set_plist_string "${plist_path}" "NSDocumentsFolderUsageDescription" "Conclave accesses files in Documents only when you choose a file to share or attach in a meeting."
-  set_plist_string "${plist_path}" "NSDownloadsFolderUsageDescription" "Conclave accesses files in Downloads only when you choose a file to share or attach in a meeting."
-  set_plist_string "${plist_path}" "NSDesktopFolderUsageDescription" "Conclave accesses files on the Desktop only when you choose a file to share or attach in a meeting."
-  set_plist_string "${plist_path}" "NSNetworkVolumesUsageDescription" "Conclave accesses network volumes only when you choose a file from one to share or attach in a meeting."
-  set_plist_string "${plist_path}" "NSRemovableVolumesUsageDescription" "Conclave accesses removable volumes only when you choose a file from one to share or attach in a meeting."
+  set_file_purpose_strings "${plist_path}"
 
   copy_privacy_manifest "ConclaveFramework.xcprivacy" "${framework_path}"
   resign_framework_if_needed "${framework_path}"
@@ -86,9 +98,8 @@ patch_webrtc_framework() {
     return
   fi
 
-  set_plist_string "${plist_path}" "NSCameraUsageDescription" "Conclave uses the camera so you can turn on your video in a meeting."
-  set_plist_string "${plist_path}" "NSMicrophoneUsageDescription" "Conclave uses the microphone so you can be heard in a meeting."
-  set_plist_string "${plist_path}" "NSLocalNetworkUsageDescription" "Conclave uses the local network to connect meeting audio and video to other people, for faster and more reliable meetings."
+  set_media_purpose_strings "${plist_path}"
+  set_file_purpose_strings "${plist_path}"
 
   copy_privacy_manifest "WebRTCFramework.xcprivacy" "${framework_path}"
   resign_framework_if_needed "${framework_path}"
@@ -102,9 +113,8 @@ patch_mediasoup_framework() {
     return
   fi
 
-  set_plist_string "${plist_path}" "NSCameraUsageDescription" "Conclave uses the camera so you can turn on your video in a meeting."
-  set_plist_string "${plist_path}" "NSMicrophoneUsageDescription" "Conclave uses the microphone so you can be heard in a meeting."
-  set_plist_string "${plist_path}" "NSLocalNetworkUsageDescription" "Conclave uses the local network to connect meeting audio and video to other people, for faster and more reliable meetings."
+  set_media_purpose_strings "${plist_path}"
+  set_file_purpose_strings "${plist_path}"
 
   resign_framework_if_needed "${framework_path}"
 }
