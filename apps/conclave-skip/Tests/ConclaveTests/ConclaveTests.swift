@@ -4129,6 +4129,46 @@ final class ConclaveTests: XCTestCase {
         XCTAssertEqual(viewModel.state.participants[speakerUserId]?.id, speakerUserId)
     }
 
+    @MainActor
+    func testWebinarFeedKeepsAliasedActiveScreenSharePresenter() async throws {
+        let viewModel = MeetingViewModel()
+        viewModel.state = MeetingState(userId: "local@example.com#local-session", sessionId: "local-session")
+        viewModel.state.sfuUserId = "local@example.com"
+        viewModel.state.roomId = "demo-room"
+        viewModel.state.connectionState = ConnectionState.joining
+        viewModel.state.webinarRole = "attendee"
+
+        let presenterStateId = "presenter@example.com#web-session"
+        viewModel.state.activeScreenShareUserId = presenterStateId
+        viewModel.state.participants[presenterStateId] = Participant(
+            id: presenterStateId,
+            displayName: "Presenter",
+            isScreenSharing: true
+        )
+        viewModel.bufferPendingWebinarFeedChanged(WebinarFeedChangedNotification(
+            roomId: "demo-room",
+            speakerUserId: "presenter@example.com",
+            producers: [
+                ProducerInfo(
+                    producerId: "screen-producer",
+                    producerUserId: "presenter@example.com",
+                    kind: "video",
+                    type: ProducerType.screen.rawValue,
+                    paused: false,
+                    roomId: "demo-room"
+                )
+            ]
+        ))
+
+        viewModel.state.connectionState = ConnectionState.joined
+
+        await replayPendingPreAckRoomEvents(on: viewModel, includeDeferredRoomState: true)
+
+        XCTAssertEqual(viewModel.state.activeScreenShareUserId, presenterStateId)
+        XCTAssertTrue(viewModel.state.participants[presenterStateId]?.isScreenSharing == true)
+        XCTAssertEqual(viewModel.state.presentationScreenShareUserId, presenterStateId)
+    }
+
     func testNativeCookieSupportStoresAndAttachesAuthCookies() throws {
         let url = try XCTUnwrap(URL(string: "http://127.0.0.254:39999/api/auth/sign-in/social"))
         let joinURL = try XCTUnwrap(URL(string: "http://127.0.0.254:39999/api/sfu/join"))

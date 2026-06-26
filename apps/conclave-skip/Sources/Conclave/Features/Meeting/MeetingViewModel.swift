@@ -3655,7 +3655,7 @@ final class MeetingViewModel {
                 .map(\.producerUserId)
         )
         if let activeScreenShareUserId = state.activeScreenShareUserId,
-           !activeScreenShareUserIds.contains(activeScreenShareUserId) {
+           !activeScreenShareUserIds.contains(where: { participantIdsMatch($0, activeScreenShareUserId) }) {
             state.participants[participantStateId(for: activeScreenShareUserId)]?.isScreenSharing = false
             state.activeScreenShareUserId = nil
         }
