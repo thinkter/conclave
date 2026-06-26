@@ -44,6 +44,12 @@ enum JoinFormErrorPolicy {
         normalizedMessage(message)?.contains("invite code") == true
     }
 
+    static func requiresSignIn(_ message: String?) -> Bool {
+        guard let normalized = normalizedMessage(message) else { return false }
+        return normalized.contains("guests are not allowed") ||
+            normalized.contains("sign in to join")
+    }
+
     private static func isRoomScopedJoinError(_ normalizedMessage: String) -> Bool {
         normalizedMessage.contains("invite code") ||
             normalizedMessage.contains("no room found") ||
@@ -125,6 +131,24 @@ enum JoinGuestContinuationPolicy {
             return true
         }
         return !(currentUserId?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+    }
+}
+
+enum JoinGuestSignInFooterPolicy {
+    static func shouldShow(
+        hasSignedInAccount: Bool,
+        isRegularSizeClass: Bool,
+        isCompactPromptRecovery: Bool,
+        joinFormErrorMessage: String?
+    ) -> Bool {
+        guard !hasSignedInAccount else { return false }
+        if isRegularSizeClass {
+            return true
+        }
+        if JoinFormErrorPolicy.requiresSignIn(joinFormErrorMessage) {
+            return true
+        }
+        return !isCompactPromptRecovery
     }
 }
 
@@ -1312,8 +1336,12 @@ struct JoinView: View {
     }
 
     private var shouldShowGuestSignInFooter: Bool {
-        guard signedInAccountUser == nil else { return false }
-        return isRegularSizeClass || !shouldRenderCompactPromptRecovery
+        JoinGuestSignInFooterPolicy.shouldShow(
+            hasSignedInAccount: signedInAccountUser != nil,
+            isRegularSizeClass: isRegularSizeClass,
+            isCompactPromptRecovery: shouldRenderCompactPromptRecovery,
+            joinFormErrorMessage: visibleJoinFormErrorMessage
+        )
     }
 
     @ViewBuilder

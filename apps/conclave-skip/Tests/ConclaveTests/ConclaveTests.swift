@@ -198,6 +198,33 @@ final class ConclaveTests: XCTestCase {
         ))
     }
 
+    func testJoinGuestSignInFooterStaysVisibleForNoGuestsRecoveryOnCompact() throws {
+        XCTAssertTrue(JoinGuestSignInFooterPolicy.shouldShow(
+            hasSignedInAccount: false,
+            isRegularSizeClass: false,
+            isCompactPromptRecovery: true,
+            joinFormErrorMessage: "Guests are not allowed in this meeting. Sign in to join."
+        ))
+    }
+
+    func testJoinGuestSignInFooterStillHidesForNonAuthCompactRecovery() throws {
+        XCTAssertFalse(JoinGuestSignInFooterPolicy.shouldShow(
+            hasSignedInAccount: false,
+            isRegularSizeClass: false,
+            isCompactPromptRecovery: true,
+            joinFormErrorMessage: "Enter the meeting invite code to join."
+        ))
+    }
+
+    func testJoinGuestSignInFooterHidesForSignedInAccounts() throws {
+        XCTAssertFalse(JoinGuestSignInFooterPolicy.shouldShow(
+            hasSignedInAccount: true,
+            isRegularSizeClass: true,
+            isCompactPromptRecovery: false,
+            joinFormErrorMessage: nil
+        ))
+    }
+
     func testJoinAdminIntentRequestsMeetingAdminForNonPublicClients() throws {
         XCTAssertTrue(JoinAdminIntentPolicy.shouldRequestAdminJoin(
             resolvedClientId: "internal",
