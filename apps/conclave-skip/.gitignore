@@ -47,6 +47,12 @@ xcodebuild*.log
 
 ## Obj-C/Swift specific
 *.hmap
+*.d
+*.dia
+*.swiftdoc
+*.swiftmodule
+*.swiftsourceinfo
+*.swiftdeps
 
 ## App packaging
 *.ipa
