@@ -6197,6 +6197,14 @@ final class ConclaveTests: XCTestCase {
                 "NSPrivacyAccessedAPICategoryUserDefaults": ["CA92.1"],
                 "NSPrivacyAccessedAPICategoryFileTimestamp": ["C617.1"],
                 "NSPrivacyAccessedAPICategorySystemBootTime": ["35F9.1"],
+                "NSPrivacyAccessedAPICategoryDiskSpace": ["E174.1", "85F4.1"],
+            ]
+        )
+        try assertPrivacyManifestReasons(
+            "Darwin/ScreenShareExtension/PrivacyInfo.xcprivacy",
+            expectedReasons: [
+                "NSPrivacyAccessedAPICategoryFileTimestamp": ["C617.1"],
+                "NSPrivacyAccessedAPICategoryDiskSpace": ["E174.1", "85F4.1"],
             ]
         )
         try assertPrivacyManifestReasons(
@@ -6205,6 +6213,7 @@ final class ConclaveTests: XCTestCase {
                 "NSPrivacyAccessedAPICategoryUserDefaults": ["CA92.1"],
                 "NSPrivacyAccessedAPICategoryFileTimestamp": ["C617.1"],
                 "NSPrivacyAccessedAPICategorySystemBootTime": ["35F9.1"],
+                "NSPrivacyAccessedAPICategoryDiskSpace": ["E174.1", "85F4.1"],
             ]
         )
         try assertPrivacyManifestReasons(
@@ -6212,6 +6221,7 @@ final class ConclaveTests: XCTestCase {
             expectedReasons: [
                 "NSPrivacyAccessedAPICategoryFileTimestamp": ["C617.1"],
                 "NSPrivacyAccessedAPICategorySystemBootTime": ["35F9.1"],
+                "NSPrivacyAccessedAPICategoryDiskSpace": ["E174.1", "85F4.1"],
             ]
         )
         try assertPrivacyManifestReasons(
@@ -6219,6 +6229,7 @@ final class ConclaveTests: XCTestCase {
             expectedReasons: [
                 "NSPrivacyAccessedAPICategoryFileTimestamp": ["C617.1"],
                 "NSPrivacyAccessedAPICategorySystemBootTime": ["35F9.1"],
+                "NSPrivacyAccessedAPICategoryDiskSpace": ["E174.1", "85F4.1"],
             ]
         )
     }
