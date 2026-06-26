@@ -87,6 +87,28 @@
 	<string>Conclave accesses network volumes only when you choose a file from one to share or attach in a meeting.</string>
 	<key>NSRemovableVolumesUsageDescription</key>
 	<string>Conclave accesses removable volumes only when you choose a file from one to share or attach in a meeting.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Conclave uses speech recognition only when you choose a meeting voice feature such as transcription.</string>
+	<key>NSMotionUsageDescription</key>
+	<string>Conclave uses device motion only when needed to keep meeting video oriented correctly.</string>
+	<key>NSUserTrackingUsageDescription</key>
+	<string>Conclave does not track you across apps or websites.</string>
+	<key>NFCReaderUsageDescription</key>
+	<string>Conclave uses NFC only when you choose an NFC-based join or sharing action.</string>
+	<key>NSAppleMusicUsageDescription</key>
+	<string>Conclave uses media library access only when you choose media to share in a meeting.</string>
+	<key>NSNearbyInteractionUsageDescription</key>
+	<string>Conclave uses nearby interaction only when you choose a nearby-device meeting action.</string>
+	<key>NSVideoSubscriberAccountUsageDescription</key>
+	<string>Conclave uses video subscriber account access only when you choose an account-based video feature.</string>
+	<key>NSHomeKitUsageDescription</key>
+	<string>Conclave uses HomeKit only when you choose a home-device meeting action.</string>
+	<key>NSGKFriendListUsageDescription</key>
+	<string>Conclave uses Game Center friends only when you choose to invite them to a meeting.</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>Conclave uses health data only when you explicitly choose a health-sharing action.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>Conclave updates health data only when you explicitly choose a health-sharing action.</string>
 	<key>SFU_CLIENT_ID</key>
 	<string>public</string>
 	<key>SFU_JOIN_URL</key>

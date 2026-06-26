@@ -5854,6 +5854,21 @@ final class ConclaveTests: XCTestCase {
         XCTAssertFalse(manifest.contains("android:pathPrefix=\"/sign-in/\""))
     }
 
+    func testAndroidManifestRemovesLegacyExternalStoragePermissions() throws {
+        let manifest = try sourceFileContents("Android/app/src/main/AndroidManifest.xml")
+
+        XCTAssertTrue(manifest.contains("android:name=\"android.permission.READ_EXTERNAL_STORAGE\" tools:node=\"remove\""))
+        XCTAssertTrue(manifest.contains("android:name=\"android.permission.WRITE_EXTERNAL_STORAGE\" tools:node=\"remove\""))
+    }
+
+    func testAndroidManifestRemovesTestOnlyPackageQueries() throws {
+        let manifest = try sourceFileContents("Android/app/src/main/AndroidManifest.xml")
+
+        XCTAssertTrue(manifest.contains("android:name=\"androidx.test.orchestrator\" tools:node=\"remove\""))
+        XCTAssertTrue(manifest.contains("android:name=\"androidx.test.services\" tools:node=\"remove\""))
+        XCTAssertTrue(manifest.contains("android:name=\"com.google.android.apps.common.testing.services\" tools:node=\"remove\""))
+    }
+
     func testAndroidPolicyAckParserAcceptsObjectShapedChangedField() throws {
         let source = try sourceFileContents("Sources/Conclave/Skip/SocketIOManager+Android.kt")
 
@@ -5949,6 +5964,17 @@ final class ConclaveTests: XCTestCase {
             "NSDesktopFolderUsageDescription",
             "NSNetworkVolumesUsageDescription",
             "NSRemovableVolumesUsageDescription",
+            "NSSpeechRecognitionUsageDescription",
+            "NSMotionUsageDescription",
+            "NSUserTrackingUsageDescription",
+            "NFCReaderUsageDescription",
+            "NSAppleMusicUsageDescription",
+            "NSNearbyInteractionUsageDescription",
+            "NSVideoSubscriberAccountUsageDescription",
+            "NSHomeKitUsageDescription",
+            "NSGKFriendListUsageDescription",
+            "NSHealthShareUsageDescription",
+            "NSHealthUpdateUsageDescription",
         ]
 
         try assertPurposeStrings(
@@ -6031,6 +6057,10 @@ final class ConclaveTests: XCTestCase {
         XCTAssertTrue(script.contains("\"NSCalendarsWriteOnlyAccessUsageDescription\""))
         XCTAssertTrue(script.contains("\"NSRemindersFullAccessUsageDescription\""))
         XCTAssertTrue(script.contains("\"NSDocumentsFolderUsageDescription\""))
+        XCTAssertTrue(script.contains("\"NSSpeechRecognitionUsageDescription\""))
+        XCTAssertTrue(script.contains("\"NSMotionUsageDescription\""))
+        XCTAssertTrue(script.contains("\"NSUserTrackingUsageDescription\""))
+        XCTAssertTrue(script.contains("\"NFCReaderUsageDescription\""))
         XCTAssertEqual(script.components(separatedBy: "set_all_purpose_strings \"${plist_path}\"").count - 1, 5)
     }
 #endif

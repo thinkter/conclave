@@ -72,6 +72,17 @@ set_extended_purpose_strings() {
   set_plist_string "${plist_path}" "NSCalendarsWriteOnlyAccessUsageDescription" "Conclave can add meeting events to your calendar only when you choose to save them."
   set_plist_string "${plist_path}" "NSRemindersUsageDescription" "Conclave uses reminders only when you choose to create a meeting reminder."
   set_plist_string "${plist_path}" "NSRemindersFullAccessUsageDescription" "Conclave uses reminders only when you choose to create a meeting reminder."
+  set_plist_string "${plist_path}" "NSSpeechRecognitionUsageDescription" "Conclave uses speech recognition only when you choose a meeting voice feature such as transcription."
+  set_plist_string "${plist_path}" "NSMotionUsageDescription" "Conclave uses device motion only when needed to keep meeting video oriented correctly."
+  set_plist_string "${plist_path}" "NSUserTrackingUsageDescription" "Conclave does not track you across apps or websites."
+  set_plist_string "${plist_path}" "NFCReaderUsageDescription" "Conclave uses NFC only when you choose an NFC-based join or sharing action."
+  set_plist_string "${plist_path}" "NSAppleMusicUsageDescription" "Conclave uses media library access only when you choose media to share in a meeting."
+  set_plist_string "${plist_path}" "NSNearbyInteractionUsageDescription" "Conclave uses nearby interaction only when you choose a nearby-device meeting action."
+  set_plist_string "${plist_path}" "NSVideoSubscriberAccountUsageDescription" "Conclave uses video subscriber account access only when you choose an account-based video feature."
+  set_plist_string "${plist_path}" "NSHomeKitUsageDescription" "Conclave uses HomeKit only when you choose a home-device meeting action."
+  set_plist_string "${plist_path}" "NSGKFriendListUsageDescription" "Conclave uses Game Center friends only when you choose to invite them to a meeting."
+  set_plist_string "${plist_path}" "NSHealthShareUsageDescription" "Conclave uses health data only when you explicitly choose a health-sharing action."
+  set_plist_string "${plist_path}" "NSHealthUpdateUsageDescription" "Conclave updates health data only when you explicitly choose a health-sharing action."
   set_temporary_location_purpose_string "${plist_path}"
 }
 
