@@ -2,9 +2,10 @@
 set -eu
 
 FRAMEWORKS_DIR="${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH:-${WRAPPER_NAME}/Frameworks}"
+APP_RESOURCES_DIR="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH:-${WRAPPER_NAME}}"
 MANIFEST_DIR="${SRCROOT}/PrivacyManifests"
 
-if [ ! -d "${FRAMEWORKS_DIR}" ]; then
+if [ ! -d "${FRAMEWORKS_DIR}" ] && [ ! -d "${APP_RESOURCES_DIR}" ]; then
   exit 0
 fi
 
@@ -45,6 +46,14 @@ set_file_purpose_strings() {
   set_plist_string "${plist_path}" "NSRemovableVolumesUsageDescription" "Conclave accesses removable volumes only when you choose a file from one to share or attach in a meeting."
 }
 
+set_temporary_location_purpose_string() {
+  plist_path="$1"
+
+  /usr/libexec/PlistBuddy -c "Add :NSLocationTemporaryUsageDescriptionDictionary dict" "${plist_path}" 2>/dev/null || true
+  /usr/libexec/PlistBuddy -c "Set :NSLocationTemporaryUsageDescriptionDictionary:MeetingLocationSharing Conclave uses precise location only when you explicitly choose to share your current location in a meeting." "${plist_path}" 2>/dev/null ||
+    /usr/libexec/PlistBuddy -c "Add :NSLocationTemporaryUsageDescriptionDictionary:MeetingLocationSharing string Conclave uses precise location only when you explicitly choose to share your current location in a meeting." "${plist_path}"
+}
+
 set_extended_purpose_strings() {
   plist_path="$1"
 
@@ -63,6 +72,7 @@ set_extended_purpose_strings() {
   set_plist_string "${plist_path}" "NSCalendarsWriteOnlyAccessUsageDescription" "Conclave can add meeting events to your calendar only when you choose to save them."
   set_plist_string "${plist_path}" "NSRemindersUsageDescription" "Conclave uses reminders only when you choose to create a meeting reminder."
   set_plist_string "${plist_path}" "NSRemindersFullAccessUsageDescription" "Conclave uses reminders only when you choose to create a meeting reminder."
+  set_temporary_location_purpose_string "${plist_path}"
 }
 
 set_all_purpose_strings() {
@@ -159,7 +169,22 @@ patch_remaining_frameworks() {
   done
 }
 
+patch_embedded_bundles() {
+  if [ ! -d "${APP_RESOURCES_DIR}" ]; then
+    return
+  fi
+
+  find "${APP_RESOURCES_DIR}" \
+    -path "${FRAMEWORKS_DIR}/*" -prune -o \
+    -path "${APP_RESOURCES_DIR}/PlugIns/*" -prune -o \
+    -path "*.bundle/Info.plist" -print |
+    while IFS= read -r plist_path; do
+      set_all_purpose_strings "${plist_path}"
+    done
+}
+
 patch_conclave_framework
 patch_webrtc_framework
 patch_mediasoup_framework
 patch_remaining_frameworks
+patch_embedded_bundles

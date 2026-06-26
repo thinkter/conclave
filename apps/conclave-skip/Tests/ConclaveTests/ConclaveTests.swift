@@ -5967,6 +5967,14 @@ final class ConclaveTests: XCTestCase {
             extensionPlist,
             keys: purposeStringKeys
         )
+        let extensionTemporaryLocationPurposes = try XCTUnwrap(
+            extensionPlist["NSLocationTemporaryUsageDescriptionDictionary"] as? [String: String]
+        )
+        XCTAssertFalse(
+            extensionTemporaryLocationPurposes["MeetingLocationSharing", default: ""]
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .isEmpty
+        )
     }
 
     func testDarwinPrivacyManifestDeclaresRequiredReasonApis() throws {
@@ -6009,18 +6017,21 @@ final class ConclaveTests: XCTestCase {
         XCTAssertTrue(script.contains("patch_webrtc_framework"))
         XCTAssertTrue(script.contains("patch_mediasoup_framework"))
         XCTAssertTrue(script.contains("patch_remaining_frameworks"))
+        XCTAssertTrue(script.contains("patch_embedded_bundles"))
         XCTAssertTrue(script.contains("${FRAMEWORKS_DIR}/WebRTC.framework"))
         XCTAssertTrue(script.contains("${FRAMEWORKS_DIR}/Mediasoup.framework"))
+        XCTAssertTrue(script.contains("\"*.bundle/Info.plist\""))
         XCTAssertTrue(script.contains("copy_privacy_manifest \"MediasoupFramework.xcprivacy\""))
         XCTAssertTrue(script.contains("\"NSCameraUsageDescription\""))
         XCTAssertTrue(script.contains("\"NSMicrophoneUsageDescription\""))
         XCTAssertTrue(script.contains("\"NSLocalNetworkUsageDescription\""))
+        XCTAssertTrue(script.contains("NSLocationTemporaryUsageDescriptionDictionary"))
         XCTAssertTrue(script.contains("\"NSContactsUsageDescription\""))
         XCTAssertTrue(script.contains("\"NSCalendarsFullAccessUsageDescription\""))
         XCTAssertTrue(script.contains("\"NSCalendarsWriteOnlyAccessUsageDescription\""))
         XCTAssertTrue(script.contains("\"NSRemindersFullAccessUsageDescription\""))
         XCTAssertTrue(script.contains("\"NSDocumentsFolderUsageDescription\""))
-        XCTAssertEqual(script.components(separatedBy: "set_all_purpose_strings \"${plist_path}\"").count - 1, 4)
+        XCTAssertEqual(script.components(separatedBy: "set_all_purpose_strings \"${plist_path}\"").count - 1, 5)
     }
 #endif
 
