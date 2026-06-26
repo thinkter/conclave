@@ -22,8 +22,16 @@
     <string>$(CURRENT_PROJECT_VERSION)</string>
     <key>RTCAppGroupIdentifier</key>
     <string>group.com.acmvit.conclave.screenshare</string>
+    <key>NSCameraUsageDescription</key>
+    <string>Conclave uses the camera so you can turn on your video in a meeting.</string>
     <key>NSMicrophoneUsageDescription</key>
     <string>Conclave can include microphone audio when you share your screen in a meeting.</string>
+    <key>NSBluetoothAlwaysUsageDescription</key>
+    <string>Conclave uses Bluetooth so meeting audio can route through supported headphones and speakers.</string>
+    <key>NSBluetoothPeripheralUsageDescription</key>
+    <string>Conclave uses Bluetooth so meeting audio can route through supported headphones and speakers.</string>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>Conclave uses the local network to connect meeting audio, video, and screen sharing reliably.</string>
     <key>NSScreenCaptureUsageDescription</key>
     <string>Conclave uses screen capture so you can share your screen in a meeting.</string>
     <key>NSExtension</key>
