@@ -1408,11 +1408,6 @@ struct JoinView: View {
                     .foregroundStyle(ACMColors.text)
                     .lineLimit(1)
 
-                Text("Guest")
-                    .font(ACMFont.trial(12, weight: .medium))
-                    .foregroundStyle(ACMColors.textFaint)
-                    .lineLimit(1)
-
                 Spacer(minLength: 8)
 
                 Button {
