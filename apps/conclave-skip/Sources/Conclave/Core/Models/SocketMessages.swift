@@ -885,6 +885,14 @@ struct PromoteHostResponse: Codable {
     let error: String?
 }
 
+struct TransferHostResponse: Codable {
+    let success: Bool?
+    let hostUserId: String?
+    let hostUserIds: [String]?
+    let transferredTo: String?
+    let error: String?
+}
+
 struct AdminHandsClearedNotification: Codable {
     let roomId: String?
     let count: Int?
@@ -910,6 +918,16 @@ struct RoomListResponse: Codable {
 
 struct AdminRoomsDetailedResponse: Codable {
     let rooms: [AdminRoomSnapshot]
+}
+
+struct AdminParticipantsResponse: Codable {
+    let participants: [AdminRoomParticipantSnapshot]
+    let roomId: String?
+}
+
+struct AdminPendingUsersResponse: Codable {
+    let roomId: String?
+    let users: [PendingUserSnapshot]
 }
 
 struct AdminRoomSnapshot: Codable {

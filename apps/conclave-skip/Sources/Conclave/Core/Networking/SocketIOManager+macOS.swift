@@ -180,6 +180,11 @@ final class SocketIOManager {
             )
         )
     }
+    func getRoomLockStatus() async throws -> Bool { false }
+    func getChatLockStatus() async throws -> Bool { false }
+    func getDmEnabledStatus() async throws -> Bool { true }
+    func getTtsDisabledStatus() async throws -> Bool { false }
+    func getReactionsDisabledStatus() async throws -> Bool { false }
     func getMeetingConfig() async throws -> MeetingConfigSnapshot { MeetingConfigSnapshot(roomId: nil, requiresInviteCode: nil) }
     func updateMeetingConfig(inviteCode: String?) async throws -> MeetingConfigSnapshot { MeetingConfigSnapshot(roomId: nil, requiresInviteCode: inviteCode != nil) }
     func getWebinarConfig() async throws -> WebinarConfigSnapshot {
@@ -285,6 +290,8 @@ final class SocketIOManager {
         )
     }
     func getAdminRoomsDetailed() async throws -> [AdminRoomSnapshot] { [] }
+    func getAdminParticipants() async throws -> [AdminRoomParticipantSnapshot] { [] }
+    func getAdminPendingUsers() async throws -> [PendingUserSnapshot] { [] }
     func getAccessLists() async throws -> AdminAccessListSnapshot {
         AdminAccessListSnapshot(allowedUserKeys: [], lockedAllowedUserKeys: [], blockedUserKeys: [])
     }
@@ -306,6 +313,9 @@ final class SocketIOManager {
     func endRoom(message: String? = nil, delayMs: Int? = nil) async throws -> AdminEndRoomResponse {
         AdminEndRoomResponse(success: true, roomId: nil, delayMs: delayMs, error: nil)
     }
+    func closeRoom(message: String? = nil, delayMs: Int? = nil) async throws -> AdminEndRoomResponse {
+        AdminEndRoomResponse(success: true, roomId: nil, delayMs: delayMs, error: nil)
+    }
     func endRoomNow(message: String?) async throws -> AdminEndRoomResponse {
         try await endRoom(message: message, delayMs: 0)
     }
@@ -316,6 +326,15 @@ final class SocketIOManager {
             hostUserIds: [userId],
             promotedUserId: userId,
             promotedUserKey: nil,
+            error: nil
+        )
+    }
+    func transferHost(userId: String) async throws -> TransferHostResponse {
+        TransferHostResponse(
+            success: true,
+            hostUserId: userId,
+            hostUserIds: [userId],
+            transferredTo: userId,
             error: nil
         )
     }

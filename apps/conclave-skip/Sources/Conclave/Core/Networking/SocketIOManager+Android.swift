@@ -138,6 +138,11 @@ final class SocketIOManager {
         dmEnabled: Bool? = nil,
         reactionsDisabled: Bool? = nil
     ) async throws -> RoomPolicyMutationResponse { fatalError() }
+    func getRoomLockStatus() async throws -> Bool { fatalError() }
+    func getChatLockStatus() async throws -> Bool { fatalError() }
+    func getDmEnabledStatus() async throws -> Bool { fatalError() }
+    func getTtsDisabledStatus() async throws -> Bool { fatalError() }
+    func getReactionsDisabledStatus() async throws -> Bool { fatalError() }
     func getMeetingConfig() async throws -> MeetingConfigSnapshot { fatalError() }
     func updateMeetingConfig(inviteCode: String?) async throws -> MeetingConfigSnapshot { fatalError() }
     func getWebinarConfig() async throws -> WebinarConfigSnapshot { fatalError() }
@@ -178,6 +183,8 @@ final class SocketIOManager {
     func clearRaisedHands() async throws { fatalError() }
     func getAdminRoomState() async throws -> AdminRoomSnapshot { fatalError() }
     func getAdminRoomsDetailed() async throws -> [AdminRoomSnapshot] { fatalError() }
+    func getAdminParticipants() async throws -> [AdminRoomParticipantSnapshot] { fatalError() }
+    func getAdminPendingUsers() async throws -> [PendingUserSnapshot] { fatalError() }
     func getAccessLists() async throws -> AdminAccessListSnapshot { fatalError() }
     func allowUsers(_ userKeys: [String], allowWhenLocked: Bool = true) async throws -> AdminAccessListSnapshot { fatalError() }
     func blockUsers(_ userKeys: [String], kickPresent: Bool = true, reason: String? = nil) async throws -> AdminAccessListSnapshot { fatalError() }
@@ -185,8 +192,10 @@ final class SocketIOManager {
     func revokeAllowedUsers(_ userKeys: [String], revokeLocked: Bool = true) async throws -> AdminAccessListSnapshot { fatalError() }
     func broadcastAdminNotice(message: String, level: AdminNoticeLevel) async throws -> AdminNoticeResponse { fatalError() }
     func endRoom(message: String?, delayMs: Int?) async throws -> AdminEndRoomResponse { fatalError() }
+    func closeRoom(message: String?, delayMs: Int?) async throws -> AdminEndRoomResponse { fatalError() }
     func endRoomNow(message: String?) async throws -> AdminEndRoomResponse { fatalError() }
     func promoteHost(userId: String) async throws -> PromoteHostResponse { fatalError() }
+    func transferHost(userId: String) async throws -> TransferHostResponse { fatalError() }
     func redirectUser(userId: String, newRoomId: String) async throws -> RedirectUserResponse { fatalError() }
 }
 #endif

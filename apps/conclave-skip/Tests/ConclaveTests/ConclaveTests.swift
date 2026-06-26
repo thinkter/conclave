@@ -5592,6 +5592,52 @@ final class ConclaveTests: XCTestCase {
         XCTAssertEqual(response.rooms.first?.pendingUsers?.first?.displayName, "Taylor")
     }
 
+    func testAdminParticipantAndPendingUserResponsesDecodeSnapshots() throws {
+        let participantsData = Data("""
+        {
+          "roomId": "alpha-room",
+          "participants": [
+            { "userId": "user-1", "displayName": "Alex", "cameraOff": true }
+          ]
+        }
+        """.utf8)
+        let pendingData = Data("""
+        {
+          "roomId": "alpha-room",
+          "users": [
+            { "userId": "pending-1", "displayName": "Taylor" }
+          ]
+        }
+        """.utf8)
+
+        let participants = try JSONDecoder().decode(AdminParticipantsResponse.self, from: participantsData)
+        let pending = try JSONDecoder().decode(AdminPendingUsersResponse.self, from: pendingData)
+
+        XCTAssertEqual(participants.roomId, "alpha-room")
+        XCTAssertEqual(participants.participants.first?.displayName, "Alex")
+        XCTAssertEqual(participants.participants.first?.cameraOff, true)
+        XCTAssertEqual(pending.roomId, "alpha-room")
+        XCTAssertEqual(pending.users.first?.displayName, "Taylor")
+    }
+
+    func testTransferHostResponseDecodesSfuAckShape() throws {
+        let data = Data("""
+        {
+          "success": true,
+          "hostUserId": "user-1",
+          "hostUserIds": ["user-1", "user-2"],
+          "transferredTo": "user-1"
+        }
+        """.utf8)
+
+        let response = try JSONDecoder().decode(TransferHostResponse.self, from: data)
+
+        XCTAssertEqual(response.success, true)
+        XCTAssertEqual(response.hostUserId, "user-1")
+        XCTAssertEqual(response.hostUserIds, ["user-1", "user-2"])
+        XCTAssertEqual(response.transferredTo, "user-1")
+    }
+
     func testRedirectUserRequestEncodesWebPayloadShape() throws {
         let data = try JSONEncoder().encode(RedirectUserRequest(userId: "user-1", newRoomId: "beta-room"))
         let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? NSDictionary)
@@ -5770,6 +5816,27 @@ final class ConclaveTests: XCTestCase {
         XCTAssertTrue(iosSource.contains("func redirectUser(userId: String, newRoomId: String) async throws -> RedirectUserResponse"))
         XCTAssertTrue(androidSource.contains("internal suspend fun getRooms(): skip.lib.Array<RoomInfo>"))
         XCTAssertTrue(androidSource.contains("internal suspend fun redirectUser(userId: String, newRoomId: String): RedirectUserResponse"))
+    }
+
+    func testNativeSocketManagersExposeAdminStatusAndSnapshotAliases() throws {
+        let iosSource = try sourceFileContents("Sources/Conclave/Core/Networking/SocketIOManager.swift")
+        let androidSource = try sourceFileContents("Sources/Conclave/Skip/SocketIOManager+Android.kt")
+
+        for source in [iosSource, androidSource] {
+            XCTAssertTrue(source.contains("getRoomLockStatus = SfuClientEvent.getRoomLockStatus.rawValue"))
+            XCTAssertTrue(source.contains("getChatLockStatus = SfuClientEvent.getChatLockStatus.rawValue"))
+            XCTAssertTrue(source.contains("getDmEnabledStatus = SfuClientEvent.getDmEnabledStatus.rawValue"))
+            XCTAssertTrue(source.contains("getTtsDisabledStatus = SfuClientEvent.getTtsDisabledStatus.rawValue"))
+            XCTAssertTrue(source.contains("getReactionsDisabledStatus = SfuClientEvent.getReactionsDisabledStatus.rawValue"))
+            XCTAssertTrue(source.contains("adminGetParticipants = SfuClientEvent.adminGetParticipants.rawValue"))
+            XCTAssertTrue(source.contains("adminGetPendingUsers = SfuClientEvent.adminGetPendingUsers.rawValue"))
+            XCTAssertTrue(source.contains("adminTransferHost = SfuClientEvent.adminTransferHost.rawValue"))
+            XCTAssertTrue(source.contains("adminCloseRoom = SfuClientEvent.adminCloseRoom.rawValue"))
+        }
+        XCTAssertTrue(iosSource.contains("func transferHost(userId: String) async throws -> TransferHostResponse"))
+        XCTAssertTrue(iosSource.contains("func closeRoom(message: String? = nil, delayMs: Int? = nil) async throws -> AdminEndRoomResponse"))
+        XCTAssertTrue(androidSource.contains("internal suspend fun transferHost(userId: String): TransferHostResponse"))
+        XCTAssertTrue(androidSource.contains("internal suspend fun closeRoom(message: String?, delayMs: Int?): AdminEndRoomResponse"))
     }
 
     func testDarwinPermissionPurposeStringsArePresentInAppAndExtensionPlists() throws {

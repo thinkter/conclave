@@ -58,6 +58,11 @@ internal object SocketEvent {
     val setDmEnabled = SfuClientEvent.setDmEnabled.rawValue
     val setTtsDisabled = SfuClientEvent.setTtsDisabled.rawValue
     val setReactionsDisabled = SfuClientEvent.setReactionsDisabled.rawValue
+    val getRoomLockStatus = SfuClientEvent.getRoomLockStatus.rawValue
+    val getChatLockStatus = SfuClientEvent.getChatLockStatus.rawValue
+    val getDmEnabledStatus = SfuClientEvent.getDmEnabledStatus.rawValue
+    val getTtsDisabledStatus = SfuClientEvent.getTtsDisabledStatus.rawValue
+    val getReactionsDisabledStatus = SfuClientEvent.getReactionsDisabledStatus.rawValue
     val adminSetPolicies = SfuClientEvent.adminSetPolicies.rawValue
     val admitUser = SfuClientEvent.admitUser.rawValue
     val rejectUser = SfuClientEvent.rejectUser.rawValue
@@ -69,6 +74,7 @@ internal object SocketEvent {
     val closeAllVideo = SfuClientEvent.closeAllVideo.rawValue
     val promoteHost = SfuClientEvent.promoteHost.rawValue
     val redirectUser = SfuClientEvent.redirectUser.rawValue
+    val adminTransferHost = SfuClientEvent.adminTransferHost.rawValue
     val adminMuteUser = SfuClientEvent.adminMuteUser.rawValue
     val adminMuteUserAudio = SfuClientEvent.adminMuteUserAudio.rawValue
     val adminCloseUserVideo = SfuClientEvent.adminCloseUserVideo.rawValue
@@ -79,11 +85,14 @@ internal object SocketEvent {
     val adminBroadcastNotice = SfuClientEvent.adminBroadcastNotice.rawValue
     val adminGetRoomState = SfuClientEvent.adminGetRoomState.rawValue
     val adminGetRoomsDetailed = SfuClientEvent.adminGetRoomsDetailed.rawValue
+    val adminGetParticipants = SfuClientEvent.adminGetParticipants.rawValue
+    val adminGetPendingUsers = SfuClientEvent.adminGetPendingUsers.rawValue
     val adminGetAccessLists = SfuClientEvent.adminGetAccessLists.rawValue
     val adminAllowUsers = SfuClientEvent.adminAllowUsers.rawValue
     val adminBlockUsers = SfuClientEvent.adminBlockUsers.rawValue
     val adminUnblockUsers = SfuClientEvent.adminUnblockUsers.rawValue
     val adminRevokeAllowedUsers = SfuClientEvent.adminRevokeAllowedUsers.rawValue
+    val adminCloseRoom = SfuClientEvent.adminCloseRoom.rawValue
     val adminEndRoom = SfuClientEvent.adminEndRoom.rawValue
     val meetingGetConfig = SfuClientEvent.meetingGetConfig.rawValue
     val meetingUpdateConfig = SfuClientEvent.meetingUpdateConfig.rawValue
@@ -796,6 +805,31 @@ internal class SocketIOManager {
         return decodeRoomPolicyMutationResponse(data)
     }
 
+    internal suspend fun getRoomLockStatus(): Boolean {
+        val response = getRoomPolicyStatus(SocketEvent.getRoomLockStatus)
+        return response.locked ?: throw ErrorException("Room lock status acknowledgement was missing locked state.")
+    }
+
+    internal suspend fun getChatLockStatus(): Boolean {
+        val response = getRoomPolicyStatus(SocketEvent.getChatLockStatus)
+        return response.locked ?: throw ErrorException("Chat lock status acknowledgement was missing locked state.")
+    }
+
+    internal suspend fun getDmEnabledStatus(): Boolean {
+        val response = getRoomPolicyStatus(SocketEvent.getDmEnabledStatus)
+        return response.enabled ?: throw ErrorException("DM status acknowledgement was missing enabled state.")
+    }
+
+    internal suspend fun getTtsDisabledStatus(): Boolean {
+        val response = getRoomPolicyStatus(SocketEvent.getTtsDisabledStatus)
+        return response.disabled ?: throw ErrorException("TTS status acknowledgement was missing disabled state.")
+    }
+
+    internal suspend fun getReactionsDisabledStatus(): Boolean {
+        val response = getRoomPolicyStatus(SocketEvent.getReactionsDisabledStatus)
+        return response.disabled ?: throw ErrorException("Reactions status acknowledgement was missing disabled state.")
+    }
+
     internal suspend fun getMeetingConfig(): MeetingConfigSnapshot {
         val data = emitAckOnly(SocketEvent.meetingGetConfig)
         return JSONDecoder().decode(MeetingConfigSnapshot::class, from = data)
@@ -1062,6 +1096,16 @@ internal class SocketIOManager {
         return decodeAdminRoomsDetailedResponse(data).rooms
     }
 
+    internal suspend fun getAdminParticipants(): skip.lib.Array<AdminRoomParticipantSnapshot> {
+        val data = emitAckOnly(SocketEvent.adminGetParticipants)
+        return decodeAdminParticipantsResponse(data).participants
+    }
+
+    internal suspend fun getAdminPendingUsers(): skip.lib.Array<PendingUserSnapshot> {
+        val data = emitAckOnly(SocketEvent.adminGetPendingUsers)
+        return decodeAdminPendingUsersResponse(data).users
+    }
+
     internal suspend fun getAccessLists(): AdminAccessListSnapshot {
         val data = emitAckOnly(SocketEvent.adminGetAccessLists)
         return decodeAdminAccessListsResponse(data)
@@ -1113,6 +1157,12 @@ internal class SocketIOManager {
         return decodeAdminEndRoomResponse(data)
     }
 
+    internal suspend fun closeRoom(message: String?, delayMs: Int?): AdminEndRoomResponse {
+        val request = AdminEndRoomRequest(message = message, delayMs = delayMs)
+        val data = emit(SocketEvent.adminCloseRoom, request)
+        return decodeAdminEndRoomResponse(data)
+    }
+
     internal suspend fun endRoomNow(message: String?): AdminEndRoomResponse {
         return endRoom(message = message, delayMs = 0)
     }
@@ -1122,10 +1172,20 @@ internal class SocketIOManager {
         return JSONDecoder().decode(PromoteHostResponse::class, from = data)
     }
 
+    internal suspend fun transferHost(userId: String): TransferHostResponse {
+        val data = emit(SocketEvent.adminTransferHost, mapOf("userId" to userId))
+        return JSONDecoder().decode(TransferHostResponse::class, from = data)
+    }
+
     internal suspend fun redirectUser(userId: String, newRoomId: String): RedirectUserResponse {
         val request = RedirectUserRequest(userId = userId, newRoomId = newRoomId)
         val data = emit(SocketEvent.redirectUser, request)
         return JSONDecoder().decode(RedirectUserResponse::class, from = data)
+    }
+
+    private suspend fun getRoomPolicyStatus(event: String): RoomPolicyMutationResponse {
+        val data = emitAckOnly(event)
+        return decodeRoomPolicyMutationResponse(data)
     }
 
     private fun decodeAdminAccessMutation(data: Data): AdminAccessListSnapshot {
@@ -2337,6 +2397,22 @@ internal class SocketIOManager {
             rooms.add(room)
         }
         return AdminRoomsDetailedResponse(rooms = skip.lib.Array(rooms))
+    }
+
+    private fun decodeAdminParticipantsResponse(data: Data): AdminParticipantsResponse {
+        val obj = dataObject(data) ?: throw ErrorException("Invalid admin participants acknowledgement.")
+        return AdminParticipantsResponse(
+            participants = adminRoomParticipantArrayField(obj, "participants") ?: skip.lib.Array(),
+            roomId = stringField(obj, "roomId")
+        )
+    }
+
+    private fun decodeAdminPendingUsersResponse(data: Data): AdminPendingUsersResponse {
+        val obj = dataObject(data) ?: throw ErrorException("Invalid admin pending users acknowledgement.")
+        return AdminPendingUsersResponse(
+            roomId = stringField(obj, "roomId"),
+            users = pendingUserArrayField(obj, "users") ?: skip.lib.Array()
+        )
     }
 
     private fun decodeAdminRoomStateChanged(value: Any?): AdminRoomStateChangedNotification? {

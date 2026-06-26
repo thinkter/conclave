@@ -51,6 +51,11 @@ private enum SocketEvent {
     static let setDmEnabled = SfuClientEvent.setDmEnabled.rawValue
     static let setTtsDisabled = SfuClientEvent.setTtsDisabled.rawValue
     static let setReactionsDisabled = SfuClientEvent.setReactionsDisabled.rawValue
+    static let getRoomLockStatus = SfuClientEvent.getRoomLockStatus.rawValue
+    static let getChatLockStatus = SfuClientEvent.getChatLockStatus.rawValue
+    static let getDmEnabledStatus = SfuClientEvent.getDmEnabledStatus.rawValue
+    static let getTtsDisabledStatus = SfuClientEvent.getTtsDisabledStatus.rawValue
+    static let getReactionsDisabledStatus = SfuClientEvent.getReactionsDisabledStatus.rawValue
     static let admitUser = SfuClientEvent.admitUser.rawValue
     static let rejectUser = SfuClientEvent.rejectUser.rawValue
     static let admitAllPending = SfuClientEvent.adminAdmitAllPending.rawValue
@@ -61,6 +66,7 @@ private enum SocketEvent {
     static let closeAllVideo = SfuClientEvent.closeAllVideo.rawValue
     static let promoteHost = SfuClientEvent.promoteHost.rawValue
     static let redirectUser = SfuClientEvent.redirectUser.rawValue
+    static let adminTransferHost = SfuClientEvent.adminTransferHost.rawValue
     static let adminMuteUser = SfuClientEvent.adminMuteUser.rawValue
     static let adminMuteUserAudio = SfuClientEvent.adminMuteUserAudio.rawValue
     static let adminCloseUserVideo = SfuClientEvent.adminCloseUserVideo.rawValue
@@ -71,12 +77,15 @@ private enum SocketEvent {
     static let adminBroadcastNotice = SfuClientEvent.adminBroadcastNotice.rawValue
     static let adminGetRoomState = SfuClientEvent.adminGetRoomState.rawValue
     static let adminGetRoomsDetailed = SfuClientEvent.adminGetRoomsDetailed.rawValue
+    static let adminGetParticipants = SfuClientEvent.adminGetParticipants.rawValue
+    static let adminGetPendingUsers = SfuClientEvent.adminGetPendingUsers.rawValue
     static let adminGetAccessLists = SfuClientEvent.adminGetAccessLists.rawValue
     static let adminAllowUsers = SfuClientEvent.adminAllowUsers.rawValue
     static let adminBlockUsers = SfuClientEvent.adminBlockUsers.rawValue
     static let adminUnblockUsers = SfuClientEvent.adminUnblockUsers.rawValue
     static let adminRevokeAllowedUsers = SfuClientEvent.adminRevokeAllowedUsers.rawValue
     static let adminSetPolicies = SfuClientEvent.adminSetPolicies.rawValue
+    static let adminCloseRoom = SfuClientEvent.adminCloseRoom.rawValue
     static let adminEndRoom = SfuClientEvent.adminEndRoom.rawValue
     static let meetingGetConfig = SfuClientEvent.meetingGetConfig.rawValue
     static let meetingUpdateConfig = SfuClientEvent.meetingUpdateConfig.rawValue
@@ -810,6 +819,46 @@ final class SocketIOManager {
         return try JSONDecoder().decode(RoomPolicyMutationResponse.self, from: data)
     }
 
+    func getRoomLockStatus() async throws -> Bool {
+        let response = try await getRoomPolicyStatus(event: SocketEvent.getRoomLockStatus)
+        guard let locked = response.locked else {
+            throw SocketError.serverError("Room lock status acknowledgement was missing locked state.")
+        }
+        return locked
+    }
+
+    func getChatLockStatus() async throws -> Bool {
+        let response = try await getRoomPolicyStatus(event: SocketEvent.getChatLockStatus)
+        guard let locked = response.locked else {
+            throw SocketError.serverError("Chat lock status acknowledgement was missing locked state.")
+        }
+        return locked
+    }
+
+    func getDmEnabledStatus() async throws -> Bool {
+        let response = try await getRoomPolicyStatus(event: SocketEvent.getDmEnabledStatus)
+        guard let enabled = response.enabled else {
+            throw SocketError.serverError("DM status acknowledgement was missing enabled state.")
+        }
+        return enabled
+    }
+
+    func getTtsDisabledStatus() async throws -> Bool {
+        let response = try await getRoomPolicyStatus(event: SocketEvent.getTtsDisabledStatus)
+        guard let disabled = response.disabled else {
+            throw SocketError.serverError("TTS status acknowledgement was missing disabled state.")
+        }
+        return disabled
+    }
+
+    func getReactionsDisabledStatus() async throws -> Bool {
+        let response = try await getRoomPolicyStatus(event: SocketEvent.getReactionsDisabledStatus)
+        guard let disabled = response.disabled else {
+            throw SocketError.serverError("Reactions status acknowledgement was missing disabled state.")
+        }
+        return disabled
+    }
+
     func getMeetingConfig() async throws -> MeetingConfigSnapshot {
         let data = try await emitAckOnly(event: SocketEvent.meetingGetConfig)
         return try JSONDecoder().decode(MeetingConfigSnapshot.self, from: data)
@@ -1051,6 +1100,16 @@ final class SocketIOManager {
         return try JSONDecoder().decode(AdminRoomsDetailedResponse.self, from: data).rooms
     }
 
+    func getAdminParticipants() async throws -> [AdminRoomParticipantSnapshot] {
+        let data = try await emitAckOnly(event: SocketEvent.adminGetParticipants)
+        return try JSONDecoder().decode(AdminParticipantsResponse.self, from: data).participants
+    }
+
+    func getAdminPendingUsers() async throws -> [PendingUserSnapshot] {
+        let data = try await emitAckOnly(event: SocketEvent.adminGetPendingUsers)
+        return try JSONDecoder().decode(AdminPendingUsersResponse.self, from: data).users
+    }
+
     func getAccessLists() async throws -> AdminAccessListSnapshot {
         let data = try await emitAckOnly(event: SocketEvent.adminGetAccessLists)
         return try JSONDecoder().decode(AdminAccessListsResponse.self, from: data).access
@@ -1092,6 +1151,12 @@ final class SocketIOManager {
         return try JSONDecoder().decode(AdminEndRoomResponse.self, from: data)
     }
 
+    func closeRoom(message: String? = nil, delayMs: Int? = nil) async throws -> AdminEndRoomResponse {
+        let request = AdminEndRoomRequest(message: message, delayMs: delayMs)
+        let data = try await emit(event: SocketEvent.adminCloseRoom, payload: request)
+        return try JSONDecoder().decode(AdminEndRoomResponse.self, from: data)
+    }
+
     func endRoomNow(message: String?) async throws -> AdminEndRoomResponse {
         try await endRoom(message: message, delayMs: 0)
     }
@@ -1101,10 +1166,20 @@ final class SocketIOManager {
         return try JSONDecoder().decode(PromoteHostResponse.self, from: data)
     }
 
+    func transferHost(userId: String) async throws -> TransferHostResponse {
+        let data = try await emit(event: SocketEvent.adminTransferHost, payload: ["userId": userId])
+        return try JSONDecoder().decode(TransferHostResponse.self, from: data)
+    }
+
     func redirectUser(userId: String, newRoomId: String) async throws -> RedirectUserResponse {
         let request = RedirectUserRequest(userId: userId, newRoomId: newRoomId)
         let data = try await emit(event: SocketEvent.redirectUser, payload: request)
         return try JSONDecoder().decode(RedirectUserResponse.self, from: data)
+    }
+
+    private func getRoomPolicyStatus(event: String) async throws -> RoomPolicyMutationResponse {
+        let data = try await emitAckOnly(event: event)
+        return try JSONDecoder().decode(RoomPolicyMutationResponse.self, from: data)
     }
 
     private func decodeAdminAccessMutation(_ data: Data) throws -> AdminAccessListSnapshot {
