@@ -447,6 +447,7 @@ enum NativeJoinLinkParser {
         "mediapipe",
         "reactions",
         "workers",
+        "chat-qa",
         "delete-account",
         "privacy",
         "sfu-admin",

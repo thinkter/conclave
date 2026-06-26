@@ -5204,6 +5204,7 @@ final class ConclaveTests: XCTestCase {
     func testNativeJoinLinkParserRejectsWebOnlyConclavePaths() throws {
         XCTAssertEqual(NativeJoinLinkParser.parse("https://conclave.acmvit.in/api/sfu/join").roomId, "")
         XCTAssertEqual(NativeJoinLinkParser.parse("https://conclave.acmvit.in/api%2Fsfu%2Fjoin").roomId, "")
+        XCTAssertEqual(NativeJoinLinkParser.parse("https://conclave.acmvit.in/chat-qa").roomId, "")
         XCTAssertEqual(NativeJoinLinkParser.parse("https://conclave.acmvit.in/privacy").roomId, "")
         XCTAssertEqual(NativeJoinLinkParser.parse("https://conclave.acmvit.in/favicon.ico").roomId, "")
         XCTAssertEqual(NativeJoinLinkParser.parse("conclave://api/sfu/join").roomId, "")
