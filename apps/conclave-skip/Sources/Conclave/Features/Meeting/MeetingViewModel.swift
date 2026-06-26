@@ -239,11 +239,13 @@ enum WebinarFeedSpeakerPolicy {
         requestedSpeakerUserId: String?,
         producers: [ProducerInfo]
     ) -> String? {
-        let activeProducerUserIds = Set(producers.compactMap { normalizedUserId($0.producerUserId) })
-
-        if let requested = normalizedUserId(requestedSpeakerUserId),
-           activeProducerUserIds.contains(requested) {
-            return requested
+        if let requested = normalizedUserId(requestedSpeakerUserId) {
+            for producer in producers {
+                guard let producerUserId = normalizedUserId(producer.producerUserId) else { continue }
+                if userIdsMatch(producerUserId, requested) {
+                    return producerUserId
+                }
+            }
         }
 
         for producer in producers {
@@ -257,6 +259,16 @@ enum WebinarFeedSpeakerPolicy {
     private static func normalizedUserId(_ value: String?) -> String? {
         let normalized = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return normalized.isEmpty ? nil : normalized
+    }
+
+    private static func userIdsMatch(_ lhs: String, _ rhs: String) -> Bool {
+        if lhs == rhs { return true }
+        guard userKeyPart(lhs) == userKeyPart(rhs) else { return false }
+        return !lhs.contains("#") || !rhs.contains("#")
+    }
+
+    private static func userKeyPart(_ userId: String) -> String {
+        userId.components(separatedBy: "#").first ?? userId
     }
 }
 

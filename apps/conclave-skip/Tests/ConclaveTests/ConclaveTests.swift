@@ -2057,6 +2057,64 @@ final class ConclaveTests: XCTestCase {
         )
     }
 
+    func testWebinarFeedSpeakerPolicyMatchesRequestedBaseIdToSessionProducer() throws {
+        let producers = [
+            ProducerInfo(
+                producerId: "producer-a",
+                producerUserId: "speaker-a@example.com#web-session",
+                kind: "video",
+                type: ProducerType.webcam.rawValue,
+                paused: false,
+                roomId: "room-a"
+            ),
+            ProducerInfo(
+                producerId: "producer-b",
+                producerUserId: "speaker-b@example.com#web-session",
+                kind: "video",
+                type: ProducerType.webcam.rawValue,
+                paused: false,
+                roomId: "room-a"
+            )
+        ]
+
+        XCTAssertEqual(
+            WebinarFeedSpeakerPolicy.speakerUserId(
+                requestedSpeakerUserId: "speaker-b@example.com",
+                producers: producers
+            ),
+            "speaker-b@example.com#web-session"
+        )
+    }
+
+    func testWebinarFeedSpeakerPolicyDoesNotMergeDifferentSessionSpeakers() throws {
+        let producers = [
+            ProducerInfo(
+                producerId: "producer-a",
+                producerUserId: "speaker-a@example.com#web-session",
+                kind: "video",
+                type: ProducerType.webcam.rawValue,
+                paused: false,
+                roomId: "room-a"
+            ),
+            ProducerInfo(
+                producerId: "producer-b",
+                producerUserId: "speaker-b@example.com#new-session",
+                kind: "video",
+                type: ProducerType.webcam.rawValue,
+                paused: false,
+                roomId: "room-a"
+            )
+        ]
+
+        XCTAssertEqual(
+            WebinarFeedSpeakerPolicy.speakerUserId(
+                requestedSpeakerUserId: "speaker-b@example.com#old-session",
+                producers: producers
+            ),
+            "speaker-a@example.com#web-session"
+        )
+    }
+
     func testWebinarFeedSpeakerPolicyFallsBackWhenRequestedSpeakerIsNotInFeed() throws {
         let producers = [
             ProducerInfo(
