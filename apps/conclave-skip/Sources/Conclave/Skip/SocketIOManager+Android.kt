@@ -43,6 +43,7 @@ internal object SocketEvent {
     val resumeConsumer = SfuClientEvent.resumeConsumer.rawValue
     val setConsumerPreferences = SfuClientEvent.setConsumerPreferences.rawValue
     val closeConsumer = SfuClientEvent.closeConsumer.rawValue
+    val getRooms = SfuClientEvent.getRooms.rawValue
     val getProducers = SfuClientEvent.getProducers.rawValue
     val toggleMute = SfuClientEvent.toggleMute.rawValue
     val toggleCamera = SfuClientEvent.toggleCamera.rawValue
@@ -67,6 +68,7 @@ internal object SocketEvent {
     val muteAll = SfuClientEvent.muteAll.rawValue
     val closeAllVideo = SfuClientEvent.closeAllVideo.rawValue
     val promoteHost = SfuClientEvent.promoteHost.rawValue
+    val redirectUser = SfuClientEvent.redirectUser.rawValue
     val adminMuteUser = SfuClientEvent.adminMuteUser.rawValue
     val adminMuteUserAudio = SfuClientEvent.adminMuteUserAudio.rawValue
     val adminCloseUserVideo = SfuClientEvent.adminCloseUserVideo.rawValue
@@ -76,6 +78,7 @@ internal object SocketEvent {
     val adminClearRaisedHands = SfuClientEvent.adminClearRaisedHands.rawValue
     val adminBroadcastNotice = SfuClientEvent.adminBroadcastNotice.rawValue
     val adminGetRoomState = SfuClientEvent.adminGetRoomState.rawValue
+    val adminGetRoomsDetailed = SfuClientEvent.adminGetRoomsDetailed.rawValue
     val adminGetAccessLists = SfuClientEvent.adminGetAccessLists.rawValue
     val adminAllowUsers = SfuClientEvent.adminAllowUsers.rawValue
     val adminBlockUsers = SfuClientEvent.adminBlockUsers.rawValue
@@ -698,6 +701,11 @@ internal class SocketIOManager {
         return decodeGetProducersResponse(data)
     }
 
+    internal suspend fun getRooms(): skip.lib.Array<RoomInfo> {
+        val data = emitAckOnly(SocketEvent.getRooms)
+        return decodeRoomListResponse(data).rooms
+    }
+
     internal suspend fun toggleMute(producerId: String, paused: Boolean) {
         val request = ToggleMediaRequest(producerId = producerId, paused = paused)
         emit(SocketEvent.toggleMute, request)
@@ -1049,6 +1057,11 @@ internal class SocketIOManager {
         return JSONDecoder().decode(AdminRoomStateResponse::class, from = data).room
     }
 
+    internal suspend fun getAdminRoomsDetailed(): skip.lib.Array<AdminRoomSnapshot> {
+        val data = emitAckOnly(SocketEvent.adminGetRoomsDetailed)
+        return decodeAdminRoomsDetailedResponse(data).rooms
+    }
+
     internal suspend fun getAccessLists(): AdminAccessListSnapshot {
         val data = emitAckOnly(SocketEvent.adminGetAccessLists)
         return decodeAdminAccessListsResponse(data)
@@ -1107,6 +1120,12 @@ internal class SocketIOManager {
     internal suspend fun promoteHost(userId: String): PromoteHostResponse {
         val data = emit(SocketEvent.promoteHost, mapOf("userId" to userId))
         return JSONDecoder().decode(PromoteHostResponse::class, from = data)
+    }
+
+    internal suspend fun redirectUser(userId: String, newRoomId: String): RedirectUserResponse {
+        val request = RedirectUserRequest(userId = userId, newRoomId = newRoomId)
+        val data = emit(SocketEvent.redirectUser, request)
+        return JSONDecoder().decode(RedirectUserResponse::class, from = data)
     }
 
     private fun decodeAdminAccessMutation(data: Data): AdminAccessListSnapshot {
@@ -1787,6 +1806,26 @@ internal class SocketIOManager {
         return GetProducersResponse(producers = skip.lib.Array(producers))
     }
 
+    private fun decodeRoomInfoObject(obj: JSONObject): RoomInfo? {
+        val roomId = stringField(obj, "id") ?: return null
+        return RoomInfo(
+            id = roomId,
+            userCount = intField(obj, "userCount") ?: 0
+        )
+    }
+
+    private fun decodeRoomListResponse(data: Data): RoomListResponse {
+        val obj = dataObject(data) ?: throw ErrorException("Invalid getRooms acknowledgement.")
+        val rawRooms = jsonArrayField(obj, "rooms") ?: JSONArray()
+        val rooms = mutableListOf<RoomInfo>()
+        for (index in 0 until rawRooms.length()) {
+            val room = rawRooms.optJSONObject(index)
+                ?.let { decodeRoomInfoObject(it) } ?: continue
+            rooms.add(room)
+        }
+        return RoomListResponse(rooms = skip.lib.Array(rooms))
+    }
+
     private fun decodeProducerInfo(value: Any?): ProducerInfo? {
         val obj = jsonObject(value) ?: return decode<ProducerInfo>(value)
         val producerId = stringField(obj, "producerId") ?: return null
@@ -2286,6 +2325,18 @@ internal class SocketIOManager {
             participants = adminRoomParticipantArrayField(obj, "participants"),
             pendingUsers = pendingUserArrayField(obj, "pendingUsers")
         )
+    }
+
+    private fun decodeAdminRoomsDetailedResponse(data: Data): AdminRoomsDetailedResponse {
+        val obj = dataObject(data) ?: throw ErrorException("Invalid admin room list acknowledgement.")
+        val rawRooms = jsonArrayField(obj, "rooms") ?: JSONArray()
+        val rooms = mutableListOf<AdminRoomSnapshot>()
+        for (index in 0 until rawRooms.length()) {
+            val room = rawRooms.optJSONObject(index)
+                ?.let { decodeAdminRoomSnapshotObject(it) } ?: continue
+            rooms.add(room)
+        }
+        return AdminRoomsDetailedResponse(rooms = skip.lib.Array(rooms))
     }
 
     private fun decodeAdminRoomStateChanged(value: Any?): AdminRoomStateChangedNotification? {

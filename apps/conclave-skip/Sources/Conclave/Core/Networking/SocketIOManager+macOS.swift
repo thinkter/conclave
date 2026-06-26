@@ -122,6 +122,7 @@ final class SocketIOManager {
         requestKeyFrame: Bool = false
     ) async throws { }
     func getProducers() async throws -> GetProducersResponse { GetProducersResponse(producers: []) }
+    func getRooms() async throws -> [RoomInfo] { [] }
 
     func toggleMute(producerId: String, paused: Bool) async throws { }
     func toggleCamera(producerId: String, paused: Bool) async throws { }
@@ -283,6 +284,7 @@ final class SocketIOManager {
             pendingUsers: nil
         )
     }
+    func getAdminRoomsDetailed() async throws -> [AdminRoomSnapshot] { [] }
     func getAccessLists() async throws -> AdminAccessListSnapshot {
         AdminAccessListSnapshot(allowedUserKeys: [], lockedAllowedUserKeys: [], blockedUserKeys: [])
     }
@@ -316,6 +318,9 @@ final class SocketIOManager {
             promotedUserKey: nil,
             error: nil
         )
+    }
+    func redirectUser(userId: String, newRoomId: String) async throws -> RedirectUserResponse {
+        RedirectUserResponse(success: true, error: nil)
     }
 }
 #endif

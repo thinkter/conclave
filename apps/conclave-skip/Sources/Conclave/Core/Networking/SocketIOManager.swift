@@ -36,6 +36,7 @@ private enum SocketEvent {
     static let resumeConsumer = SfuClientEvent.resumeConsumer.rawValue
     static let setConsumerPreferences = SfuClientEvent.setConsumerPreferences.rawValue
     static let closeConsumer = SfuClientEvent.closeConsumer.rawValue
+    static let getRooms = SfuClientEvent.getRooms.rawValue
     static let getProducers = SfuClientEvent.getProducers.rawValue
     static let toggleMute = SfuClientEvent.toggleMute.rawValue
     static let toggleCamera = SfuClientEvent.toggleCamera.rawValue
@@ -59,6 +60,7 @@ private enum SocketEvent {
     static let muteAll = SfuClientEvent.muteAll.rawValue
     static let closeAllVideo = SfuClientEvent.closeAllVideo.rawValue
     static let promoteHost = SfuClientEvent.promoteHost.rawValue
+    static let redirectUser = SfuClientEvent.redirectUser.rawValue
     static let adminMuteUser = SfuClientEvent.adminMuteUser.rawValue
     static let adminMuteUserAudio = SfuClientEvent.adminMuteUserAudio.rawValue
     static let adminCloseUserVideo = SfuClientEvent.adminCloseUserVideo.rawValue
@@ -68,6 +70,7 @@ private enum SocketEvent {
     static let adminClearRaisedHands = SfuClientEvent.adminClearRaisedHands.rawValue
     static let adminBroadcastNotice = SfuClientEvent.adminBroadcastNotice.rawValue
     static let adminGetRoomState = SfuClientEvent.adminGetRoomState.rawValue
+    static let adminGetRoomsDetailed = SfuClientEvent.adminGetRoomsDetailed.rawValue
     static let adminGetAccessLists = SfuClientEvent.adminGetAccessLists.rawValue
     static let adminAllowUsers = SfuClientEvent.adminAllowUsers.rawValue
     static let adminBlockUsers = SfuClientEvent.adminBlockUsers.rawValue
@@ -702,6 +705,11 @@ final class SocketIOManager {
         return try JSONDecoder().decode(GetProducersResponse.self, from: data)
     }
 
+    func getRooms() async throws -> [RoomInfo] {
+        let data = try await emitAckOnly(event: SocketEvent.getRooms)
+        return try JSONDecoder().decode(RoomListResponse.self, from: data).rooms
+    }
+
     // MARK: - Media Controls
 
     func toggleMute(producerId: String, paused: Bool) async throws {
@@ -1038,6 +1046,11 @@ final class SocketIOManager {
         return try JSONDecoder().decode(AdminRoomStateResponse.self, from: data).room
     }
 
+    func getAdminRoomsDetailed() async throws -> [AdminRoomSnapshot] {
+        let data = try await emitAckOnly(event: SocketEvent.adminGetRoomsDetailed)
+        return try JSONDecoder().decode(AdminRoomsDetailedResponse.self, from: data).rooms
+    }
+
     func getAccessLists() async throws -> AdminAccessListSnapshot {
         let data = try await emitAckOnly(event: SocketEvent.adminGetAccessLists)
         return try JSONDecoder().decode(AdminAccessListsResponse.self, from: data).access
@@ -1086,6 +1099,12 @@ final class SocketIOManager {
     func promoteHost(userId: String) async throws -> PromoteHostResponse {
         let data = try await emit(event: SocketEvent.promoteHost, payload: ["userId": userId])
         return try JSONDecoder().decode(PromoteHostResponse.self, from: data)
+    }
+
+    func redirectUser(userId: String, newRoomId: String) async throws -> RedirectUserResponse {
+        let request = RedirectUserRequest(userId: userId, newRoomId: newRoomId)
+        let data = try await emit(event: SocketEvent.redirectUser, payload: request)
+        return try JSONDecoder().decode(RedirectUserResponse.self, from: data)
     }
 
     private func decodeAdminAccessMutation(_ data: Data) throws -> AdminAccessListSnapshot {

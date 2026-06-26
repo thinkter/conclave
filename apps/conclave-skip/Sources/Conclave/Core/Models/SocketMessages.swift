@@ -899,6 +899,19 @@ struct AdminRoomStateResponse: Codable {
     let room: AdminRoomSnapshot
 }
 
+struct RoomInfo: Codable, Equatable {
+    let id: String
+    let userCount: Int
+}
+
+struct RoomListResponse: Codable {
+    let rooms: [RoomInfo]
+}
+
+struct AdminRoomsDetailedResponse: Codable {
+    let rooms: [AdminRoomSnapshot]
+}
+
 struct AdminRoomSnapshot: Codable {
     let id: String?
     let hostUserId: String?
@@ -1064,6 +1077,16 @@ struct AdminRoomPoliciesUpdateRequest: Encodable {
     let ttsDisabled: Bool?
     let dmEnabled: Bool?
     let reactionsDisabled: Bool?
+}
+
+struct RedirectUserRequest: Encodable {
+    let userId: String
+    let newRoomId: String
+}
+
+struct RedirectUserResponse: Codable {
+    let success: Bool?
+    let error: String?
 }
 
 struct MeetingConfigSnapshot: Codable {

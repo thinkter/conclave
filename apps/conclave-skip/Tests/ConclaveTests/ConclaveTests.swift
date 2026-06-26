@@ -5547,6 +5547,59 @@ final class ConclaveTests: XCTestCase {
         XCTAssertNil(object["reactionsDisabled"])
     }
 
+    func testRoomListResponseDecodesWebRoomShape() throws {
+        let data = Data("""
+        {
+          "rooms": [
+            { "id": "alpha-room", "userCount": 2 },
+            { "id": "beta-room", "userCount": 0 }
+          ]
+        }
+        """.utf8)
+
+        let response = try JSONDecoder().decode(RoomListResponse.self, from: data)
+
+        XCTAssertEqual(response.rooms, [
+            RoomInfo(id: "alpha-room", userCount: 2),
+            RoomInfo(id: "beta-room", userCount: 0),
+        ])
+    }
+
+    func testAdminRoomsDetailedResponseDecodesRoomSnapshots() throws {
+        let data = Data("""
+        {
+          "rooms": [
+            {
+              "id": "alpha-room",
+              "hostUserId": "host-1",
+              "adminUserIds": ["host-1"],
+              "participants": [
+                { "userId": "user-1", "displayName": "Alex", "muted": false }
+              ],
+              "pendingUsers": [
+                { "userId": "pending-1", "displayName": "Taylor" }
+              ]
+            }
+          ]
+        }
+        """.utf8)
+
+        let response = try JSONDecoder().decode(AdminRoomsDetailedResponse.self, from: data)
+
+        XCTAssertEqual(response.rooms.first?.id, "alpha-room")
+        XCTAssertEqual(response.rooms.first?.hostUserId, "host-1")
+        XCTAssertEqual(response.rooms.first?.participants?.first?.displayName, "Alex")
+        XCTAssertEqual(response.rooms.first?.pendingUsers?.first?.displayName, "Taylor")
+    }
+
+    func testRedirectUserRequestEncodesWebPayloadShape() throws {
+        let data = try JSONEncoder().encode(RedirectUserRequest(userId: "user-1", newRoomId: "beta-room"))
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? NSDictionary)
+
+        XCTAssertEqual(object["userId"] as? String, "user-1")
+        XCTAssertEqual(object["newRoomId"] as? String, "beta-room")
+    }
+
     func testMeetingConfigClearInviteCodeEncodesExplicitNull() throws {
         let data = try JSONEncoder().encode(MeetingConfigUpdateRequest(inviteCode: nil))
         let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? NSDictionary)
@@ -5702,6 +5755,21 @@ final class ConclaveTests: XCTestCase {
         XCTAssertTrue(source.contains("val adminSetPolicies = SfuClientEvent.adminSetPolicies.rawValue"))
         XCTAssertTrue(source.contains("internal suspend fun setRoomPolicies("))
         XCTAssertTrue(source.contains("emit(SocketEvent.adminSetPolicies, payload)"))
+    }
+
+    func testNativeSocketManagersExposeRoomRoutingEvents() throws {
+        let iosSource = try sourceFileContents("Sources/Conclave/Core/Networking/SocketIOManager.swift")
+        let androidSource = try sourceFileContents("Sources/Conclave/Skip/SocketIOManager+Android.kt")
+
+        for source in [iosSource, androidSource] {
+            XCTAssertTrue(source.contains("getRooms = SfuClientEvent.getRooms.rawValue"))
+            XCTAssertTrue(source.contains("redirectUser = SfuClientEvent.redirectUser.rawValue"))
+            XCTAssertTrue(source.contains("adminGetRoomsDetailed = SfuClientEvent.adminGetRoomsDetailed.rawValue"))
+        }
+        XCTAssertTrue(iosSource.contains("func getRooms() async throws -> [RoomInfo]"))
+        XCTAssertTrue(iosSource.contains("func redirectUser(userId: String, newRoomId: String) async throws -> RedirectUserResponse"))
+        XCTAssertTrue(androidSource.contains("internal suspend fun getRooms(): skip.lib.Array<RoomInfo>"))
+        XCTAssertTrue(androidSource.contains("internal suspend fun redirectUser(userId: String, newRoomId: String): RedirectUserResponse"))
     }
 
     func testDarwinPermissionPurposeStringsArePresentInAppAndExtensionPlists() throws {

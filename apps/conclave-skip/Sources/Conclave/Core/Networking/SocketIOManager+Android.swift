@@ -113,6 +113,7 @@ final class SocketIOManager {
         requestKeyFrame: Bool = false
     ) async throws { fatalError() }
     func getProducers() async throws -> GetProducersResponse { fatalError() }
+    func getRooms() async throws -> [RoomInfo] { fatalError() }
 
     func toggleMute(producerId: String, paused: Bool) async throws { fatalError() }
     func toggleCamera(producerId: String, paused: Bool) async throws { fatalError() }
@@ -176,6 +177,7 @@ final class SocketIOManager {
     func stopAllScreenShares() async throws -> AdminBulkMediaActionResponse { fatalError() }
     func clearRaisedHands() async throws { fatalError() }
     func getAdminRoomState() async throws -> AdminRoomSnapshot { fatalError() }
+    func getAdminRoomsDetailed() async throws -> [AdminRoomSnapshot] { fatalError() }
     func getAccessLists() async throws -> AdminAccessListSnapshot { fatalError() }
     func allowUsers(_ userKeys: [String], allowWhenLocked: Bool = true) async throws -> AdminAccessListSnapshot { fatalError() }
     func blockUsers(_ userKeys: [String], kickPresent: Bool = true, reason: String? = nil) async throws -> AdminAccessListSnapshot { fatalError() }
@@ -185,5 +187,6 @@ final class SocketIOManager {
     func endRoom(message: String?, delayMs: Int?) async throws -> AdminEndRoomResponse { fatalError() }
     func endRoomNow(message: String?) async throws -> AdminEndRoomResponse { fatalError() }
     func promoteHost(userId: String) async throws -> PromoteHostResponse { fatalError() }
+    func redirectUser(userId: String, newRoomId: String) async throws -> RedirectUserResponse { fatalError() }
 }
 #endif
