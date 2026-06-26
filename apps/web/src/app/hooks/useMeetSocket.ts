@@ -519,6 +519,7 @@ interface UseMeetSocketOptions {
     options?: {
       user?: { id?: string; email?: string | null; name?: string | null };
       isHost?: boolean;
+      isGhost?: boolean;
       joinMode?: JoinMode;
     },
   ) => Promise<JoinInfo>;
@@ -3895,7 +3896,8 @@ export function useMeetSocket({
               ? Promise.resolve(cachedToken)
                 : getJoinInfo(roomIdForJoin, sessionIdRef.current, {
                     user,
-                    isHost: isAdmin,
+                    isHost: isAdmin || ghostEnabled,
+                    isGhost: ghostEnabled,
                     joinMode,
                   });
 
@@ -4023,6 +4025,7 @@ export function useMeetSocket({
                 hostUserId?: string | null;
               }) => {
                 if (!isRoomEvent(eventRoomId)) return;
+                if (ghostEnabled) return;
                 setIsAdmin(true);
                 setHostUserId(hostUserId ?? userId);
                 setHostUserIds((prev) => {
@@ -4309,6 +4312,9 @@ export function useMeetSocket({
               }) => {
                 console.log("[Meets] User joined:", joinedUserId);
                 if (joinedUserId === userId) {
+                  return;
+                }
+                if (isGhost && !ghostEnabled) {
                   return;
                 }
                 const clearedDepartedParticipant =
@@ -5289,6 +5295,7 @@ export function useMeetSocket({
       isCameraOff,
       isMuted,
       isAdmin,
+      ghostEnabled,
       setIsAdmin,
       isRoomEvent,
       joinOptionsRef,

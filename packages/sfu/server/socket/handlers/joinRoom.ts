@@ -836,7 +836,9 @@ export const registerJoinRoomHandler = (context: ConnectionContext): void => {
         const feedSnapshot = context.currentRoom.refreshWebinarFeedSnapshot();
         const existingProducers = context.currentClient.isWebinarAttendee
           ? feedSnapshot.producers
-          : context.currentRoom.getAllProducers(userId);
+          : context.currentRoom.getAllProducers(userId, {
+              includeGhostProducers: context.currentClient.isGhost,
+            });
 
         emitWebinarAttendeeCountChanged(io, state, context.currentRoom);
         emitWebinarFeedChanged(io, state, context.currentRoom);
