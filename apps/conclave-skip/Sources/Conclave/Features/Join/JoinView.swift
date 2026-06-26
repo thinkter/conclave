@@ -1402,21 +1402,16 @@ struct JoinView: View {
             }
             .clipShape(RoundedRectangle(cornerRadius: ACMRadius.md))
         } else if let user = appState.currentUser, user.provider == .guest {
-            HStack(spacing: 12) {
-                ACMSystemIcon.icon("person.crop.circle", android: "account", size: 20, tint: "muted")
-                    .foregroundStyle(ACMColors.textMuted)
-                    .frame(width: 28, height: 28)
+            HStack(spacing: 10) {
+                Text(accountTitle(for: user))
+                    .font(ACMFont.trial(13.5, weight: .medium))
+                    .foregroundStyle(ACMColors.text)
+                    .lineLimit(1)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(accountTitle(for: user))
-                        .font(ACMFont.trial(14, weight: .medium))
-                        .foregroundStyle(ACMColors.text)
-                        .lineLimit(1)
-                    Text("Guest")
-                        .font(ACMFont.trial(12))
-                        .foregroundStyle(ACMColors.textFaint)
-                        .lineLimit(1)
-                }
+                Text("Guest")
+                    .font(ACMFont.trial(12, weight: .medium))
+                    .foregroundStyle(ACMColors.textFaint)
+                    .lineLimit(1)
 
                 Spacer(minLength: 8)
 
@@ -1432,16 +1427,7 @@ struct JoinView: View {
                 .disabled(isSigningOut || isDeletingAccount || isJoinInProgress)
                 .opacity((isSigningOut || isDeletingAccount || isJoinInProgress) ? 0.55 : 1.0)
             }
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal, 14)
-            .frame(height: 58)
-            .acmColorBackground(ACMColors.subtleFill)
-            .overlay {
-                RoundedRectangle(cornerRadius: ACMRadius.md)
-                    .strokeBorder(lineWidth: 1)
-                    .foregroundStyle(ACMColors.borderSubtle)
-            }
-            .clipShape(RoundedRectangle(cornerRadius: ACMRadius.md))
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
