@@ -5985,9 +5985,11 @@ final class ConclaveTests: XCTestCase {
             "NSRemovableVolumesUsageDescription",
             "NSSpeechRecognitionUsageDescription",
             "NSSiriUsageDescription",
+            "NSFocusStatusUsageDescription",
             "NSMotionUsageDescription",
             "NSSensorKitUsageDescription",
             "NSUserTrackingUsageDescription",
+            "NSUserNotificationsUsageDescription",
             "NFCReaderUsageDescription",
             "NSAppleMusicUsageDescription",
             "NSNearbyInteractionUsageDescription",
@@ -6081,9 +6083,11 @@ final class ConclaveTests: XCTestCase {
         XCTAssertTrue(script.contains("\"NSDocumentsFolderUsageDescription\""))
         XCTAssertTrue(script.contains("\"NSSpeechRecognitionUsageDescription\""))
         XCTAssertTrue(script.contains("\"NSSiriUsageDescription\""))
+        XCTAssertTrue(script.contains("\"NSFocusStatusUsageDescription\""))
         XCTAssertTrue(script.contains("\"NSMotionUsageDescription\""))
         XCTAssertTrue(script.contains("\"NSSensorKitUsageDescription\""))
         XCTAssertTrue(script.contains("\"NSUserTrackingUsageDescription\""))
+        XCTAssertTrue(script.contains("\"NSUserNotificationsUsageDescription\""))
         XCTAssertTrue(script.contains("\"NFCReaderUsageDescription\""))
         XCTAssertTrue(script.contains("\"NSHealthClinicalHealthRecordsShareUsageDescription\""))
         XCTAssertEqual(script.components(separatedBy: "set_all_purpose_strings \"${plist_path}\"").count - 1, 5)

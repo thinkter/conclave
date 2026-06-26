@@ -93,12 +93,16 @@
 	<string>Conclave uses speech recognition only when you choose a meeting voice feature such as transcription.</string>
 	<key>NSSiriUsageDescription</key>
 	<string>Conclave uses Siri only when you choose a voice shortcut or Siri action for Conclave.</string>
+	<key>NSFocusStatusUsageDescription</key>
+	<string>Conclave uses Focus status only to respect notification and call availability settings you enable.</string>
 	<key>NSMotionUsageDescription</key>
 	<string>Conclave uses device motion only when needed to keep meeting video oriented correctly.</string>
 	<key>NSSensorKitUsageDescription</key>
 	<string>Conclave uses sensor data only when you explicitly choose a sensor-based meeting feature.</string>
 	<key>NSUserTrackingUsageDescription</key>
 	<string>Conclave does not track you across apps or websites.</string>
+	<key>NSUserNotificationsUsageDescription</key>
+	<string>Conclave sends notifications for meeting calls, reminders, and updates you enable.</string>
 	<key>NFCReaderUsageDescription</key>
 	<string>Conclave uses NFC only when you choose an NFC-based join or sharing action.</string>
 	<key>NSAppleMusicUsageDescription</key>
