@@ -89,6 +89,7 @@ const resolveTrustedOrigins = (): string[] => {
 };
 
 const AUTH_SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 365;
+const isDevAuthEnabled = process.env.NODE_ENV !== "production";
 
 export const auth = betterAuth({
   session: {
@@ -104,6 +105,11 @@ export const auth = betterAuth({
     deleteUser: {
       enabled: true,
     },
+  },
+  emailAndPassword: {
+    enabled: isDevAuthEnabled,
+    disableSignUp: !isDevAuthEnabled,
+    minPasswordLength: 8,
   },
 
   socialProviders: {

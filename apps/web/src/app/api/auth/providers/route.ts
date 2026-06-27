@@ -4,6 +4,8 @@ export const runtime = "nodejs";
 
 type AuthProviderId = "google" | "apple" | "roblox" | "vercel";
 
+const isDevAuthEnabled = (): boolean => process.env.NODE_ENV !== "production";
+
 const enabledProviders = (): AuthProviderId[] => {
   const providers: AuthProviderId[] = [];
   if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
@@ -23,7 +25,7 @@ const enabledProviders = (): AuthProviderId[] => {
 
 export async function GET() {
   return NextResponse.json(
-    { providers: enabledProviders() },
+    { providers: enabledProviders(), devAuth: isDevAuthEnabled() },
     { headers: { "Cache-Control": "no-store" } },
   );
 }
