@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { useGame } from "@conclave/apps-sdk";
+import type { GameConfig, GameOptionSpec } from "@conclave/apps-sdk";
 import { color, radius } from "@conclave/ui-tokens";
 import {
   GAME_DOCK_HEADER_CLASS,
@@ -13,7 +14,15 @@ import {
   PrimaryButton,
 } from "./gameUi";
 
-type CatalogEntry = { id: string; name: string; description: string; minPlayers: number; maxPlayers: number };
+type CatalogEntry = {
+  id: string;
+  name: string;
+  description: string;
+  minPlayers: number;
+  maxPlayers: number;
+  options: GameOptionSpec[];
+  hasLeaderboard: boolean;
+};
 
 /** One clean list row, used for both the launcher and the vote. Neutral by
  * default; a single coral accent marks selection / progress. */
@@ -84,6 +93,7 @@ export function GamesPanel({ onClose, rightOffset = 0 }: { onClose: () => void; 
   const { catalog, vote, isAdmin, userId, startGame, openVote, castVote, cancelVote } = useGame();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [configuring, setConfiguring] = useState<CatalogEntry | null>(null);
 
   const run = async (fn: () => Promise<{ success: boolean; error?: string }>) => {
     setBusy(true);
@@ -94,6 +104,14 @@ export function GamesPanel({ onClose, rightOffset = 0 }: { onClose: () => void; 
     return result.success;
   };
 
+  const pick = (entry: CatalogEntry) => {
+    setError(null);
+    if (entry.options.length > 0) setConfiguring(entry);
+    else run(() => startGame(entry.id));
+  };
+
+  const title = vote ? "Vote for a game" : configuring ? configuring.name : "Play a game";
+
   return (
     <aside
       className={GAME_DOCK_PANEL_CLASS}
@@ -101,9 +119,19 @@ export function GamesPanel({ onClose, rightOffset = 0 }: { onClose: () => void; 
       aria-label="Games"
     >
       <div className={GAME_DOCK_HEADER_CLASS}>
-        <h2 className={GAME_DOCK_TITLE_CLASS}>
-          {vote ? "Vote for a game" : "Play a game"}
-        </h2>
+        {configuring && !vote ? (
+          <button
+            type="button"
+            onClick={() => setConfiguring(null)}
+            aria-label="Back"
+            className="-ml-1 mr-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[#a1a1aa] transition-colors hover:bg-white/[0.06] hover:text-[#fafafa]"
+          >
+            <svg width={18} height={18} viewBox="0 0 24 24" fill="none" aria-hidden>
+              <path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+        ) : null}
+        <h2 className={GAME_DOCK_TITLE_CLASS}>{title}</h2>
         <GameDockCloseButton onClose={onClose} label="Close games" />
       </div>
 
@@ -118,12 +146,21 @@ export function GamesPanel({ onClose, rightOffset = 0 }: { onClose: () => void; 
             onStart={(id) => run(() => startGame(id))}
             onCancel={() => run(() => cancelVote())}
           />
+        ) : configuring ? (
+          <GameConfigView
+            entry={configuring}
+            busy={busy}
+            onStart={async (cfg) => {
+              const ok = await run(() => startGame(configuring.id, cfg));
+              if (ok) setConfiguring(null);
+            }}
+          />
         ) : (
           <LauncherView
             catalog={catalog}
             isAdmin={isAdmin}
             busy={busy}
-            onStart={(id) => run(() => startGame(id))}
+            onPick={pick}
             onOpenVote={() => run(() => openVote())}
           />
         )}
@@ -137,13 +174,13 @@ function LauncherView({
   catalog,
   isAdmin,
   busy,
-  onStart,
+  onPick,
   onOpenVote,
 }: {
   catalog: CatalogEntry[];
   isAdmin: boolean;
   busy: boolean;
-  onStart: (id: string) => void;
+  onPick: (entry: CatalogEntry) => void;
   onOpenVote: () => void;
 }) {
   return (
@@ -157,10 +194,17 @@ function LauncherView({
           name={entry.name}
           sub={entry.description}
           disabled={!isAdmin || busy}
-          onClick={isAdmin ? () => onStart(entry.id) : undefined}
+          onClick={isAdmin ? () => onPick(entry) : undefined}
           trailing={
-            <span style={{ fontSize: 11, color: color.textFaint, whiteSpace: "nowrap" }}>
-              {entry.minPlayers} to {entry.maxPlayers}
+            <span style={{ display: "flex", alignItems: "center", gap: 8, color: color.textFaint }}>
+              <span style={{ fontSize: 11, whiteSpace: "nowrap" }}>
+                {entry.minPlayers} to {entry.maxPlayers}
+              </span>
+              {isAdmin ? (
+                <svg width={16} height={16} viewBox="0 0 24 24" fill="none" aria-hidden>
+                  <path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              ) : null}
             </span>
           }
         />
@@ -172,6 +216,108 @@ function LauncherView({
           </PrimaryButton>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function Segmented<T extends string | number>({
+  value,
+  options,
+  onChange,
+}: {
+  value: T;
+  options: { value: T; label: string }[];
+  onChange: (value: T) => void;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        gap: 4,
+        padding: 4,
+        borderRadius: radius.md,
+        background: color.surface,
+        border: `1px solid ${color.border}`,
+      }}
+    >
+      {options.map((opt) => {
+        const active = opt.value === value;
+        return (
+          <button
+            key={String(opt.value)}
+            type="button"
+            onClick={() => onChange(opt.value)}
+            style={{
+              flex: 1,
+              padding: "7px 6px",
+              borderRadius: radius.sm,
+              border: "none",
+              background: active ? color.accent : "transparent",
+              color: active ? color.text : color.textMuted,
+              fontFamily: HEAD_FONT,
+              fontSize: 13,
+              fontWeight: 500,
+              cursor: "pointer",
+              transition: "background 140ms ease, color 140ms ease",
+            }}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function GameConfigView({
+  entry,
+  busy,
+  onStart,
+}: {
+  entry: CatalogEntry;
+  busy: boolean;
+  onStart: (config: GameConfig) => void;
+}) {
+  const [config, setConfig] = useState<GameConfig>(() => {
+    const initial: GameConfig = {};
+    for (const opt of entry.options) initial[opt.id] = opt.default;
+    return initial;
+  });
+
+  const setValue = (id: string, value: number | string) =>
+    setConfig((prev) => ({ ...prev, [id]: value }));
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+      <p style={{ fontSize: 13, color: color.textMuted, margin: 0, lineHeight: 1.5 }}>
+        {entry.description}. Set it up, then start.
+      </p>
+
+      {entry.options.map((opt) => (
+        <div key={opt.id} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <span style={{ fontSize: 13, color: color.text, fontFamily: HEAD_FONT }}>{opt.label}</span>
+          {opt.type === "number" ? (
+            <Segmented
+              value={config[opt.id] as number}
+              options={(opt.presets ?? [opt.min, Math.round((opt.min + opt.max) / 2), opt.max]).map((n) => ({
+                value: n,
+                label: `${n}${opt.suffix ? ` ${opt.suffix}` : ""}`,
+              }))}
+              onChange={(v) => setValue(opt.id, v)}
+            />
+          ) : (
+            <Segmented
+              value={config[opt.id] as string}
+              options={opt.choices.map((c) => ({ value: c.value, label: c.label }))}
+              onChange={(v) => setValue(opt.id, v)}
+            />
+          )}
+        </div>
+      ))}
+
+      <PrimaryButton full disabled={busy} onClick={() => onStart(config)}>
+        Start {entry.name}
+      </PrimaryButton>
     </div>
   );
 }

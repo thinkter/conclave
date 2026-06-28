@@ -1,6 +1,7 @@
 import { Admin } from "../../../config/classes/Admin.js";
 import type { Room } from "../../../config/classes/Room.js";
 import { GameSession } from "../../games/engine.js";
+import { normalizeConfig } from "../../games/config.js";
 import { getGameCatalog, getGameModule } from "../../games/registry.js";
 import type {
   GameCatalogEntry,
@@ -88,6 +89,8 @@ const buildVoteState = (room: Room): GameVoteState | null => {
         description: module.description,
         minPlayers: module.minPlayers,
         maxPlayers: module.maxPlayers,
+        options: module.options ?? [],
+        hasLeaderboard: Boolean(module.hasLeaderboard),
       });
     }
   }
@@ -197,6 +200,7 @@ export const registerGameHandlers = (context: ConnectionContext): void => {
           players,
           adminIds: collectAdminIds(room),
           hostId: context.currentClient.id,
+          config: normalizeConfig(module.options, data?.options),
         });
       } catch (error) {
         Logger.error("[Games] failed to start", error);

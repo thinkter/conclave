@@ -30,4 +30,6 @@ export const getGameCatalog = (): GameCatalogEntry[] =>
     description: module.description,
     minPlayers: module.minPlayers,
     maxPlayers: module.maxPlayers,
+    options: module.options ?? [],
+    hasLeaderboard: Boolean(module.hasLeaderboard),
   }));

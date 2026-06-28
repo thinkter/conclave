@@ -362,3 +362,54 @@ export function GameLobby({
     </div>
   );
 }
+
+/**
+ * Live leaderboard shown in the game dock for scoring games. Static and clean,
+ * sorted by score, with the local player highlighted. No animation.
+ */
+export function Leaderboard({
+  rows,
+  userId,
+  max = 6,
+  title = "Leaderboard",
+}: {
+  rows: { id: string; name: string; score: number }[];
+  userId?: string | null;
+  max?: number;
+  title?: string;
+}) {
+  const sorted = [...rows].sort((a, b) => b.score - a.score).slice(0, max);
+  if (sorted.length === 0) return null;
+  return (
+    <div style={{ marginTop: 18, paddingTop: 14, borderTop: `1px solid ${color.border}` }}>
+      <p style={{ fontSize: 11, color: color.textFaint, fontFamily: HEAD_FONT, margin: "0 0 8px" }}>{title}</p>
+      <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+        {sorted.map((r, i) => {
+          const you = r.id === userId;
+          return (
+            <div
+              key={r.id}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "7px 10px",
+                borderRadius: radius.sm,
+                background: you ? color.accentSoft : "transparent",
+              }}
+            >
+              <span style={{ width: 16, fontSize: 12, color: i === 0 ? color.accent : color.textFaint, fontFamily: HEAD_FONT, fontWeight: 500 }}>
+                {i + 1}
+              </span>
+              <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, color: color.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {r.name}
+                {you ? " (you)" : ""}
+              </span>
+              <span style={{ fontSize: 13, fontFamily: HEAD_FONT, fontWeight: 500, color: color.text }}>{r.score}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}

@@ -7,8 +7,20 @@ import {
   GAME_DOCK_PANEL_CLASS,
   GAME_DOCK_TITLE_CLASS,
   HEAD_FONT,
+  Leaderboard,
 } from "./gameUi";
 import { getGameRenderer } from "./registry";
+
+type ScoreRow = { id: string; name: string; score: number };
+
+const readScoreboard = (view: unknown): ScoreRow[] | null => {
+  const board = (view as { scoreboard?: unknown } | null)?.scoreboard;
+  if (!Array.isArray(board)) return null;
+  return board.filter(
+    (r): r is ScoreRow =>
+      Boolean(r) && typeof r.id === "string" && typeof r.name === "string" && typeof r.score === "number",
+  );
+};
 
 /**
  * The active game as a right-docked panel (same dock model as Chat/Participants).
@@ -32,15 +44,8 @@ export function GamePanel({ rightOffset = 0 }: { rightOffset?: number }) {
       aria-label={`${publicState.name} game`}
     >
       <div className={GAME_DOCK_HEADER_CLASS}>
-        <div className="flex min-w-0 items-center gap-2">
+        <div className="flex h-8 min-w-0 items-center gap-2">
           <h2 className={GAME_DOCK_TITLE_CLASS}>{publicState.name}</h2>
-          <span
-            className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-2.5 text-[12px] font-medium text-[#a1a1aa]"
-            aria-label="Game live"
-          >
-            <span className="h-1.5 w-1.5 rounded-full bg-[#ff6b57]" />
-            Live
-          </span>
         </div>
         {isAdmin ? (
           <button
@@ -77,16 +82,23 @@ export function GamePanel({ rightOffset = 0 }: { rightOffset?: number }) {
             </p>
           </div>
         ) : (
-          <Game
-            pub={publicState.view as never}
-            me={view as never}
-            players={publicState.players}
-            isAdmin={isAdmin}
-            userId={userId}
-            hostId={publicState.hostId}
-            phase={publicState.phase}
-            move={move}
-          />
+          <>
+            <Game
+              pub={publicState.view as never}
+              me={view as never}
+              players={publicState.players}
+              isAdmin={isAdmin}
+              userId={userId}
+              hostId={publicState.hostId}
+              phase={publicState.phase}
+              move={move}
+            />
+            {publicState.hasLeaderboard &&
+            publicState.phase !== "lobby" &&
+            publicState.phase !== "results" ? (
+              <Leaderboard rows={readScoreboard(publicState.view) ?? []} userId={userId} />
+            ) : null}
+          </>
         )}
       </div>
     </aside>

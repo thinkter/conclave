@@ -4,6 +4,7 @@ import {
   type GameModule,
   type GameMove,
 } from "../types.js";
+import { numberOption } from "../config.js";
 
 /**
  * Reaction: a reflex arena. Each round the panel waits ("do not tap"), then
@@ -66,11 +67,16 @@ export const reactionModule: GameModule<ReactionState> = {
   minPlayers: 1,
   maxPlayers: 50,
   tickMs: 120,
+  hasLeaderboard: true,
+  options: [
+    { id: "rounds", type: "number", label: "Rounds", min: 3, max: 10, default: 5, presets: [3, 5, 7] },
+  ],
 
   setup(ctx: GameContext): ReactionState {
     const scores: Record<string, number> = {};
     for (const p of ctx.players) scores[p.id] = 0;
-    return { phase: "lobby", round: 0, totalRounds: TOTAL_ROUNDS, goAt: 0, deadline: 0, taps: {}, scores };
+    const totalRounds = numberOption(ctx.config, "rounds", TOTAL_ROUNDS);
+    return { phase: "lobby", round: 0, totalRounds, goAt: 0, deadline: 0, taps: {}, scores };
   },
 
   onMove(state, move: GameMove, ctx): ReactionState {

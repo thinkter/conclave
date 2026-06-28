@@ -1,6 +1,7 @@
 import { createRng, createSeed } from "./rng.js";
 import {
   GameMoveError,
+  type GameConfig,
   type GameContext,
   type GameModule,
   type GamePlayer,
@@ -22,6 +23,7 @@ export class GameSession {
   private players: GamePlayer[];
   private readonly rng: GameRng;
   private readonly adminIds: Set<string>;
+  private readonly config: GameConfig;
   private state: unknown;
   private finished = false;
 
@@ -30,12 +32,14 @@ export class GameSession {
     players: GamePlayer[];
     adminIds: Iterable<string>;
     hostId: string;
+    config?: GameConfig;
     seed?: number;
   }) {
     this.module = options.module;
     this.players = dedupePlayers(options.players);
     this.adminIds = new Set(options.adminIds);
     this.hostId = options.hostId;
+    this.config = options.config ?? {};
     this.rng = createRng(options.seed ?? createSeed());
     this.state = this.module.setup(this.context());
     this.finished = this.module.isFinished?.(this.state) ?? false;
@@ -65,6 +69,7 @@ export class GameSession {
     return {
       players: this.players.slice(),
       rng: this.rng,
+      config: this.config,
       now,
       isAdmin: (playerId: string) => this.adminIds.has(playerId),
     };
@@ -123,6 +128,7 @@ export class GameSession {
       hostId: this.hostId,
       view: this.module.publicView(this.state, ctx),
       finished: this.finished,
+      hasLeaderboard: Boolean(this.module.hasLeaderboard),
     };
   }
 

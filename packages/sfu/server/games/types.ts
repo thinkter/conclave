@@ -116,6 +116,8 @@ export type GameCatalogEntry = {
   description: string;
   minPlayers: number;
   maxPlayers: number;
+  options: GameOptionSpec[];
+  hasLeaderboard: boolean;
 };
 
 /* ---- Wire payloads (socket contract) ---- */
@@ -156,6 +158,7 @@ export type GamePublicState = {
   hostId: string | null;
   view: unknown;
   finished: boolean;
+  hasLeaderboard: boolean;
 };
 
 /** Emitted privately to a single player. */

@@ -4,6 +4,7 @@ import {
   type GameModule,
   type GameMove,
 } from "../types.js";
+import { numberOption } from "../config.js";
 import { requirePlayerTarget } from "../validation.js";
 
 /**
@@ -56,12 +57,15 @@ export const mostLikelyToModule: GameModule<MltState> = {
   minPlayers: 3,
   maxPlayers: 50,
   tickMs: 500,
+  options: [
+    { id: "rounds", type: "number", label: "Rounds", min: 3, max: 10, default: 6, presets: [4, 6, 8] },
+  ],
 
   setup(ctx: GameContext): MltState {
     return {
       phase: "lobby",
       index: 0,
-      prompts: ctx.rng.shuffle(PROMPT_BANK).slice(0, ROUNDS_PER_GAME),
+      prompts: ctx.rng.shuffle(PROMPT_BANK).slice(0, numberOption(ctx.config, "rounds", ROUNDS_PER_GAME)),
       deadline: 0,
       votes: {},
     };

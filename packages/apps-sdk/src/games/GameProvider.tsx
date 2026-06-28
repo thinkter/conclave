@@ -10,6 +10,7 @@ import React, {
 import type { Socket } from "socket.io-client";
 import type {
   GameCatalogEntry,
+  GameConfig,
   GameContextValue,
   GameMoveResult,
   GamePublicState,
@@ -149,12 +150,12 @@ export function GameProvider({
   }, [socket, refresh]);
 
   const startGame = useCallback(
-    async (gameId: string): Promise<GameMoveResult> => {
+    async (gameId: string, options?: GameConfig): Promise<GameMoveResult> => {
       if (!socket) return { success: false, error: "Not connected" };
       return emitWithAck<GameMoveResult>(
         socket,
         "game:start",
-        { gameId },
+        { gameId, options },
         { success: false, error: "Timed out" },
       );
     },

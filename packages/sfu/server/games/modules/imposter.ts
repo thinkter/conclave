@@ -5,6 +5,7 @@ import {
   type GameMove,
 } from "../types.js";
 import { requirePlayerTarget } from "../validation.js";
+import { selectOption } from "../config.js";
 
 /**
  * Imposter: a Spyfall-style social deduction game, built for a video call.
@@ -94,9 +95,25 @@ export const imposterModule: GameModule<ImposterState> = {
   minPlayers: 3,
   maxPlayers: 12,
   tickMs: 500,
+  options: [
+    {
+      id: "category",
+      type: "select",
+      label: "Category",
+      default: "surprise",
+      choices: [
+        { value: "surprise", label: "Surprise me" },
+        ...WORD_SETS.map((s) => ({ value: s.category, label: s.category })),
+      ],
+    },
+  ],
 
   setup(ctx: GameContext): ImposterState {
-    const set = ctx.rng.pick(WORD_SETS);
+    const chosen = selectOption(ctx.config, "category", "surprise");
+    const set =
+      chosen === "surprise"
+        ? ctx.rng.pick(WORD_SETS)
+        : WORD_SETS.find((s) => s.category === chosen) ?? ctx.rng.pick(WORD_SETS);
     const word = ctx.rng.pick(set.words);
     const imposter = ctx.players.length > 0 ? ctx.rng.pick(ctx.players) : null;
     const starter = ctx.players.length > 0 ? ctx.rng.pick(ctx.players) : null;

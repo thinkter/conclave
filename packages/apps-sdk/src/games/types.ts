@@ -9,12 +9,36 @@ export type GamePlayer = {
   name: string;
 };
 
+/** Host-configurable option spec for a game (mirrors the SFU schema). */
+export type GameOptionSpec =
+  | {
+      id: string;
+      type: "number";
+      label: string;
+      min: number;
+      max: number;
+      default: number;
+      presets?: number[];
+      suffix?: string;
+    }
+  | {
+      id: string;
+      type: "select";
+      label: string;
+      default: string;
+      choices: { value: string; label: string }[];
+    };
+
+export type GameConfig = Record<string, number | string>;
+
 export type GameCatalogEntry = {
   id: string;
   name: string;
   description: string;
   minPlayers: number;
   maxPlayers: number;
+  options: GameOptionSpec[];
+  hasLeaderboard: boolean;
 };
 
 /** Broadcast to the whole room on every state change. */
@@ -26,6 +50,7 @@ export type GamePublicState = {
   hostId: string | null;
   view: unknown;
   finished: boolean;
+  hasLeaderboard: boolean;
 };
 
 export type GameMoveResult = {
@@ -58,7 +83,7 @@ export type GameContextValue = {
   isActive: boolean;
   isAdmin: boolean;
   userId: string | null;
-  startGame: (gameId: string) => Promise<GameMoveResult>;
+  startGame: (gameId: string, options?: GameConfig) => Promise<GameMoveResult>;
   endGame: () => Promise<GameMoveResult>;
   move: (type: string, payload?: unknown) => Promise<GameMoveResult>;
   openVote: (candidateIds?: string[]) => Promise<GameMoveResult>;

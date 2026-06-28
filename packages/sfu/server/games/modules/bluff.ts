@@ -4,6 +4,7 @@ import {
   type GameModule,
   type GameMove,
 } from "../types.js";
+import { numberOption } from "../config.js";
 
 /**
  * Bluff: a Fibbage-style game. Players see a prompt with a blank, secretly
@@ -107,15 +108,20 @@ export const bluffModule: GameModule<BluffState> = {
   minPlayers: 2,
   maxPlayers: 16,
   tickMs: 500,
+  hasLeaderboard: true,
+  options: [
+    { id: "rounds", type: "number", label: "Rounds", min: 2, max: 6, default: 4, presets: [3, 4, 5] },
+  ],
 
   setup(ctx: GameContext): BluffState {
     const scores: Record<string, number> = {};
     for (const p of ctx.players) scores[p.id] = 0;
+    const roundCount = Math.min(numberOption(ctx.config, "rounds", TOTAL_ROUNDS), PROMPT_BANK.length);
     return {
       phase: "lobby",
       round: 0,
-      totalRounds: Math.min(TOTAL_ROUNDS, PROMPT_BANK.length),
-      prompts: ctx.rng.shuffle(PROMPT_BANK).slice(0, TOTAL_ROUNDS),
+      totalRounds: roundCount,
+      prompts: ctx.rng.shuffle(PROMPT_BANK).slice(0, roundCount),
       deadline: 0,
       fakes: {},
       options: [],

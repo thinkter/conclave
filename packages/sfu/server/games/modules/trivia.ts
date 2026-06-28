@@ -4,6 +4,7 @@ import {
   type GameModule,
   type GameMove,
 } from "../types.js";
+import { numberOption, selectOption } from "../config.js";
 
 /**
  * Trivia: a Kahoot/Deezer-style scored quiz.
@@ -35,11 +36,14 @@ type TriviaState = {
   questionIndex: number;
   questions: LoadedQuestion[];
   questionStart: number;
+  questionMs: number;
   deadline: number;
   answers: Record<string, Answer>;
   scores: Record<string, number>;
   lastRound: Record<string, number>;
 };
+
+const PACE_MS: Record<string, number> = { relaxed: 30_000, normal: 20_000, fast: 12_000 };
 
 type RawQuestion = {
   category: string;
@@ -76,7 +80,7 @@ const scoreRound = (state: TriviaState): void => {
     let gained = 0;
     if (answer.choice === question.correctIndex) {
       const used = Math.max(0, answer.at - state.questionStart);
-      const ratio = Math.max(0, Math.min(1, 1 - used / QUESTION_MS));
+      const ratio = Math.max(0, Math.min(1, 1 - used / state.questionMs));
       gained = BASE_POINTS + Math.round(SPEED_POINTS * ratio);
     }
     lastRound[playerId] = gained;
@@ -101,11 +105,28 @@ export const triviaModule: GameModule<TriviaState> = {
   minPlayers: 1,
   maxPlayers: 24,
   tickMs: 500,
+  hasLeaderboard: true,
+  options: [
+    { id: "questions", type: "number", label: "Questions", min: 3, max: 15, default: 7, presets: [5, 7, 10] },
+    {
+      id: "pace",
+      type: "select",
+      label: "Pace",
+      default: "normal",
+      choices: [
+        { value: "relaxed", label: "Relaxed" },
+        { value: "normal", label: "Normal" },
+        { value: "fast", label: "Fast" },
+      ],
+    },
+  ],
 
   setup(ctx: GameContext): TriviaState {
+    const questionCount = numberOption(ctx.config, "questions", QUESTIONS_PER_GAME);
+    const questionMs = PACE_MS[selectOption(ctx.config, "pace", "normal")] ?? QUESTION_MS;
     const picked = ctx.rng
       .shuffle(QUESTION_BANK)
-      .slice(0, QUESTIONS_PER_GAME)
+      .slice(0, questionCount)
       .map((raw): LoadedQuestion => {
         const options = ctx.rng.shuffle(raw.options);
         return {
@@ -122,6 +143,7 @@ export const triviaModule: GameModule<TriviaState> = {
       questionIndex: 0,
       questions: picked,
       questionStart: 0,
+      questionMs,
       deadline: 0,
       answers: {},
       scores,
@@ -143,7 +165,7 @@ export const triviaModule: GameModule<TriviaState> = {
           phase: "question",
           questionIndex: 0,
           questionStart: ctx.now,
-          deadline: ctx.now + QUESTION_MS,
+          deadline: ctx.now + state.questionMs,
           answers: {},
           lastRound: {},
         };
@@ -222,7 +244,7 @@ export const triviaModule: GameModule<TriviaState> = {
         phase: "question",
         questionIndex: state.questionIndex + 1,
         questionStart: ctx.now,
-        deadline: ctx.now + QUESTION_MS,
+        deadline: ctx.now + state.questionMs,
         answers: {},
         lastRound: {},
       };
@@ -249,7 +271,7 @@ export const triviaModule: GameModule<TriviaState> = {
       totalQuestions: state.questions.length,
       serverNow: ctx.now,
       deadline: state.phase === "question" || reveal ? state.deadline : null,
-      questionDurationMs: QUESTION_MS,
+      questionDurationMs: state.questionMs,
       category: showQuestion ? question?.category ?? null : null,
       prompt: showQuestion ? question?.prompt ?? null : null,
       options: showQuestion ? question?.options ?? [] : [],
