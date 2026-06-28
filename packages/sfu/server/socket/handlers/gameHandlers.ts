@@ -57,6 +57,19 @@ const countPlayers = (room: Room): number => {
   return count;
 };
 
+const validatePlayerCount = (
+  players: GamePlayer[],
+  module: { minPlayers: number; maxPlayers: number },
+): string | null => {
+  if (players.length < module.minPlayers) {
+    return `Need at least ${module.minPlayers} players`;
+  }
+  if (players.length > module.maxPlayers) {
+    return `Supports up to ${module.maxPlayers} players`;
+  }
+  return null;
+};
+
 const collectAdminIds = (room: Room): string[] => {
   const ids: string[] = [];
   for (const client of room.clients.values()) {
@@ -226,19 +239,10 @@ export const registerGameHandlers = (context: ConnectionContext): void => {
         respond(callback, { success: false, error: "Unknown game" });
         return;
       }
-      const players = snapshotPlayers(room);
-      if (players.length < module.minPlayers) {
-        respond(callback, {
-          success: false,
-          error: `Need at least ${module.minPlayers} players`,
-        });
-        return;
-      }
-      if (players.length > module.maxPlayers) {
-        respond(callback, {
-          success: false,
-          error: `Supports up to ${module.maxPlayers} players`,
-        });
+      let players = snapshotPlayers(room);
+      const initialPlayerError = validatePlayerCount(players, module);
+      if (initialPlayerError) {
+        respond(callback, { success: false, error: initialPlayerError });
         return;
       }
       const gameConfig = normalizeConfig(module.options, data?.options);
@@ -255,11 +259,7 @@ export const registerGameHandlers = (context: ConnectionContext): void => {
           Logger.warn(`[Games] content generation failed for ${gameId}`, error);
         }
         if (sfuConfig.gameAi.enabled && content == null) {
-          respond(callback, {
-            success: false,
-            error: "Failed to generate game content",
-          });
-          return;
+          Logger.warn(`[Games] using bundled content fallback for ${gameId}`);
         }
       }
 
@@ -271,6 +271,12 @@ export const registerGameHandlers = (context: ConnectionContext): void => {
         const hostClient = room.clients.get(hostId);
         if (!(hostClient instanceof Admin)) {
           respond(callback, { success: false, error: "Only the host can start a game" });
+          return;
+        }
+        players = snapshotPlayers(room);
+        const currentPlayerError = validatePlayerCount(players, module);
+        if (currentPlayerError) {
+          respond(callback, { success: false, error: currentPlayerError });
           return;
         }
         stopGameLoop(room);
