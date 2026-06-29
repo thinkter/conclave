@@ -2870,6 +2870,7 @@ export default function MeetsClient({
         toggleHandRaised={toggleHandRaised}
         sendReaction={sendReaction}
         leaveRoom={leaveRoom}
+        endRoomForEveryone={socket.endRoomForEveryone}
         isParticipantsOpen={isParticipantsOpen}
         setIsParticipantsOpen={setIsParticipantsOpen}
         pendingUsers={pendingUsers}
