@@ -248,7 +248,11 @@ const getInitialConsumerPreferences = (
       preferredLayers: {
         spatialLayer: 0,
         temporalLayer:
-          networkProfile === "emergency" ? 0 : networkProfile === "poor" ? 1 : 2,
+          networkProfile === "emergency"
+            ? 0
+            : networkProfile === "poor" || networkProfile === "fair"
+            ? 1
+            : 2,
       },
       priority: 240,
     };

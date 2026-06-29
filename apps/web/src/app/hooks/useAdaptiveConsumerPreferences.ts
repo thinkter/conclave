@@ -426,7 +426,11 @@ const getDesiredPreferences = (
       preferredLayers: bounds
         ? buildLayerPreference(
             0,
-            options.emergencyMode ? 0 : screenShareQuality === "poor" ? 1 : 2,
+            options.emergencyMode
+              ? 0
+              : screenShareQuality === "poor" || screenShareQuality === "fair"
+                ? 1
+                : 2,
             bounds,
           )
         : undefined,

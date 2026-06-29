@@ -384,8 +384,13 @@ assertIncludes(
 );
 assertRegex(
   "webAdaptiveConsumerPreferences",
-  /if \(info\.type === "screen"\) \{[\s\S]*const screenShareQuality = worstQuality\([\s\S]*getConsumerScoreQualityHint\(options\.consumerScoreQuality\)[\s\S]*options\.emergencyMode \? 0 : screenShareQuality === "poor" \? 1 : 2[\s\S]*priority: 240,[\s\S]*paused: false,/,
-  "web screen-share receive adaptation lowers temporal layer on poor per-stream score",
+  /if \(info\.type === "screen"\) \{[\s\S]*const screenShareQuality = worstQuality\([\s\S]*getConsumerScoreQualityHint\(options\.consumerScoreQuality\)[\s\S]*screenShareQuality === "poor" \|\| screenShareQuality === "fair"[\s\S]*\? 1[\s\S]*: 2[\s\S]*priority: 240,[\s\S]*paused: false,/,
+  "web screen-share receive adaptation lowers temporal layer on fair or poor per-stream score",
+);
+assertRegex(
+  "webMeetSocket",
+  /producerInfo\.type === "screen"[\s\S]*networkProfile === "emergency"[\s\S]*networkProfile === "poor" \|\| networkProfile === "fair"[\s\S]*\? 1[\s\S]*: 2,[\s\S]*priority: 240,/,
+  "web initial screen-share consume starts fair links on middle temporal layer",
 );
 assertRegex(
   "sfuMediaHandlers",
