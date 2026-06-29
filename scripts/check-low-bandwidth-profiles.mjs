@@ -362,6 +362,16 @@ assertRegex(
   /buildScreenShareEncodingForNetworkProfile\([\s\S]*screenNetworkProfile,[\s\S]*videoTrack,[\s\S]*\)/,
   "web screen-share reconnect publish passes capture size into encoding caps",
 );
+assertRegex(
+  "webMeetMedia",
+  /screenProducerTrackRepairInFlightRef[\s\S]*screenOutboundStallStateRef[\s\S]*currentScreenTrack[\s\S]*screenShareStreamRef\.current\?\.getVideoTracks\(\)[\s\S]*producer\.replaceTrack\(\{ track: liveScreenTrack \}\);[\s\S]*applyScreenShareProducerNetworkProfile\([\s\S]*producer,[\s\S]*getPublishNetworkProfile\(\),/,
+  "web screen-share outbound sender watchdog refreshes stalled producers without stop/start",
+);
+assertRegex(
+  "webMeetMedia",
+  /screenProducerTrackRepairInFlightRef[\s\S]*screenOutboundStallStateRef[\s\S]*void producer[\s\S]*\.getStats\(\)[\s\S]*readOutboundVideoProgressSample\(report\)[\s\S]*stalledSamples < CAMERA_OUTBOUND_STALL_SAMPLES_BEFORE_RECOVERY \|\|[\s\S]*isEncoderLimitedOutboundSample\(sample\)[\s\S]*refreshStalledScreenProducer\(/,
+  "web screen-share outbound sender watchdog waits for real stats stalls before refreshing",
+);
 assertIncludes(
   "iosWebrtc",
   "next.degradationPreference = .maintainResolution",

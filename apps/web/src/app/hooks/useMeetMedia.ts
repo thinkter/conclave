@@ -33,6 +33,7 @@ import {
 import { prewarmVideoEffectsAssetsDeferred } from "../lib/video-effects-lazy";
 import {
   applyAudioProducerNetworkProfile,
+  applyScreenShareProducerNetworkProfile,
   applyWebcamProducerNetworkProfile,
   applyScreenShareTrackNetworkProfile,
   buildScreenShareEncodingForNetworkProfile,
@@ -441,6 +442,10 @@ export function useMeetMedia({
   > | null>(null);
   const cameraRecoveryForceSingleLayerRef = useRef(false);
   const cameraOutboundStallStateRef = useRef<CameraOutboundStallState>(
+    createCameraOutboundStallState(),
+  );
+  const screenProducerTrackRepairInFlightRef = useRef(false);
+  const screenOutboundStallStateRef = useRef<CameraOutboundStallState>(
     createCameraOutboundStallState(),
   );
   const connectionStateRef = useRef(connectionState);
@@ -2735,6 +2740,239 @@ export function useMeetMedia({
     onPreferredVideoPublishTrackRejected,
     closeLocalVideoProducerForReplacement,
     requestCameraProducerRecovery,
+  ]);
+
+  useEffect(() => {
+    if (ghostEnabled || isObserverMode) {
+      screenOutboundStallStateRef.current = createCameraOutboundStallState();
+      return;
+    }
+    if (
+      connectionState !== "joined" ||
+      !isScreenSharing ||
+      isMediaRecoveryBlocked()
+    ) {
+      screenOutboundStallStateRef.current = createCameraOutboundStallState();
+      return;
+    }
+
+    let disposed = false;
+
+    const resetStallState = (
+      producerId: string | null = null,
+      trackId: string | null = null,
+    ) => {
+      screenOutboundStallStateRef.current =
+        createCameraOutboundStallState(producerId, trackId);
+    };
+
+    const refreshStalledScreenProducer = async ({
+      producer,
+      producerTrack,
+      sample,
+      state,
+    }: {
+      producer: Producer;
+      producerTrack: MediaStreamTrack;
+      sample: OutboundVideoProgressSample;
+      state: CameraOutboundStallState;
+    }) => {
+      if (disposed) return;
+      if (screenProducerTrackRepairInFlightRef.current) return;
+      if (isMediaRecoveryBlocked()) {
+        screenOutboundStallStateRef.current = {
+          ...state,
+          lastRecoveryAtMs: performance.now(),
+        };
+        return;
+      }
+
+      const now = performance.now();
+      if (
+        state.lastRecoveryAtMs > 0 &&
+        now - state.lastRecoveryAtMs <
+          CAMERA_OUTBOUND_STALL_RECOVERY_COOLDOWN_MS
+      ) {
+        return;
+      }
+
+      const currentScreenTrack =
+        producer.track?.readyState === "live" &&
+        producer.track.enabled &&
+        !producer.track.muted
+          ? producer.track
+          : null;
+      const liveScreenTrack =
+        currentScreenTrack ??
+        getFirstLiveTrack(
+          (screenShareStreamRef.current?.getVideoTracks() ?? []).filter(
+            (track) => track.enabled && !track.muted,
+          ),
+        );
+      if (
+        !liveScreenTrack ||
+        liveScreenTrack.readyState !== "live" ||
+        liveScreenTrack.muted
+      ) {
+        return;
+      }
+
+      screenProducerTrackRepairInFlightRef.current = true;
+      try {
+        if (
+          disposed ||
+          screenProducerRef.current?.id !== producer.id ||
+          producer.closed ||
+          isMediaRecoveryBlocked()
+        ) {
+          return;
+        }
+
+        if ("contentHint" in liveScreenTrack) {
+          liveScreenTrack.contentHint = "detail";
+        }
+        await producer.replaceTrack({ track: liveScreenTrack });
+        await applyScreenShareProducerNetworkProfile(
+          producer,
+          getPublishNetworkProfile(),
+        );
+        screenOutboundStallStateRef.current = {
+          ...createCameraOutboundStallState(producer.id, liveScreenTrack.id),
+          frames: sample.frames,
+          bytes: sample.bytes,
+          lastRecoveryAtMs: now,
+        };
+        console.warn("[Meets] Refreshed stalled screen-share sender:", {
+          producerId: producer.id,
+          previousTrackId: producerTrack.id,
+          screenTrackId: liveScreenTrack.id,
+          stalledSamples: state.stalledSamples,
+          frames: sample.frames,
+          bytes: sample.bytes,
+        });
+      } catch (err) {
+        screenOutboundStallStateRef.current = {
+          ...state,
+          lastRecoveryAtMs: performance.now(),
+        };
+        console.warn(
+          "[Meets] Stalled screen-share sender refresh failed; keeping producer open:",
+          err,
+        );
+      } finally {
+        screenProducerTrackRepairInFlightRef.current = false;
+      }
+    };
+
+    const pollOutboundProgress = () => {
+      if (disposed) return;
+      if (isMediaRecoveryBlocked()) {
+        resetStallState();
+        return;
+      }
+      if (screenProducerTrackRepairInFlightRef.current) {
+        return;
+      }
+
+      const producer = screenProducerRef.current;
+      const producerTrack = producer?.track ?? null;
+      if (!producer || producer.closed || producer.paused || !producerTrack) {
+        resetStallState();
+        return;
+      }
+      if (
+        producerTrack.readyState !== "live" ||
+        !producerTrack.enabled ||
+        producerTrack.muted
+      ) {
+        resetStallState(producer.id, producerTrack.id);
+        return;
+      }
+
+      void producer
+        .getStats()
+        .then((report) => {
+          if (disposed || isMediaRecoveryBlocked()) return;
+          if (
+            screenProducerRef.current?.id !== producer.id ||
+            producer.closed ||
+            producer.paused ||
+            producer.track?.id !== producerTrack.id ||
+            producerTrack.readyState !== "live" ||
+            !producerTrack.enabled ||
+            producerTrack.muted
+          ) {
+            resetStallState(
+              screenProducerRef.current?.id ?? null,
+              screenProducerRef.current?.track?.id ?? null,
+            );
+            return;
+          }
+
+          const sample = readOutboundVideoProgressSample(report);
+          const currentState = screenOutboundStallStateRef.current;
+          const previous =
+            currentState.producerId === producer.id &&
+            currentState.trackId === producerTrack.id
+              ? currentState
+              : createCameraOutboundStallState(producer.id, producerTrack.id);
+          const hasBaseline =
+            previous.frames !== null || previous.bytes !== null;
+          const stalledSamples =
+            hasBaseline && !hasOutboundVideoProgress(previous, sample)
+              ? previous.stalledSamples + 1
+              : 0;
+          const nextState: CameraOutboundStallState = {
+            ...previous,
+            producerId: producer.id,
+            trackId: producerTrack.id,
+            frames: sample.frames,
+            bytes: sample.bytes,
+            stalledSamples,
+          };
+          screenOutboundStallStateRef.current = nextState;
+
+          if (
+            stalledSamples < CAMERA_OUTBOUND_STALL_SAMPLES_BEFORE_RECOVERY ||
+            isEncoderLimitedOutboundSample(sample)
+          ) {
+            return;
+          }
+
+          void refreshStalledScreenProducer({
+            producer,
+            producerTrack,
+            sample,
+            state: nextState,
+          });
+        })
+        .catch(() => {
+          resetStallState(
+            screenProducerRef.current?.id ?? null,
+            screenProducerRef.current?.track?.id ?? null,
+          );
+        });
+    };
+
+    pollOutboundProgress();
+    const interval = window.setInterval(
+      pollOutboundProgress,
+      CAMERA_OUTBOUND_STALL_CHECK_MS,
+    );
+
+    return () => {
+      disposed = true;
+      window.clearInterval(interval);
+    };
+  }, [
+    connectionState,
+    ghostEnabled,
+    isObserverMode,
+    isMediaRecoveryBlocked,
+    isScreenSharing,
+    getPublishNetworkProfile,
+    screenProducerRef,
+    screenShareStreamRef,
   ]);
 
   useEffect(() => {
