@@ -6,8 +6,12 @@ import type {
   TranscriptMinutesSnapshot,
   TranscriptSegment,
   TranscriptServiceVersion,
+  TranscriptSfuRelayStartResponse,
+  TranscriptSfuRelayStatusResponse,
+  TranscriptSfuRelayStopResponse,
   TranscriptSessionState,
   TranscriptTokenResponse,
+  TranscriptTransportMode,
 } from "../lib/types";
 import {
   DEFAULT_TRANSCRIPT_QA_MODEL,
@@ -54,12 +58,16 @@ interface UseMeetingTranscriptOptions {
   isViewOnly?: boolean;
   resolveDisplayName: (userId: string) => string;
   getTranscriptToken: () => Promise<TranscriptTokenResponse | null>;
+  getTranscriptSfuRelayStatus?: () => Promise<TranscriptSfuRelayStatusResponse | null>;
+  startTranscriptSfuRelay?: () => Promise<TranscriptSfuRelayStartResponse | null>;
+  stopTranscriptSfuRelay?: () => Promise<TranscriptSfuRelayStopResponse | null>;
 }
 
 interface StartTranscriptOptions {
   apiKey?: string;
   transcriptModel?: string;
   qaModel?: string;
+  transportMode?: TranscriptTransportMode;
 }
 
 type ServerEnvelope =
@@ -110,12 +118,19 @@ type ServerEnvelope =
     }
   | { type: "error"; message?: string };
 
+type TranscriptSessionWaiter = {
+  predicate: (session: TranscriptSessionState) => boolean;
+  resolve: (session: TranscriptSessionState | null) => void;
+  timeoutId: number;
+};
+
 const buildIdleSession = (roomId: string): TranscriptSessionState => ({
   roomId,
   status: "idle",
   controller: null,
   transcriptModel: DEFAULT_TRANSCRIPT_TRANSCRIPTION_MODEL,
   qaModel: DEFAULT_TRANSCRIPT_QA_MODEL,
+  transportMode: "browser",
   keySource: null,
   startedAt: null,
   updatedAt: Date.now(),
@@ -136,6 +151,7 @@ const toWorkerWebSocketUrl = (token: TranscriptTokenResponse): string => {
 
 // Matches ConclaveUpdatePill's cadence so both update prompts behave alike.
 const VERSION_POLL_INTERVAL_MS = 30_000;
+const SFU_SESSION_READY_TIMEOUT_MS = 12_000;
 
 const toWorkerVersionUrl = (workerUrl: string): string => {
   const base = workerUrl.replace(/\/+$/, "");
@@ -174,6 +190,9 @@ export function useMeetingTranscript({
   isViewOnly = false,
   resolveDisplayName,
   getTranscriptToken,
+  getTranscriptSfuRelayStatus,
+  startTranscriptSfuRelay,
+  stopTranscriptSfuRelay,
 }: UseMeetingTranscriptOptions) {
   const [connectionStatus, setConnectionStatus] =
     useState<TranscriptConnectionStatus>("idle");
@@ -193,6 +212,8 @@ export function useMeetingTranscript({
   const [tokenInfo, setTokenInfo] = useState<TranscriptTokenResponse | null>(
     null,
   );
+  const [sfuRelayStatus, setSfuRelayStatus] =
+    useState<TranscriptSfuRelayStatusResponse | null>(null);
   const [hasGlobalOpenAiKey, setHasGlobalOpenAiKey] = useState(false);
   const [serviceVersion, setServiceVersion] =
     useState<TranscriptServiceVersion | null>(null);
@@ -206,6 +227,8 @@ export function useMeetingTranscript({
   const connectPromiseRef = useRef<Promise<boolean> | null>(null);
   const subscribedRef = useRef(false);
   const connectRef = useRef<(() => Promise<boolean>) | null>(null);
+  const sessionRef = useRef<TranscriptSessionState>(buildIdleSession(roomId));
+  const sessionWaitersRef = useRef<Set<TranscriptSessionWaiter>>(new Set());
   const serviceVersionRef = useRef<TranscriptServiceVersion | null>(null);
   const autoTakeoverAttemptRef = useRef<string | null>(null);
 
@@ -358,6 +381,51 @@ export function useMeetingTranscript({
     [],
   );
 
+  const applySessionState = useCallback((nextSession: TranscriptSessionState) => {
+    sessionRef.current = nextSession;
+    setSession(nextSession);
+    for (const waiter of Array.from(sessionWaitersRef.current)) {
+      if (!waiter.predicate(nextSession)) continue;
+      window.clearTimeout(waiter.timeoutId);
+      sessionWaitersRef.current.delete(waiter);
+      waiter.resolve(nextSession);
+    }
+  }, []);
+
+  const clearSessionWaiters = useCallback(() => {
+    for (const waiter of Array.from(sessionWaitersRef.current)) {
+      window.clearTimeout(waiter.timeoutId);
+      waiter.resolve(null);
+    }
+    sessionWaitersRef.current.clear();
+  }, []);
+
+  const waitForSessionState = useCallback(
+    (
+      predicate: (session: TranscriptSessionState) => boolean,
+      timeoutMs: number,
+    ): Promise<TranscriptSessionState | null> =>
+      new Promise((resolve) => {
+        const current = sessionRef.current;
+        if (predicate(current)) {
+          resolve(current);
+          return;
+        }
+
+        let waiter: TranscriptSessionWaiter;
+        waiter = {
+          predicate,
+          resolve,
+          timeoutId: window.setTimeout(() => {
+            sessionWaitersRef.current.delete(waiter);
+            resolve(null);
+          }, timeoutMs),
+        };
+        sessionWaitersRef.current.add(waiter);
+      }),
+    [],
+  );
+
   const handleServerMessage = useCallback(
     (raw: string) => {
       let message: ServerEnvelope;
@@ -374,7 +442,7 @@ export function useMeetingTranscript({
           );
           setHasGlobalOpenAiKey(message.globalOpenAiKeyAvailable === true);
           applyServiceVersion(message.serviceVersion);
-          setSession(message.session);
+          applySessionState(message.session);
           setSegments(message.segments ?? []);
           setPartials(
             new Map((message.partials ?? []).map((segment) => [segment.itemId, segment])),
@@ -389,7 +457,7 @@ export function useMeetingTranscript({
         case "handoff.requested":
           setHasGlobalOpenAiKey(message.globalOpenAiKeyAvailable === true);
           applyServiceVersion(message.serviceVersion);
-          setSession(message.session);
+          applySessionState(message.session);
           return;
         case "segment.delta":
           setPartials((prev) => mergeTranscriptDelta(prev, message.delta));
@@ -435,7 +503,7 @@ export function useMeetingTranscript({
         }
       }
     },
-    [applyServiceVersion, upsertAssistantMessage],
+    [applyServiceVersion, applySessionState, upsertAssistantMessage],
   );
 
   const connect = useCallback(async (): Promise<boolean> => {
@@ -524,6 +592,50 @@ export function useMeetingTranscript({
     connectRef.current = connect;
   }, [connect]);
 
+  const ensureSfuRelayAvailable = useCallback(async (): Promise<boolean> => {
+    if (!getTranscriptSfuRelayStatus || !startTranscriptSfuRelay) {
+      setError("This SFU does not support server-side transcript relay.");
+      return false;
+    }
+    const status = await getTranscriptSfuRelayStatus();
+    setSfuRelayStatus(status);
+    if (!status?.available) {
+      setError(status?.reason || "SFU transcript relay is not available.");
+      return false;
+    }
+    return true;
+  }, [getTranscriptSfuRelayStatus, startTranscriptSfuRelay]);
+
+  const startSfuRelay = useCallback(async (): Promise<boolean> => {
+    if (!startTranscriptSfuRelay) {
+      setError("This SFU does not support server-side transcript relay.");
+      return false;
+    }
+    const relayStart = await startTranscriptSfuRelay();
+    if (!relayStart?.success) {
+      setSfuRelayStatus(
+        relayStart
+          ? {
+              mode: "sfu",
+              status: relayStart.status,
+              available: false,
+              reason: relayStart.reason,
+              updatedAt: relayStart.updatedAt,
+            }
+          : null,
+      );
+      setError(relayStart?.reason || "Could not start SFU transcript relay.");
+      return false;
+    }
+    setSfuRelayStatus({
+      mode: "sfu",
+      status: relayStart.status,
+      available: true,
+      updatedAt: relayStart.updatedAt,
+    });
+    return true;
+  }, [startTranscriptSfuRelay]);
+
   const reconnect = useCallback(async (): Promise<boolean> => {
     const relay = relayRef.current;
     relayRef.current = null;
@@ -596,15 +708,52 @@ export function useMeetingTranscript({
       }
       const connected = await connect();
       if (!connected) return false;
-      return send({
+      const transportMode = options.transportMode ?? "browser";
+      if (transportMode === "sfu" && !(await ensureSfuRelayAvailable())) {
+        return false;
+      }
+      const sent = send({
         type: "session.start",
         apiKey: options.apiKey,
         transcriptModel:
           options.transcriptModel ?? DEFAULT_TRANSCRIPT_TRANSCRIPTION_MODEL,
         qaModel: options.qaModel ?? DEFAULT_TRANSCRIPT_QA_MODEL,
+        transportMode,
       });
+      if (!sent) return false;
+      if (transportMode === "sfu") {
+        const readySession = await waitForSessionState(
+          (nextSession) =>
+            nextSession.transportMode === "sfu" &&
+            (nextSession.status === "live" ||
+              nextSession.status === "error" ||
+              nextSession.status === "takeover_needed"),
+          SFU_SESSION_READY_TIMEOUT_MS,
+        );
+        if (readySession?.status !== "live") {
+          setError(
+            readySession?.error ||
+              "Transcript worker did not become ready for SFU audio.",
+          );
+          send({ type: "session.stop" });
+          return false;
+        }
+        if (!(await startSfuRelay())) {
+          send({ type: "session.stop" });
+          return false;
+        }
+      }
+      return true;
     },
-    [canStart, connect, send, setPermissionError],
+    [
+      canStart,
+      connect,
+      ensureSfuRelayAvailable,
+      send,
+      setPermissionError,
+      startSfuRelay,
+      waitForSessionState,
+    ],
   );
 
   const takeover = useCallback(
@@ -615,21 +764,54 @@ export function useMeetingTranscript({
       }
       const connected = await connect();
       if (!connected) return false;
-      return send({
+      const transportMode = options.transportMode ?? session.transportMode;
+      if (transportMode === "sfu" && !(await ensureSfuRelayAvailable())) {
+        return false;
+      }
+      const sent = send({
         type: "session.takeover",
         apiKey: options.apiKey,
         transcriptModel:
           options.transcriptModel ?? session.transcriptModel,
         qaModel: options.qaModel ?? session.qaModel,
+        transportMode,
       });
+      if (!sent) return false;
+      if (transportMode === "sfu") {
+        const readySession = await waitForSessionState(
+          (nextSession) =>
+            nextSession.transportMode === "sfu" &&
+            (nextSession.status === "live" ||
+              nextSession.status === "error" ||
+              nextSession.status === "takeover_needed"),
+          SFU_SESSION_READY_TIMEOUT_MS,
+        );
+        if (readySession?.status !== "live") {
+          setError(
+            readySession?.error ||
+              "Transcript worker did not become ready for SFU audio.",
+          );
+          send({ type: "session.stop" });
+          return false;
+        }
+        if (!(await startSfuRelay())) {
+          send({ type: "session.stop" });
+          return false;
+        }
+      }
+      return true;
     },
     [
       canTakeover,
       connect,
+      ensureSfuRelayAvailable,
       send,
       session.qaModel,
       session.transcriptModel,
+      session.transportMode,
       setPermissionError,
+      startSfuRelay,
+      waitForSessionState,
     ],
   );
 
@@ -670,8 +852,18 @@ export function useMeetingTranscript({
       setPermissionError();
       return;
     }
+    const transportMode = session.transportMode;
     send({ type: "session.stop" });
-  }, [canStop, send, setPermissionError]);
+    if (transportMode === "sfu") {
+      void stopTranscriptSfuRelay?.();
+    }
+  }, [
+    canStop,
+    send,
+    session.transportMode,
+    setPermissionError,
+    stopTranscriptSfuRelay,
+  ]);
 
   const ask = useCallback(
     async (question: string): Promise<boolean> => {
@@ -752,7 +944,10 @@ export function useMeetingTranscript({
         } catch {}
       }
       setConnectionStatus("idle");
-      setSession(buildIdleSession(roomId));
+      const idleSession = buildIdleSession(roomId);
+      sessionRef.current = idleSession;
+      clearSessionWaiters();
+      setSession(idleSession);
       setSegments([]);
       setPartials(new Map());
       setMinutes(createEmptyTranscriptMinutes());
@@ -763,15 +958,28 @@ export function useMeetingTranscript({
       serviceVersionRef.current = null;
       setAvailableServiceVersion(null);
       setViewerConnectionId(null);
+      setSfuRelayStatus(null);
       return;
     }
 
     subscribedRef.current = true;
     void connect();
-  }, [connect, isJoined, roomId]);
+  }, [clearSessionWaiters, connect, isJoined, roomId]);
+
+  useEffect(() => {
+    if (!isJoined || isViewOnly || !getTranscriptSfuRelayStatus) return;
+    let cancelled = false;
+    void getTranscriptSfuRelayStatus().then((status) => {
+      if (!cancelled) setSfuRelayStatus(status);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [getTranscriptSfuRelayStatus, isJoined, isViewOnly]);
 
   useEffect(() => {
     return () => {
+      clearSessionWaiters();
       const relay = relayRef.current;
       const socket = socketRef.current;
       relayRef.current = null;
@@ -788,11 +996,12 @@ export function useMeetingTranscript({
         } catch {}
       }
     };
-  }, []);
+  }, [clearSessionWaiters]);
 
   useEffect(() => {
     const shouldStream =
       !isViewOnly &&
+      session.transportMode !== "sfu" &&
       session.status === "live" &&
       session.controller?.userId === currentUserId &&
       session.controller.connectionId === viewerConnectionId &&
@@ -800,7 +1009,12 @@ export function useMeetingTranscript({
     if (!shouldStream) {
       void relayRef.current?.stop();
       relayRef.current = null;
-      setIsStreamingAudio(false);
+      setIsStreamingAudio(
+        session.transportMode === "sfu" &&
+          session.status === "live" &&
+          session.controller?.userId === currentUserId &&
+          sfuRelayStatus?.available === true,
+      );
       return;
     }
 
@@ -830,6 +1044,7 @@ export function useMeetingTranscript({
     isViewOnly,
     send,
     session,
+    sfuRelayStatus?.available,
     transcriptSources,
     viewerConnectionId,
   ]);
@@ -848,6 +1063,7 @@ export function useMeetingTranscript({
     qaMessages,
     error,
     tokenInfo,
+    sfuRelayStatus,
     hasGlobalOpenAiKey,
     serviceVersion,
     availableServiceVersion,

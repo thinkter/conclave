@@ -128,9 +128,14 @@ export type {
   TranscriptServiceVersion,
   TranscriptSessionState,
   TranscriptSessionStatus,
+  TranscriptSfuRelayStartResponse,
+  TranscriptSfuRelayStatus,
+  TranscriptSfuRelayStatusResponse,
+  TranscriptSfuRelayStopResponse,
   TranscriptSpeaker,
   TranscriptTokenCapabilities,
   TranscriptTokenResponse,
+  TranscriptTransportMode,
 } from "./transcript-types";
 
 export {

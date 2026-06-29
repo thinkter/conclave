@@ -2,6 +2,9 @@ import jwt from "jsonwebtoken";
 import { Admin } from "../../../config/classes/Admin.js";
 import { config } from "../../../config/config.js";
 import type {
+  TranscriptSfuRelayStartResponse,
+  TranscriptSfuRelayStatusResponse,
+  TranscriptSfuRelayStopResponse,
   TranscriptTokenCapabilities,
   TranscriptTokenResponse,
 } from "../../../types.js";
@@ -20,6 +23,43 @@ const getTranscriptWorkerUrl = (): string =>
 
 const getTranscriptTokenSecret = (): string =>
   process.env.TRANSCRIPT_TOKEN_SECRET?.trim() || config.sfuSecret;
+
+const createTranscriptRelayToken = (options: {
+  roomId: string;
+  clientId: string;
+  channelId: string;
+  displayName: string;
+}): string => {
+  const capabilities: TranscriptTokenCapabilities = {
+    start: false,
+    takeover: false,
+    stop: false,
+    ask: false,
+    relayAudio: true,
+  };
+  return jwt.sign(
+    {
+      iss: "conclave-sfu",
+      aud: "conclave-transcript-worker",
+      sub: `sfu:${options.roomId}`,
+      userId: `sfu:${options.roomId}`,
+      displayName: "Conclave SFU Relay",
+      roomId: options.roomId,
+      clientId: options.clientId,
+      channelId: options.channelId,
+      isAdmin: false,
+      isHost: false,
+      isGhost: false,
+      capabilities,
+      relayFor: options.displayName,
+    },
+    getTranscriptTokenSecret(),
+    {
+      algorithm: "HS256",
+      expiresIn: TRANSCRIPT_TOKEN_TTL_SECONDS,
+    },
+  );
+};
 
 export const registerTranscriptHandlers = (
   context: ConnectionContext,
@@ -91,6 +131,100 @@ export const registerTranscriptHandlers = (
         expiresAt,
         capabilities,
       });
+    },
+  );
+
+  socket.on(
+    "transcript:sfuRelayStatus",
+    (
+      callback: (
+        response: TranscriptSfuRelayStatusResponse | { error: string },
+      ) => void,
+    ) => {
+      if (!context.currentRoom || !context.currentClient) {
+        respond(callback, { error: "Not in a room" });
+        return;
+      }
+      respond(callback, context.state.transcriptRelays.getStatus());
+    },
+  );
+
+  socket.on(
+    "transcript:sfuRelayStart",
+    async (
+      callback: (
+        response: TranscriptSfuRelayStartResponse | { error: string },
+      ) => void,
+    ) => {
+      const room = context.currentRoom;
+      const client = context.currentClient;
+      if (!room || !client || !context.currentUserKey) {
+        respond(callback, { error: "Not in a room" });
+        return;
+      }
+      if (client.isGhost || client.isWebinarAttendee) {
+        respond(callback, {
+          error: "Transcript relay is available to meeting participants only",
+        });
+        return;
+      }
+      if (!takeToken(socket, "transcript:relay", RATE_LIMITS.transcriptRelay)) {
+        respond(callback, {
+          error: "Too many transcript relay requests; please retry shortly",
+        });
+        return;
+      }
+
+      const displayName = room.getDisplayNameForUser(client.id) || client.id;
+      const isAdmin = client instanceof Admin;
+      const isHost = room.getHostUserId() === client.id;
+      const workerToken = createTranscriptRelayToken({
+        roomId: room.id,
+        clientId: room.clientId,
+        channelId: room.channelId,
+        displayName,
+      });
+      const response = await context.state.transcriptRelays.start({
+        room,
+        workerUrl: getTranscriptWorkerUrl(),
+        workerToken,
+        controllerUserId: client.id,
+        controllerDisplayName: displayName,
+        canReplaceExistingRelay: isAdmin || isHost,
+      });
+      respond(callback, response);
+    },
+  );
+
+  socket.on(
+    "transcript:sfuRelayStop",
+    (
+      callback: (
+        response: TranscriptSfuRelayStopResponse | { error: string },
+      ) => void,
+    ) => {
+      const room = context.currentRoom;
+      const client = context.currentClient;
+      if (!room || !client) {
+        respond(callback, { error: "Not in a room" });
+        return;
+      }
+      if (client.isGhost || client.isWebinarAttendee) {
+        respond(callback, {
+          error: "Transcript relay is available to meeting participants only",
+        });
+        return;
+      }
+      const isAdmin = client instanceof Admin;
+      const isHost = room.getHostUserId() === client.id;
+      respond(
+        callback,
+        context.state.transcriptRelays.stopRoomForUser({
+          roomId: room.id,
+          userId: client.id,
+          canStopAnyRelay: isAdmin || isHost,
+        }),
+      );
     },
   );
 };

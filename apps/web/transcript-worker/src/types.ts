@@ -5,6 +5,7 @@ import type {
   TranscriptSpeaker,
   TranscriptSessionState,
   TranscriptTokenCapabilities,
+  TranscriptTransportMode,
 } from "@conclave/meeting-core/transcript-types";
 import type { TranscriptRateLimitState } from "./rate-limit";
 
@@ -64,6 +65,7 @@ export type ClientEnvelope =
       apiKey?: string;
       transcriptModel?: string;
       qaModel?: string;
+      transportMode?: TranscriptTransportMode;
       language?: string;
       delay?: string;
     }
