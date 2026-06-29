@@ -63,7 +63,11 @@ if [[ "$HAS_UPSTASH" != "true" && -z "${REDIS_PASSWORD:-}" && -z "${REDIS_URL:-}
   exit 1
 fi
 
-COMPOSE=(docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE")
+COMPOSE_ENV_FILES=(--env-file "$ENV_FILE")
+if [[ -f "$SFU_ENV_FILE" ]]; then
+  COMPOSE_ENV_FILES+=(--env-file "$SFU_ENV_FILE")
+fi
+COMPOSE=(docker compose "${COMPOSE_ENV_FILES[@]}" -f "$COMPOSE_FILE")
 HAS_REDIS_SERVICE="false"
 if "${COMPOSE[@]}" config --services | rg -x "redis" >/dev/null 2>&1; then
   HAS_REDIS_SERVICE="true"
