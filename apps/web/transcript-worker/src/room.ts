@@ -2,6 +2,7 @@ import type {
   TranscriptMinutesSnapshot,
   TranscriptSegment,
   TranscriptSegmentDelta,
+  TranscriptSfuRelayStartToken,
   TranscriptSessionState,
   TranscriptSpeaker,
 } from "@conclave/meeting-core/transcript-types";
@@ -16,7 +17,10 @@ import {
   MIN_OPENAI_COMMIT_AUDIO_SAMPLES,
   MIN_MINUTES_REFRESH_MS,
 } from "./constants";
-import { verifyTranscriptRoomToken } from "./auth";
+import {
+  signTranscriptSfuRelayStartToken,
+  verifyTranscriptRoomToken,
+} from "./auth";
 import {
   canCommitPendingAudioForSpeaker,
   isSameTranscriptAudioSpeaker,
@@ -106,6 +110,8 @@ export class TranscriptRoom {
   private openAiSocket: WebSocket | null = null;
   private openAiGeneration = 0;
   private lastMinutesRefreshAt = 0;
+  private suppressSfuRelayDisconnectsUntil = 0;
+  private suppressSfuRelayDisconnectCount = 0;
 
   constructor(state: DurableObjectState, env: Env) {
     this.state = state;
@@ -142,6 +148,8 @@ export class TranscriptRoom {
       socket: server,
       userId: payload.userId!,
       displayName: payload.displayName || payload.userId!,
+      clientId: payload.clientId,
+      channelId: payload.channelId,
       capabilities: {
         start: payload.capabilities?.start !== false,
         takeover: payload.capabilities?.takeover !== false,
@@ -327,6 +335,9 @@ export class TranscriptRoom {
           minutes: this.minutes,
         });
         return;
+      case "relay.handoff.prepare":
+        this.prepareSfuRelayHandoff(viewer, message.id);
+        return;
       default:
         this.sendError(viewer, "Unsupported transcript message.");
     }
@@ -341,6 +352,10 @@ export class TranscriptRoom {
         transportMode: this.session?.transportMode,
       })
     ) {
+      if (this.consumeSuppressedSfuRelayDisconnect()) {
+        await this.armCleanupAlarm();
+        return;
+      }
       this.markTakeoverNeeded("Transcript SFU relay disconnected.");
       this.broadcast({
         type: "handoff.requested",
@@ -457,6 +472,7 @@ export class TranscriptRoom {
         error: null,
       };
       this.broadcastSession();
+      await this.sendSfuRelayStartToken(viewer);
       await this.persist();
     } catch (error) {
       this.markTakeoverNeeded(
@@ -630,6 +646,55 @@ export class TranscriptRoom {
       this.session?.transportMode === "sfu" &&
       viewer.capabilities.relayAudio === true
     );
+  }
+
+  private async sendSfuRelayStartToken(viewer: Viewer): Promise<void> {
+    if (
+      this.session?.status !== "live" ||
+      this.session.transportMode !== "sfu" ||
+      this.session.controller?.userId !== viewer.userId ||
+      this.session.controller.connectionId !== viewer.id
+    ) {
+      return;
+    }
+
+    const relayToken = await signTranscriptSfuRelayStartToken(
+      {
+        userId: viewer.userId,
+        displayName: viewer.displayName,
+        roomId: this.session.roomId,
+        clientId: viewer.clientId,
+        channelId: viewer.channelId,
+        connectionId: viewer.id,
+      },
+      this.env.TRANSCRIPT_TOKEN_SECRET,
+    );
+    this.send(viewer.socket, {
+      type: "sfu.relayStartToken",
+      ...relayToken,
+    } satisfies { type: "sfu.relayStartToken" } & TranscriptSfuRelayStartToken);
+  }
+
+  private prepareSfuRelayHandoff(viewer: Viewer, id?: string): void {
+    if (!this.canRelayAudio(viewer)) return;
+    this.suppressSfuRelayDisconnectsUntil = Date.now() + 5000;
+    this.suppressSfuRelayDisconnectCount += 1;
+    this.send(viewer.socket, {
+      type: "relay.handoff.ready",
+      id: trimText(id ?? "", 120),
+    });
+  }
+
+  private consumeSuppressedSfuRelayDisconnect(): boolean {
+    if (
+      this.suppressSfuRelayDisconnectCount <= 0 ||
+      Date.now() > this.suppressSfuRelayDisconnectsUntil
+    ) {
+      this.suppressSfuRelayDisconnectCount = 0;
+      return false;
+    }
+    this.suppressSfuRelayDisconnectCount -= 1;
+    return true;
   }
 
   private async connectOpenAi(options: {
@@ -1085,6 +1150,7 @@ export class TranscriptRoom {
         return "minutes";
       case "qa.ask":
         return "qa";
+      case "relay.handoff.prepare":
       case "session.start":
       case "session.stop":
       case "session.takeover":

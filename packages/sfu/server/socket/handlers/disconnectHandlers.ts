@@ -75,7 +75,7 @@ export const registerDisconnectHandlers = (
 
         activeRoom.removeClient(userId);
         state.transcriptRelays.stopRoomForUser({
-          roomId: activeRoom.id,
+          roomKey: activeRoom.channelId,
           userId,
           canStopAnyRelay: false,
         });

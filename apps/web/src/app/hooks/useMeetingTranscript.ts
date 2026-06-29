@@ -6,7 +6,9 @@ import type {
   TranscriptMinutesSnapshot,
   TranscriptSegment,
   TranscriptServiceVersion,
+  TranscriptSfuRelayStartRequest,
   TranscriptSfuRelayStartResponse,
+  TranscriptSfuRelayStartToken,
   TranscriptSfuRelayStatusResponse,
   TranscriptSfuRelayStopResponse,
   TranscriptSessionState,
@@ -59,7 +61,9 @@ interface UseMeetingTranscriptOptions {
   resolveDisplayName: (userId: string) => string;
   getTranscriptToken: () => Promise<TranscriptTokenResponse | null>;
   getTranscriptSfuRelayStatus?: () => Promise<TranscriptSfuRelayStatusResponse | null>;
-  startTranscriptSfuRelay?: () => Promise<TranscriptSfuRelayStartResponse | null>;
+  startTranscriptSfuRelay?: (
+    request: TranscriptSfuRelayStartRequest,
+  ) => Promise<TranscriptSfuRelayStartResponse | null>;
   stopTranscriptSfuRelay?: () => Promise<TranscriptSfuRelayStopResponse | null>;
 }
 
@@ -116,11 +120,17 @@ type ServerEnvelope =
       globalOpenAiKeyAvailable?: boolean;
       serviceVersion?: TranscriptServiceVersion;
     }
+  | ({ type: "sfu.relayStartToken" } & TranscriptSfuRelayStartToken)
   | { type: "error"; message?: string };
 
 type TranscriptSessionWaiter = {
   predicate: (session: TranscriptSessionState) => boolean;
   resolve: (session: TranscriptSessionState | null) => void;
+  timeoutId: number;
+};
+
+type SfuRelayStartTokenWaiter = {
+  resolve: (token: TranscriptSfuRelayStartToken | null) => void;
   timeoutId: number;
 };
 
@@ -152,6 +162,7 @@ const toWorkerWebSocketUrl = (token: TranscriptTokenResponse): string => {
 // Matches ConclaveUpdatePill's cadence so both update prompts behave alike.
 const VERSION_POLL_INTERVAL_MS = 30_000;
 const SFU_SESSION_READY_TIMEOUT_MS = 12_000;
+const SFU_RELAY_TOKEN_TIMEOUT_MS = 5_000;
 
 const toWorkerVersionUrl = (workerUrl: string): string => {
   const base = workerUrl.replace(/\/+$/, "");
@@ -229,6 +240,12 @@ export function useMeetingTranscript({
   const connectRef = useRef<(() => Promise<boolean>) | null>(null);
   const sessionRef = useRef<TranscriptSessionState>(buildIdleSession(roomId));
   const sessionWaitersRef = useRef<Set<TranscriptSessionWaiter>>(new Set());
+  const sfuRelayStartTokenRef = useRef<TranscriptSfuRelayStartToken | null>(
+    null,
+  );
+  const sfuRelayStartTokenWaitersRef = useRef<
+    Set<SfuRelayStartTokenWaiter>
+  >(new Set());
   const serviceVersionRef = useRef<TranscriptServiceVersion | null>(null);
   const autoTakeoverAttemptRef = useRef<string | null>(null);
 
@@ -426,6 +443,48 @@ export function useMeetingTranscript({
     [],
   );
 
+  const clearSfuRelayStartTokenWaiters = useCallback(() => {
+    for (const waiter of Array.from(sfuRelayStartTokenWaitersRef.current)) {
+      window.clearTimeout(waiter.timeoutId);
+      waiter.resolve(null);
+    }
+    sfuRelayStartTokenWaitersRef.current.clear();
+  }, []);
+
+  const applySfuRelayStartToken = useCallback(
+    (token: TranscriptSfuRelayStartToken) => {
+      sfuRelayStartTokenRef.current = token;
+      for (const waiter of Array.from(sfuRelayStartTokenWaitersRef.current)) {
+        window.clearTimeout(waiter.timeoutId);
+        sfuRelayStartTokenWaitersRef.current.delete(waiter);
+        waiter.resolve(token);
+      }
+    },
+    [],
+  );
+
+  const waitForSfuRelayStartToken = useCallback(
+    (): Promise<TranscriptSfuRelayStartToken | null> =>
+      new Promise((resolve) => {
+        const current = sfuRelayStartTokenRef.current;
+        if (current && current.expiresAt > Date.now()) {
+          resolve(current);
+          return;
+        }
+
+        let waiter: SfuRelayStartTokenWaiter;
+        waiter = {
+          resolve,
+          timeoutId: window.setTimeout(() => {
+            sfuRelayStartTokenWaitersRef.current.delete(waiter);
+            resolve(null);
+          }, SFU_RELAY_TOKEN_TIMEOUT_MS),
+        };
+        sfuRelayStartTokenWaitersRef.current.add(waiter);
+      }),
+    [],
+  );
+
   const handleServerMessage = useCallback(
     (raw: string) => {
       let message: ServerEnvelope;
@@ -493,6 +552,12 @@ export function useMeetingTranscript({
             error: message.error,
           });
           return;
+        case "sfu.relayStartToken":
+          applySfuRelayStartToken({
+            token: message.token,
+            expiresAt: message.expiresAt,
+          });
+          return;
         case "error":
           setError(message.message || "Transcript service error.");
           return;
@@ -503,7 +568,12 @@ export function useMeetingTranscript({
         }
       }
     },
-    [applyServiceVersion, applySessionState, upsertAssistantMessage],
+    [
+      applyServiceVersion,
+      applySessionState,
+      applySfuRelayStartToken,
+      upsertAssistantMessage,
+    ],
   );
 
   const connect = useCallback(async (): Promise<boolean> => {
@@ -611,7 +681,14 @@ export function useMeetingTranscript({
       setError("This SFU does not support server-side transcript relay.");
       return false;
     }
-    const relayStart = await startTranscriptSfuRelay();
+    const relayStartToken = await waitForSfuRelayStartToken();
+    if (!relayStartToken?.token || relayStartToken.expiresAt <= Date.now()) {
+      setError("Transcript worker did not authorize the SFU relay.");
+      return false;
+    }
+    const relayStart = await startTranscriptSfuRelay({
+      relayStartToken: relayStartToken.token,
+    });
     if (!relayStart?.success) {
       setSfuRelayStatus(
         relayStart
@@ -634,7 +711,7 @@ export function useMeetingTranscript({
       updatedAt: relayStart.updatedAt,
     });
     return true;
-  }, [startTranscriptSfuRelay]);
+  }, [startTranscriptSfuRelay, waitForSfuRelayStartToken]);
 
   const reconnect = useCallback(async (): Promise<boolean> => {
     const relay = relayRef.current;
@@ -712,6 +789,8 @@ export function useMeetingTranscript({
       if (transportMode === "sfu" && !(await ensureSfuRelayAvailable())) {
         return false;
       }
+      sfuRelayStartTokenRef.current = null;
+      clearSfuRelayStartTokenWaiters();
       const sent = send({
         type: "session.start",
         apiKey: options.apiKey,
@@ -747,6 +826,7 @@ export function useMeetingTranscript({
     },
     [
       canStart,
+      clearSfuRelayStartTokenWaiters,
       connect,
       ensureSfuRelayAvailable,
       send,
@@ -768,6 +848,8 @@ export function useMeetingTranscript({
       if (transportMode === "sfu" && !(await ensureSfuRelayAvailable())) {
         return false;
       }
+      sfuRelayStartTokenRef.current = null;
+      clearSfuRelayStartTokenWaiters();
       const sent = send({
         type: "session.takeover",
         apiKey: options.apiKey,
@@ -803,6 +885,7 @@ export function useMeetingTranscript({
     },
     [
       canTakeover,
+      clearSfuRelayStartTokenWaiters,
       connect,
       ensureSfuRelayAvailable,
       send,
@@ -947,6 +1030,8 @@ export function useMeetingTranscript({
       const idleSession = buildIdleSession(roomId);
       sessionRef.current = idleSession;
       clearSessionWaiters();
+      sfuRelayStartTokenRef.current = null;
+      clearSfuRelayStartTokenWaiters();
       setSession(idleSession);
       setSegments([]);
       setPartials(new Map());
@@ -964,7 +1049,13 @@ export function useMeetingTranscript({
 
     subscribedRef.current = true;
     void connect();
-  }, [clearSessionWaiters, connect, isJoined, roomId]);
+  }, [
+    clearSessionWaiters,
+    clearSfuRelayStartTokenWaiters,
+    connect,
+    isJoined,
+    roomId,
+  ]);
 
   useEffect(() => {
     if (!isJoined || isViewOnly || !getTranscriptSfuRelayStatus) return;
@@ -980,6 +1071,7 @@ export function useMeetingTranscript({
   useEffect(() => {
     return () => {
       clearSessionWaiters();
+      clearSfuRelayStartTokenWaiters();
       const relay = relayRef.current;
       const socket = socketRef.current;
       relayRef.current = null;
@@ -996,7 +1088,7 @@ export function useMeetingTranscript({
         } catch {}
       }
     };
-  }, [clearSessionWaiters]);
+  }, [clearSessionWaiters, clearSfuRelayStartTokenWaiters]);
 
   useEffect(() => {
     const shouldStream =

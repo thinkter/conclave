@@ -1,6 +1,7 @@
 import type { TranscriptSpeaker } from "../../types.js";
 
 const WORKER_CONNECT_TIMEOUT_MS = 8000;
+const WORKER_HANDOFF_TIMEOUT_MS = 1000;
 
 const toWorkerWebSocketUrl = (
   workerUrl: string,
@@ -20,6 +21,7 @@ const toWorkerWebSocketUrl = (
 
 export class TranscriptWorkerRelayClient {
   private socket: WebSocket | null = null;
+  private readonly handoffResolvers = new Map<string, (ok: boolean) => void>();
 
   constructor(
     private readonly options: {
@@ -47,8 +49,15 @@ export class TranscriptWorkerRelayClient {
         const message = JSON.parse(String(event.data ?? "")) as {
           type?: string;
           message?: string;
+          id?: string;
         };
-        if (message.type === "error" && message.message) {
+        if (
+          message.type === "relay.handoff.ready" &&
+          typeof message.id === "string"
+        ) {
+          this.handoffResolvers.get(message.id)?.(true);
+          this.handoffResolvers.delete(message.id);
+        } else if (message.type === "error" && message.message) {
           this.options.onError?.(message.message);
         }
       } catch {}
@@ -105,9 +114,30 @@ export class TranscriptWorkerRelayClient {
     return this.send({ type: "audio.clear", speaker });
   }
 
+  async prepareHandoff(): Promise<boolean> {
+    if (this.socket?.readyState !== WebSocket.OPEN) return false;
+    const id = `handoff-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const sent = this.send({ type: "relay.handoff.prepare", id });
+    if (!sent) return false;
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        this.handoffResolvers.delete(id);
+        resolve(false);
+      }, WORKER_HANDOFF_TIMEOUT_MS);
+      this.handoffResolvers.set(id, (ok) => {
+        clearTimeout(timeout);
+        resolve(ok);
+      });
+    });
+  }
+
   close(): void {
     const socket = this.socket;
     this.socket = null;
+    for (const resolve of this.handoffResolvers.values()) {
+      resolve(false);
+    }
+    this.handoffResolvers.clear();
     try {
       socket?.close();
     } catch {}
@@ -122,5 +152,10 @@ export class TranscriptWorkerRelayClient {
 
 export type TranscriptWorkerRelayConnection = Pick<
   TranscriptWorkerRelayClient,
-  "connect" | "sendAudioChunk" | "commitAudio" | "clearAudio" | "close"
+  | "connect"
+  | "sendAudioChunk"
+  | "commitAudio"
+  | "clearAudio"
+  | "prepareHandoff"
+  | "close"
 >;

@@ -4,11 +4,12 @@ import type {
   TranscriptSfuRelayStatusResponse,
   TranscriptSfuRelayStopResponse,
 } from "../../types.js";
+import { Logger } from "../../utilities/loggers.js";
 import { SfuTranscriptRelay } from "./sfuTranscriptRelay.js";
 
 type TranscriptRelayInstance = Pick<
   SfuTranscriptRelay,
-  "controllerUserId" | "start" | "syncProducers" | "close"
+  "controllerUserId" | "start" | "prepareHandoff" | "syncProducers" | "close"
 >;
 
 type TranscriptRelayStartOptions = {
@@ -23,9 +24,9 @@ type TranscriptRelayStartOptions = {
 export type TranscriptRelayRegistry = {
   getStatus: () => TranscriptSfuRelayStatusResponse;
   start: (options: TranscriptRelayStartOptions) => Promise<TranscriptSfuRelayStartResponse>;
-  stopRoom: (roomId: string) => TranscriptSfuRelayStopResponse;
+  stopRoom: (roomKey: string) => TranscriptSfuRelayStopResponse;
   stopRoomForUser: (options: {
-    roomId: string;
+    roomKey: string;
     userId: string;
     canStopAnyRelay: boolean;
   }) => TranscriptSfuRelayStopResponse | { error: string };
@@ -42,6 +43,8 @@ export const createTranscriptRelayRegistry = (options: {
   ) => TranscriptRelayInstance;
 }): TranscriptRelayRegistry => {
   const relays = new Map<string, TranscriptRelayInstance>();
+  const roomKey = (room: Pick<Room, "channelId" | "id">): string =>
+    room.channelId || room.id;
 
   const getStatus = (): TranscriptSfuRelayStatusResponse => {
     if (!options.enabled) {
@@ -75,7 +78,8 @@ export const createTranscriptRelayRegistry = (options: {
         };
       }
 
-      const existingRelay = relays.get(startOptions.room.id);
+      const key = roomKey(startOptions.room);
+      const existingRelay = relays.get(key);
       if (
         existingRelay &&
         existingRelay.controllerUserId !== startOptions.controllerUserId &&
@@ -90,7 +94,6 @@ export const createTranscriptRelayRegistry = (options: {
         };
       }
 
-      existingRelay?.close();
       let relay: TranscriptRelayInstance;
       relay = (options.createRelay ?? ((relayOptions) =>
         new SfuTranscriptRelay(relayOptions)))({
@@ -100,14 +103,41 @@ export const createTranscriptRelayRegistry = (options: {
         controllerUserId: startOptions.controllerUserId,
         controllerDisplayName: startOptions.controllerDisplayName,
         onClosed: () => {
-          if (relays.get(startOptions.room.id) === relay) {
-            relays.delete(startOptions.room.id);
+          if (relays.get(key) === relay) {
+            relays.delete(key);
           }
         },
       });
-      relays.set(startOptions.room.id, relay);
+      relays.set(key, relay);
       try {
         await relay.start();
+        if (relays.get(key) !== relay) {
+          relay.close();
+          return {
+            mode: "sfu",
+            success: false,
+            status: "error",
+            reason: "A newer SFU transcript relay start superseded this request.",
+            updatedAt: Date.now(),
+          };
+        }
+        if (existingRelay && existingRelay !== relay) {
+          const handoffReady = await relay.prepareHandoff();
+          if (!handoffReady) {
+            if (relays.get(key) === relay) {
+              relays.set(key, existingRelay);
+            }
+            relay.close();
+            return {
+              mode: "sfu",
+              success: false,
+              status: "error",
+              reason: "Transcript worker did not prepare SFU relay handoff.",
+              updatedAt: Date.now(),
+            };
+          }
+          existingRelay.close();
+        }
         return {
           mode: "sfu",
           success: true,
@@ -115,7 +145,13 @@ export const createTranscriptRelayRegistry = (options: {
           updatedAt: Date.now(),
         };
       } catch (error) {
-        relays.delete(startOptions.room.id);
+        if (relays.get(key) === relay) {
+          if (existingRelay) {
+            relays.set(key, existingRelay);
+          } else {
+            relays.delete(key);
+          }
+        }
         relay.close();
         return {
           mode: "sfu",
@@ -129,13 +165,13 @@ export const createTranscriptRelayRegistry = (options: {
         };
       }
     },
-    stopRoom(roomId) {
-      relays.get(roomId)?.close();
-      relays.delete(roomId);
+    stopRoom(roomKey) {
+      relays.get(roomKey)?.close();
+      relays.delete(roomKey);
       return { success: true };
     },
-    stopRoomForUser({ roomId, userId, canStopAnyRelay }) {
-      const relay = relays.get(roomId);
+    stopRoomForUser({ roomKey, userId, canStopAnyRelay }) {
+      const relay = relays.get(roomKey);
       if (!relay) return { success: true };
       if (!canStopAnyRelay && relay.controllerUserId !== userId) {
         return {
@@ -143,11 +179,18 @@ export const createTranscriptRelayRegistry = (options: {
         };
       }
       relay.close();
-      relays.delete(roomId);
+      relays.delete(roomKey);
       return { success: true };
     },
     async syncRoom(room) {
-      await relays.get(room.id)?.syncProducers();
+      try {
+        await relays.get(roomKey(room))?.syncProducers();
+      } catch (error) {
+        Logger.warn(
+          `Transcript SFU relay sync failed for room ${room.id} (${room.clientId})`,
+          error,
+        );
+      }
     },
     closeAll() {
       for (const relay of relays.values()) {

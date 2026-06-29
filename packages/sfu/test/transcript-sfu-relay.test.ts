@@ -94,6 +94,10 @@ class FakeWorkerClient implements TranscriptWorkerRelayConnection {
     return true;
   }
 
+  async prepareHandoff(): Promise<boolean> {
+    return true;
+  }
+
   close(): void {
     this.closed = true;
     this.events.push({ type: "close" });

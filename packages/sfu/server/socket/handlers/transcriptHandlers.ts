@@ -2,6 +2,7 @@ import jwt from "jsonwebtoken";
 import { Admin } from "../../../config/classes/Admin.js";
 import { config } from "../../../config/config.js";
 import type {
+  TranscriptSfuRelayStartRequest,
   TranscriptSfuRelayStartResponse,
   TranscriptSfuRelayStatusResponse,
   TranscriptSfuRelayStopResponse,
@@ -23,6 +24,47 @@ const getTranscriptWorkerUrl = (): string =>
 
 const getTranscriptTokenSecret = (): string =>
   process.env.TRANSCRIPT_TOKEN_SECRET?.trim() || config.sfuSecret;
+
+type RelayStartTokenPayload = jwt.JwtPayload & {
+  tokenUse?: string;
+  userId?: string;
+  roomId?: string;
+  clientId?: string;
+  channelId?: string;
+  sessionStatus?: string;
+  transportMode?: string;
+};
+
+const verifyTranscriptRelayStartToken = (
+  token: string | undefined,
+  room: { id: string; clientId: string; channelId: string },
+  userId: string,
+): { ok: true } | { ok: false; message: string } => {
+  if (!token || typeof token !== "string") {
+    return { ok: false, message: "Transcript worker relay authorization is required." };
+  }
+  try {
+    const payload = jwt.verify(token, getTranscriptTokenSecret(), {
+      algorithms: ["HS256"],
+      audience: "conclave-sfu",
+      issuer: "conclave-transcript-worker",
+    }) as RelayStartTokenPayload;
+    if (
+      payload.tokenUse !== "transcript:sfuRelayStart" ||
+      payload.userId !== userId ||
+      payload.roomId !== room.id ||
+      payload.clientId !== room.clientId ||
+      payload.channelId !== room.channelId ||
+      payload.sessionStatus !== "live" ||
+      payload.transportMode !== "sfu"
+    ) {
+      return { ok: false, message: "Transcript worker relay authorization does not match this room." };
+    }
+    return { ok: true };
+  } catch {
+    return { ok: false, message: "Transcript worker relay authorization is invalid or expired." };
+  }
+};
 
 const createTranscriptRelayToken = (options: {
   roomId: string;
@@ -152,10 +194,22 @@ export const registerTranscriptHandlers = (
   socket.on(
     "transcript:sfuRelayStart",
     async (
-      callback: (
+      requestOrCallback:
+        | TranscriptSfuRelayStartRequest
+        | ((
+            response: TranscriptSfuRelayStartResponse | { error: string },
+          ) => void),
+      maybeCallback?: (
         response: TranscriptSfuRelayStartResponse | { error: string },
       ) => void,
     ) => {
+      const callback =
+        typeof requestOrCallback === "function"
+          ? requestOrCallback
+          : maybeCallback;
+      const request =
+        typeof requestOrCallback === "function" ? null : requestOrCallback;
+      if (!callback) return;
       const room = context.currentRoom;
       const client = context.currentClient;
       if (!room || !client || !context.currentUserKey) {
@@ -172,6 +226,15 @@ export const registerTranscriptHandlers = (
         respond(callback, {
           error: "Too many transcript relay requests; please retry shortly",
         });
+        return;
+      }
+      const relayAuthorization = verifyTranscriptRelayStartToken(
+        request?.relayStartToken,
+        room,
+        client.id,
+      );
+      if (!relayAuthorization.ok) {
+        respond(callback, { error: relayAuthorization.message });
         return;
       }
 
@@ -220,7 +283,7 @@ export const registerTranscriptHandlers = (
       respond(
         callback,
         context.state.transcriptRelays.stopRoomForUser({
-          roomId: room.id,
+          roomKey: room.channelId,
           userId: client.id,
           canStopAnyRelay: isAdmin || isHost,
         }),

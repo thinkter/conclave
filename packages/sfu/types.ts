@@ -663,6 +663,15 @@ export interface TranscriptSfuRelayStartResponse {
   updatedAt: number;
 }
 
+export interface TranscriptSfuRelayStartToken {
+  token: string;
+  expiresAt: number;
+}
+
+export interface TranscriptSfuRelayStartRequest {
+  relayStartToken: string;
+}
+
 export interface TranscriptSfuRelayStopResponse {
   success: boolean;
 }

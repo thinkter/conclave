@@ -42,6 +42,7 @@ import type {
   RtpParameters,
   TransportResponse,
   TranscriptSfuRelayStartResponse,
+  TranscriptSfuRelayStartRequest,
   TranscriptSfuRelayStatusResponse,
   TranscriptSfuRelayStopResponse,
   TranscriptTokenResponse,
@@ -6242,13 +6243,16 @@ export function useMeetSocket({
     }, [socketRef]);
 
   const startTranscriptSfuRelay =
-    useCallback((): Promise<TranscriptSfuRelayStartResponse | null> => {
+    useCallback((
+      request: TranscriptSfuRelayStartRequest,
+    ): Promise<TranscriptSfuRelayStartResponse | null> => {
       const socket = socketRef.current;
       if (!socket) return Promise.resolve(null);
 
       return new Promise((resolve) => {
         socket.emit(
           "transcript:sfuRelayStart",
+          request,
           (response: TranscriptSfuRelayStartResponse | { error: string }) => {
             if ("error" in response) {
               console.error(

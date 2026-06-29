@@ -133,7 +133,14 @@ export class SfuTranscriptRelay implements TranscriptAudioBatchSink {
 
     for (const entry of entries) {
       if (this.consumers.has(entry.producerId)) continue;
-      await this.addConsumer(entry);
+      try {
+        await this.addConsumer(entry);
+      } catch (error) {
+        Logger.warn(
+          `Transcript SFU relay could not attach audio producer ${entry.producerId} in room ${this.options.room.id}`,
+          error,
+        );
+      }
     }
   }
 
@@ -295,6 +302,10 @@ export class SfuTranscriptRelay implements TranscriptAudioBatchSink {
     const sent = this.workerClient?.clearAudio(speaker) ?? false;
     if (!sent) this.warnWorkerSendFailure("audio clear");
     return sent;
+  }
+
+  async prepareHandoff(): Promise<boolean> {
+    return this.workerClient?.prepareHandoff() ?? false;
   }
 
   private warnWorkerSendFailure(action: string): void {
