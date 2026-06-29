@@ -320,8 +320,8 @@ Generation runs before `GameSession` is created. Reducers still stay pure, and a
 SFU configuration:
 
 ```bash
-CLOUDFLARE_ACCOUNT_ID=...
-CLOUDFLARE_API_TOKEN=...
+SFU_GAME_AI_CLOUDFLARE_ACCOUNT_ID=...
+SFU_GAME_AI_CLOUDFLARE_API_TOKEN=...
 CLOUDFLARE_WORKERS_AI_MODEL=cf/zai-org/glm-4.7-flash
 SFU_GAME_AI_TIMEOUT_MS=25000
 SFU_GAME_AI_WEB_SEARCH_ENABLED=1
@@ -335,7 +335,7 @@ Web search is enabled by default for generated game content. Keep the context si
 Run the live smoke test when changing generated content:
 
 ```bash
-CLOUDFLARE_ACCOUNT_ID=... pnpm -C packages/sfu run test:game-ai
+SFU_GAME_AI_CLOUDFLARE_ACCOUNT_ID=... pnpm -C packages/sfu run test:game-ai
 ```
 
 ## Leaderboards
