@@ -94,6 +94,7 @@ export class TranscriptRoom {
   private sequence = 0;
   private apiKey: string | null = null;
   private openAiSocket: WebSocket | null = null;
+  private openAiGeneration = 0;
   private lastMinutesRefreshAt = 0;
 
   constructor(state: DurableObjectState, env: Env) {
@@ -394,15 +395,12 @@ export class TranscriptRoom {
       updatedAt: now,
       error: null,
     };
+    this.resetOpenAiAudioState();
     if (wasIdle) {
       this.segments = [];
-      this.partialSegments.clear();
-      this.pendingSpeakers = [];
-      this.latestSpeaker = null;
-      this.hasPendingAudio = false;
-      this.pendingAudioSamples = 0;
       this.sequence = 0;
       this.minutes = createEmptyMinutes(qaModel);
+      this.lastMinutesRefreshAt = 0;
     }
     this.broadcastSession();
     await this.persist();
@@ -459,12 +457,9 @@ export class TranscriptRoom {
       qaModel: this.session?.qaModel ?? DEFAULT_QA_MODEL,
     };
     this.segments = [];
-    this.partialSegments.clear();
-    this.pendingSpeakers = [];
-    this.latestSpeaker = null;
-    this.hasPendingAudio = false;
-    this.pendingAudioSamples = 0;
+    this.resetOpenAiAudioState();
     this.sequence = 0;
+    this.lastMinutesRefreshAt = 0;
     this.minutes = createEmptyMinutes(this.session.qaModel);
     await this.state.storage.delete("snapshot");
     this.broadcast({
@@ -601,11 +596,15 @@ export class TranscriptRoom {
     }
 
     socket.accept();
+    const generation = this.openAiGeneration + 1;
+    this.openAiGeneration = generation;
     this.openAiSocket = socket;
     socket.addEventListener("message", (event) => {
+      if (!this.isCurrentOpenAiSocket(socket, generation)) return;
       void this.handleOpenAiEvent(String(event.data ?? ""));
     });
     socket.addEventListener("close", () => {
+      if (!this.isCurrentOpenAiSocket(socket, generation)) return;
       if (
         this.session?.status === "live" ||
         this.session?.status === "starting"
@@ -614,6 +613,7 @@ export class TranscriptRoom {
       }
     });
     socket.addEventListener("error", () => {
+      if (!this.isCurrentOpenAiSocket(socket, generation)) return;
       void this.handleOpenAiFailure("Transcription model connection errored.");
     });
 
@@ -647,12 +647,24 @@ export class TranscriptRoom {
 
   private closeOpenAi(): void {
     const socket = this.openAiSocket;
+    this.openAiGeneration += 1;
     this.openAiSocket = null;
-    this.hasPendingAudio = false;
-    this.pendingAudioSamples = 0;
+    this.resetOpenAiAudioState();
     try {
       socket?.close();
     } catch {}
+  }
+
+  private isCurrentOpenAiSocket(socket: WebSocket, generation: number): boolean {
+    return this.openAiSocket === socket && this.openAiGeneration === generation;
+  }
+
+  private resetOpenAiAudioState(): void {
+    this.partialSegments.clear();
+    this.pendingSpeakers = [];
+    this.latestSpeaker = null;
+    this.hasPendingAudio = false;
+    this.pendingAudioSamples = 0;
   }
 
   private async handleOpenAiEvent(raw: string): Promise<void> {
@@ -804,8 +816,7 @@ export class TranscriptRoom {
   private markTakeoverNeeded(error: string): void {
     this.closeOpenAi();
     this.apiKey = null;
-    this.pendingSpeakers = [];
-    this.latestSpeaker = null;
+    this.resetOpenAiAudioState();
     if (!this.session) return;
     this.session = {
       ...this.session,
@@ -971,12 +982,9 @@ export class TranscriptRoom {
     this.closeOpenAi();
     this.apiKey = null;
     this.segments = [];
-    this.partialSegments.clear();
-    this.pendingSpeakers = [];
-    this.latestSpeaker = null;
-    this.hasPendingAudio = false;
-    this.pendingAudioSamples = 0;
+    this.resetOpenAiAudioState();
     this.sequence = 0;
+    this.lastMinutesRefreshAt = 0;
     this.session = {
       ...createIdleSession(roomId),
       qaModel,
