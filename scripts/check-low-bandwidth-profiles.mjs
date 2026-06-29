@@ -741,6 +741,11 @@ assertRegex(
   "web screen sharing reserves publish bandwidth by tightening local webcam caps",
 );
 assertRegex(
+  "webAdaptivePublishQuality",
+  /getLiveProfileForObservedQuality[\s\S]*quality === "poor"[\s\S]*emergencyMode \? "emergency" : "poor"[\s\S]*screenShareVideoActive[\s\S]*screenShareImmediateProfile[\s\S]*getLiveProfileForObservedQuality\(connectionQuality, emergencyMode\)[\s\S]*getLiveProfileForObservedQuality\(capRecoveryQuality, emergencyMode\)[\s\S]*const profile = liveProfile \?\? screenShareImmediateProfile[\s\S]*applyLiveProducerProfile\(profile\)/,
+  "web screen sharing reserves uplink immediately without waiting for normal stability window",
+);
+assertRegex(
   "webMeetClient",
   /suppressedProcessedPublishTrackRef[\s\S]*handlePreferredVideoPublishTrackRejected[\s\S]*suppress_processed_publish_track_after_raw_repair[\s\S]*onPreferredVideoPublishTrackRejected:[\s\S]*handlePreferredVideoPublishTrackRejected[\s\S]*processedTrackSuppressed[\s\S]*skip_processed_track_suppressed_after_raw_repair/,
   "web processed publish track stays suppressed after raw repair until fresh output",

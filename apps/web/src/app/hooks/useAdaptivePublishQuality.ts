@@ -192,6 +192,16 @@ const getScreenShareAwareWebcamProfile = (
   return profile;
 };
 
+const getLiveProfileForObservedQuality = (
+  quality: ConnectionQuality,
+  emergencyMode: boolean,
+): WebcamProducerNetworkProfile | null => {
+  if (quality === "poor") return emergencyMode ? "emergency" : "poor";
+  if (quality === "fair") return "fair";
+  if (quality === "good") return "good";
+  return null;
+};
+
 export function useAdaptivePublishQuality({
   enabled,
   connectionQuality,
@@ -534,14 +544,15 @@ export function useAdaptivePublishQuality({
       quality: ConnectionQuality,
       elapsedMs: number,
     ): WebcamProducerNetworkProfile | null => {
-      if (quality === "poor") {
+      const profile = getLiveProfileForObservedQuality(quality, emergencyMode);
+      if (profile === "poor" || profile === "emergency") {
         if (elapsedMs < POOR_LIVE_CAP_AFTER_MS) return null;
-        return emergencyMode ? "emergency" : "poor";
+        return profile;
       }
-      if (quality === "fair") {
+      if (profile === "fair") {
         return elapsedMs >= FAIR_LIVE_CAP_AFTER_MS ? "fair" : null;
       }
-      if (quality === "good") {
+      if (profile === "good") {
         return elapsedMs >= GOOD_LIVE_RESTORE_AFTER_MS ? "good" : null;
       }
       return null;
@@ -597,9 +608,19 @@ export function useAdaptivePublishQuality({
       const liveProfile =
         getStableLiveProfile(capRecoveryQuality, capRecoveryElapsedMs) ??
         getStableLiveProfile(connectionQuality, elapsedMs);
+      const screenShareVideoActive = Boolean(
+        screenProducerRef.current && !screenProducerRef.current.closed,
+      );
+      const screenShareImmediateProfile =
+        screenShareVideoActive && !liveProfile
+          ? getLiveProfileForObservedQuality(connectionQuality, emergencyMode) ??
+            getLiveProfileForObservedQuality(capRecoveryQuality, emergencyMode) ??
+            "good"
+          : null;
       const applyStableLiveProfile = () => {
-        if (liveProfile && !updateInFlightRef.current) {
-          void applyLiveProducerProfile(liveProfile);
+        const profile = liveProfile ?? screenShareImmediateProfile;
+        if (profile && !updateInFlightRef.current) {
+          void applyLiveProducerProfile(profile);
         }
       };
       const shouldRestoreStableStandardCapture =
