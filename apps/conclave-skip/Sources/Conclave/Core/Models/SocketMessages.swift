@@ -177,6 +177,7 @@ struct JoinRoomResponse: Codable {
     let webinarRequiresInviteCode: Bool?
     let webinarAttendeeCount: Int?
     let webinarMaxAttendees: Int?
+    let displayNameSnapshot: [DisplayNameSnapshotUser]?
 
     enum CodingKeys: String, CodingKey {
         case rtpCapabilities
@@ -198,6 +199,7 @@ struct JoinRoomResponse: Codable {
         case webinarRequiresInviteCode
         case webinarAttendeeCount
         case webinarMaxAttendees
+        case displayNameSnapshot
     }
 
     init(
@@ -219,7 +221,8 @@ struct JoinRoomResponse: Codable {
         webinarLocked: Bool? = nil,
         webinarRequiresInviteCode: Bool? = nil,
         webinarAttendeeCount: Int? = nil,
-        webinarMaxAttendees: Int? = nil
+        webinarMaxAttendees: Int? = nil,
+        displayNameSnapshot: [DisplayNameSnapshotUser]? = nil
     ) {
         self.rtpCapabilities = rtpCapabilities
         self.existingProducers = existingProducers
@@ -240,6 +243,7 @@ struct JoinRoomResponse: Codable {
         self.webinarRequiresInviteCode = webinarRequiresInviteCode
         self.webinarAttendeeCount = webinarAttendeeCount
         self.webinarMaxAttendees = webinarMaxAttendees
+        self.displayNameSnapshot = displayNameSnapshot
     }
 
     init(from decoder: Decoder) throws {
@@ -270,6 +274,7 @@ struct JoinRoomResponse: Codable {
         self.webinarRequiresInviteCode = try container.decodeIfPresent(Bool.self, forKey: .webinarRequiresInviteCode)
         self.webinarAttendeeCount = try container.decodeIfPresent(Int.self, forKey: .webinarAttendeeCount)
         self.webinarMaxAttendees = try container.decodeIfPresent(Int.self, forKey: .webinarMaxAttendees)
+        self.displayNameSnapshot = try container.decodeIfPresent([DisplayNameSnapshotUser].self, forKey: .displayNameSnapshot)
     }
 }
 

@@ -3275,7 +3275,7 @@ final class MeetingViewModel {
         )
     }
 
-    private func applyJoinSnapshot(_ response: JoinRoomResponse) {
+    func applyJoinSnapshot(_ response: JoinRoomResponse) {
         if let roomId = response.roomId?.trimmingCharacters(in: .whitespacesAndNewlines),
            !roomId.isEmpty {
             currentRoomAliases = roomAliasSet(requestedRoomId: state.roomId, resolvedRoomId: roomId)
@@ -3307,6 +3307,13 @@ final class MeetingViewModel {
         state.webinarRequiresInviteCode = response.webinarRequiresInviteCode ?? false
         state.webinarAttendeeCount = response.webinarAttendeeCount ?? 0
         state.webinarMaxAttendees = response.webinarMaxAttendees ?? 500
+
+        if let displayNameSnapshot = response.displayNameSnapshot {
+            applyDisplayNameSnapshot(DisplayNameSnapshotNotification(
+                users: displayNameSnapshot,
+                roomId: response.roomId ?? state.roomId
+            ))
+        }
     }
 
     private func applyAdminRoomStateChanged(_ notification: AdminRoomStateChangedNotification) {

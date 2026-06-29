@@ -72,6 +72,26 @@ final class ConclaveTests: XCTestCase {
         XCTAssertNil(MeetingReactionConstants.assetURL(value: "/reactions/aura.gif", baseURL: nil))
     }
 
+    func testJoinRoomResponseDecodesAckDisplayNameSnapshot() throws {
+        let response = try JSONDecoder().decode(JoinRoomResponse.self, from: Data("""
+        {
+          "status": "waiting",
+          "roomId": "room-a",
+          "displayNameSnapshot": [
+            {
+              "userId": "nikhil@example.com#web-session",
+              "displayName": "Nikhil Rao"
+            }
+          ]
+        }
+        """.utf8))
+
+        let snapshot = try XCTUnwrap(response.displayNameSnapshot)
+        XCTAssertEqual(snapshot.count, 1)
+        XCTAssertEqual(snapshot[0].userId, "nikhil@example.com#web-session")
+        XCTAssertEqual(snapshot[0].displayName, "Nikhil Rao")
+    }
+
     func testMeetingChatErrorPresentationKeepsTransportErrorsReadable() throws {
         XCTAssertEqual(
             MeetingChatErrorPresentation.message(for: NSError(
@@ -830,6 +850,35 @@ final class ConclaveTests: XCTestCase {
         XCTAssertEqual(state.displayName(for: "nikhil@example.com#android-session"), "Nikhil Rao")
         XCTAssertEqual(state.displayName(for: "nikhil@example.com"), "Nikhil Rao")
         XCTAssertEqual(state.participant(for: "nikhil@example.com")?.id, "nikhil@example.com#android-session")
+    }
+
+    @MainActor
+    func testJoinAckDisplayNameSnapshotSeedsRemotePresence() throws {
+        let viewModel = MeetingViewModel()
+        viewModel.state = MeetingState(userId: "local@example.com#local-session", sessionId: "local-session")
+        viewModel.state.sfuUserId = "local@example.com"
+        viewModel.state.roomId = "requested-room"
+        viewModel.state.connectionState = ConnectionState.joining
+        viewModel.state.isCameraOff = true
+
+        viewModel.applyJoinSnapshot(JoinRoomResponse(
+            rtpCapabilities: RtpCapabilities(codecs: nil, headerExtensions: nil),
+            existingProducers: [],
+            status: "joined",
+            roomId: "room-a",
+            displayNameSnapshot: [
+                DisplayNameSnapshotUser(userId: "nikhil@example.com#web-session", displayName: "Nikhil Rao")
+            ]
+        ))
+
+        XCTAssertEqual(viewModel.state.roomId, "room-a")
+        XCTAssertTrue(viewModel.state.hasInitialPresenceSnapshot)
+        XCTAssertEqual(viewModel.state.participantCount, 2)
+        XCTAssertEqual(viewModel.state.visibleGridUserIds, ["nikhil@example.com#web-session"])
+        XCTAssertEqual(viewModel.state.displayName(for: "nikhil@example.com#web-session"), "Nikhil Rao")
+
+        viewModel.state.connectionState = ConnectionState.joined
+        XCTAssertFalse(viewModel.shouldShowSoloWaitingTile)
     }
 
     @MainActor
