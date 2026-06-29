@@ -35,6 +35,7 @@ import {
   takeTranscriptRateLimit,
   type TranscriptRateBucketName,
 } from "./rate-limit";
+import { getTranscriptServiceVersion } from "./service-version";
 import {
   canRefreshTranscriptMinutes,
   canStopTranscriptSession,
@@ -94,6 +95,7 @@ export class TranscriptRoom {
   private sequence = 0;
   private apiKey: string | null = null;
   private openAiSocket: WebSocket | null = null;
+  private openAiGeneration = 0;
   private lastMinutesRefreshAt = 0;
 
   constructor(state: DurableObjectState, env: Env) {
@@ -149,6 +151,7 @@ export class TranscriptRoom {
       viewerConnectionId: viewer.id,
       session: this.session,
       globalOpenAiKeyAvailable: this.hasGlobalOpenAiKey(),
+      serviceVersion: this.serviceVersion(),
       segments: this.segments,
       partials: Array.from(this.partialSegments.values()),
       minutes: this.minutes,
@@ -234,11 +237,16 @@ export class TranscriptRoom {
       type: "session.state",
       session: this.session,
       globalOpenAiKeyAvailable: this.hasGlobalOpenAiKey(),
+      serviceVersion: this.serviceVersion(),
     });
   }
 
   private hasGlobalOpenAiKey(): boolean {
     return hasGlobalOpenAiApiKey(this.env);
+  }
+
+  private serviceVersion() {
+    return getTranscriptServiceVersion(this.env);
   }
 
   private sendError(viewer: Viewer, message: string): void {
@@ -288,6 +296,9 @@ export class TranscriptRoom {
       case "audio.commit":
         this.commitAudio(viewer, message.speaker);
         return;
+      case "audio.clear":
+        this.clearAudio(viewer);
+        return;
       case "qa.ask":
         await this.answerQuestion(viewer, message);
         return;
@@ -308,6 +319,7 @@ export class TranscriptRoom {
           viewerConnectionId: viewer.id,
           session: this.session,
           globalOpenAiKeyAvailable: this.hasGlobalOpenAiKey(),
+          serviceVersion: this.serviceVersion(),
           segments: this.segments,
           partials: Array.from(this.partialSegments.values()),
           minutes: this.minutes,
@@ -332,9 +344,10 @@ export class TranscriptRoom {
       this.markTakeoverNeeded("Transcript controller disconnected.");
       this.broadcast({
         type: "handoff.requested",
-        session: this.session,
-        globalOpenAiKeyAvailable: this.hasGlobalOpenAiKey(),
-      });
+      session: this.session,
+      globalOpenAiKeyAvailable: this.hasGlobalOpenAiKey(),
+      serviceVersion: this.serviceVersion(),
+    });
       await this.persist();
     }
     await this.armCleanupAlarm();
@@ -394,15 +407,12 @@ export class TranscriptRoom {
       updatedAt: now,
       error: null,
     };
+    this.resetOpenAiAudioState();
     if (wasIdle) {
       this.segments = [];
-      this.partialSegments.clear();
-      this.pendingSpeakers = [];
-      this.latestSpeaker = null;
-      this.hasPendingAudio = false;
-      this.pendingAudioSamples = 0;
       this.sequence = 0;
       this.minutes = createEmptyMinutes(qaModel);
+      this.lastMinutesRefreshAt = 0;
     }
     this.broadcastSession();
     await this.persist();
@@ -459,18 +469,16 @@ export class TranscriptRoom {
       qaModel: this.session?.qaModel ?? DEFAULT_QA_MODEL,
     };
     this.segments = [];
-    this.partialSegments.clear();
-    this.pendingSpeakers = [];
-    this.latestSpeaker = null;
-    this.hasPendingAudio = false;
-    this.pendingAudioSamples = 0;
+    this.resetOpenAiAudioState();
     this.sequence = 0;
+    this.lastMinutesRefreshAt = 0;
     this.minutes = createEmptyMinutes(this.session.qaModel);
     await this.state.storage.delete("snapshot");
     this.broadcast({
       type: "snapshot",
       session: this.session,
       globalOpenAiKeyAvailable: this.hasGlobalOpenAiKey(),
+      serviceVersion: this.serviceVersion(),
       segments: [],
       partials: [],
       minutes: this.minutes,
@@ -561,6 +569,22 @@ export class TranscriptRoom {
     }
   }
 
+  private clearAudio(viewer: Viewer): void {
+    if (!this.isController(viewer) || !this.openAiSocket) return;
+    try {
+      this.openAiSocket.send(
+        JSON.stringify({ type: "input_audio_buffer.clear" }),
+      );
+    } catch {
+      void this.handleOpenAiFailure("Transcript audio clear failed.");
+      return;
+    }
+    this.pendingSpeakers = [];
+    this.latestSpeaker = null;
+    this.hasPendingAudio = false;
+    this.pendingAudioSamples = 0;
+  }
+
   private isSameAudioSpeaker(
     left: TranscriptSpeaker,
     right: TranscriptSpeaker,
@@ -601,11 +625,15 @@ export class TranscriptRoom {
     }
 
     socket.accept();
+    const generation = this.openAiGeneration + 1;
+    this.openAiGeneration = generation;
     this.openAiSocket = socket;
     socket.addEventListener("message", (event) => {
+      if (!this.isCurrentOpenAiSocket(socket, generation)) return;
       void this.handleOpenAiEvent(String(event.data ?? ""));
     });
     socket.addEventListener("close", () => {
+      if (!this.isCurrentOpenAiSocket(socket, generation)) return;
       if (
         this.session?.status === "live" ||
         this.session?.status === "starting"
@@ -614,6 +642,7 @@ export class TranscriptRoom {
       }
     });
     socket.addEventListener("error", () => {
+      if (!this.isCurrentOpenAiSocket(socket, generation)) return;
       void this.handleOpenAiFailure("Transcription model connection errored.");
     });
 
@@ -647,12 +676,24 @@ export class TranscriptRoom {
 
   private closeOpenAi(): void {
     const socket = this.openAiSocket;
+    this.openAiGeneration += 1;
     this.openAiSocket = null;
-    this.hasPendingAudio = false;
-    this.pendingAudioSamples = 0;
+    this.resetOpenAiAudioState();
     try {
       socket?.close();
     } catch {}
+  }
+
+  private isCurrentOpenAiSocket(socket: WebSocket, generation: number): boolean {
+    return this.openAiSocket === socket && this.openAiGeneration === generation;
+  }
+
+  private resetOpenAiAudioState(): void {
+    this.partialSegments.clear();
+    this.pendingSpeakers = [];
+    this.latestSpeaker = null;
+    this.hasPendingAudio = false;
+    this.pendingAudioSamples = 0;
   }
 
   private async handleOpenAiEvent(raw: string): Promise<void> {
@@ -804,8 +845,7 @@ export class TranscriptRoom {
   private markTakeoverNeeded(error: string): void {
     this.closeOpenAi();
     this.apiKey = null;
-    this.pendingSpeakers = [];
-    this.latestSpeaker = null;
+    this.resetOpenAiAudioState();
     if (!this.session) return;
     this.session = {
       ...this.session,
@@ -932,6 +972,7 @@ export class TranscriptRoom {
     switch (message.type) {
       case "audio.chunk":
       case "audio.commit":
+      case "audio.clear":
         return "audio";
       case "export.snapshot":
         return "export";
@@ -971,12 +1012,9 @@ export class TranscriptRoom {
     this.closeOpenAi();
     this.apiKey = null;
     this.segments = [];
-    this.partialSegments.clear();
-    this.pendingSpeakers = [];
-    this.latestSpeaker = null;
-    this.hasPendingAudio = false;
-    this.pendingAudioSamples = 0;
+    this.resetOpenAiAudioState();
     this.sequence = 0;
+    this.lastMinutesRefreshAt = 0;
     this.session = {
       ...createIdleSession(roomId),
       qaModel,

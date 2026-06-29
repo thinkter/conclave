@@ -217,12 +217,12 @@ if (requireRedisAdapter && !socketRedisUrl) {
   );
 }
 const cloudflareWorkersAiAccountId =
-  process.env.CLOUDFLARE_ACCOUNT_ID?.trim() ||
+  process.env.SFU_GAME_AI_CLOUDFLARE_ACCOUNT_ID?.trim() ||
   process.env.CLOUDFLARE_WORKERS_AI_ACCOUNT_ID?.trim() ||
   "";
 const cloudflareWorkersAiToken =
-  process.env.CLOUDFLARE_AUTH_TOKEN?.trim() ||
-  process.env.CLOUDFLARE_API_TOKEN?.trim() ||
+  process.env.SFU_GAME_AI_CLOUDFLARE_API_TOKEN?.trim() ||
+  process.env.CLOUDFLARE_WORKERS_AI_API_TOKEN?.trim() ||
   process.env.CLOUDFLARE_WORKERS_AI_TOKEN?.trim() ||
   "";
 const gameAiDisabled =
