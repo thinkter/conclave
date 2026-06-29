@@ -92,12 +92,26 @@ export default function ReactionGame({
       sub = tappedValid ? "Locked in" : `${pub.tappedCount}/${pub.totalPlayers} tapped`;
     }
     const canTap = !me.tapped;
+    const handleTap = () => {
+      void move("tap");
+    };
     return (
       <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 340 }}>
         <button
           type="button"
           disabled={!canTap}
-          onClick={() => move("tap")}
+          onPointerDown={(event) => {
+            if (!canTap) return;
+            if (event.pointerType === "mouse" && event.button !== 0) return;
+            event.preventDefault();
+            handleTap();
+          }}
+          onKeyDown={(event) => {
+            if (!canTap || event.repeat) return;
+            if (event.key !== "Enter" && event.key !== " ") return;
+            event.preventDefault();
+            handleTap();
+          }}
           style={{
             flex: 1,
             minHeight: 300,
@@ -112,6 +126,7 @@ export default function ReactionGame({
             justifyContent: "center",
             gap: 8,
             transition: "background 120ms ease",
+            touchAction: "manipulation",
           }}
         >
           <span style={{ fontFamily: HEAD_FONT, fontSize: isGo && !tappedValid ? 44 : 30, fontWeight: 500 }}>

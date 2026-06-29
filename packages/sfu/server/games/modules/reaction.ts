@@ -9,9 +9,9 @@ import { numberOption } from "../config.js";
 /**
  * Reaction: a reflex arena. Each round the panel waits ("do not tap"), then
  * flips to "TAP" at a random moment. Fastest valid tap wins; tapping early is a
- * fault. Reaction time is measured server-side from the authoritative go moment,
- * so no client can cheat the clock. This is a deliberately different VIEW: a
- * full-panel tappable zone instead of a list.
+ * fault. Reaction time is measured from the server-authoritative go moment and
+ * the server receive time, with a small server-owned latency allowance so
+ * clients cannot forge the clock.
  */
 
 const TOTAL_ROUNDS = 5;
@@ -21,6 +21,7 @@ const GO_WINDOW_MS = 4_000;
 const REVEAL_MS = 4_500;
 const RANK_POINTS = [100, 80, 65, 55, 45];
 const MIN_VALID_POINTS = 30;
+const SERVER_TAP_LATENCY_ALLOWANCE_MS = 75;
 
 type Phase = "lobby" | "arming" | "go" | "reveal" | "results";
 
@@ -94,7 +95,13 @@ export const reactionModule: GameModule<ReactionState> = {
         const tap: Tap =
           state.phase === "arming"
             ? { reactionMs: null, early: true }
-            : { reactionMs: Math.max(0, ctx.now - state.goAt), early: false };
+            : {
+                reactionMs: Math.max(
+                  0,
+                  ctx.now - state.goAt - SERVER_TAP_LATENCY_ALLOWANCE_MS,
+                ),
+                early: false,
+              };
         return { ...state, taps: { ...state.taps, [move.playerId]: tap } };
       }
       case "next": {

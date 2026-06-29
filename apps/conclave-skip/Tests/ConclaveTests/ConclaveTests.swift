@@ -72,6 +72,26 @@ final class ConclaveTests: XCTestCase {
         XCTAssertNil(MeetingReactionConstants.assetURL(value: "/reactions/aura.gif", baseURL: nil))
     }
 
+    func testJoinRoomResponseDecodesAckDisplayNameSnapshot() throws {
+        let response = try JSONDecoder().decode(JoinRoomResponse.self, from: Data("""
+        {
+          "status": "waiting",
+          "roomId": "room-a",
+          "displayNameSnapshot": [
+            {
+              "userId": "nikhil@example.com#web-session",
+              "displayName": "Nikhil Rao"
+            }
+          ]
+        }
+        """.utf8))
+
+        let snapshot = try XCTUnwrap(response.displayNameSnapshot)
+        XCTAssertEqual(snapshot.count, 1)
+        XCTAssertEqual(snapshot[0].userId, "nikhil@example.com#web-session")
+        XCTAssertEqual(snapshot[0].displayName, "Nikhil Rao")
+    }
+
     func testMeetingChatErrorPresentationKeepsTransportErrorsReadable() throws {
         XCTAssertEqual(
             MeetingChatErrorPresentation.message(for: NSError(
@@ -830,6 +850,35 @@ final class ConclaveTests: XCTestCase {
         XCTAssertEqual(state.displayName(for: "nikhil@example.com#android-session"), "Nikhil Rao")
         XCTAssertEqual(state.displayName(for: "nikhil@example.com"), "Nikhil Rao")
         XCTAssertEqual(state.participant(for: "nikhil@example.com")?.id, "nikhil@example.com#android-session")
+    }
+
+    @MainActor
+    func testJoinAckDisplayNameSnapshotSeedsRemotePresence() throws {
+        let viewModel = MeetingViewModel()
+        viewModel.state = MeetingState(userId: "local@example.com#local-session", sessionId: "local-session")
+        viewModel.state.sfuUserId = "local@example.com"
+        viewModel.state.roomId = "requested-room"
+        viewModel.state.connectionState = ConnectionState.joining
+        viewModel.state.isCameraOff = true
+
+        viewModel.applyJoinSnapshot(JoinRoomResponse(
+            rtpCapabilities: RtpCapabilities(codecs: nil, headerExtensions: nil),
+            existingProducers: [],
+            status: "joined",
+            roomId: "room-a",
+            displayNameSnapshot: [
+                DisplayNameSnapshotUser(userId: "nikhil@example.com#web-session", displayName: "Nikhil Rao")
+            ]
+        ))
+
+        XCTAssertEqual(viewModel.state.roomId, "room-a")
+        XCTAssertTrue(viewModel.state.hasInitialPresenceSnapshot)
+        XCTAssertEqual(viewModel.state.participantCount, 2)
+        XCTAssertEqual(viewModel.state.visibleGridUserIds, ["nikhil@example.com#web-session"])
+        XCTAssertEqual(viewModel.state.displayName(for: "nikhil@example.com#web-session"), "Nikhil Rao")
+
+        viewModel.state.connectionState = ConnectionState.joined
+        XCTAssertFalse(viewModel.shouldShowSoloWaitingTile)
     }
 
     @MainActor
@@ -3895,6 +3944,47 @@ final class ConclaveTests: XCTestCase {
     }
 
     @MainActor
+    func testDelayedStableLeaveCleanupDoesNotRemoveQuickSessionRejoin() async throws {
+        let viewModel = MeetingViewModel()
+        viewModel.state = MeetingState(userId: "local@example.com#local-session", sessionId: "local-session")
+        viewModel.state.sfuUserId = "local@example.com"
+        viewModel.state.displayName = "Local"
+        viewModel.state.roomId = "room-a"
+        viewModel.state.connectionState = ConnectionState.joined
+
+        let stableRemoteId = "alex@example.com"
+        let newSessionId = "alex@example.com#new-session"
+        viewModel.state.participants[stableRemoteId] = Participant(
+            id: stableRemoteId,
+            displayName: "Alex"
+        )
+
+        viewModel.socketManager.onUserLeft?(UserLeftNotification(
+            userId: stableRemoteId,
+            roomId: "room-a"
+        ))
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(viewModel.state.participants[stableRemoteId]?.isLeaving, true)
+
+        viewModel.handleProducerState(ProducerInfo(
+            producerId: "new-webcam",
+            producerUserId: newSessionId,
+            kind: "video",
+            type: ProducerType.webcam.rawValue,
+            paused: false,
+            roomId: "room-a"
+        ))
+        XCTAssertEqual(viewModel.state.participants[newSessionId]?.id, newSessionId)
+        XCTAssertEqual(viewModel.state.participants[newSessionId]?.isLeaving, false)
+
+        try? await Task.sleep(nanoseconds: 250_000_000)
+
+        XCTAssertNil(viewModel.state.participants[stableRemoteId])
+        XCTAssertEqual(viewModel.state.participants[newSessionId]?.id, newSessionId)
+        XCTAssertEqual(viewModel.state.visibleGridUserIds, [newSessionId])
+    }
+
+    @MainActor
     func testDepartedExactSessionCanBeMarkedPresentAgain() throws {
         let viewModel = MeetingViewModel()
         viewModel.state = MeetingState(userId: "local@example.com#local-session", sessionId: "local-session")
@@ -6056,6 +6146,14 @@ final class ConclaveTests: XCTestCase {
         XCTAssertTrue(source.contains("private fun changedFlagField(obj: JSONObject, field: String): Boolean?"))
         XCTAssertTrue(source.contains("changed.length() > 0"))
         XCTAssertTrue(source.contains("changed = changedFlagField(obj, \"changed\")"))
+    }
+
+    func testAndroidJoinRoomResponseDecoderKeepsInitialPolicyFields() throws {
+        let source = try sourceFileContents("Sources/Conclave/Skip/SocketIOManager+Android.kt")
+
+        XCTAssertTrue(source.contains("isDmEnabled = boolField(obj, \"isDmEnabled\")"))
+        XCTAssertTrue(source.contains("isReactionsDisabled = boolField(obj, \"isReactionsDisabled\")"))
+        XCTAssertTrue(source.contains("meetingRequiresInviteCode = boolField(obj, \"meetingRequiresInviteCode\")"))
     }
 
     func testBrowserStateClearTearsDownSystemMediaConsumers() throws {

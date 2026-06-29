@@ -1,10 +1,13 @@
 "use client";
 
 import {
+  ArrowLeft,
   MoreHorizontal,
   PhoneOff,
+  Settings,
   Shield,
   Smile,
+  SwitchCamera,
   Volume2,
   VolumeX,
 } from "lucide-react";
@@ -16,13 +19,20 @@ import {
   useState,
   type FormEvent,
 } from "react";
+import { Drawer } from "vaul";
 import { ControlButton } from "@conclave/ui-tokens/web";
 import { color } from "@conclave/ui-tokens";
-import { MediaControlCluster, type MediaControlClusterProps } from "./DeviceCaretMenu";
+import {
+  DeviceSettingsSection,
+  MediaControlCluster,
+  useEnumeratedDevices,
+  type MediaControlClusterProps,
+} from "./DeviceCaretMenu";
 import type { ReactionOption } from "../lib/types";
 import { normalizeBrowserUrl } from "../lib/utils";
 import HotkeyTooltip from "./HotkeyTooltip";
 import Coachmark from "./Coachmark";
+import MeetingInfoTag from "./MeetingInfoTag";
 import { useOneTimeHint } from "../hooks/useOneTimeHint";
 import { useMeetVolume } from "../hooks/useMeetVolume";
 import { clampMeetVolume } from "../lib/meet-volume";
@@ -39,36 +49,6 @@ export type { ControlsBarProps } from "./controls-config";
 const ICON = 20;
 const MENU_ICON = 18;
 const STROKE = 1.75;
-
-function MeetingClock({ roomId }: { roomId?: string }) {
-  const [time, setTime] = useState("");
-  useEffect(() => {
-    const fmt = () =>
-      new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-    setTime(fmt());
-    const id = window.setInterval(() => setTime(fmt()), 15000);
-    return () => window.clearInterval(id);
-  }, []);
-  return (
-    <div className="flex items-center gap-2 text-[13px] font-medium leading-none">
-      <span className="tabular-nums" style={{ color: color.text }}>
-        {time}
-      </span>
-      {roomId ? (
-        <>
-          <span
-            aria-hidden
-            className="inline-block h-[3px] w-[3px] rounded-full"
-            style={{ backgroundColor: color.textFaint }}
-          />
-          <span className="truncate" style={{ color: color.textMuted }}>
-            {roomId}
-          </span>
-        </>
-      ) : null}
-    </div>
-  );
-}
 
 function BarButton({ d, size = 48 }: { d: ControlDescriptor; size?: number }) {
   const shouldShowTooltip = Boolean(d.hotkey || d.showTooltipWithoutHotkey);
@@ -135,44 +115,112 @@ function MediaClusterButton({
   return cluster;
 }
 
-function PanelButton({ d }: { d: ControlDescriptor }) {
+type PanelStatus = "live" | "attention" | null;
+
+function PanelClusterItem({
+  d,
+  status,
+}: {
+  d: ControlDescriptor;
+  status?: PanelStatus;
+}) {
   const Icon = d.icon;
   const active = d.variant === "active";
-  const shouldShowTooltip = Boolean(d.hotkey || d.showTooltipWithoutHotkey);
-  const btn = (
-    <button
-      type="button"
-      onClick={d.onPress}
-      aria-label={d.label}
-      title={d.label}
-      className={
-        "relative inline-flex h-10 w-10 items-center justify-center rounded-full " +
-        "transition-[background-color,color] duration-[120ms] hover:bg-white/[0.08] " +
-        (active ? "" : "hover:!text-[#fafafa]")
-      }
-      style={{ color: active ? color.accent : color.textMuted }}
-    >
-      <Icon size={ICON} strokeWidth={STROKE} />
-      {typeof d.badge === "number" && d.badge > 0 ? (
-        <span
-          className="absolute -right-0.5 -top-0.5 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-semibold leading-none text-white"
-          style={{ backgroundColor: color.accent }}
-        >
-          {d.badge > 9 ? "9+" : d.badge}
-        </span>
-      ) : null}
-    </button>
-  );
-  return shouldShowTooltip ? (
+  return (
     <HotkeyTooltip
       label={d.label}
       hotkey={d.hotkey}
       showWithoutHotkey={d.showTooltipWithoutHotkey}
     >
-      {btn}
+      <button
+        type="button"
+        onClick={d.onPress}
+        aria-label={d.label}
+        title={d.label}
+        className={
+          "relative inline-flex h-10 w-10 items-center justify-center rounded-full " +
+          "transition-[background-color,color] duration-[120ms] hover:bg-white/[0.08] " +
+          (active ? "" : "hover:!text-[#fafafa]")
+        }
+        style={{ color: active ? color.accent : color.textMuted }}
+      >
+        <Icon size={ICON} strokeWidth={STROKE} />
+        {typeof d.badge === "number" && d.badge > 0 ? (
+          <span
+            className="absolute -right-0.5 -top-0.5 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-semibold leading-none text-white"
+            style={{ backgroundColor: color.accent }}
+          >
+            {d.badge > 9 ? "9+" : d.badge}
+          </span>
+        ) : null}
+        {status ? (
+          <span
+            aria-hidden
+            className={
+              "absolute right-1 top-1 h-2 w-2 rounded-full " +
+              (status === "attention" ? "animate-pulse" : "")
+            }
+            style={{
+              backgroundColor: status === "live" ? "#32d583" : "#f97066",
+              boxShadow: "0 0 0 2px #131316",
+            }}
+          />
+        ) : null}
+      </button>
     </HotkeyTooltip>
-  ) : (
-    btn
+  );
+}
+
+/**
+ * The side-panel toggles (participants, games, transcript, chat) collapse into
+ * one overlapping "squabble" of icons to keep the bar uncrowded. Hover (or
+ * keyboard focus) fans them out so any one can be picked. Badges and the
+ * transcript live/paused dot stay visible even while collapsed, so the cluster
+ * still surfaces unread chat and transcript state at a glance.
+ */
+function PanelCluster({
+  items,
+  transcriptStatus,
+  forceOpen = false,
+}: {
+  items: ControlDescriptor[];
+  transcriptStatus?: PanelStatus;
+  forceOpen?: boolean;
+}) {
+  const [hovered, setHovered] = useState(false);
+  const open = hovered || forceOpen;
+
+  return (
+    <div
+      className="relative flex items-center rounded-full transition-colors duration-150"
+      style={{ backgroundColor: open ? "rgba(255,255,255,0.04)" : "transparent" }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onFocusCapture={() => setHovered(true)}
+      onBlurCapture={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node)) {
+          setHovered(false);
+        }
+      }}
+    >
+      {items.map((d, index) => {
+        const status = d.id === "transcript" ? (transcriptStatus ?? null) : null;
+        const raised =
+          d.variant === "active" || Boolean(status) || (d.badge ?? 0) > 0;
+        return (
+          <div
+            key={d.id}
+            className="transition-[margin] duration-200 ease-out"
+            style={{
+              marginLeft: index === 0 ? 0 : open ? 2 : -12,
+              zIndex: raised ? 20 : 10 - index,
+            }}
+          >
+            <PanelClusterItem d={d} status={status} />
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -229,18 +277,39 @@ function ControlsBar(props: ControlsBarProps) {
 
   const [reactionsOpen, setReactionsOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  // Settings is its own drawer, opened from a tile in the More drawer (devices,
+  // flip camera, mirror).
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [browserOpen, setBrowserOpen] = useState(false);
   const [browserUrl, setBrowserUrl] = useState("");
   const [browserError, setBrowserError] = useState<string | null>(null);
   const { meetVolume, setMeetVolume } = useMeetVolume();
   const meetVolumePercent = Math.round(clampMeetVolume(meetVolume) * 100);
 
+  // Enumerate cameras only while a compact drawer is open, to power the quick
+  // front/rear flip (and to decide whether the flip action is even available).
+  const { videoInput: drawerCameras } = useEnumeratedDevices(
+    compact && (moreOpen || settingsOpen),
+  );
+  const canFlipCamera =
+    Boolean(onVideoInputDeviceChange) && drawerCameras.length >= 2;
+  const flipCamera = useCallback(() => {
+    if (!onVideoInputDeviceChange || drawerCameras.length < 2) return;
+    const currentId =
+      selectedVideoInputDeviceId || drawerCameras[0]?.deviceId;
+    const index = drawerCameras.findIndex((d) => d.deviceId === currentId);
+    const next = drawerCameras[(index + 1) % drawerCameras.length];
+    if (next) onVideoInputDeviceChange(next.deviceId);
+  }, [onVideoInputDeviceChange, drawerCameras, selectedVideoInputDeviceId]);
+
   const reactionRef = useRef<HTMLDivElement>(null);
   const moreRef = useRef<HTMLDivElement>(null);
   const browserRef = useRef<HTMLDivElement>(null);
 
   useClickOutside(reactionsOpen, reactionRef, () => setReactionsOpen(false));
-  useClickOutside(moreOpen, moreRef, () => setMoreOpen(false));
+  // The compact More menu uses a vaul Drawer (portaled outside moreRef + its own
+  // overlay dismissal), so only the desktop popover needs click-outside handling.
+  useClickOutside(moreOpen && !compact, moreRef, () => setMoreOpen(false));
   useClickOutside(browserOpen, browserRef, () => setBrowserOpen(false));
 
   // One-time nudge toward the backgrounds/filters tucked inside More — only
@@ -301,13 +370,63 @@ function ControlsBar(props: ControlsBarProps) {
   const showHost = Boolean(isAdmin);
   const VolumeIcon = meetVolumePercent === 0 ? VolumeX : Volume2;
 
+  const transcriptClusterStatus: PanelStatus =
+    props.transcriptStatus === "live" || props.transcriptStatus === "starting"
+      ? "live"
+      : props.transcriptStatus === "takeover_needed" ||
+          props.transcriptStatus === "error"
+        ? "attention"
+        : null;
+  const panelCoachmarkVisible =
+    !moreOpen &&
+    !reactionsOpen &&
+    !browserOpen &&
+    !filtersTip.visible &&
+    ((gamesTip.visible && !props.isGamesOpen && !props.hasActiveGame) ||
+      (gifsTip.visible && !props.isChatOpen));
+
+  // Side-panel toggles fold into one hover-to-pick cluster. Host controls join
+  // it as a final item so the right rail stays a single tidy group.
+  const panelItems: ControlDescriptor[] = config.left.map((d) => {
+    if (d.id === "games") {
+      return {
+        ...d,
+        onPress: () => {
+          gamesTip.dismiss();
+          d.onPress?.();
+        },
+      };
+    }
+    if (d.id === "chat") {
+      return {
+        ...d,
+        onPress: () => {
+          gifsTip.dismiss();
+          d.onPress?.();
+        },
+      };
+    }
+    return d;
+  });
+  if (showHost && !compact && onToggleHostControls) {
+    panelItems.push({
+      id: "host-controls",
+      icon: Shield,
+      label: "Host controls",
+      showTooltipWithoutHotkey: true,
+      variant: isHostControlsOpen ? "active" : "default",
+      badge: props.pendingUsersCount,
+      onPress: onToggleHostControls,
+    });
+  }
+
   return (
     <div className="relative flex w-full items-center gap-2 px-4 py-3 sm:grid sm:grid-cols-[1fr_auto_1fr]">
       {/* Equal side columns keep center controls from overlapping side content
-          at sm+; below that the clock is dropped and the center group grows
-          to fill the row (flex-1) so the bar can't overlap itself. */}
+          at sm+; below that the tag is dropped and the center group grows to
+          fill the row (flex-1) so the bar can't overlap itself. */}
       <div className="flex min-w-0 shrink-0 items-center justify-self-start">
-        {!compact && <MeetingClock roomId={roomId} />}
+        {!compact && <MeetingInfoTag roomId={roomId} />}
       </div>
 
       <div className="flex flex-1 items-center justify-center justify-self-center gap-2.5">
@@ -417,7 +536,7 @@ function ControlsBar(props: ControlsBarProps) {
               onDismiss={filtersTip.dismiss}
             />
           ) : null}
-          {moreOpen && (
+          {moreOpen && !compact && (
             <div
               ref={browserRef}
               className={popoverWrapClass + " left-1/2 w-60 -translate-x-1/2"}
@@ -426,36 +545,6 @@ function ControlsBar(props: ControlsBarProps) {
               className={popoverPanelClass + " w-full"}
               style={{ backgroundColor: color.surfaceRaised, borderColor: color.border }}
             >
-              {compact && !isGhostMode && (!isReactionsDisabled || isAdmin) && reactionOptions.length > 0 && (
-                <div
-                  className="mb-1 flex items-center gap-1 overflow-x-auto border-b px-1 pb-1.5"
-                  style={{ borderColor: color.border }}
-                >
-                  {reactionOptions.map((reaction) => (
-                    <button
-                      key={reaction.id}
-                      onClick={() => {
-                        handleReaction(reaction);
-                        setMoreOpen(false);
-                      }}
-                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-lg transition-[background-color] duration-[120ms] hover:bg-white/[0.08]"
-                      title={`React with ${reaction.label}`}
-                      aria-label={`React with ${reaction.label}`}
-                    >
-                      {reaction.kind === "emoji" ? (
-                        reaction.value
-                      ) : (
-                        <img
-                          src={reaction.value}
-                          alt={reaction.label}
-                          className="h-5 w-5 object-contain"
-                          loading="lazy"
-                        />
-                      )}
-                    </button>
-                  ))}
-                </div>
-              )}
               {config.overflow.map((row) => (
                 <OverflowItem
                   key={row.id}
@@ -490,6 +579,179 @@ function ControlsBar(props: ControlsBarProps) {
             </div>
             </div>
           )}
+          {/* Phone: present More as a full-width drag-to-dismiss bottom sheet
+              (vaul, Meet-style) instead of a cramped anchored dropdown. */}
+          {compact && (
+            <Drawer.Root
+              open={moreOpen}
+              onOpenChange={(open) => {
+                if (!open) setBrowserOpen(false);
+                setMoreOpen(open);
+              }}
+            >
+              <Drawer.Portal>
+                <Drawer.Overlay className="fixed inset-0 z-[90] bg-black/55" />
+                <Drawer.Content
+                  aria-label="More options"
+                  className="fixed inset-x-0 bottom-0 z-[91] flex max-h-[85vh] flex-col rounded-t-3xl border-t outline-none"
+                  style={{ backgroundColor: color.surfaceRaised, borderColor: color.border }}
+                >
+                  <Drawer.Title className="sr-only">More options</Drawer.Title>
+                  <div
+                    aria-hidden
+                    className="mx-auto mt-3 h-1 w-9 shrink-0 rounded-full"
+                    style={{ backgroundColor: color.border }}
+                  />
+                  <div className="overflow-y-auto px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
+                    {!isGhostMode && (!isReactionsDisabled || isAdmin) && reactionOptions.length > 0 && (
+                      <div
+                        className="mb-3 flex flex-wrap items-center justify-center gap-1 rounded-2xl p-1.5"
+                        style={{ backgroundColor: color.surface }}
+                      >
+                        {reactionOptions.map((reaction) => (
+                          <button
+                            key={reaction.id}
+                            onClick={() => {
+                              handleReaction(reaction);
+                              setMoreOpen(false);
+                            }}
+                            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-2xl transition-[background-color] duration-[120ms] active:bg-white/[0.1]"
+                            title={`React with ${reaction.label}`}
+                            aria-label={`React with ${reaction.label}`}
+                          >
+                            {reaction.kind === "emoji" ? (
+                              reaction.value
+                            ) : (
+                              <img
+                                src={reaction.value}
+                                alt={reaction.label}
+                                className="h-6 w-6 object-contain"
+                                loading="lazy"
+                              />
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    <div className="grid grid-cols-3 gap-2">
+                      {config.overflow.map((row) => (
+                        <MoreTile
+                          key={row.id}
+                          row={row}
+                          onActivate={() => {
+                            if (row.opensBrowserLauncher) {
+                              setBrowserOpen((v) => !v);
+                            } else {
+                              row.onPress?.();
+                              setMoreOpen(false);
+                            }
+                          }}
+                        />
+                      ))}
+                      {!isGhostMode && canFlipCamera && (
+                        <MoreTile
+                          row={{
+                            id: "flip-camera",
+                            icon: SwitchCamera,
+                            label: "Flip camera",
+                          }}
+                          onActivate={() => {
+                            flipCamera();
+                            setMoreOpen(false);
+                          }}
+                        />
+                      )}
+                      {!isGhostMode &&
+                        (hasAudioDevicePicker || hasVideoDevicePicker) && (
+                          <MoreTile
+                            row={{
+                              id: "settings",
+                              icon: Settings,
+                              label: "Settings",
+                            }}
+                            onActivate={() => {
+                              setMoreOpen(false);
+                              setSettingsOpen(true);
+                            }}
+                          />
+                        )}
+                    </div>
+                    <MeetVolumeOverflowControl
+                      icon={VolumeIcon}
+                      volumePercent={meetVolumePercent}
+                      onVolumePercentChange={(value) => setMeetVolume(value / 100)}
+                    />
+                    {browserOpen && onLaunchBrowser && (
+                      <BrowserLauncher
+                        url={browserUrl}
+                        error={browserError}
+                        busy={isBrowserLaunching}
+                        onUrlChange={(v) => {
+                          setBrowserUrl(v);
+                          if (browserError) setBrowserError(null);
+                        }}
+                        onLaunch={launchBrowser}
+                      />
+                    )}
+                  </div>
+                </Drawer.Content>
+              </Drawer.Portal>
+            </Drawer.Root>
+          )}
+          {/* Settings drawer — opened from the More drawer's Settings tile. */}
+          {compact && (
+            <Drawer.Root open={settingsOpen} onOpenChange={setSettingsOpen}>
+              <Drawer.Portal>
+                <Drawer.Overlay className="fixed inset-0 z-[90] bg-black/55" />
+                <Drawer.Content
+                  aria-label="Settings"
+                  className="fixed inset-x-0 bottom-0 z-[91] flex max-h-[85vh] flex-col rounded-t-3xl border-t outline-none"
+                  style={{ backgroundColor: color.surfaceRaised, borderColor: color.border }}
+                >
+                  <Drawer.Title className="sr-only">Settings</Drawer.Title>
+                  <div
+                    aria-hidden
+                    className="mx-auto mt-3 h-1 w-9 shrink-0 rounded-full"
+                    style={{ backgroundColor: color.border }}
+                  />
+                  <div className="flex items-center gap-2 px-4 pb-1 pt-3">
+                    <button
+                      type="button"
+                      aria-label="Back"
+                      onClick={() => {
+                        setSettingsOpen(false);
+                        setMoreOpen(true);
+                      }}
+                      className="-ml-1.5 inline-flex h-8 w-8 items-center justify-center rounded-full transition-[background-color] duration-[120ms] active:bg-white/[0.08]"
+                      style={{ color: color.textMuted }}
+                    >
+                      <ArrowLeft size={MENU_ICON} strokeWidth={STROKE} />
+                    </button>
+                    <span
+                      className="text-[15px] font-semibold"
+                      style={{ color: color.text }}
+                    >
+                      Settings
+                    </span>
+                  </div>
+                  <div className="overflow-y-auto px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-1">
+                    <DeviceSettingsSection
+                      bare
+                      active={settingsOpen}
+                      selectedAudioInputDeviceId={selectedAudioInputDeviceId}
+                      selectedAudioOutputDeviceId={selectedAudioOutputDeviceId}
+                      selectedVideoInputDeviceId={selectedVideoInputDeviceId}
+                      onAudioInputDeviceChange={onAudioInputDeviceChange}
+                      onAudioOutputDeviceChange={onAudioOutputDeviceChange}
+                      onVideoInputDeviceChange={onVideoInputDeviceChange}
+                      isMirrorCamera={isMirrorCamera}
+                      onToggleMirror={onToggleMirror}
+                    />
+                  </div>
+                </Drawer.Content>
+              </Drawer.Portal>
+            </Drawer.Root>
+          )}
         </div>
 
         <HotkeyTooltip label="Leave call" hotkey="">
@@ -506,89 +768,29 @@ function ControlsBar(props: ControlsBarProps) {
       </div>
 
       <div className="flex min-w-0 shrink-0 items-center justify-self-end gap-0.5">
-        {config.left.map((d) => {
-          if (d.id === "games") {
-            return (
-              <div key={d.id} className="relative flex">
-                <PanelButton
-                  d={{
-                    ...d,
-                    onPress: () => {
-                      gamesTip.dismiss();
-                      d.onPress?.();
-                    },
-                  }}
-                />
-                {gamesTip.visible &&
-                !props.isGamesOpen &&
-                !props.hasActiveGame &&
-                !filtersTip.visible &&
-                !gifsTip.visible &&
-                !moreOpen &&
-                !reactionsOpen &&
-                !browserOpen ? (
-                  <Coachmark
-                    title="Games are here!"
-                    description="Start a quick room game with everyone."
-                    onDismiss={gamesTip.dismiss}
-                  />
-                ) : null}
-              </div>
-            );
-          }
-
-          if (d.id !== "chat") {
-            return <PanelButton key={d.id} d={d} />;
-          }
-
-          return (
-            <div key={d.id} className="relative flex">
-              <PanelButton
-                d={{
-                  ...d,
-                  onPress: () => {
-                    gifsTip.dismiss();
-                    d.onPress?.();
-                  },
-                }}
+        {panelItems.length > 0 && (
+          <div className="relative flex">
+            <PanelCluster
+              items={panelItems}
+              transcriptStatus={transcriptClusterStatus}
+              forceOpen={panelCoachmarkVisible}
+            />
+            {panelCoachmarkVisible && gamesTip.visible ? (
+              <Coachmark
+                title="Games are here!"
+                description="Start a quick room game with everyone."
+                onDismiss={gamesTip.dismiss}
               />
-              {gifsTip.visible &&
-              !props.isChatOpen &&
-              !filtersTip.visible &&
-              !gamesTip.visible &&
-              !moreOpen &&
-              !reactionsOpen &&
-              !browserOpen ? (
-                <Coachmark
-                  title="GIFs are here!"
-                  description="You can send your fav reactions on Conclave"
-                  onDismiss={gifsTip.dismiss}
-                  arrowLeft="calc(100% - 1.25rem)"
-                  className="!left-auto right-0 !translate-x-0"
-                />
-              ) : null}
-            </div>
-          );
-        })}
-
-        {showHost && onToggleHostControls && (
-          <HotkeyTooltip label="Host controls" showWithoutHotkey>
-            <button
-              type="button"
-              onClick={onToggleHostControls}
-              aria-label="Host controls"
-              aria-pressed={isHostControlsOpen}
-              title="Host controls"
-              className={
-                "inline-flex h-10 w-10 items-center justify-center rounded-full " +
-                "transition-[background-color,color] duration-[120ms] hover:bg-white/[0.08] " +
-                (isHostControlsOpen ? "" : "hover:!text-[#fafafa]")
-              }
-              style={{ color: isHostControlsOpen ? color.accent : color.textMuted }}
-            >
-              <Shield size={ICON} strokeWidth={STROKE} />
-            </button>
-          </HotkeyTooltip>
+            ) : panelCoachmarkVisible && gifsTip.visible ? (
+              <Coachmark
+                title="GIFs are here!"
+                description="You can send your fav reactions on Conclave"
+                onDismiss={gifsTip.dismiss}
+                arrowLeft="calc(100% - 1.25rem)"
+                className="!left-auto right-0 !translate-x-0"
+              />
+            ) : null}
+          </div>
         )}
       </div>
     </div>
@@ -617,6 +819,44 @@ function OverflowItem({ row, onActivate }: { row: OverflowRow; onActivate: () =>
           {row.badge > 9 ? "9+" : row.badge}
         </span>
       ) : null}
+    </button>
+  );
+}
+
+function MoreTile({ row, onActivate }: { row: OverflowRow; onActivate: () => void }) {
+  const Icon = row.icon;
+  return (
+    <button
+      type="button"
+      aria-label={row.label}
+      title={row.label}
+      disabled={row.disabled}
+      onClick={onActivate}
+      className="relative flex flex-col items-center gap-2 rounded-2xl px-1.5 py-3.5 transition-[background-color] duration-[120ms] active:bg-white/[0.06] disabled:opacity-40"
+    >
+      <span
+        className="relative flex h-12 w-12 items-center justify-center rounded-full"
+        style={{
+          backgroundColor: row.active ? color.accent : "rgba(250,250,250,0.08)",
+          color: row.active ? "#fff" : color.text,
+        }}
+      >
+        <Icon size={22} strokeWidth={STROKE} />
+        {typeof row.badge === "number" && row.badge > 0 ? (
+          <span
+            className="absolute -right-0.5 -top-0.5 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-semibold leading-none text-white"
+            style={{ backgroundColor: color.accent }}
+          >
+            {row.badge > 9 ? "9+" : row.badge}
+          </span>
+        ) : null}
+      </span>
+      <span
+        className="line-clamp-2 text-center text-[12px] font-medium leading-tight"
+        style={{ color: row.active ? color.accent : color.textMuted }}
+      >
+        {row.label}
+      </span>
     </button>
   );
 }

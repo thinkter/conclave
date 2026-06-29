@@ -1832,6 +1832,18 @@ internal class SocketIOManager {
             val producer = decodeProducerInfo(rawProducers.opt(index)) ?: continue
             producers.add(producer)
         }
+        val displayNameSnapshot = jsonArrayField(obj, "displayNameSnapshot")?.let { rawUsers ->
+            val users = mutableListOf<DisplayNameSnapshotUser>()
+            for (index in 0 until rawUsers.length()) {
+                val rawUser = rawUsers.optJSONObject(index) ?: continue
+                val userId = stringField(rawUser, "userId") ?: continue
+                users.add(DisplayNameSnapshotUser(
+                    userId = userId,
+                    displayName = displayNameField(rawUser)
+                ))
+            }
+            skip.lib.Array(users)
+        }
 
         return JoinRoomResponse(
             rtpCapabilities = RtpCapabilities(),
@@ -1845,13 +1857,15 @@ internal class SocketIOManager {
             noGuests = boolField(obj, "noGuests"),
             isTtsDisabled = boolField(obj, "isTtsDisabled"),
             isDmEnabled = boolField(obj, "isDmEnabled"),
+            isReactionsDisabled = boolField(obj, "isReactionsDisabled"),
             meetingRequiresInviteCode = boolField(obj, "meetingRequiresInviteCode"),
             webinarRole = stringField(obj, "webinarRole"),
             isWebinarEnabled = boolField(obj, "isWebinarEnabled"),
             webinarLocked = boolField(obj, "webinarLocked"),
             webinarRequiresInviteCode = boolField(obj, "webinarRequiresInviteCode"),
             webinarAttendeeCount = intField(obj, "webinarAttendeeCount"),
-            webinarMaxAttendees = intField(obj, "webinarMaxAttendees")
+            webinarMaxAttendees = intField(obj, "webinarMaxAttendees"),
+            displayNameSnapshot = displayNameSnapshot
         )
     }
 

@@ -1,5 +1,6 @@
 import {
   Gamepad2,
+  FileText,
   Globe,
   Hand,
   LayoutGrid,
@@ -11,6 +12,7 @@ import {
   Monitor,
   PictureInPicture2,
   ScanFace,
+  Shield,
   StickyNote,
   TerminalSquare,
   Users,
@@ -42,6 +44,15 @@ export interface ControlsBarProps {
   isScreenSharing: boolean;
   activeScreenShareId: string | null;
   isChatOpen: boolean;
+  isTranscriptOpen?: boolean;
+  isTranscriptLive?: boolean;
+  transcriptStatus?:
+    | "idle"
+    | "starting"
+    | "live"
+    | "takeover_needed"
+    | "stopping"
+    | "error";
   unreadCount: number;
   isHandRaised: boolean;
   reactionOptions: ReactionOption[];
@@ -49,6 +60,7 @@ export interface ControlsBarProps {
   onToggleCamera: () => void;
   onToggleScreenShare: () => void;
   onToggleChat: () => void;
+  onToggleTranscript?: () => void;
   onToggleHandRaised: () => void;
   onSendReaction: (reaction: ReactionOption) => void;
   onLeave: () => void;
@@ -210,6 +222,17 @@ export function buildControlsConfig(p: ControlsBarProps): ControlsConfig {
       onPress: p.onToggleGames,
     });
   }
+  if (p.onToggleTranscript) {
+    sideControls.push({
+      id: "transcript",
+      icon: FileText,
+      label: p.isTranscriptLive ? "Live transcript" : "Transcript",
+      showTooltipWithoutHotkey: true,
+      variant:
+        p.isTranscriptOpen || p.isTranscriptLive ? "active" : "default",
+      onPress: p.onToggleTranscript,
+    });
+  }
   sideControls.push({
     id: "chat",
     icon: MessageSquare,
@@ -251,6 +274,16 @@ export function buildControlsConfig(p: ControlsBarProps): ControlsConfig {
     },
   ];
 
+  const handDescriptor: ControlDescriptor = {
+    id: "hand",
+    icon: Hand,
+    label: p.isHandRaised ? "Lower hand" : "Raise hand",
+    hotkey: HOTKEYS.toggleHandRaise.keys,
+    variant: p.isHandRaised ? "active" : "default",
+    disabled: ghost,
+    onPress: p.onToggleHandRaised,
+  };
+
   const screenShareDescriptor: ControlDescriptor = {
     id: "screen-share",
     icon: Monitor,
@@ -280,8 +313,17 @@ export function buildControlsConfig(p: ControlsBarProps): ControlsConfig {
       });
     });
     // Phone-width bar: keep the core row to mic/cam/More/leave, fold
-    // side controls and screen-share into the More menu instead of squeezing
-    // them into separate rails.
+    // side controls, hand raise, and screen-share into the More menu instead
+    // of squeezing them into separate rails.
+    overflow.push({
+      id: handDescriptor.id,
+      icon: handDescriptor.icon,
+      label: handDescriptor.label,
+      hotkey: handDescriptor.hotkey,
+      active: handDescriptor.variant === "active",
+      disabled: handDescriptor.disabled,
+      onPress: handDescriptor.onPress,
+    });
     overflow.push({
       id: "screen-share",
       icon: screenShareDescriptor.icon,
@@ -292,17 +334,9 @@ export function buildControlsConfig(p: ControlsBarProps): ControlsConfig {
       onPress: screenShareDescriptor.onPress,
     });
   } else {
+    center.push(handDescriptor);
     center.push(screenShareDescriptor);
   }
-  overflow.push({
-    id: "hand",
-    icon: Hand,
-    label: p.isHandRaised ? "Lower hand" : "Raise hand",
-    hotkey: HOTKEYS.toggleHandRaise.keys,
-    active: p.isHandRaised,
-    disabled: ghost,
-    onPress: p.onToggleHandRaised,
-  });
   if (p.isPopoutSupported && (p.onOpenPopout || p.onClosePopout)) {
     overflow.push({
       id: "popout",
@@ -393,6 +427,19 @@ export function buildControlsConfig(p: ControlsBarProps): ControlsConfig {
       label: p.isAppsLocked ? "Unlock app editing" : "Lock app editing",
       active: p.isAppsLocked,
       onPress: p.onToggleAppsLock,
+    });
+  }
+  // Phone-width: the standalone host-controls shield is dropped from the right
+  // cluster (see ControlsBar) and folded into the More menu like everything else
+  // so the compact bar stays mic/cam/More/leave.
+  if (p.compact && p.isAdmin && p.onToggleHostControls) {
+    overflow.push({
+      id: "host-controls",
+      icon: Shield,
+      label: "Host controls",
+      active: p.isHostControlsOpen,
+      badge: p.pendingUsersCount,
+      onPress: p.onToggleHostControls,
     });
   }
 
