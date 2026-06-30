@@ -746,6 +746,14 @@ internal class WebRTCClient : SendTransport.Listener, RecvTransport.Listener, Pr
     private data class ScreenShareEncodingCap(
         val maxBitrateBps: Int,
         val maxFramerate: Int,
+        val maxWidth: Int,
+        val maxHeight: Int,
+    )
+
+    private data class ScreenShareCaptureProfile(
+        val width: Int,
+        val height: Int,
+        val maxFramerate: Int,
     )
 
     // Screen-share capture chain (MediaProjection -> ScreenCapturerAndroid).
@@ -1097,16 +1105,20 @@ internal class WebRTCClient : SendTransport.Listener, RecvTransport.Listener, Pr
         val metrics = context.resources.displayMetrics
         var pendingProducer: Producer? = null
         try {
-            val screenCap = screenShareEncodingCap(currentLocalBandwidthQuality)
+            val capture = screenShareCaptureProfile(
+                metrics.widthPixels,
+                metrics.heightPixels,
+                currentLocalBandwidthQuality,
+            )
             // getMediaProjection() + createVirtualDisplay() happen here. If the
             // typed FGS isn't live, or the consent token was already consumed,
             // this throws SecurityException. Tear down the half-built capture
             // chain so a retry starts clean (no leaked SurfaceTextureHelper /
             // capturer) and rethrow for the VM's catch to surface the error.
             capturer.startCapture(
-                metrics.widthPixels,
-                metrics.heightPixels,
-                screenCap.maxFramerate,
+                capture.width,
+                capture.height,
+                capture.maxFramerate,
             )
 
             val track = peerConnectionFactory?.createVideoTrack(nextScreenVideoTrackId(), source)
@@ -1810,12 +1822,16 @@ internal class WebRTCClient : SendTransport.Listener, RecvTransport.Listener, Pr
 
         if (screenProducer != null && screenCapturer != null) {
             val metrics = ProcessInfo.processInfo.androidContext.resources.displayMetrics
-            val cap = screenShareEncodingCap(connectionQuality)
+            val capture = screenShareCaptureProfile(
+                metrics.widthPixels,
+                metrics.heightPixels,
+                connectionQuality,
+            )
             try {
                 screenCapturer?.changeCaptureFormat(
-                    metrics.widthPixels,
-                    metrics.heightPixels,
-                    cap.maxFramerate,
+                    capture.width,
+                    capture.height,
+                    capture.maxFramerate,
                 )
             } catch (_: Throwable) {
             }
@@ -2142,11 +2158,56 @@ internal class WebRTCClient : SendTransport.Listener, RecvTransport.Listener, Pr
         connectionQuality: ConnectionQuality,
     ): ScreenShareEncodingCap {
         return when (connectionQuality) {
-            ConnectionQuality.emergency -> ScreenShareEncodingCap(maxBitrateBps = 220_000, maxFramerate = 3)
-            ConnectionQuality.poor -> ScreenShareEncodingCap(maxBitrateBps = 450_000, maxFramerate = 5)
-            ConnectionQuality.fair -> ScreenShareEncodingCap(maxBitrateBps = 1_200_000, maxFramerate = 12)
-            ConnectionQuality.good, ConnectionQuality.unknown -> ScreenShareEncodingCap(maxBitrateBps = 2_500_000, maxFramerate = 24)
+            ConnectionQuality.emergency -> ScreenShareEncodingCap(
+                maxBitrateBps = 220_000,
+                maxFramerate = 3,
+                maxWidth = 1280,
+                maxHeight = 720,
+            )
+            ConnectionQuality.poor -> ScreenShareEncodingCap(
+                maxBitrateBps = 450_000,
+                maxFramerate = 5,
+                maxWidth = 1920,
+                maxHeight = 1080,
+            )
+            ConnectionQuality.fair -> ScreenShareEncodingCap(
+                maxBitrateBps = 1_200_000,
+                maxFramerate = 12,
+                maxWidth = 2560,
+                maxHeight = 1440,
+            )
+            ConnectionQuality.good, ConnectionQuality.unknown -> ScreenShareEncodingCap(
+                maxBitrateBps = 2_500_000,
+                maxFramerate = 24,
+                maxWidth = 3840,
+                maxHeight = 2160,
+            )
         }
+    }
+
+    private fun screenShareCaptureProfile(
+        displayWidth: Int,
+        displayHeight: Int,
+        connectionQuality: ConnectionQuality,
+    ): ScreenShareCaptureProfile {
+        val cap = screenShareEncodingCap(connectionQuality)
+        val sourceWidth = displayWidth.coerceAtLeast(1)
+        val sourceHeight = displayHeight.coerceAtLeast(1)
+        val scale = maxOf(
+            1.0,
+            sourceWidth.toDouble() / cap.maxWidth.toDouble(),
+            sourceHeight.toDouble() / cap.maxHeight.toDouble(),
+        )
+        return ScreenShareCaptureProfile(
+            width = evenCaptureDimension((sourceWidth.toDouble() / scale).toInt()),
+            height = evenCaptureDimension((sourceHeight.toDouble() / scale).toInt()),
+            maxFramerate = cap.maxFramerate,
+        )
+    }
+
+    private fun evenCaptureDimension(value: Int): Int {
+        val dimension = value.coerceAtLeast(2)
+        return if (dimension % 2 == 0) dimension else dimension - 1
     }
 
     private fun screenShareEncodings(

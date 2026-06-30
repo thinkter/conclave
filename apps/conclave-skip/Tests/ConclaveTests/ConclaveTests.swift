@@ -6583,6 +6583,25 @@ final class ConclaveTests: XCTestCase {
         XCTAssertTrue(source.contains("meetingRequiresInviteCode = boolField(obj, \"meetingRequiresInviteCode\")"))
     }
 
+    func testAndroidScreenShareCaptureUsesWebNetworkProfileBounds() throws {
+        let source = try sourceFileContents("Sources/Conclave/Skip/WebRTCClient+Android.kt")
+
+        XCTAssertTrue(source.contains("private data class ScreenShareCaptureProfile("))
+        XCTAssertTrue(source.contains("maxWidth = 3840"))
+        XCTAssertTrue(source.contains("maxHeight = 2160"))
+        XCTAssertTrue(source.contains("maxWidth = 2560"))
+        XCTAssertTrue(source.contains("maxHeight = 1440"))
+        XCTAssertTrue(source.contains("maxWidth = 1920"))
+        XCTAssertTrue(source.contains("maxHeight = 1080"))
+        XCTAssertTrue(source.contains("maxWidth = 1280"))
+        XCTAssertTrue(source.contains("maxHeight = 720"))
+        XCTAssertTrue(source.contains("private fun screenShareCaptureProfile("))
+        XCTAssertTrue(source.contains("sourceWidth.toDouble() / cap.maxWidth.toDouble()"))
+        XCTAssertTrue(source.contains("sourceHeight.toDouble() / cap.maxHeight.toDouble()"))
+        XCTAssertTrue(source.contains("capturer.startCapture(\n                capture.width,\n                capture.height,\n                capture.maxFramerate,"))
+        XCTAssertTrue(source.contains("screenCapturer?.changeCaptureFormat(\n                    capture.width,\n                    capture.height,\n                    capture.maxFramerate,"))
+    }
+
     func testBrowserStateClearTearsDownSystemMediaConsumers() throws {
         let viewModelSource = try sourceFileContents("Sources/Conclave/Features/Meeting/MeetingViewModel.swift")
         let iosWebRTCSource = try sourceFileContents("Sources/Conclave/Core/WebRTC/WebRTCClient.swift")
