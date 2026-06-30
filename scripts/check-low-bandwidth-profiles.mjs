@@ -127,6 +127,11 @@ assertRegex(
   "web screen-audio Opus tracks microphone ladder",
 );
 assertRegex(
+  "webLowBandwidthProbe",
+  /opusMaxAverageBitrateByProfile = \{[\s\S]*good:\s*96000,[\s\S]*fair:\s*48000,[\s\S]*poor:\s*32000,[\s\S]*emergency:\s*24000,[\s\S]*maxAllowedAudioBitrateFor/,
+  "low-bandwidth probe expects the web Opus constrained ladder",
+);
+assertRegex(
   "webMeetMedia",
   /audioTrack\.contentHint = "music"[\s\S]*buildScreenShareAudioOpusCodecOptions\([\s\S]*screenNetworkProfile[\s\S]*applyAudioProducerNetworkProfile\([\s\S]*audioProducer,[\s\S]*"screen",[\s\S]*screenNetworkProfile/,
   "web screen audio initial publish marks media audio and immediately applies RTP network profile",
@@ -153,12 +158,12 @@ assertRegex(
 );
 assertRegex(
   "iosWebrtc",
-  /case \.emergency:\s*return 18_000[\s\S]*case \.poor:\s*return 24_000[\s\S]*case \.fair:\s*return 32_000/,
+  /case \.emergency:\s*return 24_000[\s\S]*case \.poor:\s*return 32_000[\s\S]*case \.fair:\s*return 48_000[\s\S]*case \.good, \.unknown:\s*return 96_000/,
   "iOS microphone Opus constrained ladder",
 );
 assertRegex(
   "androidWebrtc",
-  /ConnectionQuality\.emergency -> 18_000[\s\S]*ConnectionQuality\.poor -> 24_000[\s\S]*ConnectionQuality\.fair -> 32_000/,
+  /ConnectionQuality\.emergency -> 24_000[\s\S]*ConnectionQuality\.poor -> 32_000[\s\S]*ConnectionQuality\.fair -> 48_000[\s\S]*ConnectionQuality\.good, ConnectionQuality\.unknown -> 96_000/,
   "Android microphone Opus constrained ladder",
 );
 assertRegex(
@@ -413,13 +418,13 @@ assertIncludes(
 );
 assertRegex(
   "webAdaptiveConsumerPreferences",
-  /if \(info\.type === "screen"\) \{[\s\S]*const screenShareQuality = worstQuality\([\s\S]*getConsumerScoreQualityHint\(options\.consumerScoreQuality\)[\s\S]*screenShareQuality === "poor" \|\| screenShareQuality === "fair"[\s\S]*\? 1[\s\S]*: 2[\s\S]*priority: 240,[\s\S]*paused: false,/,
-  "web screen-share receive adaptation lowers temporal layer on fair or poor per-stream score",
+  /if \(info\.type === "screen"\) \{[\s\S]*const screenShareQuality = worstQuality\([\s\S]*getConsumerScoreQualityHint\(options\.consumerScoreQuality\)[\s\S]*screenShareEmergency[\s\S]*\? 0[\s\S]*: screenShareQuality === "poor"[\s\S]*\? 1[\s\S]*: bounds\.maxTemporalLayer[\s\S]*priority: 240,[\s\S]*paused: false,/,
+  "web screen-share receive adaptation keeps full temporal FPS on fair links",
 );
 assertRegex(
   "webMeetSocket",
-  /producerInfo\.type === "screen"[\s\S]*networkProfile === "emergency"[\s\S]*networkProfile === "poor" \|\| networkProfile === "fair"[\s\S]*\? 1[\s\S]*: 2,[\s\S]*priority: 240,/,
-  "web initial screen-share consume starts fair links on middle temporal layer",
+  /producerInfo\.type === "screen"[\s\S]*networkProfile === "emergency"[\s\S]*\? 0[\s\S]*: networkProfile === "poor"[\s\S]*\? 1[\s\S]*: 2,[\s\S]*priority: 240,/,
+  "web initial screen-share consume keeps fair links on full temporal FPS",
 );
 assertRegex(
   "sfuMediaHandlers",
@@ -479,6 +484,21 @@ for (const [key, label] of [
     `web ${label} should not replay on benign suspend events`,
   );
 }
+assertRegex(
+  "webParticipantMedia",
+  /isRenderingParticipantScreenShare\([\s\S]*participant\.screenShareStream === stream/,
+  "web participant media can identify screen-share video streams",
+);
+assertRegex(
+  "webParticipantVideo",
+  /isRenderingParticipantScreenShare\([\s\S]*data-meet-video-stream-type=\{[\s\S]*isRenderingScreenShare \? "screen" : "webcam"/,
+  "web participant video tags rendered screen-share streams",
+);
+assertRegex(
+  "webGridLayout",
+  /isRenderingParticipantScreenShare\([\s\S]*data-meet-video-stream-type=\{[\s\S]*isRenderingScreenShare \? "screen" : "webcam"/,
+  "web overflow gallery video tags rendered screen-share streams",
+);
 assertIncludes(
   "webMobileParticipantVideo",
   "createPlaybackRecoveryScheduler",
@@ -631,8 +651,13 @@ assertRegex(
 );
 assertRegex(
   "webAdaptiveConsumerPreferences",
-  /SCREEN_SHARE_RECEIVE_FAIR_BPS = 1500000[\s\S]*SCREEN_SHARE_RECEIVE_POOR_BPS = 550000[\s\S]*SCREEN_SHARE_RECEIVE_EMERGENCY_BPS = 300000[\s\S]*getScreenShareReceiveQualityForAvailableBitrate[\s\S]*availableIncomingBitrateBps <= SCREEN_SHARE_RECEIVE_POOR_BPS[\s\S]*availableIncomingBitrateBps <= SCREEN_SHARE_RECEIVE_FAIR_BPS[\s\S]*isScreenShareReceiveEmergencyBitrate[\s\S]*screenShareEmergency[\s\S]*screenShareQuality === "poor" \|\| screenShareQuality === "fair"/,
-  "web screen-share receive layers use incoming bitrate before full temporal FPS",
+  /SCREEN_SHARE_RECEIVE_FAIR_BPS = 1500000[\s\S]*SCREEN_SHARE_RECEIVE_POOR_BPS = 550000[\s\S]*SCREEN_SHARE_RECEIVE_EMERGENCY_BPS = 300000[\s\S]*getScreenShareReceiveQualityForAvailableBitrate[\s\S]*availableIncomingBitrateBps <= SCREEN_SHARE_RECEIVE_POOR_BPS[\s\S]*availableIncomingBitrateBps <= SCREEN_SHARE_RECEIVE_FAIR_BPS[\s\S]*isScreenShareReceiveEmergencyBitrate[\s\S]*screenShareEmergency[\s\S]*screenShareQuality === "poor"[\s\S]*bounds\.maxTemporalLayer/,
+  "web screen-share receive layers use incoming bitrate while keeping fair-link FPS",
+);
+assertRegex(
+  "webLowBandwidthProbe",
+  /meetVideoStreamType: video\.dataset\.meetVideoStreamType[\s\S]*visibleScreenRenderedVideos = visibleRenderedVideos\.filter[\s\S]*meetVideoStreamType === "screen"[\s\S]*largestRenderedScreenVideo[\s\S]*expected full-resolution decoded screen-share video/,
+  "web screen receive probe verifies the actual rendered screen-share video",
 );
 assertIncludes(
   "webAdaptiveConsumerPreferences",
@@ -843,6 +868,21 @@ assertRegex(
   "webMeetClient",
   /useAdaptivePublishQuality\(\{[\s\S]*availableOutgoingBitrateBps: selfConnectionStats\.availableOutgoingBitrate,/,
   "web screen-share publish adaptation receives measured outgoing bitrate",
+);
+assertRegex(
+  "webAdaptivePublishQuality",
+  /getScreenShareProducerProfileSignature[\s\S]*track\?\.getSettings\(\)[\s\S]*settings\?\.width[\s\S]*settings\?\.height[\s\S]*settings\?\.frameRate[\s\S]*const screenProducer = screenProducerRef\.current[\s\S]*getScreenShareProducerProfileSignature\([\s\S]*screenProducer,[\s\S]*profile,[\s\S]*applyScreenShareProducerNetworkProfile/,
+  "web adaptive screen-share caps are re-applied when captured surface dimensions change",
+);
+assertRegex(
+  "webAdaptivePublishQuality",
+  /trackSettings: Record<string, unknown> \| null[\s\S]*trackSettings = \{ \.\.\.producer\.track\.getSettings\(\) \}[\s\S]*trackSettings,/,
+  "web adaptive publish debug exposes producer track settings for screen-share crispness probes",
+);
+assertRegex(
+  "webLowBandwidthProbe",
+  /screenShareCaptureBoundsByProfile = \{[\s\S]*fair: \{ maxWidth: 2560, maxHeight: 1440 \}[\s\S]*poor: \{ maxWidth: 1920, maxHeight: 1080 \}[\s\S]*emergency: \{ maxWidth: 1280, maxHeight: 720 \}[\s\S]*getMaxExpectedScreenShareScaleResolutionDownBy[\s\S]*screenScaleResolutionDownBy > maxExpectedScreenScale/,
+  "web screen publish probe rejects avoidable screen-share downscaling",
 );
 assertRegex(
   "webScreenShareNetworkProfile",
@@ -2520,6 +2560,11 @@ assertIncludes(
   "/mediapipe/models/",
   "low-bandwidth browser probe treats MediaPipe model fetches as heavy resources",
 );
+assertRegex(
+  "webLowBandwidthProbe",
+  /adaptiveNetworkProfiles = new Set\(\["good", "fair", "poor", "emergency"\]\)[\s\S]*extractAdaptiveNetworkProfile[\s\S]*adaptivePublish\?\.lastAppliedProfiles\?\.screen\)[\s\S]*expected \$\{expectedPublishAdaptiveProfile\} screen profile/,
+  "web screen publish probe extracts profile from dimension-aware screen signatures",
+);
 assertIncludes(
   "iosWebrtc",
   "audioProducer.updateSenderParameters",
@@ -2542,17 +2587,17 @@ assertIncludes(
 );
 assertRegex(
   "androidWebrtc",
-  /refreshLocalVideoProducerForBandwidthProfile[\s\S]*transport\.produce\([\s\S]*webcamEncodings\(currentVideoQuality, connectionQuality\)[\s\S]*nextProducer\.setMaxSpatialLayer[\s\S]*socket\.closeProducer\(oldProducer\.id\)/,
+  /refreshLocalVideoProducerForBandwidthProfile[\s\S]*produceWebcamVideo\(transport, track, appData, connectionQuality\)[\s\S]*nextProducer\.setMaxSpatialLayer[\s\S]*socket\.closeProducer\(oldProducer\.id\)/,
   "Android webcam producer refresh for new bandwidth profile",
 );
 assertRegex(
   "androidWebrtc",
-  /refreshLocalAudioProducerForBandwidthProfile[\s\S]*socket\.closeProducer\(oldProducerId\)[\s\S]*startProducingAudio\(\)/,
+  /refreshLocalAudioProducerForBandwidthProfile[\s\S]*produceMicrophoneAudio\(transport, track\)[\s\S]*markMicrophoneProducerUnmuted\(nextProducer\.id, "bandwidth refresh"\)[\s\S]*socket\.closeProducer\(oldProducer\.id\)/,
   "Android microphone producer refresh for new Opus profile",
 );
 assertRegex(
   "androidWebrtc",
-  /refreshLocalScreenProducerForBandwidthProfile[\s\S]*transport\.produce\([\s\S]*screenShareEncodings\(connectionQuality\)[\s\S]*socket\.closeProducer\(oldProducer\.id\)/,
+  /refreshLocalScreenProducerForBandwidthProfile[\s\S]*transport\.produce\([\s\S]*screenShareEncodings\(connectionQuality\)[\s\S]*screenProducerBandwidthQuality = connectionQuality[\s\S]*socket\.closeProducer\(oldProducer\.id\)/,
   "Android screen producer refresh for new bandwidth profile",
 );
 

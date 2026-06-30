@@ -3,7 +3,10 @@
 import { Crop, Hand, Info, Maximize2, MicOff, Pin, PinOff } from "lucide-react";
 import { memo, useEffect, useRef } from "react";
 import { createPlaybackRecoveryScheduler } from "../lib/playback-recovery";
-import { getRenderableParticipantVideoStream } from "../lib/participant-media";
+import {
+  getRenderableParticipantVideoStream,
+  isRenderingParticipantScreenShare,
+} from "../lib/participant-media";
 import type { Participant } from "../lib/types";
 import { truncateDisplayName } from "../lib/utils";
 import ParticipantAudio from "./ParticipantAudio";
@@ -56,6 +59,10 @@ function ParticipantVideo({
   const labelWidthClass = compact ? "max-w-[65%]" : "max-w-[75%]";
   const displayLabel = truncateDisplayName(displayName, compact ? 12 : 18);
   const videoStream = getRenderableParticipantVideoStream(participant);
+  const isRenderingScreenShare = isRenderingParticipantScreenShare(
+    participant,
+    videoStream,
+  );
   const videoTrack = videoStream?.getVideoTracks()[0] ?? null;
   const connectionStatus = participant.connectionStatus;
   const isReconnecting = connectionStatus?.state === "reconnecting";
@@ -189,6 +196,9 @@ function ParticipantVideo({
         muted
         playsInline
         data-meet-tile-video="true"
+        data-meet-video-stream-type={
+          isRenderingScreenShare ? "screen" : "webcam"
+        }
         data-video-object-fit={videoObjectFit}
         className={`w-full h-full ${
           videoObjectFit === "contain" ? "object-contain bg-black" : "object-cover"

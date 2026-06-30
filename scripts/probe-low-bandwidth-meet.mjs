@@ -229,22 +229,24 @@ const expectedAdaptiveProfile =
   profileName === "emergency" ? "emergency" : profile.expectedQuality;
 const expectEmergencyMode = profileName === "emergency";
 const expectedOpusPacketTimeMs = 20;
+const opusMaxAverageBitrateByProfile = {
+  good: 96000,
+  fair: 48000,
+  poor: 32000,
+  emergency: 24000,
+};
 const microphoneOpusMaxAverageBitrateFor = ({ emergency, quality }) =>
   emergency
-    ? 18000
-    : quality === "poor"
-      ? 24000
-      : quality === "fair"
-        ? 32000
-        : 48000;
+    ? opusMaxAverageBitrateByProfile.emergency
+    : (opusMaxAverageBitrateByProfile[quality] ??
+      opusMaxAverageBitrateByProfile.good);
 const screenAudioOpusMaxAverageBitrateFor = ({ emergency, quality }) =>
   emergency
-    ? 18000
-    : quality === "poor"
-      ? 24000
-      : quality === "fair"
-        ? 32000
-        : 48000;
+    ? opusMaxAverageBitrateByProfile.emergency
+    : (opusMaxAverageBitrateByProfile[quality] ??
+      opusMaxAverageBitrateByProfile.good);
+const maxAllowedAudioBitrateFor = (maxAverageBitrate) =>
+  maxAverageBitrate + 2000;
 const expectedMicrophoneOpusMaxAverageBitrate =
   microphoneOpusMaxAverageBitrateFor({
     emergency: profileName === "emergency",
@@ -275,6 +277,15 @@ const expectedPublishScreenAudioOpusMaxAverageBitrate =
   });
 const minCrispReceiveWebcamWidth = 300;
 const minCrispReceiveWebcamHeight = 160;
+const adaptiveNetworkProfiles = new Set(["good", "fair", "poor", "emergency"]);
+
+const extractAdaptiveNetworkProfile = (signature) => {
+  if (typeof signature !== "string") return null;
+  return (
+    signature.split(":").find((part) => adaptiveNetworkProfiles.has(part)) ??
+    null
+  );
+};
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -611,6 +622,7 @@ const getProbeSnapshotExpression = `(() => {
               rect.top < window.innerHeight;
             return {
               index,
+              meetVideoStreamType: video.dataset.meetVideoStreamType ?? null,
               videoWidth: video.videoWidth,
               videoHeight: video.videoHeight,
               readyState: video.readyState,
@@ -834,6 +846,7 @@ const collectSnapshot = (cdp) => evalValue(cdp, getProbeSnapshotExpression);
 const getRenderedVideoSummaries = (snapshot) =>
   (snapshot.renderedVideos ?? []).map((video) => ({
     index: video.index,
+    meetVideoStreamType: video.meetVideoStreamType ?? null,
     videoWidth: video.videoWidth,
     videoHeight: video.videoHeight,
     readyState: video.readyState,
@@ -1645,9 +1658,9 @@ const validateFinalSnapshot = (snapshot, { consoleEvents = [] } = {}) => {
   const adaptivePublish = snapshot.adaptivePublish;
   const webcamEncodings = adaptivePublish?.videoEncodings ?? [];
   const webcamProfile =
-    adaptivePublish?.lastAppliedProfiles?.webcam?.split(":").at(-1) ?? null;
+    extractAdaptiveNetworkProfile(adaptivePublish?.lastAppliedProfiles?.webcam);
   const audioProfile =
-    adaptivePublish?.lastAppliedProfiles?.audio?.split(":").at(-1) ?? null;
+    extractAdaptiveNetworkProfile(adaptivePublish?.lastAppliedProfiles?.audio);
   const audioProducer = adaptivePublish?.audioProducer ?? null;
   const audioOpusCodec = summarizeProducerOpusCodec(audioProducer);
   const webcamVideoCodec = summarizeProducerPrimaryVideoCodec(
@@ -1863,12 +1876,13 @@ const validateFinalSnapshot = (snapshot, { consoleEvents = [] } = {}) => {
       );
     }
     if (
-      expected === "poor" &&
-      audioMaxBitrate > (effectiveEmergencyMode ? 20000 : 26000)
+      expected !== "good" &&
+      audioMaxBitrate >
+        maxAllowedAudioBitrateFor(expectedPublishMicrophoneOpusMaxAverageBitrate)
     ) {
-      errors.push(`audio cap too high for poor profile: ${audioMaxBitrate}`);
-    } else if (expected === "fair" && audioMaxBitrate > 34000) {
-      errors.push(`audio cap too high for fair profile: ${audioMaxBitrate}`);
+      errors.push(
+        `audio cap too high for ${effectiveAdaptiveProfile} profile: ${audioMaxBitrate}`,
+      );
     }
   }
   if (
@@ -2870,6 +2884,26 @@ const maxActiveEncodingValue = (encodings, key) =>
       .map((encoding) => Number(encoding[key]) || 0),
   );
 
+const screenShareCaptureBoundsByProfile = {
+  good: { maxWidth: 3840, maxHeight: 2160 },
+  fair: { maxWidth: 2560, maxHeight: 1440 },
+  poor: { maxWidth: 1920, maxHeight: 1080 },
+  emergency: { maxWidth: 1280, maxHeight: 720 },
+};
+
+const getMaxExpectedScreenShareScaleResolutionDownBy = (
+  profile,
+  settings,
+) => {
+  const bounds = screenShareCaptureBoundsByProfile[profile];
+  const width = Number(settings?.width) || null;
+  const height = Number(settings?.height) || null;
+  if (!bounds || width === null || height === null) return null;
+
+  const scale = Math.max(width / bounds.maxWidth, height / bounds.maxHeight, 1);
+  return Number((Math.ceil(scale * 10) / 10).toFixed(1));
+};
+
 const validateScreenPublishSnapshot = (
   snapshot,
   { consoleEvents = [] } = {},
@@ -2879,12 +2913,13 @@ const validateScreenPublishSnapshot = (
   const network = snapshot.network;
   const adaptivePublish = snapshot.adaptivePublish;
   const screenProfile =
-    adaptivePublish?.lastAppliedProfiles?.screen?.split(":").at(-1) ?? null;
+    extractAdaptiveNetworkProfile(adaptivePublish?.lastAppliedProfiles?.screen);
   const screenAudioProfile =
-    adaptivePublish?.lastAppliedProfiles?.screenAudio?.split(":").at(-1) ??
-    null;
+    extractAdaptiveNetworkProfile(
+      adaptivePublish?.lastAppliedProfiles?.screenAudio,
+    );
   const audioProfile =
-    adaptivePublish?.lastAppliedProfiles?.audio?.split(":").at(-1) ?? null;
+    extractAdaptiveNetworkProfile(adaptivePublish?.lastAppliedProfiles?.audio);
   const screenEncodings = adaptivePublish?.screenEncodings ?? [];
   const screenAudioEncodings = adaptivePublish?.screenAudioEncodings ?? [];
   const audioEncodings = adaptivePublish?.audioEncodings ?? [];
@@ -2892,6 +2927,10 @@ const validateScreenPublishSnapshot = (
   const screenMaxFramerate = maxActiveEncodingValue(
     screenEncodings,
     "maxFramerate",
+  );
+  const screenScaleResolutionDownBy = Math.max(
+    1,
+    maxActiveEncodingValue(screenEncodings, "scaleResolutionDownBy"),
   );
   const screenAudioMaxBitrate = maxActiveEncodingValue(
     screenAudioEncodings,
@@ -2980,6 +3019,19 @@ const validateScreenPublishSnapshot = (
       `expected ${expectedPublishAdaptiveProfile} screen profile, got ${screenProfile}`,
     );
   }
+  const maxExpectedScreenScale =
+    getMaxExpectedScreenShareScaleResolutionDownBy(
+      expectedPublishAdaptiveProfile,
+      screenProducer?.trackSettings,
+    );
+  if (
+    maxExpectedScreenScale !== null &&
+    screenScaleResolutionDownBy > maxExpectedScreenScale + 0.05
+  ) {
+    errors.push(
+      `screen share was over-downscaled for ${expectedPublishAdaptiveProfile} profile: scale=${screenScaleResolutionDownBy}, expected<=${maxExpectedScreenScale}`,
+    );
+  }
 
   if (expected === "poor") {
     const bitrateLimit = expectPublishEmergencyMode ? 230000 : 460000;
@@ -3019,10 +3071,13 @@ const validateScreenPublishSnapshot = (
       );
     }
     if (
-      expected === "poor" &&
-      audioMaxBitrate > (expectPublishEmergencyMode ? 20000 : 26000)
+      expected !== "good" &&
+      audioMaxBitrate >
+        maxAllowedAudioBitrateFor(expectedPublishMicrophoneOpusMaxAverageBitrate)
     ) {
-      errors.push(`microphone cap too high for poor profile: ${audioMaxBitrate}`);
+      errors.push(
+        `microphone cap too high for ${expectedPublishAdaptiveProfile} profile: ${audioMaxBitrate}`,
+      );
     }
   }
 
@@ -3042,11 +3097,14 @@ const validateScreenPublishSnapshot = (
       );
     }
     if (
-      expected === "poor" &&
-      screenAudioMaxBitrate > (expectPublishEmergencyMode ? 20000 : 30000)
+      expected !== "good" &&
+      screenAudioMaxBitrate >
+        maxAllowedAudioBitrateFor(
+          expectedPublishScreenAudioOpusMaxAverageBitrate,
+        )
     ) {
       errors.push(
-        `screen audio cap too high for poor profile: ${screenAudioMaxBitrate}`,
+        `screen audio cap too high for ${expectedPublishAdaptiveProfile} profile: ${screenAudioMaxBitrate}`,
       );
     }
   }
@@ -3104,6 +3162,8 @@ const validateScreenPublishSnapshot = (
       screenVideoCodec,
       screenMaxBitrate,
       screenMaxFramerate,
+      screenScaleResolutionDownBy,
+      screenTrackSettings: screenProducer?.trackSettings ?? null,
       screenAudioMaxBitrate,
       audioMaxBitrate,
       audioOpusCodec,
@@ -3159,7 +3219,10 @@ const validateScreenReceiveSnapshot = (
     ["applied", "fallback"].includes(entry.status),
   );
   const visibleRenderedVideos = getVisibleRenderedVideos(snapshot);
-  const largestRenderedVideo = visibleRenderedVideos
+  const visibleScreenRenderedVideos = visibleRenderedVideos.filter(
+    (video) => video.meetVideoStreamType === "screen",
+  );
+  const largestRenderedScreenVideo = visibleScreenRenderedVideos
     .slice()
     .sort(
       (left, right) =>
@@ -3217,14 +3280,14 @@ const validateScreenReceiveSnapshot = (
   if (requireScreenAudio && usableScreenAudioEntries.length === 0) {
     errors.push("missing applied remote screen audio consumer preference");
   }
-  if (!largestRenderedVideo) {
-    errors.push("missing visible decoded remote screen video");
+  if (!largestRenderedScreenVideo) {
+    errors.push("missing visible decoded remote screen-share video");
   } else if (
-    largestRenderedVideo.videoWidth < 1920 ||
-    largestRenderedVideo.videoHeight < 1080
+    largestRenderedScreenVideo.videoWidth < 1920 ||
+    largestRenderedScreenVideo.videoHeight < 1080
   ) {
     errors.push(
-      `expected full-resolution decoded screen video, got ${largestRenderedVideo.videoWidth}x${largestRenderedVideo.videoHeight}`,
+      `expected full-resolution decoded screen-share video, got ${largestRenderedScreenVideo.videoWidth}x${largestRenderedScreenVideo.videoHeight}`,
     );
   }
   if (scoreAwareEntryErrors.length > 0) {
@@ -3295,12 +3358,13 @@ const validateScreenReceiveSnapshot = (
       screenAudioPreferenceCount: usableScreenAudioEntries.length,
       deferredCount: adaptiveConsumers?.deferredCount ?? null,
       deferredEntries: deferredEntries.slice(0, 8),
-      largestRenderedVideo: largestRenderedVideo
+      visibleScreenRenderedVideoCount: visibleScreenRenderedVideos.length,
+      largestRenderedScreenVideo: largestRenderedScreenVideo
         ? {
-            videoWidth: largestRenderedVideo.videoWidth,
-            videoHeight: largestRenderedVideo.videoHeight,
-            readyState: largestRenderedVideo.readyState,
-            rect: largestRenderedVideo.rect,
+            videoWidth: largestRenderedScreenVideo.videoWidth,
+            videoHeight: largestRenderedScreenVideo.videoHeight,
+            readyState: largestRenderedScreenVideo.readyState,
+            rect: largestRenderedScreenVideo.rect,
           }
         : null,
       renderedVideos: getRenderedVideoSummaries(snapshot),
@@ -3614,12 +3678,17 @@ const validateTransitionSnapshot = (
   const targetAdaptiveProfile = targetEmergencyMode
     ? "emergency"
     : targetExpectedQuality;
+  const targetMicrophoneOpusMaxAverageBitrate =
+    microphoneOpusMaxAverageBitrateFor({
+      emergency: targetEmergencyMode,
+      quality: targetExpectedQuality,
+    });
   const network = snapshot.network;
   const adaptivePublish = snapshot.adaptivePublish;
   const webcamProfile =
-    adaptivePublish?.lastAppliedProfiles?.webcam?.split(":").at(-1) ?? null;
+    extractAdaptiveNetworkProfile(adaptivePublish?.lastAppliedProfiles?.webcam);
   const audioProfile =
-    adaptivePublish?.lastAppliedProfiles?.audio?.split(":").at(-1) ?? null;
+    extractAdaptiveNetworkProfile(adaptivePublish?.lastAppliedProfiles?.audio);
   const activeWebcamMaxBitrate = Math.max(
     0,
     ...(adaptivePublish?.videoEncodings ?? [])
@@ -3844,13 +3913,10 @@ const validateTransitionSnapshot = (
     }
 
     if (
-      targetExpectedQuality === "poor" &&
-      audioMaxBitrate > (targetEmergencyMode ? 20000 : 26000)
+      targetExpectedQuality !== "good" &&
+      audioMaxBitrate >
+        maxAllowedAudioBitrateFor(targetMicrophoneOpusMaxAverageBitrate)
     ) {
-      errors.push(
-        `audio cap too high after ${transitionTargetName} transition: ${audioMaxBitrate}`,
-      );
-    } else if (targetExpectedQuality === "fair" && audioMaxBitrate > 34000) {
       errors.push(
         `audio cap too high after ${transitionTargetName} transition: ${audioMaxBitrate}`,
       );

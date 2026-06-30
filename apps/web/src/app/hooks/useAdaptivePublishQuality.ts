@@ -67,6 +67,7 @@ type PublishProducerDebugSnapshot = {
   paused: boolean;
   trackId: string | null;
   trackReadyState: MediaStreamTrackState | null;
+  trackSettings: Record<string, unknown> | null;
   degradationPreference: RTCDegradationPreference | null;
   codecs: PublishProducerCodecDebugSnapshot[];
   encodings: PublishProducerEncodingDebugSnapshot[];
@@ -109,6 +110,31 @@ const getStandardCaptureRestoreSignature = (track: MediaStreamTrack): string => 
     settings.width ?? "unknown-width",
     settings.height ?? "unknown-height",
     settings.frameRate ?? "unknown-fps",
+  ].join(":");
+};
+
+const getRoundedTrackSetting = (
+  value: number | undefined,
+  fallback: string,
+): number | string =>
+  typeof value === "number" && Number.isFinite(value)
+    ? Math.round(value)
+    : fallback;
+
+const getScreenShareProducerProfileSignature = (
+  producer: Producer,
+  profile: WebcamProducerNetworkProfile,
+): string => {
+  const track = producer.track ?? null;
+  const settings = track?.getSettings();
+  return [
+    producer.id,
+    profile,
+    track?.id ?? "no-track",
+    track?.readyState ?? "unknown-state",
+    getRoundedTrackSetting(settings?.width, "unknown-width"),
+    getRoundedTrackSetting(settings?.height, "unknown-height"),
+    getRoundedTrackSetting(settings?.frameRate, "unknown-fps"),
   ].join(":");
 };
 
@@ -162,6 +188,14 @@ const getPublishProducerDebugSnapshot = (
 ): PublishProducerDebugSnapshot | null => {
   if (!producer) return null;
   const parameters = producer.rtpSender?.getParameters();
+  let trackSettings: Record<string, unknown> | null = null;
+  if (producer.track) {
+    try {
+      trackSettings = { ...producer.track.getSettings() };
+    } catch {
+      trackSettings = null;
+    }
+  }
   return {
     id: producer.id,
     kind: producer.kind,
@@ -169,6 +203,7 @@ const getPublishProducerDebugSnapshot = (
     paused: producer.paused,
     trackId: producer.track?.id ?? null,
     trackReadyState: producer.track?.readyState ?? null,
+    trackSettings,
     degradationPreference: parameters?.degradationPreference ?? null,
     codecs:
       producer.rtpParameters.codecs?.map((codec) => ({
@@ -362,7 +397,10 @@ export function useAdaptivePublishQuality({
 
       const screenProducer = screenProducerRef.current;
       if (screenProducer && !screenProducer.closed) {
-        const signature = `${screenProducer.id}:${profile}`;
+        const signature = getScreenShareProducerProfileSignature(
+          screenProducer,
+          profile,
+        );
         if (lastAppliedProfilesRef.current.screen !== signature) {
           try {
             await applyScreenShareProducerNetworkProfile(
