@@ -62,6 +62,7 @@ import { normalizeChatMessage } from "../lib/chat-commands";
 import { telemetry } from "../lib/telemetry";
 import {
   applyAudioProducerNetworkProfile,
+  applyScreenShareProducerNetworkProfile,
   applyScreenShareTrackNetworkProfile,
   buildScreenShareEncodingForNetworkProfile,
   getPreferredScreenShareCodec,
@@ -1181,6 +1182,18 @@ export function useMeetSocket({
         setActiveScreenShareId(null);
       };
       videoTrack.onended = finishScreenShare;
+
+      try {
+        await applyScreenShareProducerNetworkProfile(
+          producer,
+          screenNetworkProfile,
+        );
+      } catch (profileErr) {
+        console.warn(
+          "[Meets] Failed to restore screen video network profile:",
+          profileErr,
+        );
+      }
 
       const audioTrack = getFirstLiveTrack(screenStream.getAudioTracks());
       if (audioTrack) {

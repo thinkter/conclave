@@ -3438,6 +3438,18 @@ export function useMeetMedia({
       };
       track.onended = finishScreenShare;
 
+      try {
+        await applyScreenShareProducerNetworkProfile(
+          producer,
+          screenNetworkProfile,
+        );
+      } catch (profileErr) {
+        console.warn(
+          "[Meets] Failed to apply screen video network profile:",
+          profileErr,
+        );
+      }
+
       const audioTrack = stream.getAudioTracks()[0];
       if (audioTrack && audioTrack.readyState === "live") {
         try {

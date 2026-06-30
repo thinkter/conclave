@@ -391,10 +391,20 @@ assertRegex(
   /buildScreenShareVideoConstraintsForNetworkProfile[\s\S]*getScreenSharePublishNetworkProfile[\s\S]*getScreenSharePublishNetworkProfileForAvailableOutgoingBitrate\([\s\S]*stats\?\.availableOutgoingBitrate[\s\S]*getMostConstrainedWebcamProducerNetworkProfile\([\s\S]*const screenNetworkProfile = getScreenSharePublishNetworkProfile\(\);[\s\S]*const constrainedDisplayVideoConstraints[\s\S]*buildScreenShareVideoConstraintsForNetworkProfile\([\s\S]*screenNetworkProfile[\s\S]*const relaxedDisplayVideoConstraints[\s\S]*getDisplayMedia\([\s\S]*constrainedDisplayVideoConstraints,[\s\S]*captureController[\s\S]*catch \(err\) \{[\s\S]*if \(!isDisplayMediaConstraintRetryableError\(err\)\) \{[\s\S]*throw err;[\s\S]*getDisplayMedia\([\s\S]*constrainedDisplayVideoConstraints,[\s\S]*null[\s\S]*getDisplayMedia\(relaxedDisplayVideoConstraints, null\)[\s\S]*applyScreenShareTrackNetworkProfile\(track, screenNetworkProfile\)[\s\S]*buildScreenShareEncodingForNetworkProfile\([\s\S]*screenNetworkProfile,[\s\S]*track,[\s\S]*\)/,
   "web screen-share start requests BWE capture constraints before applying RTP caps",
 );
+assertIncludes(
+  "webMeetMedia",
+  "await applyScreenShareProducerNetworkProfile(\n          producer,\n          screenNetworkProfile,\n        );",
+  "web initial screen-share video immediately applies sender priority and maintain-resolution profile",
+);
 assertRegex(
   "webMeetSocket",
   /getScreenSharePublishNetworkProfile[\s\S]*getScreenSharePublishNetworkProfileForAvailableOutgoingBitrate\([\s\S]*stats\?\.availableOutgoingBitrate[\s\S]*getMostConstrainedWebcamProducerNetworkProfile\([\s\S]*const screenNetworkProfile = getScreenSharePublishNetworkProfile\(\);[\s\S]*buildScreenShareEncodingForNetworkProfile\([\s\S]*screenNetworkProfile,[\s\S]*videoTrack,[\s\S]*\)/,
   "web screen-share reconnect publish starts with BWE capture-size encoding caps",
+);
+assertIncludes(
+  "webMeetSocket",
+  "await applyScreenShareProducerNetworkProfile(\n          producer,\n          screenNetworkProfile,\n        );",
+  "web reconnected screen-share video immediately restores sender priority and maintain-resolution profile",
 );
 assertRegex(
   "webMeetMedia",
