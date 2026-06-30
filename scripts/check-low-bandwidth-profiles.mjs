@@ -570,6 +570,11 @@ assertRegex(
   /const isConsumerLayerUpgrade =[\s\S]*next\.spatialLayer > previous\.spatialLayer[\s\S]*next\.temporalLayer[\s\S]*previous\.temporalLayer[\s\S]*requestKeyFrame =[\s\S]*isConsumerLayerUpgrade\(previousLayers, preferredLayers!\)/,
   "web receive layer upgrades request keyframes for temporal recovery",
 );
+assertRegex(
+  "webAdaptiveConsumerPreferences",
+  /const isScreenShareVideo =[\s\S]*info\.kind === "video" && info\.type === "screen"[\s\S]*requestKeyFrame =[\s\S]*isScreenShareVideo[\s\S]*!sameConsumerLayers\(previousLayers, preferredLayers!\)[\s\S]*isConsumerLayerUpgrade\(previousLayers, preferredLayers!\)/,
+  "web screen-share receive layer changes request keyframes for fast recovery",
+);
 assertIncludes(
   "webAdaptiveConsumerPreferences",
   "const UNSUPPORTED_LAYER_RETRY_AFTER_MS = 30000;",

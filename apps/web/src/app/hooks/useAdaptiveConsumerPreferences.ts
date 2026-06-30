@@ -924,11 +924,15 @@ export function useAdaptiveConsumerPreferences({
         ...desired,
         preferredLayers,
       };
+      const isScreenShareVideo =
+        info.kind === "video" && info.type === "screen";
       const requestKeyFrame =
         preferences.paused === false &&
         Boolean(preferredLayers) &&
         (wasPaused ||
-          isConsumerLayerUpgrade(previousLayers, preferredLayers!));
+          (isScreenShareVideo
+            ? !sameConsumerLayers(previousLayers, preferredLayers!)
+            : isConsumerLayerUpgrade(previousLayers, preferredLayers!)));
       const debugEntryBase = {
         producerId,
         consumerId: consumer.id,
