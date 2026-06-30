@@ -2795,7 +2795,19 @@ export default function MeetsClient({
       <MeetingEnterOverlay
         show={enterAction !== null}
         action={enterAction}
-        error={enterErrored ? meetError : null}
+        // Some failure paths flip connectionState to "error" without a
+        // meetError (e.g. media unavailable on join). Fall back to a generic
+        // recoverable error so the overlay always shows retry/dismiss controls
+        // instead of stranding the user behind the loading animation.
+        error={
+          enterErrored
+            ? (meetError ?? {
+                code: "UNKNOWN",
+                message: "",
+                recoverable: true,
+              })
+            : null
+        }
         onRetry={handleEnterRetry}
         onDismiss={handleEnterDismiss}
       />
