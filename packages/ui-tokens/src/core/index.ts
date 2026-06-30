@@ -2,7 +2,7 @@
  * Platform-agnostic helpers shared by the web and native primitives so the two
  * implementations cannot diverge in behavior. No React, no react-native, no DOM.
  */
-import { color } from "../tokens.ts";
+import { color } from "../tokens";
 
 /* ------------------------------------------------------------------ avatars */
 
