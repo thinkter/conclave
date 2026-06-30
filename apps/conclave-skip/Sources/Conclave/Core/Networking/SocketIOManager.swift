@@ -26,6 +26,7 @@ import SocketIO
 
 private enum SocketEvent {
     static let joinRoom = SfuClientEvent.joinRoom.rawValue
+    static let getRouterRtpCapabilities = SfuClientEvent.getRouterRtpCapabilities.rawValue
     static let createProducerTransport = SfuClientEvent.createProducerTransport.rawValue
     static let createConsumerTransport = SfuClientEvent.createConsumerTransport.rawValue
     static let connectProducerTransport = SfuClientEvent.connectProducerTransport.rawValue
@@ -42,6 +43,8 @@ private enum SocketEvent {
     static let toggleCamera = SfuClientEvent.toggleCamera.rawValue
     static let closeProducer = SfuClientEvent.closeProducer.rawValue
     static let sendChat = SfuClientEvent.sendChat.rawValue
+    static let conclaveAuthorize = SfuClientEvent.conclaveAuthorize.rawValue
+    static let conclaveAnswer = SfuClientEvent.conclaveAnswer.rawValue
     static let sendReaction = SfuClientEvent.sendReaction.rawValue
     static let setHandRaised = SfuClientEvent.setHandRaised.rawValue
     static let updateDisplayName = SfuClientEvent.updateDisplayName.rawValue
@@ -126,6 +129,7 @@ private enum SocketEvent {
     static let producerClosed = SfuServerEvent.producerClosed.rawValue
     static let consumerTelemetry = SfuServerEvent.consumerTelemetry.rawValue
     static let chatMessage = SfuServerEvent.chatMessage.rawValue
+    static let conclaveMessage = SfuServerEvent.conclaveMessage.rawValue
     static let chatHistorySnapshot = SfuServerEvent.chatHistorySnapshot.rawValue
     static let reaction = SfuServerEvent.reaction.rawValue
     static let handRaised = SfuServerEvent.handRaised.rawValue
@@ -1905,6 +1909,16 @@ final class SocketIOManager {
             self.onChatMessage?(notification.chatMessage(taggedRoomId: activeRoomId))
         }
 
+        socket.on(SocketEvent.conclaveMessage) { [weak self] data, _ in
+            guard let self, let first = data.first,
+                  self.socket === socket,
+                  let notification = self.decode(ChatMessageNotification.self, from: first),
+                  let activeRoomId = self.activeRoomId,
+                  self.eventRoomIdMatchesActiveOrPending(notification.roomId, allowMissingRoomId: true) else { return }
+
+            self.onChatMessage?(notification.chatMessage(taggedRoomId: activeRoomId))
+        }
+
         socket.on(SocketEvent.chatHistorySnapshot) { [weak self] data, _ in
             guard let self, let first = data.first,
                   self.socket === socket,
@@ -2319,9 +2333,9 @@ final class SocketIOManager {
 
         socket.on(SocketEvent.gameVote) { [weak self] data, _ in
             guard let self,
-                  self.socket === socket,
-                  self.eventRoomIdMatchesActiveOrPending(nil, allowMissingRoomId: true) else { return }
+                  self.socket === socket else { return }
             let vote = data.first.flatMap { self.decode(GameVoteState.self, from: $0) }
+            guard self.eventRoomIdMatchesActiveOrPending(vote?.roomId, allowMissingRoomId: true) else { return }
             self.onGameVote?(vote)
         }
 

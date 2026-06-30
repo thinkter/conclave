@@ -123,6 +123,13 @@ final class ConclaveTests: XCTestCase {
         XCTAssertEqual((payload["choice"] as? NSNumber)?.intValue, 2)
     }
 
+    func testNativeGameSheetAvoidsForcedUnwrapsForOptionalServerMetadata() throws {
+        let source = try sourceFileContents("Sources/Conclave/Features/Meeting/MoreSheetView.swift")
+
+        XCTAssertFalse(source.contains("rank!"))
+        XCTAssertFalse(source.contains("category!"))
+    }
+
     @MainActor
     func testNativeGamePlayerIdentityAcceptsSfuAndSessionAliases() throws {
         let state = MeetingState(
@@ -268,6 +275,29 @@ final class ConclaveTests: XCTestCase {
         XCTAssertTrue(
             expectedRawValues.subtracting(androidRegisteredRawValues).isEmpty,
             "Android socket manager is missing server events: \(expectedRawValues.subtracting(androidRegisteredRawValues).sorted())"
+        )
+    }
+
+    func testNativeSocketManagersMirrorEverySfuClientEventConstant() throws {
+        let clientEventRawValues = try parseSfuClientEventRawValues()
+        let expectedRawValues = Set(clientEventRawValues.values)
+        let iosMirroredRawValues = try mirroredClientEventRawValues(
+            in: "Sources/Conclave/Core/Networking/SocketIOManager.swift",
+            clientEventRawValues: clientEventRawValues
+        )
+        let androidMirroredRawValues = try mirroredClientEventRawValues(
+            in: "Sources/Conclave/Skip/SocketIOManager+Android.kt",
+            clientEventRawValues: clientEventRawValues
+        )
+
+        XCTAssertFalse(clientEventRawValues.isEmpty)
+        XCTAssertTrue(
+            expectedRawValues.subtracting(iosMirroredRawValues).isEmpty,
+            "iOS socket manager is missing client event constants: \(expectedRawValues.subtracting(iosMirroredRawValues).sorted())"
+        )
+        XCTAssertTrue(
+            expectedRawValues.subtracting(androidMirroredRawValues).isEmpty,
+            "Android socket manager is missing client event constants: \(expectedRawValues.subtracting(androidMirroredRawValues).sorted())"
         )
     }
 #endif
@@ -591,6 +621,44 @@ final class ConclaveTests: XCTestCase {
         )
     }
 
+    func testScreenSharePublishProfilePolicyMatchesWebThresholds() throws {
+        XCTAssertEqual(
+            ScreenSharePublishProfilePolicy.quality(availableOutgoingBitrate: nil),
+            ConnectionQuality.unknown
+        )
+        XCTAssertEqual(
+            ScreenSharePublishProfilePolicy.quality(availableOutgoingBitrate: 0),
+            ConnectionQuality.unknown
+        )
+        XCTAssertEqual(
+            ScreenSharePublishProfilePolicy.quality(availableOutgoingBitrate: 280_000),
+            ConnectionQuality.emergency
+        )
+        XCTAssertEqual(
+            ScreenSharePublishProfilePolicy.quality(availableOutgoingBitrate: 550_000),
+            ConnectionQuality.poor
+        )
+        XCTAssertEqual(
+            ScreenSharePublishProfilePolicy.quality(availableOutgoingBitrate: 1_500_000),
+            ConnectionQuality.fair
+        )
+        XCTAssertEqual(
+            ScreenSharePublishProfilePolicy.quality(availableOutgoingBitrate: 1_500_001),
+            ConnectionQuality.good
+        )
+        XCTAssertEqual(
+            ScreenSharePublishProfilePolicy.quality(
+                availableOutgoingBitrate: 4_000_000,
+                emergencyMode: true
+            ),
+            ConnectionQuality.emergency
+        )
+        XCTAssertEqual(
+            ScreenSharePublishProfilePolicy.mostConstrained(ConnectionQuality.good, ConnectionQuality.fair),
+            ConnectionQuality.fair
+        )
+    }
+
     func testJoinCompactPreviewLayoutKeepsTallScreensSpaciousAndShortScreensFitted() throws {
         let tallHeight = JoinCompactPreviewLayoutPolicy.height(
             containerHeight: 844,
@@ -798,6 +866,24 @@ final class ConclaveTests: XCTestCase {
         XCTAssertEqual(payload.name, "Nikhil Rao")
     }
 
+    func testNativeJoinPayloadPreservesNeutralSignedInAccountIdentity() throws {
+        let user = AppState.User(
+            id: "auth-user-unknown-provider",
+            name: "Account Name",
+            email: "person@example.com",
+            provider: AppState.AuthProvider.account
+        )
+
+        let payload = JoinView.sfuJoinUserPayload(
+            currentUser: user,
+            displayName: "   "
+        )
+
+        XCTAssertEqual(payload.id, "auth-user-unknown-provider")
+        XCTAssertEqual(payload.email, "person@example.com")
+        XCTAssertEqual(payload.name, "Account Name")
+    }
+
     func testNativeJoinPayloadKeepsGuestIdentitySessionScoped() throws {
         let user = AppState.User(
             id: "legacy-local-user",
@@ -902,6 +988,36 @@ final class ConclaveTests: XCTestCase {
             currentUserId: "user-b",
             storedUserId: "user-a"
         ))
+    }
+
+    func testJoinAuthenticatedProviderPolicyPreservesKnownProvider() throws {
+        XCTAssertEqual(
+            JoinAuthenticatedProviderPolicy.restoredSessionProvider(currentProvider: AppState.AuthProvider.apple),
+            AppState.AuthProvider.apple
+        )
+        XCTAssertEqual(
+            JoinAuthenticatedProviderPolicy.restoredSessionProvider(currentProvider: AppState.AuthProvider.google),
+            AppState.AuthProvider.google
+        )
+        XCTAssertEqual(
+            JoinAuthenticatedProviderPolicy.restoredSessionProvider(currentProvider: AppState.AuthProvider.account),
+            AppState.AuthProvider.account
+        )
+    }
+
+    func testJoinAuthenticatedProviderPolicyUsesNeutralAccountForUnknownSessionProvider() throws {
+        XCTAssertEqual(
+            JoinAuthenticatedProviderPolicy.restoredSessionProvider(currentProvider: nil),
+            AppState.AuthProvider.account
+        )
+        XCTAssertEqual(
+            JoinAuthenticatedProviderPolicy.restoredSessionProvider(currentProvider: AppState.AuthProvider.guest),
+            AppState.AuthProvider.account
+        )
+        XCTAssertEqual(
+            JoinAuthenticatedProviderPolicy.restoredSessionProvider(currentProvider: AppState.AuthProvider.none),
+            AppState.AuthProvider.account
+        )
     }
 
     func testScreenCaptureStartPolicyTimesOutOnlyPendingCurrentStart() throws {
@@ -3470,10 +3586,17 @@ final class ConclaveTests: XCTestCase {
         XCTAssertEqual(mention.body, "secret")
     }
 
+    func testConclaveMentionIsNotParsedAsDirectMessage() throws {
+        XCTAssertNil(ChatCommandParser.parseDirectMessage("@Conclave hello"))
+        XCTAssertNil(ChatCommandParser.parseDirectMessage("@conclave: summarize this"))
+        XCTAssertNil(ChatCommandParser.parseDirectMessage("@CONCLAVE, what did I miss?"))
+        XCTAssertNotNil(ChatCommandParser.parseDirectMessage("@conclave-team hello"))
+    }
+
     func testChatMentionContextPolicyMatchesWebWhitespace() throws {
         XCTAssertEqual(
             ChatMentionContextPolicy.context(for: "  @Remote.User", isChatDisabled: false, isDmEnabled: true),
-            ChatMentionContext(mode: ChatMentionMode.at, query: "remote.user")
+            ChatMentionContext(mode: ChatMentionMode.at, query: "remote.user", replacementPrefix: "  ")
         )
         XCTAssertNil(ChatMentionContextPolicy.context(for: "@remote ", isChatDisabled: false, isDmEnabled: true))
 
@@ -3488,6 +3611,19 @@ final class ConclaveTests: XCTestCase {
         XCTAssertNil(ChatMentionContextPolicy.context(for: "/dm remote hello", isChatDisabled: false, isDmEnabled: true))
         XCTAssertNil(ChatMentionContextPolicy.context(for: "/dm remote", isChatDisabled: true, isDmEnabled: true))
         XCTAssertNil(ChatMentionContextPolicy.context(for: "/dm remote", isChatDisabled: false, isDmEnabled: false))
+    }
+
+    func testChatMentionContextPolicySupportsTrailingAtMentionsLikeWeb() throws {
+        XCTAssertEqual(
+            ChatMentionContextPolicy.context(for: "hey @Remote.User", isChatDisabled: false, isDmEnabled: true),
+            ChatMentionContext(mode: ChatMentionMode.at, query: "remote.user", replacementPrefix: "hey ")
+        )
+        XCTAssertEqual(
+            ChatMentionContextPolicy.replacedTrailingAtMention(in: "hey @Rem", with: "remote.user"),
+            "hey @remote.user "
+        )
+        XCTAssertNil(ChatMentionContextPolicy.context(for: "hey @remote ", isChatDisabled: false, isDmEnabled: true))
+        XCTAssertNil(ChatMentionContextPolicy.context(for: "email me@remote", isChatDisabled: false, isDmEnabled: true))
     }
 
     func testChatSubmitReplyPolicyKeepsReplyForNonDmCommands() throws {
@@ -3518,6 +3654,11 @@ final class ConclaveTests: XCTestCase {
         XCTAssertFalse(ChatSubmitReplyPolicy.shouldClearDraftAfterSubmit("/dm\tremote hello", isDmEnabled: false))
         XCTAssertTrue(ChatSubmitReplyPolicy.shouldClearDraftAfterSubmit("hello", isDmEnabled: false))
         XCTAssertTrue(ChatSubmitReplyPolicy.shouldClearDraftAfterSubmit("/dm remote hello", isDmEnabled: true))
+    }
+
+    func testChatSubmitReplyPolicyTreatsConclaveMentionAsRoomMessage() throws {
+        XCTAssertTrue(ChatSubmitReplyPolicy.shouldClearReplyAfterSubmit("@Conclave hello", isDmEnabled: false))
+        XCTAssertTrue(ChatSubmitReplyPolicy.shouldClearDraftAfterSubmit("@Conclave hello", isDmEnabled: false))
     }
 
     func testChatMessageLinkParserNormalizesBareDomainsAndPunctuation() throws {
@@ -5050,6 +5191,19 @@ final class ConclaveTests: XCTestCase {
         ))
     }
 
+    func testSettingsDisplayNameAutoSaveClearsDebounceBeforeSubmitting() throws {
+        let source = try sourceFileContents("Sources/Conclave/Features/Meeting/SettingsSheetView.swift")
+        let guardNeedle = "generation: generation,\n                    currentGeneration: displayNameAutoSaveGeneration\n                  ) else { return }"
+        let clearNeedle = "displayNameAutoSaveTask = nil"
+        let submitNeedle = "await submitDisplayNameUpdate(pendingName, generation: generation)"
+
+        let guardRange = try XCTUnwrap(source.range(of: guardNeedle))
+        let clearRange = try XCTUnwrap(source.range(of: clearNeedle, range: guardRange.upperBound..<source.endIndex))
+        let submitRange = try XCTUnwrap(source.range(of: submitNeedle, range: clearRange.upperBound..<source.endIndex))
+
+        XCTAssertLessThan(clearRange.lowerBound, submitRange.lowerBound)
+    }
+
     func testCallAudioRoutePolicyDefaultsToSpeakerOnlyWhenOutputIsNotExternal() throws {
         XCTAssertTrue(CallAudioRoutePolicy.shouldDefaultToSpeaker(
             selectedOutputId: nil,
@@ -5506,6 +5660,13 @@ final class ConclaveTests: XCTestCase {
         XCTAssertTrue(source.contains("val trackKey = videoState.track.id()"))
         XCTAssertTrue(source.contains("rendererKey = \"pip:${videoState.surfaceVersion}:${videoState.targetId}:$trackKey\""))
         XCTAssertTrue(source.contains("clearBeforeAttach = false"))
+    }
+
+    func testAndroidMeetingVideoRendererDoesNotClearStableTrackReattachments() throws {
+        let source = try sourceFileContents("Sources/Conclave/Core/WebRTC/VideoView+Skip.swift")
+
+        XCTAssertTrue(source.contains("var clearBeforeAttach = false"))
+        XCTAssertTrue(source.contains("rendererKey: stableRendererKey,\n                clearBeforeAttach: clearBeforeAttach"))
     }
 
     func testPipTargetSelectionPrefersPresentCandidateWithoutWaitingForVideoTrack() throws {
@@ -6322,6 +6483,37 @@ final class ConclaveTests: XCTestCase {
         ))
     }
 
+    func testIosGameVoteSocketEventFiltersDecodedVoteRoomIdLikeAndroid() throws {
+        let iosSource = try sourceFileContents("Sources/Conclave/Core/Networking/SocketIOManager.swift")
+        let androidSource = try sourceFileContents("Sources/Conclave/Skip/SocketIOManager+Android.kt")
+
+        XCTAssertTrue(iosSource.contains("let vote = data.first.flatMap { self.decode(GameVoteState.self, from: $0) }"))
+        XCTAssertTrue(iosSource.contains("self.eventRoomIdMatchesActiveOrPending(vote?.roomId, allowMissingRoomId: true)"))
+        XCTAssertFalse(iosSource.contains("self.eventRoomIdMatchesActiveOrPending(nil, allowMissingRoomId: true) else { return }\n            let vote"))
+        XCTAssertTrue(androidSource.contains("val roomId = notification?.roomId"))
+        XCTAssertTrue(androidSource.contains("eventRoomIdMatchesActiveOrPending(roomId, allowMissingRoomId = true)"))
+    }
+
+    func testConclaveMessageRoutesThroughNativeChatPipeline() throws {
+        let iosSource = try sourceFileContents("Sources/Conclave/Core/Networking/SocketIOManager.swift")
+        let androidSource = try sourceFileContents("Sources/Conclave/Skip/SocketIOManager+Android.kt")
+        let viewModelSource = try sourceFileContents("Sources/Conclave/Features/Meeting/MeetingViewModel.swift")
+
+        XCTAssertTrue(iosSource.contains("static let conclaveAuthorize = SfuClientEvent.conclaveAuthorize.rawValue"))
+        XCTAssertTrue(iosSource.contains("static let conclaveMessage = SfuServerEvent.conclaveMessage.rawValue"))
+        XCTAssertTrue(iosSource.contains("socket.on(SocketEvent.conclaveMessage)"))
+        XCTAssertTrue(iosSource.contains("self.onChatMessage?(notification.chatMessage(taggedRoomId: activeRoomId))"))
+
+        XCTAssertTrue(androidSource.contains("val conclaveAuthorize = SfuClientEvent.conclaveAuthorize.rawValue"))
+        XCTAssertTrue(androidSource.contains("val conclaveMessage = SfuServerEvent.conclaveMessage.rawValue"))
+        XCTAssertTrue(androidSource.contains("socket.on(SocketEvent.conclaveMessage"))
+        XCTAssertTrue(androidSource.contains("onChatMessage?.invoke(notification.toChatMessage(roomId))"))
+
+        XCTAssertTrue(viewModelSource.contains(#"private static let conclaveAssistantUserId = "conclave-assistant""#))
+        XCTAssertTrue(viewModelSource.contains("guard normalized.userId == Self.conclaveAssistantUserId else"))
+        XCTAssertTrue(viewModelSource.contains("state.chatMessages[existingIndex] = normalized"))
+    }
+
     func testPayloadLessBrowserClosedCanClearOnlyKnownRoomState() throws {
         XCTAssertEqual(SfuServerEvent.browserClosed.rawValue, "browser:closed")
         XCTAssertTrue(SocketRoomEventPolicy.shouldAllowMissingTerminalRoomId(
@@ -6427,6 +6619,45 @@ final class ConclaveTests: XCTestCase {
         XCTAssertTrue(source.contains("isDmEnabled = boolField(obj, \"isDmEnabled\")"))
         XCTAssertTrue(source.contains("isReactionsDisabled = boolField(obj, \"isReactionsDisabled\")"))
         XCTAssertTrue(source.contains("meetingRequiresInviteCode = boolField(obj, \"meetingRequiresInviteCode\")"))
+    }
+
+    func testAndroidScreenShareCaptureUsesWebNetworkProfileBounds() throws {
+        let source = try sourceFileContents("Sources/Conclave/Skip/WebRTCClient+Android.kt")
+
+        XCTAssertTrue(source.contains("private data class ScreenShareCaptureProfile("))
+        XCTAssertTrue(source.contains("private val screenShareOutgoingFairBps = 1_500_000.0"))
+        XCTAssertTrue(source.contains("private val screenShareOutgoingPoorBps = 550_000.0"))
+        XCTAssertTrue(source.contains("private val screenShareOutgoingEmergencyBps = 280_000.0"))
+        XCTAssertTrue(source.contains("private fun deriveScreenSharePublishQuality("))
+        XCTAssertTrue(source.contains("screenSharePublishQuality = screenSharePublishQuality"))
+        XCTAssertTrue(source.contains("maxWidth = 3840"))
+        XCTAssertTrue(source.contains("maxHeight = 2160"))
+        XCTAssertTrue(source.contains("maxWidth = 2560"))
+        XCTAssertTrue(source.contains("maxHeight = 1440"))
+        XCTAssertTrue(source.contains("maxWidth = 1920"))
+        XCTAssertTrue(source.contains("maxHeight = 1080"))
+        XCTAssertTrue(source.contains("maxWidth = 1280"))
+        XCTAssertTrue(source.contains("maxHeight = 720"))
+        XCTAssertTrue(source.contains("private fun screenShareCaptureProfile("))
+        XCTAssertTrue(source.contains("sourceWidth.toDouble() / cap.maxWidth.toDouble()"))
+        XCTAssertTrue(source.contains("sourceHeight.toDouble() / cap.maxHeight.toDouble()"))
+        XCTAssertTrue(source.contains("capturer.startCapture(\n                capture.width,\n                capture.height,\n                capture.maxFramerate,"))
+        XCTAssertTrue(source.contains("screenCapturer?.changeCaptureFormat(\n                    capture.width,\n                    capture.height,\n                    capture.maxFramerate,"))
+    }
+
+    func testNativeScreenShareUsesSeparatePublishNetworkProfile() throws {
+        let modelsSource = try sourceFileContents("Sources/Conclave/Core/Models/Models.swift")
+        let viewModelSource = try sourceFileContents("Sources/Conclave/Features/Meeting/MeetingViewModel.swift")
+        let iosWebRTCSource = try sourceFileContents("Sources/Conclave/Core/WebRTC/WebRTCClient.swift")
+        let androidWebRTCSource = try sourceFileContents("Sources/Conclave/Skip/WebRTCClient+Android.kt")
+
+        XCTAssertTrue(modelsSource.contains("let screenSharePublishQuality: ConnectionQuality"))
+        XCTAssertTrue(iosWebRTCSource.contains("ScreenSharePublishProfilePolicy.quality("))
+        XCTAssertTrue(viewModelSource.contains("private var screenSharePublishConnectionQuality: ConnectionQuality = .unknown"))
+        XCTAssertTrue(viewModelSource.contains("ScreenSharePublishProfilePolicy.mostConstrained("))
+        XCTAssertTrue(viewModelSource.contains("self.screenSharePublishConnectionQuality == quality"))
+        XCTAssertTrue(iosWebRTCSource.contains("ScreenCaptureManager.shared.updateMaxFrameRate(\n                screenShareEncodingCap(connectionQuality: connectionQuality).maxFramerate"))
+        XCTAssertTrue(androidWebRTCSource.contains("screenShareCaptureProfile(\n                metrics.widthPixels,\n                metrics.heightPixels,\n                connectionQuality,"))
     }
 
     func testBrowserStateClearTearsDownSystemMediaConsumers() throws {
@@ -6743,6 +6974,24 @@ private func parseSwiftSfuEventRawValues(enumName: String) throws -> [String: St
 
 private func parseSfuServerEventRawValues() throws -> [String: String] {
     try parseSwiftSfuEventRawValues(enumName: "SfuServerEvent")
+}
+
+private func parseSfuClientEventRawValues() throws -> [String: String] {
+    try parseSwiftSfuEventRawValues(enumName: "SfuClientEvent")
+}
+
+private func mirroredClientEventRawValues(
+    in relativePath: String,
+    clientEventRawValues: [String: String]
+) throws -> Set<String> {
+    let source = try sourceFileContents(relativePath)
+    let mirroredConstants = regexMatches(
+        pattern: #"(?:static let|val)\s+\w+\s*=\s*SfuClientEvent\.(\w+)\.rawValue"#,
+        in: source
+    ).compactMap { match in
+        clientEventRawValues[match[0]]
+    }
+    return Set(mirroredConstants)
 }
 
 private func registeredServerEventRawValues(

@@ -35,6 +35,7 @@ private class JoinRoomRedirectException(
 
 internal object SocketEvent {
     val joinRoom = SfuClientEvent.joinRoom.rawValue
+    val getRouterRtpCapabilities = SfuClientEvent.getRouterRtpCapabilities.rawValue
     val createProducerTransport = SfuClientEvent.createProducerTransport.rawValue
     val createConsumerTransport = SfuClientEvent.createConsumerTransport.rawValue
     val connectProducerTransport = SfuClientEvent.connectProducerTransport.rawValue
@@ -51,6 +52,8 @@ internal object SocketEvent {
     val toggleCamera = SfuClientEvent.toggleCamera.rawValue
     val closeProducer = SfuClientEvent.closeProducer.rawValue
     val sendChat = SfuClientEvent.sendChat.rawValue
+    val conclaveAuthorize = SfuClientEvent.conclaveAuthorize.rawValue
+    val conclaveAnswer = SfuClientEvent.conclaveAnswer.rawValue
     val sendReaction = SfuClientEvent.sendReaction.rawValue
     val setHandRaised = SfuClientEvent.setHandRaised.rawValue
     val updateDisplayName = SfuClientEvent.updateDisplayName.rawValue
@@ -135,6 +138,7 @@ internal object SocketEvent {
     val producerClosed = SfuServerEvent.producerClosed.rawValue
     val consumerTelemetry = SfuServerEvent.consumerTelemetry.rawValue
     val chatMessage = SfuServerEvent.chatMessage.rawValue
+    val conclaveMessage = SfuServerEvent.conclaveMessage.rawValue
     val chatHistorySnapshot = SfuServerEvent.chatHistorySnapshot.rawValue
     val reaction = SfuServerEvent.reaction.rawValue
     val handRaised = SfuServerEvent.handRaised.rawValue
@@ -2999,6 +3003,14 @@ internal class SocketIOManager {
         })
 
         socket.on(SocketEvent.chatMessage, Emitter.Listener { args ->
+            if (this.socket !== socket) return@Listener
+            val notification = decodeChatMessage(args.firstOrNull()) ?: return@Listener
+            val roomId = activeRoomId ?: return@Listener
+            if (!eventRoomIdMatchesActiveOrPending(notification.roomId, allowMissingRoomId = true)) return@Listener
+            onChatMessage?.invoke(notification.toChatMessage(roomId))
+        })
+
+        socket.on(SocketEvent.conclaveMessage, Emitter.Listener { args ->
             if (this.socket !== socket) return@Listener
             val notification = decodeChatMessage(args.firstOrNull()) ?: return@Listener
             val roomId = activeRoomId ?: return@Listener

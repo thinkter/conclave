@@ -44,6 +44,10 @@ export const SFU_EVENTS = {
 
     // Chat / reactions / hand / identity
     sendChat: "sendChat",
+    // Issues a short-lived token for a visible public "@Conclave" question.
+    conclaveAuthorize: "conclave:authorize",
+    // Relays a signed streamed "@Conclave" AI answer for the whole room.
+    conclaveAnswer: "conclaveAnswer",
     sendReaction: "sendReaction",
     setHandRaised: "setHandRaised",
     updateDisplayName: "updateDisplayName",
@@ -159,6 +163,8 @@ export const SFU_EVENTS = {
 
     // Chat / reactions / hand / identity
     chatMessage: "chatMessage",
+    // Streamed "@Conclave" AI answer fanned out to the room.
+    conclaveMessage: "conclaveMessage",
     chatHistorySnapshot: "chatHistorySnapshot",
     reaction: "reaction",
     handRaised: "handRaised",

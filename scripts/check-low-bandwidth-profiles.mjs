@@ -378,8 +378,8 @@ assertRegex(
 );
 assertRegex(
   "webCodec",
-  /applyScreenShareTrackNetworkProfile[\s\S]*applyConstraints\(\{[\s\S]*frameRate: constraints\.frameRate[\s\S]*frame-rate cap was not applied[\s\S]*if \(track\.readyState !== "live"\) return;[\s\S]*const dimensionConstraints[\s\S]*profile === "good"[\s\S]*width: \{ max: SCREEN_SHARE_CAPS\.good\.maxWidth \}[\s\S]*height: \{ max: SCREEN_SHARE_CAPS\.good\.maxHeight \}[\s\S]*width: constraints\.width[\s\S]*height: constraints\.height[\s\S]*applyConstraints\(dimensionConstraints\)[\s\S]*dimension cap was not applied/,
-  "web screen-share frame-rate cap is independent and good recovery clears low dimension caps",
+  /applyScreenShareTrackNetworkProfile[\s\S]*applyConstraints\(\{[\s\S]*frameRate: constraints\.frameRate[\s\S]*frame-rate cap was not applied[\s\S]*if \(track\.readyState !== "live"\) return;[\s\S]*const dimensionConstraints: MediaTrackConstraints = \{[\s\S]*frameRate: constraints\.frameRate,[\s\S]*width: constraints\.width,[\s\S]*height: constraints\.height,[\s\S]*applyConstraints\(dimensionConstraints\)[\s\S]*dimension cap was not applied/,
+  "web screen-share frame-rate cap is independent and recovery reapplies profile ideal dimensions",
 );
 assertRegex(
   "webMeetMedia",
@@ -388,13 +388,23 @@ assertRegex(
 );
 assertRegex(
   "webMeetMedia",
-  /getScreenSharePublishNetworkProfile[\s\S]*getScreenSharePublishNetworkProfileForAvailableOutgoingBitrate\([\s\S]*stats\?\.availableOutgoingBitrate[\s\S]*getMostConstrainedWebcamProducerNetworkProfile\([\s\S]*const screenNetworkProfile = getScreenSharePublishNetworkProfile\(\);[\s\S]*const relaxedDisplayVideoConstraints[\s\S]*displayMediaOptions[\s\S]*video: relaxedDisplayVideoConstraints,[\s\S]*getDisplayMedia\(displayMediaOptions\)[\s\S]*applyScreenShareTrackNetworkProfile\(track, screenNetworkProfile\)[\s\S]*buildScreenShareEncodingForNetworkProfile\([\s\S]*screenNetworkProfile,[\s\S]*track,[\s\S]*\)/,
-  "web screen-share start captures relaxed before applying BWE size and RTP caps",
+  /buildScreenShareVideoConstraintsForNetworkProfile[\s\S]*getScreenSharePublishNetworkProfile[\s\S]*getScreenSharePublishNetworkProfileForAvailableOutgoingBitrate\([\s\S]*stats\?\.availableOutgoingBitrate[\s\S]*getMostConstrainedWebcamProducerNetworkProfile\([\s\S]*const screenNetworkProfile = getScreenSharePublishNetworkProfile\(\);[\s\S]*const constrainedDisplayVideoConstraints[\s\S]*buildScreenShareVideoConstraintsForNetworkProfile\([\s\S]*screenNetworkProfile[\s\S]*const relaxedDisplayVideoConstraints[\s\S]*getDisplayMedia\([\s\S]*constrainedDisplayVideoConstraints,[\s\S]*captureController[\s\S]*catch \(err\) \{[\s\S]*if \(!isDisplayMediaConstraintRetryableError\(err\)\) \{[\s\S]*throw err;[\s\S]*getDisplayMedia\([\s\S]*constrainedDisplayVideoConstraints,[\s\S]*null[\s\S]*getDisplayMedia\(relaxedDisplayVideoConstraints, null\)[\s\S]*applyScreenShareTrackNetworkProfile\(track, screenNetworkProfile\)[\s\S]*buildScreenShareEncodingForNetworkProfile\([\s\S]*screenNetworkProfile,[\s\S]*track,[\s\S]*\)/,
+  "web screen-share start requests BWE capture constraints before applying RTP caps",
+);
+assertIncludes(
+  "webMeetMedia",
+  "await applyScreenShareProducerNetworkProfile(\n          producer,\n          screenNetworkProfile,\n        );",
+  "web initial screen-share video immediately applies sender priority and maintain-resolution profile",
 );
 assertRegex(
   "webMeetSocket",
   /getScreenSharePublishNetworkProfile[\s\S]*getScreenSharePublishNetworkProfileForAvailableOutgoingBitrate\([\s\S]*stats\?\.availableOutgoingBitrate[\s\S]*getMostConstrainedWebcamProducerNetworkProfile\([\s\S]*const screenNetworkProfile = getScreenSharePublishNetworkProfile\(\);[\s\S]*buildScreenShareEncodingForNetworkProfile\([\s\S]*screenNetworkProfile,[\s\S]*videoTrack,[\s\S]*\)/,
   "web screen-share reconnect publish starts with BWE capture-size encoding caps",
+);
+assertIncludes(
+  "webMeetSocket",
+  "await applyScreenShareProducerNetworkProfile(\n          producer,\n          screenNetworkProfile,\n        );",
+  "web reconnected screen-share video immediately restores sender priority and maintain-resolution profile",
 );
 assertRegex(
   "webMeetMedia",
@@ -403,8 +413,8 @@ assertRegex(
 );
 assertRegex(
   "webMeetMedia",
-  /screenProducerTrackRepairInFlightRef[\s\S]*screenOutboundStallStateRef[\s\S]*void producer[\s\S]*\.getStats\(\)[\s\S]*readOutboundVideoProgressSample\(report\)[\s\S]*stalledSamples < CAMERA_OUTBOUND_STALL_SAMPLES_BEFORE_RECOVERY \|\|[\s\S]*isEncoderLimitedOutboundSample\(sample\)[\s\S]*refreshStalledScreenProducer\(/,
-  "web screen-share outbound sender watchdog waits for real stats stalls before refreshing",
+  /SCREEN_SHARE_OUTBOUND_STALL_SAMPLES_BEFORE_REFRESH = 2[\s\S]*screenProducerTrackRepairInFlightRef[\s\S]*screenOutboundStallStateRef[\s\S]*void producer[\s\S]*\.getStats\(\)[\s\S]*readOutboundVideoProgressSample\(report\)[\s\S]*stalledSamples <[\s\S]*SCREEN_SHARE_OUTBOUND_STALL_SAMPLES_BEFORE_REFRESH[\s\S]*isEncoderLimitedOutboundSample\(sample\)[\s\S]*refreshStalledScreenProducer\(/,
+  "web screen-share outbound sender watchdog refreshes faster after real stats stalls",
 );
 assertIncludes(
   "iosWebrtc",
@@ -418,18 +428,23 @@ assertIncludes(
 );
 assertRegex(
   "webAdaptiveConsumerPreferences",
-  /if \(info\.type === "screen"\) \{[\s\S]*const screenShareQuality = worstQuality\([\s\S]*getConsumerScoreQualityHint\(options\.consumerScoreQuality\)[\s\S]*const screenShareVisible =[\s\S]*options\.layout\.primary[\s\S]*screenShareEmergency[\s\S]*\? 0[\s\S]*: screenShareQuality === "poor" && !screenShareVisible[\s\S]*\? 1[\s\S]*: bounds\.maxTemporalLayer[\s\S]*priority: 240,[\s\S]*paused: false,/,
-  "web visible screen-share receive adaptation keeps full temporal FPS above emergency bitrate",
+  /if \(info\.type === "screen"\) \{[\s\S]*const screenShareQuality = worstQuality\([\s\S]*getConsumerScoreQualityHint\(options\.consumerScoreQuality\)[\s\S]*const screenShareVisible =[\s\S]*options\.layout\?\.visible === true[\s\S]*options\.layout\?\.primary === true[\s\S]*options\.layout\?\.focus === true[\s\S]*screenShareEmergency[\s\S]*\? screenShareVisible[\s\S]*\? 1[\s\S]*: 0[\s\S]*: screenShareQuality === "poor" && !screenShareVisible[\s\S]*\? 1[\s\S]*: bounds\.maxTemporalLayer[\s\S]*priority: 240,[\s\S]*paused: false,/,
+  "web visible emergency screen-share receive adaptation keeps a mid temporal layer",
+);
+assertNotIncludes(
+  "webAdaptiveConsumerPreferences",
+  "!options.layout ||\n      options.layout.visible",
+  "web missing layout hints must not make screen-share consumers visible",
 );
 assertRegex(
   "webMeetSocket",
-  /producerInfo\.type === "screen"[\s\S]*networkProfile === "emergency"[\s\S]*\? 0[\s\S]*: 2,[\s\S]*priority: 240,/,
-  "web initial screen-share consume keeps full temporal FPS above emergency bitrate",
+  /producerInfo\.type === "screen"[\s\S]*networkProfile === "emergency"[\s\S]*\? 1[\s\S]*: 2,[\s\S]*priority: 240,/,
+  "web initial screen-share consume starts emergency receivers at mid temporal FPS",
 );
 assertRegex(
   "sfuMediaHandlers",
-  /producerInfo\.type === "screen"[\s\S]*spatialLayer: 0,[\s\S]*temporalLayer: room\.currentQuality === "low" \? 1 : 2[\s\S]*producerInfo\.type === "screen"[\s\S]*return 240;/,
-  "SFU screen-share consumers default to crisp high-priority low-FPS layers",
+  /producerInfo\.type === "screen"[\s\S]*spatialLayer: 0,[\s\S]*temporalLayer: 2,[\s\S]*producerInfo\.type === "screen"[\s\S]*return 240;/,
+  "SFU screen-share consumers default to high-priority full temporal FPS",
 );
 assertRegex(
   "sfuRoom",
@@ -641,8 +656,28 @@ assertIncludes(
 );
 assertRegex(
   "webMeetSocket",
-  /const existingWebcamVideoConsumerCount = Array\.from\([\s\S]*producerMapRef\.current\.values\(\)[\s\S]*info\.kind === "video" && info\.type === "webcam"[\s\S]*preferHighWebcamLayer:[\s\S]*joinMode === "webinar_attendee" \|\|[\s\S]*existingWebcamVideoConsumerCount < 4/,
+  /const existingWebcamVideoConsumerCount = Array\.from\([\s\S]*producerMapRef\.current\.values\(\)[\s\S]*info\.kind === "video" && info\.type === "webcam"[\s\S]*knownScreenShareVideoActive[\s\S]*preferHighWebcamLayer:[\s\S]*!knownScreenShareVideoActive[\s\S]*joinMode === "webinar_attendee" \|\|[\s\S]*existingWebcamVideoConsumerCount < 4/,
   "web initial small-call webcam consumers request high layers immediately",
+);
+assertRegex(
+  "webMeetSocket",
+  /screenShareVideoActive\?: boolean[\s\S]*if \(options\.screenShareVideoActive\) \{[\s\S]*preferredLayers:[\s\S]*spatialLayer: 0,[\s\S]*networkProfile === "poor" \|\| networkProfile === "emergency" \? 0 : 1,[\s\S]*priority:[\s\S]*networkProfile === "good" \? 70 : networkProfile === "fair" \? 55 : 40/,
+  "web initial webcam consumes start as supporting layers while a screen share is active",
+);
+assertRegex(
+  "webMeetSocket",
+  /queueProducerConsumeRetry[\s\S]*const pending = Array\.from\(pendingProducersRef\.current\.values\(\)\);[\s\S]*pendingProducersRef\.current\.clear\(\);[\s\S]*const snapshotHasScreenShareVideo = pending\.some\([\s\S]*pendingProducer\.kind === "video" &&[\s\S]*pendingProducer\.type === "screen"[\s\S]*consumeProducerRef\.current\(pendingProducer, \{[\s\S]*knownScreenShareVideoActive: snapshotHasScreenShareVideo/,
+  "web pending retry batches preserve screen-share initial receive context",
+);
+assertRegex(
+  "webMeetSocket",
+  /snapshotHasScreenShareVideo\s*=\s*producers\.some\([\s\S]*producerInfo\.kind === "video" && producerInfo\.type === "screen"[\s\S]*knownScreenShareVideoActive: snapshotHasScreenShareVideo/,
+  "web producer sync snapshots reserve initial receive bandwidth for active screen shares",
+);
+assertRegex(
+  "webMeetSocket",
+  /snapshotHasScreenShareVideo\s*=\s*response\.existingProducers\.some\([\s\S]*producer\.kind === "video" && producer\.type === "screen"[\s\S]*knownScreenShareVideoActive: snapshotHasScreenShareVideo/,
+  "web join snapshots reserve initial receive bandwidth for active screen shares",
 );
 assertIncludes(
   "webAdaptiveConsumerPreferences",
@@ -651,8 +686,8 @@ assertIncludes(
 );
 assertRegex(
   "webAdaptiveConsumerPreferences",
-  /if \(options\.screenShareVideoActive && !isFocus\) \{[\s\S]*buildLayerPreference\([\s\S]*0,[\s\S]*quality === "poor" \? 0 : isVisible \? 1 : 0,[\s\S]*priority: isVisible \? \(quality === "poor" \? 45 : 65\) : isWarm \? 28 : 20,[\s\S]*paused: false,/,
-  "web active screen share down-layers non-focused webcams without pausing",
+  /const screenShareReserveQuality = options\.screenShareVideoActive[\s\S]*worstQuality\(quality, screenShareReceiveQuality\)[\s\S]*options\.screenShareVideoActive[\s\S]*!isFocus \|\|[\s\S]*screenShareReserveQuality !== "good"[\s\S]*screenShareConstrained[\s\S]*screenShareReserveQuality === "poor" \|\| screenShareReceiveEmergency[\s\S]*buildLayerPreference\([\s\S]*0,[\s\S]*screenShareConstrained \? 0 : isVisible \|\| isFocus \? 1 : 0,[\s\S]*paused: false,/,
+  "web active screen share down-layers supporting webcams without pausing",
 );
 assertRegex(
   "webAdaptiveConsumerPreferences",
@@ -666,18 +701,28 @@ assertRegex(
 );
 assertRegex(
   "webAdaptiveConsumerPreferences",
-  /SCREEN_SHARE_RECEIVE_FAIR_BPS = 1500000[\s\S]*SCREEN_SHARE_RECEIVE_POOR_BPS = 550000[\s\S]*SCREEN_SHARE_RECEIVE_EMERGENCY_BPS = 300000[\s\S]*getScreenShareReceiveQualityForAvailableBitrate[\s\S]*availableIncomingBitrateBps <= SCREEN_SHARE_RECEIVE_POOR_BPS[\s\S]*availableIncomingBitrateBps <= SCREEN_SHARE_RECEIVE_FAIR_BPS[\s\S]*isScreenShareReceiveEmergencyBitrate[\s\S]*screenShareEmergency[\s\S]*screenShareVisible[\s\S]*screenShareQuality === "poor" && !screenShareVisible[\s\S]*bounds\.maxTemporalLayer/,
-  "web visible screen-share receive layers use incoming bitrate while preserving FPS",
+  /SCREEN_SHARE_RECEIVE_FAIR_BPS = 1500000[\s\S]*SCREEN_SHARE_RECEIVE_POOR_BPS = 550000[\s\S]*SCREEN_SHARE_RECEIVE_EMERGENCY_BPS = 300000[\s\S]*getScreenShareReceiveQualityForAvailableBitrate[\s\S]*availableIncomingBitrateBps <= SCREEN_SHARE_RECEIVE_POOR_BPS[\s\S]*availableIncomingBitrateBps <= SCREEN_SHARE_RECEIVE_FAIR_BPS[\s\S]*isScreenShareReceiveEmergencyBitrate[\s\S]*screenShareEmergency[\s\S]*screenShareVisible[\s\S]*screenShareVisible[\s\S]*\? 1[\s\S]*screenShareQuality === "poor" && !screenShareVisible[\s\S]*bounds\.maxTemporalLayer/,
+  "web visible screen-share receive layers use incoming bitrate while preserving emergency FPS",
 );
 assertRegex(
   "webLowBandwidthProbe",
-  /meetVideoStreamType: video\.dataset\.meetVideoStreamType[\s\S]*visibleScreenRenderedVideos = visibleRenderedVideos\.filter[\s\S]*meetVideoStreamType === "screen"[\s\S]*largestRenderedScreenVideo[\s\S]*expected full-resolution decoded screen-share video/,
-  "web screen receive probe verifies the actual rendered screen-share video",
+  /meetVideoStreamType: video\.dataset\.meetVideoStreamType[\s\S]*screenShareDecodedMinimumByProfile[\s\S]*visibleScreenRenderedVideos = visibleRenderedVideos\.filter[\s\S]*meetVideoStreamType === "screen"[\s\S]*largestRenderedScreenVideo[\s\S]*expected profile-crisp decoded screen-share video/,
+  "web screen receive probe verifies profile-crisp rendered screen-share video",
 );
 assertRegex(
   "webLowBandwidthProbe",
   /const isVisibleScreenShare =[\s\S]*entry\.layout\?\.visible === true[\s\S]*entry\.layout\?\.primary === true[\s\S]*entry\.bounds\?\.maxTemporalLayer \?\? 2/,
   "web screen receive probe allows visible presentations to keep full temporal FPS",
+);
+assertRegex(
+  "webLowBandwidthProbe",
+  /const webcamVideoEntries = entries\.filter\([\s\S]*entry\.kind === "video" && entry\.type === "webcam"[\s\S]*usableWebcamVideoEntries[\s\S]*missing supporting remote webcam consumer preference[\s\S]*expected supporting webcam spatial layer 0 while screen is active[\s\S]*supporting webcam priority too high while screen is active/,
+  "web screen receive probe validates supporting webcam down-layering",
+);
+assertRegex(
+  "webLowBandwidthProbe",
+  /await clickButton\(publisher\.cdp, "Turn on camera", 15000\);[\s\S]*await waitForCameraProducer\(publisher\.cdp, "screen-publisher"\);[\s\S]*await clickButton\(publisher\.cdp, "Share screen", 15000\);/,
+  "web screen receive probe publishes presenter webcam alongside the screen share",
 );
 assertIncludes(
   "webAdaptiveConsumerPreferences",
@@ -698,6 +743,11 @@ assertRegex(
   "webAdaptiveConsumerPreferences",
   /const isScreenShareVideo =[\s\S]*info\.kind === "video" && info\.type === "screen"[\s\S]*requestKeyFrame =[\s\S]*isScreenShareVideo[\s\S]*!sameConsumerLayers\(previousLayers, preferredLayers!\)[\s\S]*isConsumerLayerUpgrade\(previousLayers, preferredLayers!\)/,
   "web screen-share receive layer changes request keyframes for fast recovery",
+);
+assertRegex(
+  "webMeetSocket",
+  /consumer\.track\.onmute = handleTrackMuted;[\s\S]*consumer\.track\.onunmute = handleTrackUnmuted;[\s\S]*consumer\.track\.muted[\s\S]*!producerPausedStateRef\.current\.get\(producerInfo\.producerId\)[\s\S]*handleTrackMuted\(\);/,
+  "web initially muted screen-share consumers seed stale recovery after handler attach",
 );
 assertIncludes(
   "webAdaptiveConsumerPreferences",
@@ -901,8 +951,13 @@ assertRegex(
 );
 assertRegex(
   "webLowBandwidthProbe",
-  /screenShareCaptureBoundsByProfile = \{[\s\S]*fair: \{ maxWidth: 2560, maxHeight: 1440 \}[\s\S]*poor: \{ maxWidth: 1920, maxHeight: 1080 \}[\s\S]*emergency: \{ maxWidth: 1280, maxHeight: 720 \}[\s\S]*getMaxExpectedScreenShareScaleResolutionDownBy[\s\S]*screenScaleResolutionDownBy > maxExpectedScreenScale/,
+  /screenShareCaptureBoundsByProfile = \{[\s\S]*fair: \{ maxWidth: 2560, maxHeight: 1440, maxFramerate: 12 \}[\s\S]*poor: \{ maxWidth: 1920, maxHeight: 1080, maxFramerate: 5 \}[\s\S]*emergency: \{ maxWidth: 1280, maxHeight: 720, maxFramerate: 3 \}[\s\S]*getMaxExpectedScreenShareScaleResolutionDownBy[\s\S]*screenScaleResolutionDownBy > maxExpectedScreenScale/,
   "web screen publish probe rejects avoidable screen-share downscaling",
+);
+assertRegex(
+  "webLowBandwidthProbe",
+  /window\.__conclaveGetDisplayMediaDebug[\s\S]*displayMediaCalls\.push\(sanitizeDisplayMediaOptions\(options\)\)[\s\S]*requestedFrameRate[\s\S]*canvas\.captureStream\(requestedFrameRate\)[\s\S]*displayMediaDebug[\s\S]*displayMediaVideoRequest[\s\S]*displayMediaRequestedMaxFramerate[\s\S]*screen capture requested too much frame rate/,
+  "web screen publish probe validates profile-bound display capture requests",
 );
 assertRegex(
   "webScreenShareNetworkProfile",

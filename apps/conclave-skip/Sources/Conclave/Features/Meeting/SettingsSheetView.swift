@@ -1245,13 +1245,8 @@ struct SettingsSheetView: View {
                     generation: generation,
                     currentGeneration: displayNameAutoSaveGeneration
                   ) else { return }
+            displayNameAutoSaveTask = nil
             await submitDisplayNameUpdate(pendingName, generation: generation)
-            if SettingsTimingPolicy.shouldApply(
-                generation: generation,
-                currentGeneration: displayNameAutoSaveGeneration
-            ) {
-                displayNameAutoSaveTask = nil
-            }
         }
     }
 
@@ -1440,9 +1435,24 @@ struct SettingsSheetView: View {
         if user.provider == .guest {
             return ""
         }
-        let provider = user.provider == .apple ? "Apple" : "Google"
+        let provider = accountProviderName(for: user.provider)
         let email = user.email?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return email.isEmpty ? "Signed in with \(provider)" : email
+        return email.isEmpty ? provider : email
+    }
+
+    private func accountProviderName(for provider: AppState.AuthProvider) -> String {
+        switch provider {
+        case .apple:
+            return "Signed in with Apple"
+        case .google:
+            return "Signed in with Google"
+        case .account:
+            return "Signed in"
+        case .guest:
+            return "Guest"
+        case .none:
+            return "Account"
+        }
     }
 
     @ViewBuilder

@@ -37,6 +37,7 @@ import {
   applyWebcamProducerNetworkProfile,
   applyScreenShareTrackNetworkProfile,
   buildScreenShareEncodingForNetworkProfile,
+  buildScreenShareVideoConstraintsForNetworkProfile,
   getFallbackWebcamCodec,
   getPreferredScreenShareCodec,
   getPreferredWebcamCodec,
@@ -147,6 +148,18 @@ const getUsableProducerTransport = (
   return transport;
 };
 
+const isDisplayMediaConstraintRetryableError = (error: unknown): boolean => {
+  const name =
+    error && typeof error === "object" && "name" in error
+      ? String((error as { name?: unknown }).name)
+      : "";
+  return (
+    name === "TypeError" ||
+    name === "OverconstrainedError" ||
+    name === "ConstraintNotSatisfiedError"
+  );
+};
+
 type OutboundVideoProgressSample = {
   frames: number | null;
   bytes: number | null;
@@ -166,6 +179,7 @@ type CameraOutboundStallState = {
 
 const CAMERA_OUTBOUND_STALL_CHECK_MS = 2000;
 const CAMERA_OUTBOUND_STALL_SAMPLES_BEFORE_RECOVERY = 3;
+const SCREEN_SHARE_OUTBOUND_STALL_SAMPLES_BEFORE_REFRESH = 2;
 const CAMERA_OUTBOUND_STALL_RECOVERY_COOLDOWN_MS = 10000;
 const MIN_OUTBOUND_VIDEO_BYTE_DELTA_FOR_PROGRESS = 1200;
 
@@ -2969,7 +2983,8 @@ export function useMeetMedia({
           screenOutboundStallStateRef.current = nextState;
 
           if (
-            stalledSamples < CAMERA_OUTBOUND_STALL_SAMPLES_BEFORE_RECOVERY ||
+            stalledSamples <
+              SCREEN_SHARE_OUTBOUND_STALL_SAMPLES_BEFORE_REFRESH ||
             isEncoderLimitedOutboundSample(sample)
           ) {
             return;
@@ -3287,33 +3302,61 @@ export function useMeetMedia({
       const screenNetworkProfile = getScreenSharePublishNetworkProfile();
 
       let captureController = createCaptureController();
+      const constrainedDisplayVideoConstraints:
+        MediaTrackConstraints & {
+          cursor?: "always" | "motion" | "never";
+          displaySurface?: "application" | "browser" | "monitor" | "window";
+        } = {
+          ...buildScreenShareVideoConstraintsForNetworkProfile(
+            screenNetworkProfile,
+          ),
+          displaySurface: "browser",
+          cursor: "always",
+        };
       const relaxedDisplayVideoConstraints: MediaTrackConstraints & {
         cursor?: "always" | "motion" | "never";
+        displaySurface?: "application" | "browser" | "monitor" | "window";
       } = {
         displaySurface: "browser",
         cursor: "always",
       };
-      const displayMediaOptions: DisplayMediaStreamOptions & {
-        controller?: CaptureControllerLike;
-      } = {
-        video: relaxedDisplayVideoConstraints,
-        audio: true,
-        ...(captureController ? { controller: captureController } : {}),
+      const getDisplayMedia = (
+        video: typeof constrainedDisplayVideoConstraints,
+        controller: CaptureControllerLike | null,
+      ): Promise<MediaStream> => {
+        const options: DisplayMediaStreamOptions & {
+          controller?: CaptureControllerLike;
+        } = {
+          video,
+          audio: true,
+          ...(controller ? { controller } : {}),
+        };
+        return navigator.mediaDevices.getDisplayMedia(options);
       };
 
       let stream: MediaStream;
       try {
         stream =
-          await navigator.mediaDevices.getDisplayMedia(displayMediaOptions);
+          await getDisplayMedia(
+            constrainedDisplayVideoConstraints,
+            captureController,
+          );
       } catch (err) {
-        if (!captureController || (err as Error).name !== "TypeError") {
+        if (!isDisplayMediaConstraintRetryableError(err)) {
           throw err;
         }
         captureController = null;
-        stream = await navigator.mediaDevices.getDisplayMedia({
-          video: relaxedDisplayVideoConstraints,
-          audio: true,
-        });
+        try {
+          stream = await getDisplayMedia(
+            constrainedDisplayVideoConstraints,
+            null,
+          );
+        } catch (retryErr) {
+          if (!isDisplayMediaConstraintRetryableError(retryErr)) {
+            throw retryErr;
+          }
+          stream = await getDisplayMedia(relaxedDisplayVideoConstraints, null);
+        }
       }
       const track = stream.getVideoTracks()[0];
       if (!track) {
@@ -3396,6 +3439,18 @@ export function useMeetMedia({
         setActiveScreenShareId(null);
       };
       track.onended = finishScreenShare;
+
+      try {
+        await applyScreenShareProducerNetworkProfile(
+          producer,
+          screenNetworkProfile,
+        );
+      } catch (profileErr) {
+        console.warn(
+          "[Meets] Failed to apply screen video network profile:",
+          profileErr,
+        );
+      }
 
       const audioTrack = stream.getAudioTracks()[0];
       if (audioTrack && audioTrack.readyState === "live") {

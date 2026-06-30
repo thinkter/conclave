@@ -59,9 +59,16 @@ import type {
 import type { ParticipantAction } from "../lib/participant-reducer";
 import { createMeetError, isSystemUserId, normalizeDisplayName } from "../lib/utils";
 import { normalizeChatMessage } from "../lib/chat-commands";
+import {
+  type AssistantChatMessage,
+  type ConclaveAssistantStatus,
+  CONCLAVE_ASSISTANT_NAME,
+  CONCLAVE_ASSISTANT_USER_ID,
+} from "../lib/conclave-assistant";
 import { telemetry } from "../lib/telemetry";
 import {
   applyAudioProducerNetworkProfile,
+  applyScreenShareProducerNetworkProfile,
   applyScreenShareTrackNetworkProfile,
   buildScreenShareEncodingForNetworkProfile,
   getPreferredScreenShareCodec,
@@ -90,6 +97,7 @@ type ConsumerTelemetryPayload = Omit<
 
 type ConsumeProducerOptions = {
   replaceExisting?: boolean;
+  knownScreenShareVideoActive?: boolean;
 };
 
 type JoinInfo = {
@@ -301,6 +309,7 @@ const getInitialConsumerPreferences = (
   options: {
     preferHighWebcamLayer?: boolean;
     networkProfile?: WebcamProducerNetworkProfile;
+    screenShareVideoActive?: boolean;
   } = {},
 ): InitialConsumerPreferences => {
   if (producerInfo.kind === "audio") {
@@ -319,7 +328,7 @@ const getInitialConsumerPreferences = (
         spatialLayer: 0,
         temporalLayer:
           networkProfile === "emergency"
-            ? 0
+            ? 1
             : 2,
       },
       priority: 240,
@@ -328,6 +337,18 @@ const getInitialConsumerPreferences = (
 
   if (producerInfo.type !== "webcam") {
     return {};
+  }
+
+  if (options.screenShareVideoActive) {
+    return {
+      preferredLayers: {
+        spatialLayer: 0,
+        temporalLayer:
+          networkProfile === "poor" || networkProfile === "emergency" ? 0 : 1,
+      },
+      priority:
+        networkProfile === "good" ? 70 : networkProfile === "fair" ? 55 : 40,
+    };
   }
 
   if (options.preferHighWebcamLayer) {
@@ -1167,6 +1188,18 @@ export function useMeetSocket({
         setActiveScreenShareId(null);
       };
       videoTrack.onended = finishScreenShare;
+
+      try {
+        await applyScreenShareProducerNetworkProfile(
+          producer,
+          screenNetworkProfile,
+        );
+      } catch (profileErr) {
+        console.warn(
+          "[Meets] Failed to restore screen video network profile:",
+          profileErr,
+        );
+      }
 
       const audioTrack = getFirstLiveTrack(screenStream.getAudioTracks());
       if (audioTrack) {
@@ -2229,8 +2262,15 @@ export function useMeetSocket({
         pendingProducerRetryTimeoutRef.current = null;
         const pending = Array.from(pendingProducersRef.current.values());
         pendingProducersRef.current.clear();
+        const snapshotHasScreenShareVideo = pending.some(
+          (pendingProducer) =>
+            pendingProducer.kind === "video" &&
+            pendingProducer.type === "screen",
+        );
         for (const pendingProducer of pending) {
-          void consumeProducerRef.current(pendingProducer);
+          void consumeProducerRef.current(pendingProducer, {
+            knownScreenShareVideoActive: snapshotHasScreenShareVideo,
+          });
         }
       }, delayMs);
     },
@@ -2948,6 +2988,15 @@ export function useMeetSocket({
           producerMapRef.current.values(),
         ).filter((info) => info.kind === "video" && info.type === "webcam")
           .length;
+        const knownScreenShareVideoActive =
+          options.knownScreenShareVideoActive === true ||
+          (producerInfo.kind === "video" && producerInfo.type === "screen") ||
+          Array.from(producerMapRef.current.values()).some(
+            (info) => info.kind === "video" && info.type === "screen",
+          ) ||
+          Array.from(pendingProducersRef.current.values()).some(
+            (info) => info.kind === "video" && info.type === "screen",
+          );
         socket.emit(
           "consume",
           {
@@ -2956,9 +3005,11 @@ export function useMeetSocket({
             rtpCapabilities: device.rtpCapabilities,
             ...getInitialConsumerPreferences(producerInfo, {
               preferHighWebcamLayer:
-                joinMode === "webinar_attendee" ||
-                existingWebcamVideoConsumerCount < 4,
+                !knownScreenShareVideoActive &&
+                (joinMode === "webinar_attendee" ||
+                  existingWebcamVideoConsumerCount < 4),
               networkProfile: getInitialConsumerNetworkProfile(producerInfo),
+              screenShareVideoActive: knownScreenShareVideoActive,
             }),
           },
           async (response: ConsumeResponse | { error: string }) => {
@@ -3185,6 +3236,12 @@ export function useMeetSocket({
               });
               consumer.track.onmute = handleTrackMuted;
               consumer.track.onunmute = handleTrackUnmuted;
+              if (
+                consumer.track.muted &&
+                !producerPausedStateRef.current.get(producerInfo.producerId)
+              ) {
+                handleTrackMuted();
+              }
               const stream = new MediaStream([consumer.track]);
               dispatchParticipants({
                 type: "UPDATE_STREAM",
@@ -3594,10 +3651,18 @@ export function useMeetSocket({
       }
 
       const consumeTasks: Promise<void>[] = [];
+      const snapshotHasScreenShareVideo = producers.some(
+        (producerInfo) =>
+          producerInfo.kind === "video" && producerInfo.type === "screen",
+      );
       for (const producerInfo of producers) {
         if (consumersRef.current.has(producerInfo.producerId)) continue;
         if (pendingProducersRef.current.has(producerInfo.producerId)) continue;
-        consumeTasks.push(consumeProducer(producerInfo));
+        consumeTasks.push(
+          consumeProducer(producerInfo, {
+            knownScreenShareVideoActive: snapshotHasScreenShareVideo,
+          }),
+        );
       }
       if (consumeTasks.length > 0) {
         await Promise.all(consumeTasks);
@@ -3758,8 +3823,15 @@ export function useMeetSocket({
           handleProducerClosed(producerId);
         }
       }
+      const snapshotHasScreenShareVideo = activeProducers.some(
+        (producer) => producer.kind === "video" && producer.type === "screen",
+      );
       await Promise.all(
-        activeProducers.map((producer) => consumeProducer(producer)),
+        activeProducers.map((producer) =>
+          consumeProducer(producer, {
+            knownScreenShareVideoActive: snapshotHasScreenShareVideo,
+          }),
+        ),
       );
     },
     [
@@ -3785,8 +3857,16 @@ export function useMeetSocket({
     if (!pendingProducersRef.current.size) return;
     const pending = Array.from(pendingProducersRef.current.values());
     pendingProducersRef.current.clear();
+    const snapshotHasScreenShareVideo = pending.some(
+      (producerInfo) =>
+        producerInfo.kind === "video" && producerInfo.type === "screen",
+    );
     await Promise.all(
-      pending.map((producerInfo) => consumeProducer(producerInfo)),
+      pending.map((producerInfo) =>
+        consumeProducer(producerInfo, {
+          knownScreenShareVideoActive: snapshotHasScreenShareVideo,
+        }),
+      ),
     );
   }, [pendingProducersRef, consumeProducer]);
 
@@ -4067,8 +4147,16 @@ export function useMeetSocket({
               const producePromise =
                 shouldProduce && stream ? produce(stream) : Promise.resolve();
 
+              const snapshotHasScreenShareVideo =
+                response.existingProducers.some(
+                  (producer) =>
+                    producer.kind === "video" && producer.type === "screen",
+                );
               const consumePromises = response.existingProducers.map(
-                (producer) => consumeProducer(producer),
+                (producer) =>
+                  consumeProducer(producer, {
+                    knownScreenShareVideoActive: snapshotHasScreenShareVideo,
+                  }),
               );
 
               await Promise.all([producePromise, ...consumePromises]);
@@ -5039,6 +5127,68 @@ export function useMeetSocket({
                 chat.setUnreadCount((prev) => prev + 1);
               }
             });
+
+            // Streamed "@Conclave" AI answers fanned out by the asking client.
+            // Upsert by id so the bubble fills in live for everyone in the room.
+            socket.on(
+              "conclaveMessage",
+              (payload: {
+                id?: string;
+                content?: string;
+                done?: boolean;
+                timestamp?: number;
+              }) => {
+                if (!payload?.id) return;
+                const status: ConclaveAssistantStatus = payload.done
+                  ? "done"
+                  : "streaming";
+                let isNew = false;
+                chat.setChatMessages((prev) => {
+                  const index = prev.findIndex((m) => m.id === payload.id);
+                  const previous =
+                    index >= 0
+                      ? (prev[index] as AssistantChatMessage)
+                      : undefined;
+                  if (
+                    previous?.assistantStatus === "done" &&
+                    payload.done !== true
+                  ) {
+                    return prev;
+                  }
+                  const incomingContent = payload.content ?? "";
+                  const content =
+                    payload.done === true
+                      ? incomingContent || previous?.content || ""
+                      : previous && previous.content.length > incomingContent.length
+                        ? previous.content
+                        : incomingContent || previous?.content || "";
+                  const base: AssistantChatMessage = {
+                    id: payload.id as string,
+                    userId: CONCLAVE_ASSISTANT_USER_ID,
+                    displayName: CONCLAVE_ASSISTANT_NAME,
+                    content,
+                    timestamp:
+                      index >= 0
+                        ? prev[index].timestamp
+                        : (payload.timestamp ?? Date.now()),
+                    isAssistant: true,
+                    assistantStatus: status,
+                    reasoning: previous?.reasoning,
+                    tasks: previous?.tasks,
+                  };
+                  if (index === -1) {
+                    isNew = true;
+                    return [...prev, base];
+                  }
+                  const next = [...prev];
+                  next[index] = base;
+                  return next;
+                });
+                if (isNew && !chat.isChatOpenRef.current) {
+                  chat.setUnreadCount((prev) => prev + 1);
+                }
+              },
+            );
 
             socket.on("reaction", (reaction: ReactionNotification) => {
               if (reaction.kind && reaction.value) {
