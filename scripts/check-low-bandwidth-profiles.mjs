@@ -2417,10 +2417,10 @@ assertIncludes(
   "scheduleLocalAudioBandwidthProfileRefresh(quality, allowGoodRecovery: allowGoodRecovery)",
   "native audio producer refresh scheduling",
 );
-assertIncludes(
+assertRegex(
   "nativeMeetingViewModel",
-  "scheduleLocalScreenBandwidthProfileRefresh(quality, allowGoodRecovery: allowGoodRecovery)",
-  "native screen producer refresh scheduling",
+  /let screenShareQuality = screenSharePublishConnectionQuality[\s\S]*scheduleLocalScreenBandwidthProfileRefresh\(\s*screenShareQuality,[\s\S]*allowGoodRecovery: allowScreenShareGoodRecovery[\s\S]*self\.screenSharePublishConnectionQuality == quality/,
+  "native screen producer refresh scheduling uses screen-share publish profile",
 );
 assertIncludes(
   "nativeMeetingViewModel",
@@ -2822,8 +2822,13 @@ for (const [key, label] of [
   );
   assertRegex(
     key,
-    /type == ProducerType\.screen\.rawValue[\s\S]*(case \.emergency|ConnectionQuality\.emergency)[\s\S]*(temporalLayer\s*=\s*0|->\s*0)[\s\S]*(case \.poor|ConnectionQuality\.poor)[\s\S]*(temporalLayer\s*=\s*1|->\s*1)[\s\S]*priority\s*[:=]\s*240[\s\S]*paused\s*[:=]\s*false/,
-    `${label} screen-share receive temporal adaptation`,
+    /type == ProducerType\.screen\.rawValue[\s\S]*(case \.emergency|ConnectionQuality\.emergency)[\s\S]*(temporalLayer\s*=\s*1|->\s*1)[\s\S]*(case \.poor|ConnectionQuality\.poor)[\s\S]*(temporalLayer\s*=\s*1|->\s*1)[\s\S]*priority\s*[:=]\s*240[\s\S]*paused\s*[:=]\s*false/,
+    `${label} screen-share receive temporal adaptation preserves emergency FPS`,
+  );
+  assertRegex(
+    key,
+    /initialScreenConsumerPreference[\s\S]*(case \.emergency|ConnectionQuality\.emergency)[\s\S]*(temporalLayer\s*=\s*1|->\s*1)[\s\S]*(case \.poor|ConnectionQuality\.poor)[\s\S]*(temporalLayer\s*=\s*1|->\s*1)[\s\S]*priority\s*[:=]\s*240/,
+    `${label} initial screen-share consume starts emergency receivers at mid temporal FPS`,
   );
   assertRegex(
     key,

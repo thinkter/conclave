@@ -252,7 +252,7 @@ internal class WebRTCClient : SendTransport.Listener, RecvTransport.Listener, Pr
 
     private fun initialScreenConsumerPreference(): InitialConsumerPreference {
         val temporalLayer = when (currentLocalBandwidthQuality) {
-            ConnectionQuality.emergency -> 0
+            ConnectionQuality.emergency -> 1
             ConnectionQuality.poor -> 1
             else -> 2
         }
@@ -602,7 +602,7 @@ internal class WebRTCClient : SendTransport.Listener, RecvTransport.Listener, Pr
 
         if (info.type == ProducerType.screen.rawValue) {
             val temporalLayer = when (connectionQuality) {
-                ConnectionQuality.emergency -> 0
+                ConnectionQuality.emergency -> 1
                 ConnectionQuality.poor -> 1
                 else -> 2
             }
