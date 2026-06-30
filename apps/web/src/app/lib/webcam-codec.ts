@@ -813,14 +813,23 @@ export async function applyScreenShareTrackNetworkProfile(
     }
   }
 
-  if (profile === "good" || track.readyState !== "live") return;
+  if (track.readyState !== "live") return;
+
+  const dimensionConstraints: MediaTrackConstraints =
+    profile === "good"
+      ? {
+          frameRate: constraints.frameRate,
+          width: { max: SCREEN_SHARE_CAPS.good.maxWidth },
+          height: { max: SCREEN_SHARE_CAPS.good.maxHeight },
+        }
+      : {
+          frameRate: constraints.frameRate,
+          width: constraints.width,
+          height: constraints.height,
+        };
 
   try {
-    await track.applyConstraints({
-      frameRate: constraints.frameRate,
-      width: constraints.width,
-      height: constraints.height,
-    });
+    await track.applyConstraints(dimensionConstraints);
   } catch (error) {
     console.debug(
       "[Meets] Screen-share capture dimension cap was not applied:",
