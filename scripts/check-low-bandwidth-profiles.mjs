@@ -428,8 +428,8 @@ assertIncludes(
 );
 assertRegex(
   "webAdaptiveConsumerPreferences",
-  /if \(info\.type === "screen"\) \{[\s\S]*const screenShareQuality = worstQuality\([\s\S]*getConsumerScoreQualityHint\(options\.consumerScoreQuality\)[\s\S]*const screenShareVisible =[\s\S]*options\.layout\?\.visible === true[\s\S]*options\.layout\?\.primary === true[\s\S]*options\.layout\?\.focus === true[\s\S]*screenShareEmergency[\s\S]*\? 0[\s\S]*: screenShareQuality === "poor" && !screenShareVisible[\s\S]*\? 1[\s\S]*: bounds\.maxTemporalLayer[\s\S]*priority: 240,[\s\S]*paused: false,/,
-  "web visible screen-share receive adaptation keeps full temporal FPS above emergency bitrate",
+  /if \(info\.type === "screen"\) \{[\s\S]*const screenShareQuality = worstQuality\([\s\S]*getConsumerScoreQualityHint\(options\.consumerScoreQuality\)[\s\S]*const screenShareVisible =[\s\S]*options\.layout\?\.visible === true[\s\S]*options\.layout\?\.primary === true[\s\S]*options\.layout\?\.focus === true[\s\S]*screenShareEmergency[\s\S]*\? screenShareVisible[\s\S]*\? 1[\s\S]*: 0[\s\S]*: screenShareQuality === "poor" && !screenShareVisible[\s\S]*\? 1[\s\S]*: bounds\.maxTemporalLayer[\s\S]*priority: 240,[\s\S]*paused: false,/,
+  "web visible emergency screen-share receive adaptation keeps a mid temporal layer",
 );
 assertNotIncludes(
   "webAdaptiveConsumerPreferences",
@@ -438,8 +438,8 @@ assertNotIncludes(
 );
 assertRegex(
   "webMeetSocket",
-  /producerInfo\.type === "screen"[\s\S]*networkProfile === "emergency"[\s\S]*\? 0[\s\S]*: 2,[\s\S]*priority: 240,/,
-  "web initial screen-share consume keeps full temporal FPS above emergency bitrate",
+  /producerInfo\.type === "screen"[\s\S]*networkProfile === "emergency"[\s\S]*\? 1[\s\S]*: 2,[\s\S]*priority: 240,/,
+  "web initial screen-share consume starts emergency receivers at mid temporal FPS",
 );
 assertRegex(
   "sfuMediaHandlers",
@@ -701,8 +701,8 @@ assertRegex(
 );
 assertRegex(
   "webAdaptiveConsumerPreferences",
-  /SCREEN_SHARE_RECEIVE_FAIR_BPS = 1500000[\s\S]*SCREEN_SHARE_RECEIVE_POOR_BPS = 550000[\s\S]*SCREEN_SHARE_RECEIVE_EMERGENCY_BPS = 300000[\s\S]*getScreenShareReceiveQualityForAvailableBitrate[\s\S]*availableIncomingBitrateBps <= SCREEN_SHARE_RECEIVE_POOR_BPS[\s\S]*availableIncomingBitrateBps <= SCREEN_SHARE_RECEIVE_FAIR_BPS[\s\S]*isScreenShareReceiveEmergencyBitrate[\s\S]*screenShareEmergency[\s\S]*screenShareVisible[\s\S]*screenShareQuality === "poor" && !screenShareVisible[\s\S]*bounds\.maxTemporalLayer/,
-  "web visible screen-share receive layers use incoming bitrate while preserving FPS",
+  /SCREEN_SHARE_RECEIVE_FAIR_BPS = 1500000[\s\S]*SCREEN_SHARE_RECEIVE_POOR_BPS = 550000[\s\S]*SCREEN_SHARE_RECEIVE_EMERGENCY_BPS = 300000[\s\S]*getScreenShareReceiveQualityForAvailableBitrate[\s\S]*availableIncomingBitrateBps <= SCREEN_SHARE_RECEIVE_POOR_BPS[\s\S]*availableIncomingBitrateBps <= SCREEN_SHARE_RECEIVE_FAIR_BPS[\s\S]*isScreenShareReceiveEmergencyBitrate[\s\S]*screenShareEmergency[\s\S]*screenShareVisible[\s\S]*screenShareVisible[\s\S]*\? 1[\s\S]*screenShareQuality === "poor" && !screenShareVisible[\s\S]*bounds\.maxTemporalLayer/,
+  "web visible screen-share receive layers use incoming bitrate while preserving emergency FPS",
 );
 assertRegex(
   "webLowBandwidthProbe",

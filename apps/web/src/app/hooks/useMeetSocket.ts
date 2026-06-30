@@ -322,7 +322,7 @@ const getInitialConsumerPreferences = (
         spatialLayer: 0,
         temporalLayer:
           networkProfile === "emergency"
-            ? 0
+            ? 1
             : 2,
       },
       priority: 240,

@@ -515,7 +515,9 @@ const getDesiredPreferences = (
         ? buildLayerPreference(
             0,
             screenShareEmergency
-              ? 0
+              ? screenShareVisible
+                ? 1
+                : 0
               : screenShareQuality === "poor" && !screenShareVisible
                 ? 1
                 : bounds.maxTemporalLayer,
