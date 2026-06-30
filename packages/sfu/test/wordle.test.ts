@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { GameSession } from "../server/games/engine.js";
 import { wordleModule } from "../server/games/modules/wordle.js";
 import type { GameContext, GamePlayer, GameRng } from "../server/games/types.js";
 
@@ -19,7 +20,8 @@ const context = (
   now: number,
   options?: { currentPlayers?: GamePlayer[]; pickIndex?: number },
 ): GameContext => ({
-  players: options?.currentPlayers ?? players,
+  players,
+  activePlayers: options?.currentPlayers ?? players,
   rng: rng(options?.pickIndex),
   config: { timeLimitMinutes: 3, wordSource: "setter", rounds: 1 },
   content: null,
@@ -35,6 +37,51 @@ const startWithSetter = () =>
   );
 
 describe("wordle game", () => {
+  it("recovers a disconnected setter through live game session membership", () => {
+    const session = new GameSession({
+      module: wordleModule,
+      players,
+      adminIds: ["host"],
+      hostId: "host",
+      config: { timeLimitMinutes: 3, wordSource: "setter", rounds: 1 },
+      seed: 1,
+    });
+
+    expect(session.applyMove("host", "start", undefined)).toEqual({ ok: true });
+    expect(session.getPublicState(1_000).view).toMatchObject({
+      phase: "set-word",
+      setterId: "setter",
+    });
+
+    const remainingPlayers = players.filter((player) => player.id !== "setter");
+    session.updateRoomMembership({
+      players: remainingPlayers,
+      adminIds: ["host"],
+    });
+
+    expect(session.tick(1_500)).toBe(true);
+    expect(session.getPublicState(1_500).view).toMatchObject({
+      phase: "set-word",
+      setterId: "host",
+    });
+    expect(session.getPlayerView("host", 1_500)).toMatchObject({
+      canSetWord: true,
+      isSetter: true,
+    });
+
+    expect(session.applyMove("host", "setWord", { word: "AALII" })).toEqual({
+      ok: true,
+    });
+    const publicView = session.getPublicState(2_000).view as {
+      phase: string;
+      standings: Array<{ playerId: string }>;
+    };
+    expect(publicView.phase).toBe("playing");
+    expect(publicView.standings.map((entry) => entry.playerId)).toEqual([
+      "guesser",
+    ]);
+  });
+
   it("reassigns a missing setter on tick during word selection", () => {
     const remainingPlayers = players.filter((player) => player.id !== "setter");
     const state = wordleModule.onTick!(

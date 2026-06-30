@@ -78,14 +78,19 @@ const setterName = (ctx: GameContext, setterId: string | null): string | null =>
   return ctx.players.find((player) => player.id === setterId)?.name ?? null;
 };
 
-const hasPlayer = (ctx: GameContext, playerId: string | null): playerId is string =>
-  Boolean(playerId && ctx.players.some((player) => player.id === playerId));
+const hasActivePlayer = (
+  ctx: GameContext,
+  playerId: string | null,
+): playerId is string =>
+  Boolean(playerId && ctx.activePlayers.some((player) => player.id === playerId));
 
 const replacementSetterId = (ctx: GameContext): string | null =>
-  ctx.players.length > 0 ? ctx.rng.pick(ctx.players).id : null;
+  ctx.activePlayers.length > 0 ? ctx.rng.pick(ctx.activePlayers).id : null;
 
 const recoverMissingSetter = (state: WordleState, ctx: GameContext): WordleState => {
-  if (state.phase !== "set-word" || hasPlayer(ctx, state.setterId)) return state;
+  if (state.phase !== "set-word" || hasActivePlayer(ctx, state.setterId)) {
+    return state;
+  }
   const nextSetterId = replacementSetterId(ctx);
   if (!nextSetterId) return state;
   return {
@@ -99,8 +104,10 @@ const recoverMissingSetterForMove = (
   move: GameMove,
   ctx: GameContext,
 ): WordleState => {
-  if (state.phase !== "set-word" || hasPlayer(ctx, state.setterId)) return state;
-  if (!hasPlayer(ctx, move.playerId)) return recoverMissingSetter(state, ctx);
+  if (state.phase !== "set-word" || hasActivePlayer(ctx, state.setterId)) {
+    return state;
+  }
+  if (!hasActivePlayer(ctx, move.playerId)) return recoverMissingSetter(state, ctx);
   return {
     ...state,
     setterId: move.playerId,
@@ -162,8 +169,9 @@ const isSolved = (feedback: WordleTile[]): boolean =>
   feedback.length === WORD_LENGTH && feedback.every((tile) => tile === "green");
 
 const contestantIds = (state: WordleState, ctx: GameContext): string[] =>
-  ctx.players
-    .map((player) => player.id)
+  (state.phase === "playing" || state.phase === "results"
+    ? Object.keys(state.players)
+    : ctx.activePlayers.map((player) => player.id))
     .filter((playerId) => playerId !== state.setterId);
 
 const allContestantsFinished = (state: WordleState, ctx: GameContext): boolean => {
@@ -291,7 +299,7 @@ export const wordleModule: GameModule<WordleState> = {
           throw new GameMoveError("Wordle has already started");
         }
         const minPlayers = state.wordSource === "setter" ? 2 : 1;
-        if (ctx.players.length < minPlayers) {
+        if (ctx.activePlayers.length < minPlayers) {
           throw new GameMoveError(
             state.wordSource === "setter"
               ? "Need at least 2 players"
@@ -302,7 +310,7 @@ export const wordleModule: GameModule<WordleState> = {
         if (state.wordSource === "random") {
           const word = ctx.rng.pick(ALL_WORDS);
           const players: Record<string, PlayerRoundState> = {};
-          for (const player of ctx.players) {
+          for (const player of ctx.activePlayers) {
             players[player.id] = { guesses: [], outcome: null, solvedAt: null };
           }
           return {
@@ -319,7 +327,7 @@ export const wordleModule: GameModule<WordleState> = {
           };
         }
 
-        const setter = ctx.rng.pick(ctx.players);
+        const setter = ctx.rng.pick(ctx.activePlayers);
         return {
           ...state,
           phase: "set-word",
@@ -438,7 +446,7 @@ export const wordleModule: GameModule<WordleState> = {
           const candidates = ALL_WORDS.filter((w) => !state.usedWords.includes(w));
           const word = ctx.rng.pick(candidates.length > 0 ? candidates : ALL_WORDS);
           const players: Record<string, PlayerRoundState> = {};
-          for (const player of ctx.players) {
+          for (const player of ctx.activePlayers) {
             players[player.id] = { guesses: [], outcome: null, solvedAt: null };
           }
           return {
@@ -453,7 +461,7 @@ export const wordleModule: GameModule<WordleState> = {
           };
         }
 
-        const setter = ctx.rng.pick(ctx.players);
+        const setter = ctx.rng.pick(ctx.activePlayers);
         return {
           ...state,
           phase: "set-word" as const,
