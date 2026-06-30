@@ -656,6 +656,11 @@ assertRegex(
 );
 assertRegex(
   "webMeetSocket",
+  /queueProducerConsumeRetry[\s\S]*const pending = Array\.from\(pendingProducersRef\.current\.values\(\)\);[\s\S]*pendingProducersRef\.current\.clear\(\);[\s\S]*const snapshotHasScreenShareVideo = pending\.some\([\s\S]*pendingProducer\.kind === "video" &&[\s\S]*pendingProducer\.type === "screen"[\s\S]*consumeProducerRef\.current\(pendingProducer, \{[\s\S]*knownScreenShareVideoActive: snapshotHasScreenShareVideo/,
+  "web pending retry batches preserve screen-share initial receive context",
+);
+assertRegex(
+  "webMeetSocket",
   /snapshotHasScreenShareVideo\s*=\s*producers\.some\([\s\S]*producerInfo\.kind === "video" && producerInfo\.type === "screen"[\s\S]*knownScreenShareVideoActive: snapshotHasScreenShareVideo/,
   "web producer sync snapshots reserve initial receive bandwidth for active screen shares",
 );

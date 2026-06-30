@@ -2243,8 +2243,15 @@ export function useMeetSocket({
         pendingProducerRetryTimeoutRef.current = null;
         const pending = Array.from(pendingProducersRef.current.values());
         pendingProducersRef.current.clear();
+        const snapshotHasScreenShareVideo = pending.some(
+          (pendingProducer) =>
+            pendingProducer.kind === "video" &&
+            pendingProducer.type === "screen",
+        );
         for (const pendingProducer of pending) {
-          void consumeProducerRef.current(pendingProducer);
+          void consumeProducerRef.current(pendingProducer, {
+            knownScreenShareVideoActive: snapshotHasScreenShareVideo,
+          });
         }
       }, delayMs);
     },
