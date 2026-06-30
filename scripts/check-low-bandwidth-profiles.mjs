@@ -20,6 +20,8 @@ const files = {
     "apps/web/src/app/hooks/useAdaptiveConsumerPreferences.ts",
   webPlaybackRecovery: "apps/web/src/app/lib/playback-recovery.ts",
   webParticipantVideo: "apps/web/src/app/components/ParticipantVideo.tsx",
+  webScreenShareAudioPlayers:
+    "apps/web/src/app/components/ScreenShareAudioPlayers.tsx",
   webMobileParticipantVideo:
     "apps/web/src/app/components/mobile/MobileParticipantVideo.tsx",
   webGridLayout: "apps/web/src/app/components/GridLayout.tsx",
@@ -133,6 +135,16 @@ assertRegex(
   "webMeetSocket",
   /audioTrack\.contentHint = "music"[\s\S]*buildScreenShareAudioOpusCodecOptions\([\s\S]*screenNetworkProfile[\s\S]*applyAudioProducerNetworkProfile\([\s\S]*audioProducer,[\s\S]*"screen",[\s\S]*screenNetworkProfile/,
   "web screen audio reconnect publish marks media audio and immediately applies RTP network profile",
+);
+assertRegex(
+  "webScreenShareAudioPlayers",
+  /activeScreenShareId: string \| null[\s\S]*const hasLiveAudio[\s\S]*track\.readyState === "live"[\s\S]*participant\.userId !== currentUserId[\s\S]*hasLiveAudio\(participant\.screenShareAudioStream\)[\s\S]*!activeScreenShareId \|\|[\s\S]*participant\.screenShareProducerId === activeScreenShareId/,
+  "web screen audio playback follows the active screen-share owner",
+);
+assertRegex(
+  "webMeetsMainContent",
+  /<ScreenShareAudioPlayers[\s\S]*participants=\{participants\}[\s\S]*currentUserId=\{currentUserId\}[\s\S]*activeScreenShareId=\{activeScreenShareId\}/,
+  "web screen audio player receives active screen-share id",
 );
 assertRegex(
   "iosWebrtc",

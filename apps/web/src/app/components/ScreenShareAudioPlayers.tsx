@@ -7,15 +7,22 @@ import type { Participant } from "../lib/types";
 interface ScreenShareAudioPlayersProps {
   participants: Map<string, Participant>;
   currentUserId: string;
+  activeScreenShareId: string | null;
   audioOutputDeviceId?: string;
   onAutoplayBlocked?: () => void;
   onPlaybackStarted?: () => void;
   playbackAttemptToken?: number;
 }
 
+const hasLiveAudio = (stream: MediaStream | null | undefined) => {
+  const track = stream?.getAudioTracks()[0];
+  return Boolean(track && track.readyState === "live");
+};
+
 function ScreenShareAudioPlayers({
   participants,
   currentUserId,
+  activeScreenShareId,
   audioOutputDeviceId,
   onAutoplayBlocked,
   onPlaybackStarted,
@@ -23,7 +30,10 @@ function ScreenShareAudioPlayers({
 }: ScreenShareAudioPlayersProps) {
   const screenShareAudioParticipants = Array.from(participants.values()).filter(
     (participant) =>
-      participant.userId !== currentUserId && participant.screenShareAudioStream
+      participant.userId !== currentUserId &&
+      hasLiveAudio(participant.screenShareAudioStream) &&
+      (!activeScreenShareId ||
+        participant.screenShareProducerId === activeScreenShareId)
   );
 
   return (
