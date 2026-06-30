@@ -179,6 +179,7 @@ type CameraOutboundStallState = {
 
 const CAMERA_OUTBOUND_STALL_CHECK_MS = 2000;
 const CAMERA_OUTBOUND_STALL_SAMPLES_BEFORE_RECOVERY = 3;
+const SCREEN_SHARE_OUTBOUND_STALL_SAMPLES_BEFORE_REFRESH = 2;
 const CAMERA_OUTBOUND_STALL_RECOVERY_COOLDOWN_MS = 10000;
 const MIN_OUTBOUND_VIDEO_BYTE_DELTA_FOR_PROGRESS = 1200;
 
@@ -2982,7 +2983,8 @@ export function useMeetMedia({
           screenOutboundStallStateRef.current = nextState;
 
           if (
-            stalledSamples < CAMERA_OUTBOUND_STALL_SAMPLES_BEFORE_RECOVERY ||
+            stalledSamples <
+              SCREEN_SHARE_OUTBOUND_STALL_SAMPLES_BEFORE_REFRESH ||
             isEncoderLimitedOutboundSample(sample)
           ) {
             return;

@@ -413,8 +413,8 @@ assertRegex(
 );
 assertRegex(
   "webMeetMedia",
-  /screenProducerTrackRepairInFlightRef[\s\S]*screenOutboundStallStateRef[\s\S]*void producer[\s\S]*\.getStats\(\)[\s\S]*readOutboundVideoProgressSample\(report\)[\s\S]*stalledSamples < CAMERA_OUTBOUND_STALL_SAMPLES_BEFORE_RECOVERY \|\|[\s\S]*isEncoderLimitedOutboundSample\(sample\)[\s\S]*refreshStalledScreenProducer\(/,
-  "web screen-share outbound sender watchdog waits for real stats stalls before refreshing",
+  /SCREEN_SHARE_OUTBOUND_STALL_SAMPLES_BEFORE_REFRESH = 2[\s\S]*screenProducerTrackRepairInFlightRef[\s\S]*screenOutboundStallStateRef[\s\S]*void producer[\s\S]*\.getStats\(\)[\s\S]*readOutboundVideoProgressSample\(report\)[\s\S]*stalledSamples <[\s\S]*SCREEN_SHARE_OUTBOUND_STALL_SAMPLES_BEFORE_REFRESH[\s\S]*isEncoderLimitedOutboundSample\(sample\)[\s\S]*refreshStalledScreenProducer\(/,
+  "web screen-share outbound sender watchdog refreshes faster after real stats stalls",
 );
 assertIncludes(
   "iosWebrtc",
