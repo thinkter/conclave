@@ -1119,6 +1119,7 @@ export default function MeetsClient({
     handleLocalTrackEnded,
     playNotificationSound,
     primeAudioOutput,
+    refreshScreenAudioProducerForNetworkProfile,
   } = useMeetMedia({
     ghostEnabled,
     isObserverMode: isWebinarAttendee,
@@ -2670,6 +2671,7 @@ export default function MeetsClient({
     networkManagedVideoQualityRef,
     setVideoQuality: setNetworkManagedVideoQuality,
     updateVideoQualityRef,
+    refreshScreenAudioProducerForNetworkProfile,
     debugStateRef: adaptivePublishDebugRef,
   });
 
