@@ -6557,6 +6557,45 @@ final class ConclaveTests: XCTestCase {
         XCTAssertNil(SocketFireAndForgetEmitPolicy.normalizedAppId("   "))
     }
 
+    func testConclaveAuthorizeRequestEncodesWebPayloadShape() throws {
+        let data = try JSONEncoder().encode(ConclaveAuthorizeRequest(
+            id: "answer-1",
+            questionMessageId: "question-1"
+        ))
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? NSDictionary)
+
+        XCTAssertEqual(object["id"] as? String, "answer-1")
+        XCTAssertEqual(object["questionMessageId"] as? String, "question-1")
+    }
+
+    func testConclaveAssistantRelayPacketEncodesSfuRelayShape() throws {
+        let packet = ConclaveAssistantRelayPacket(
+            id: "answer-1",
+            roomId: "tanji-riku-lotus",
+            channelId: "room:tanji-riku-lotus",
+            requesterUserId: "user@example.com#session",
+            questionMessageId: "question-1",
+            content: "Here is the recap.",
+            done: true,
+            timestamp: 1_783_000_100_000,
+            expiresAt: 1_783_000_160_000,
+            signature: "signed-packet"
+        )
+        let data = try JSONEncoder().encode(packet)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? NSDictionary)
+
+        XCTAssertEqual(object["id"] as? String, "answer-1")
+        XCTAssertEqual(object["roomId"] as? String, "tanji-riku-lotus")
+        XCTAssertEqual(object["channelId"] as? String, "room:tanji-riku-lotus")
+        XCTAssertEqual(object["requesterUserId"] as? String, "user@example.com#session")
+        XCTAssertEqual(object["questionMessageId"] as? String, "question-1")
+        XCTAssertEqual(object["content"] as? String, "Here is the recap.")
+        XCTAssertEqual(object["done"] as? Bool, true)
+        XCTAssertEqual(object["timestamp"] as? Double, 1_783_000_100_000)
+        XCTAssertEqual(object["expiresAt"] as? Double, 1_783_000_160_000)
+        XCTAssertEqual(object["signature"] as? String, "signed-packet")
+    }
+
     func testTerminalRoomEventsAllowMissingRoomIdOnlyDuringKnownCall() throws {
         XCTAssertTrue(SocketRoomEventPolicy.shouldAllowMissingTerminalRoomId(
             activeRoomAliasCount: 1,
@@ -6608,6 +6647,25 @@ final class ConclaveTests: XCTestCase {
         XCTAssertTrue(viewModelSource.contains("guard normalized.userId == ConclaveAssistantChatIdentity.userId else"))
         XCTAssertTrue(viewModelSource.contains("private func mergedConclaveAssistantMessage(existing: ChatMessage, incoming: ChatMessage) -> ChatMessage"))
         XCTAssertTrue(viewModelSource.contains("incoming.content.isEmpty || incoming.content.count < existing.content.count"))
+    }
+
+    func testNativeConclaveAssistantSocketEmitParity() throws {
+        let iosSource = try sourceFileContents("Sources/Conclave/Core/Networking/SocketIOManager.swift")
+        let androidSymbolSource = try sourceFileContents("Sources/Conclave/Core/Networking/SocketIOManager+Android.swift")
+        let androidSource = try sourceFileContents("Sources/Conclave/Skip/SocketIOManager+Android.kt")
+
+        XCTAssertTrue(iosSource.contains("func requestConclaveAuthorization(answerId: String, questionMessageId: String) async throws -> ConclaveAuthorizeResponse"))
+        XCTAssertTrue(iosSource.contains("emit(event: SocketEvent.conclaveAuthorize"))
+        XCTAssertTrue(iosSource.contains("func relayConclaveAnswer(_ packet: ConclaveAssistantRelayPacket)"))
+        XCTAssertTrue(iosSource.contains("socket?.emit(SocketEvent.conclaveAnswer, payload)"))
+
+        XCTAssertTrue(androidSymbolSource.contains("func requestConclaveAuthorization(answerId: String, questionMessageId: String) async throws -> ConclaveAuthorizeResponse"))
+        XCTAssertTrue(androidSymbolSource.contains("func relayConclaveAnswer(_ packet: ConclaveAssistantRelayPacket)"))
+
+        XCTAssertTrue(androidSource.contains("internal suspend fun requestConclaveAuthorization("))
+        XCTAssertTrue(androidSource.contains("emit(SocketEvent.conclaveAuthorize, payload)"))
+        XCTAssertTrue(androidSource.contains("internal fun relayConclaveAnswer(packet: ConclaveAssistantRelayPacket)"))
+        XCTAssertTrue(androidSource.contains("socket?.emit(SocketEvent.conclaveAnswer, payload)"))
     }
 
     func testPayloadLessBrowserClosedCanClearOnlyKnownRoomState() throws {
