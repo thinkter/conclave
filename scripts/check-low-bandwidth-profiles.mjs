@@ -411,8 +411,8 @@ assertRegex(
 );
 assertRegex(
   "sfuRoom",
-  /replaceScreenShareProducerForUser\([\s\S]*entry\.userId !== userId[\s\S]*entry\.type !== "screen"[\s\S]*entry\.producer\.kind !== "video"[\s\S]*clearScreenShareProducer\(producerId\)[\s\S]*removeProducerIndexById\(producerId, entry\.producer\)[\s\S]*entry\.producer\.close\(\)/,
-  "SFU can close stale same-user screen-share producers before replacement",
+  /replaceScreenShareProducerForUser\([\s\S]*entry\.userId !== userId[\s\S]*entry\.type !== "screen"[\s\S]*entry\.producer\.kind !== "video"[\s\S]*clearScreenShareProducer\(producerId\)[\s\S]*removeProducerIndexById\(producerId, entry\.producer\)[\s\S]*getProducer\("audio", "screen"\)[\s\S]*removeProducerIndexById\(screenAudioProducer\.id, screenAudioProducer\)[\s\S]*screenAudioProducer\.close\(\)[\s\S]*entry\.producer\.close\(\)/,
+  "SFU can close stale same-user screen-share video and audio before replacement",
 );
 assertRegex(
   "sfuMediaHandlers",
