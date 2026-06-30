@@ -184,6 +184,11 @@ assertIncludes(
 );
 assertIncludes(
   "webCodec",
+  "SCREEN_SHARE_TEMPORAL_CODEC_MIME_TYPES",
+  "web screen share has a temporal-layer codec preference",
+);
+assertIncludes(
+  "webCodec",
   "getPreferredVideoCodecMimeTypes()",
   "web codec preference is browser-aware",
 );
@@ -206,6 +211,11 @@ assertRegex(
   "webCodec",
   /if \(!preferredCodec \|\| isPreferredVideoCodec\(preferredCodec, "video\/H264"\)\)[\s\S]*return false;/,
   "web hardware-sensitive H264 webcam publish starts single-layer",
+);
+assertRegex(
+  "webCodec",
+  /export const getPreferredScreenShareCodec[\s\S]*for \(const mimeType of SCREEN_SHARE_TEMPORAL_CODEC_MIME_TYPES\)/,
+  "web screen share prefers VP8 temporal layers without changing webcam codec policy",
 );
 assertRegex(
   "webCodec",

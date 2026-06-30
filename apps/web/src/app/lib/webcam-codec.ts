@@ -23,6 +23,10 @@ const SIMULCAST_FRIENDLY_CODEC_MIME_TYPES = [
   "video/VP8",
   "video/H264",
 ] as const;
+const SCREEN_SHARE_TEMPORAL_CODEC_MIME_TYPES = [
+  "video/VP8",
+  "video/H264",
+] as const;
 
 const isLikelyHardwareAcceleratedH264Browser = (): boolean => {
   if (typeof navigator === "undefined") return false;
@@ -113,7 +117,7 @@ export const getPreferredScreenShareCodec = (
 ): RtpCodecCapability | undefined => {
   const codecs = device?.rtpCapabilities?.codecs ?? [];
 
-  for (const mimeType of getPreferredVideoCodecMimeTypes()) {
+  for (const mimeType of SCREEN_SHARE_TEMPORAL_CODEC_MIME_TYPES) {
     const codec = codecs.find((candidate) =>
       isPreferredVideoCodec(candidate, mimeType),
     );
