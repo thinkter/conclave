@@ -59,7 +59,9 @@ export const Reasoning = memo(
     children,
     ...props
   }: ReasoningProps) => {
-    const [isOpen, setIsOpenInternal] = useState(open ?? defaultOpen);
+    const isControlled = open !== undefined;
+    const [internalOpen, setInternalOpen] = useState(open ?? defaultOpen);
+    const isOpen = isControlled ? (open as boolean) : internalOpen;
     const [duration, setDuration] = useState(durationProp ?? 0);
     const [hasAutoClosed, setHasAutoClosed] = useState(false);
     const startedAtRef = useRef<number | null>(null);
@@ -78,23 +80,25 @@ export const Reasoning = memo(
     }, [isStreaming]);
 
     const setIsOpen = (next: boolean) => {
-      setIsOpenInternal(next);
+      if (!isControlled) setInternalOpen(next);
       onOpenChange?.(next);
     };
 
-    // Auto-open while thinking, then collapse once it's done so the finished
-    // answer is what stays in view.
+    // When uncontrolled, auto-open while thinking then collapse once it's done.
+    // A controlled parent owns the open state instead — e.g. to keep the trace
+    // visible until the whole message finishes streaming before collapsing.
     useEffect(() => {
-      if (isStreaming && !isOpen) {
-        setIsOpenInternal(true);
-      } else if (!isStreaming && isOpen && !hasAutoClosed) {
+      if (isControlled) return;
+      if (isStreaming && !internalOpen) {
+        setInternalOpen(true);
+      } else if (!isStreaming && internalOpen && !hasAutoClosed) {
         const timer = setTimeout(() => {
-          setIsOpenInternal(false);
+          setInternalOpen(false);
           setHasAutoClosed(true);
         }, 600);
         return () => clearTimeout(timer);
       }
-    }, [isStreaming, isOpen, hasAutoClosed]);
+    }, [isControlled, isStreaming, internalOpen, hasAutoClosed]);
 
     return (
       <ReasoningContext.Provider
@@ -103,7 +107,7 @@ export const Reasoning = memo(
         <Collapsible
           className={cn("not-prose", className)}
           onOpenChange={setIsOpen}
-          open={open ?? isOpen}
+          open={isOpen}
           {...props}
         >
           {children}
@@ -161,7 +165,7 @@ export const ReasoningContent = memo(
   ({ className, children, ...props }: ReasoningContentProps) => (
     <CollapsibleContent
       className={cn(
-        "overflow-hidden text-[12.5px] text-[#a1a1aa] outline-none",
+        "web-collapsible overflow-hidden text-[12.5px] text-[#a1a1aa] outline-none",
         className,
       )}
       {...props}

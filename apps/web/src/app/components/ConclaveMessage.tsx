@@ -102,23 +102,32 @@ function ConclaveMessage({ message, isNew }: ConclaveMessageProps) {
   const hasRunningTask = visibleTasks.some((task) => task.status !== "done");
   const isProcessRunning = reasoningStreaming || hasRunningTask;
   const hasProcess = !isError && (visibleTasks.length > 0 || hasReasoning);
-  const shouldKeepProcessOpen =
-    isProcessRunning || (isStreaming && !hasAnswer && hasProcess);
 
-  // Keep the thought process expanded while the agent works, then quietly
-  // collapse it once the answer is finished so it isn't intrusive.
-  const [processOpen, setProcessOpen] = useState(shouldKeepProcessOpen);
-  const wasProcessOpenForWorkRef = useRef(shouldKeepProcessOpen);
+  // Keep the reasoning + chain-of-thought expanded for the ENTIRE stream. Only
+  // once the full message has finished streaming do we let them ease closed, so
+  // the finished answer is what's left in view. Each panel keeps its own open
+  // state so manual toggles stay independent, but they share one auto-collapse.
+  const keepProcessOpen = isStreaming || isProcessRunning;
+  const [reasoningOpen, setReasoningOpen] = useState(keepProcessOpen);
+  const [actionsOpen, setActionsOpen] = useState(keepProcessOpen);
+  const wasOpenForWorkRef = useRef(keepProcessOpen);
   useEffect(() => {
-    if (shouldKeepProcessOpen) {
-      setProcessOpen(true);
-    } else if (wasProcessOpenForWorkRef.current) {
-      const timer = setTimeout(() => setProcessOpen(false), 900);
-      wasProcessOpenForWorkRef.current = false;
+    if (keepProcessOpen) {
+      setReasoningOpen(true);
+      setActionsOpen(true);
+      wasOpenForWorkRef.current = true;
+      return;
+    }
+    if (wasOpenForWorkRef.current) {
+      wasOpenForWorkRef.current = false;
+      // Linger on the finished trace for a beat, then collapse it nicely.
+      const timer = setTimeout(() => {
+        setReasoningOpen(false);
+        setActionsOpen(false);
+      }, 700);
       return () => clearTimeout(timer);
     }
-    wasProcessOpenForWorkRef.current = shouldKeepProcessOpen;
-  }, [shouldKeepProcessOpen]);
+  }, [keepProcessOpen]);
 
   return (
     <div
@@ -151,6 +160,8 @@ function ConclaveMessage({ message, isNew }: ConclaveMessageProps) {
             <Reasoning
               className={visibleTasks.length > 0 || hasAnswer ? "mb-2.5" : ""}
               isStreaming={reasoningStreaming}
+              open={reasoningOpen}
+              onOpenChange={setReasoningOpen}
             >
               <ReasoningTrigger />
               <ReasoningContent>{reasoning}</ReasoningContent>
@@ -160,8 +171,8 @@ function ConclaveMessage({ message, isNew }: ConclaveMessageProps) {
           {visibleTasks.length > 0 ? (
             <ChainOfThought
               className="mb-2.5"
-              open={processOpen}
-              onOpenChange={setProcessOpen}
+              open={actionsOpen}
+              onOpenChange={setActionsOpen}
             >
               <ChainOfThoughtHeader icon={<ListTreeIcon className="size-3.5" />}>
                 {isProcessRunning ? (
