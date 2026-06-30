@@ -53,7 +53,7 @@ export type ChainOfThoughtContentProps = ComponentProps<
 export const ChainOfThoughtContent = memo(
   ({ className, children, ...props }: ChainOfThoughtContentProps) => (
     <CollapsibleContent
-      className={cn("overflow-hidden outline-none", className)}
+      className={cn("web-collapsible overflow-hidden outline-none", className)}
       {...props}
     >
       <div className="mt-2.5 space-y-2.5">{children}</div>

@@ -348,7 +348,7 @@ final class WebRTCClient: NSObject, ObservableObject {
         let temporalLayer: Int
         switch currentLocalBandwidthQuality {
         case .emergency:
-            temporalLayer = 0
+            temporalLayer = 1
         case .poor:
             temporalLayer = 1
         default:
@@ -616,7 +616,7 @@ final class WebRTCClient: NSObject, ObservableObject {
             let temporalLayer: Int
             switch connectionQuality {
             case .emergency:
-                temporalLayer = 0
+                temporalLayer = 1
             case .poor:
                 temporalLayer = 1
             default:
