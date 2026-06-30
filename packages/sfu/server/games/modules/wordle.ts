@@ -52,6 +52,35 @@ const setterName = (ctx: GameContext, setterId: string | null): string | null =>
   return ctx.players.find((player) => player.id === setterId)?.name ?? null;
 };
 
+const hasPlayer = (ctx: GameContext, playerId: string | null): playerId is string =>
+  Boolean(playerId && ctx.players.some((player) => player.id === playerId));
+
+const replacementSetterId = (ctx: GameContext): string | null =>
+  ctx.players.length > 0 ? ctx.rng.pick(ctx.players).id : null;
+
+const recoverMissingSetter = (state: WordleState, ctx: GameContext): WordleState => {
+  if (state.phase !== "set-word" || hasPlayer(ctx, state.setterId)) return state;
+  const nextSetterId = replacementSetterId(ctx);
+  if (!nextSetterId) return state;
+  return {
+    ...state,
+    setterId: nextSetterId,
+  };
+};
+
+const recoverMissingSetterForMove = (
+  state: WordleState,
+  move: GameMove,
+  ctx: GameContext,
+): WordleState => {
+  if (state.phase !== "set-word" || hasPlayer(ctx, state.setterId)) return state;
+  if (!hasPlayer(ctx, move.playerId)) return recoverMissingSetter(state, ctx);
+  return {
+    ...state,
+    setterId: move.playerId,
+  };
+};
+
 const winnerName = (ctx: GameContext, winnerId: string | null): string | null => {
   if (!winnerId) return null;
   return ctx.players.find((player) => player.id === winnerId)?.name ?? null;
@@ -206,10 +235,11 @@ export const wordleModule: GameModule<WordleState> = {
         };
       }
       case "setWord": {
-        if (state.phase !== "set-word") {
+        const currentState = recoverMissingSetterForMove(state, move, ctx);
+        if (currentState.phase !== "set-word") {
           throw new GameMoveError("Word is already set");
         }
-        if (!state.setterId || move.playerId !== state.setterId) {
+        if (!currentState.setterId || move.playerId !== currentState.setterId) {
           throw new GameMoveError("Only the selected player can set the word");
         }
         const word = normalizeWord((move.payload as { word?: unknown })?.word, {
@@ -226,7 +256,7 @@ export const wordleModule: GameModule<WordleState> = {
         }
 
         return {
-          ...state,
+          ...currentState,
           phase: "playing",
           targetWord: word,
           players,
@@ -299,6 +329,8 @@ export const wordleModule: GameModule<WordleState> = {
   },
 
   onTick(state, ctx): WordleState {
+    if (state.phase === "set-word") return recoverMissingSetter(state, ctx);
+
     if (state.phase !== "playing") return state;
 
     if (allContestantsFinished(state, ctx)) {

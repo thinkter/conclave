@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { color, radius } from "@conclave/ui-tokens";
 import {
   CountdownRing,
@@ -63,26 +63,13 @@ const statusText = (outcome: PlayerOutcome | null): string => {
   return "Playing";
 };
 
-const WORD_API_BASE = "https://api.dictionaryapi.dev/api/v2/entries/en/";
-
-const validateWordViaApi = async (word: string): Promise<boolean | null> => {
-  try {
-    const response = await fetch(`${WORD_API_BASE}${word.toLowerCase()}`, {
-      method: "GET",
-      cache: "no-store",
-    });
-    if (response.ok) return true;
-    if (response.status === 404) return false;
-    return null;
-  } catch {
-    return null;
-  }
-};
-
-const normalizeWordInput = (raw: string, label: "Guess" | "Word") => {
+const normalizeWordInput = (raw: string, label: "Guess" | "Word", wordLength: number) => {
   const trimmed = raw.trim();
-  if (trimmed.length !== 5) {
-    return { ok: false as const, error: `${label} must be exactly 5 letters` };
+  if (trimmed.length !== wordLength) {
+    return {
+      ok: false as const,
+      error: `${label} must be exactly ${wordLength} letters`,
+    };
   }
   if (!/^[a-zA-Z]+$/.test(trimmed)) {
     return { ok: false as const, error: `${label} must contain letters only` };
@@ -110,32 +97,38 @@ export default function WordleGame({
   const [secretDraft, setSecretDraft] = useState("");
   const [guessDraft, setGuessDraft] = useState("");
   const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
 
   const remainingMs = useRemaining(pub.deadline, pub.serverNow);
+  const wordLengthLabel = `${pub.wordLength}-letter`;
 
   const runMove = async (type: string, payload?: unknown) => {
+    if (busyRef.current) return false;
+    busyRef.current = true;
     setBusy(true);
     setError(null);
-    const result = await move(type, payload);
-    setBusy(false);
-    if (!result.success) {
-      setError(result.error ?? "Something went wrong");
+    try {
+      const result = await move(type, payload);
+      if (!result.success) {
+        setError(result.error ?? "Something went wrong");
+        return false;
+      }
+      return true;
+    } catch {
+      setError("Something went wrong");
       return false;
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
     }
-    return true;
   };
 
   const submitSecretWord = async () => {
-    const normalized = normalizeWordInput(secretDraft, "Word");
+    if (busyRef.current || readOnly) return;
+    const normalized = normalizeWordInput(secretDraft, "Word", pub.wordLength);
     if (!normalized.ok) {
       setError(normalized.error);
-      return;
-    }
-
-    const dictionaryResult = await validateWordViaApi(normalized.word);
-    if (dictionaryResult === false) {
-      setError("Not in word list");
       return;
     }
 
@@ -144,15 +137,10 @@ export default function WordleGame({
   };
 
   const submitGuess = async () => {
-    const normalized = normalizeWordInput(guessDraft, "Guess");
+    if (busyRef.current || readOnly) return;
+    const normalized = normalizeWordInput(guessDraft, "Guess", pub.wordLength);
     if (!normalized.ok) {
       setError(normalized.error);
-      return;
-    }
-
-    const dictionaryResult = await validateWordViaApi(normalized.word);
-    if (dictionaryResult === false) {
-      setError("Not in word list");
       return;
     }
 
@@ -200,7 +188,7 @@ export default function WordleGame({
       <GameLobby
         gameId="wordle"
         title="Same word, solo boards"
-        blurb="One random player sets a 5-letter word. Everyone else solves it on their own board. Lowest tries wins."
+        blurb={`One random player sets a ${wordLengthLabel} word. Everyone else solves it on their own board. Lowest tries wins.`}
         players={players}
         isAdmin={isAdmin}
         readOnly={readOnly}
@@ -242,12 +230,12 @@ export default function WordleGame({
               You were chosen to set the word
             </p>
             <p style={{ margin: 0, color: color.textMuted, fontSize: 13, lineHeight: 1.5 }}>
-              Enter a valid 5-letter English word. It is hidden until results.
+              Enter a valid {wordLengthLabel} English word. It is hidden until results.
             </p>
             <div style={{ display: "flex", gap: 8 }}>
               <input
                 value={secretDraft}
-                maxLength={5}
+                maxLength={pub.wordLength}
                 disabled={busy || readOnly}
                 onChange={(event) => setSecretDraft(event.currentTarget.value.toUpperCase())}
                 onKeyDown={(event) => {
@@ -373,7 +361,7 @@ export default function WordleGame({
             <div style={{ display: "flex", gap: 8 }}>
               <input
                 value={guessDraft}
-                maxLength={5}
+                maxLength={pub.wordLength}
                 disabled={busy || readOnly}
                 onChange={(event) => setGuessDraft(event.currentTarget.value.toUpperCase())}
                 onKeyDown={(event) => {
