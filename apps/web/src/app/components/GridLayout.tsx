@@ -33,7 +33,10 @@ import {
 } from "react";
 import { useSmartParticipantOrder } from "../hooks/useSmartParticipantOrder";
 import { useStableSpeakerId } from "../hooks/useStableSpeakerId";
-import { getRenderableParticipantVideoStream } from "../lib/participant-media";
+import {
+  getRenderableParticipantVideoStream,
+  isRenderingParticipantScreenShare,
+} from "../lib/participant-media";
 import { isRemoteParticipantVisible } from "../lib/participant-visibility";
 import type { Participant } from "../lib/types";
 import { isSystemUserId, truncateDisplayName } from "../lib/utils";
@@ -4064,6 +4067,10 @@ const OverflowGalleryTile = memo(function OverflowGalleryTile({
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const videoStream = getRenderableParticipantVideoStream(participant);
+  const isRenderingScreenShare = isRenderingParticipantScreenShare(
+    participant,
+    videoStream,
+  );
   const videoTrack = videoStream?.getVideoTracks()[0] ?? null;
   const connectionStatus = participant.connectionStatus;
   const isReconnecting = connectionStatus?.state === "reconnecting";
@@ -4166,6 +4173,10 @@ const OverflowGalleryTile = memo(function OverflowGalleryTile({
           ref={videoRef}
           autoPlay
           playsInline
+          data-meet-tile-video="true"
+          data-meet-video-stream-type={
+            isRenderingScreenShare ? "screen" : "webcam"
+          }
           className={`h-full w-full object-cover ${
             showPlaceholder ? "hidden" : ""
           } ${isReconnecting ? "opacity-75 saturate-90" : ""}`}

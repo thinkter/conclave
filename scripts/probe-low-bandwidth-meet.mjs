@@ -622,6 +622,7 @@ const getProbeSnapshotExpression = `(() => {
               rect.top < window.innerHeight;
             return {
               index,
+              meetVideoStreamType: video.dataset.meetVideoStreamType ?? null,
               videoWidth: video.videoWidth,
               videoHeight: video.videoHeight,
               readyState: video.readyState,
@@ -845,6 +846,7 @@ const collectSnapshot = (cdp) => evalValue(cdp, getProbeSnapshotExpression);
 const getRenderedVideoSummaries = (snapshot) =>
   (snapshot.renderedVideos ?? []).map((video) => ({
     index: video.index,
+    meetVideoStreamType: video.meetVideoStreamType ?? null,
     videoWidth: video.videoWidth,
     videoHeight: video.videoHeight,
     readyState: video.readyState,
@@ -3217,7 +3219,10 @@ const validateScreenReceiveSnapshot = (
     ["applied", "fallback"].includes(entry.status),
   );
   const visibleRenderedVideos = getVisibleRenderedVideos(snapshot);
-  const largestRenderedVideo = visibleRenderedVideos
+  const visibleScreenRenderedVideos = visibleRenderedVideos.filter(
+    (video) => video.meetVideoStreamType === "screen",
+  );
+  const largestRenderedScreenVideo = visibleScreenRenderedVideos
     .slice()
     .sort(
       (left, right) =>
@@ -3275,14 +3280,14 @@ const validateScreenReceiveSnapshot = (
   if (requireScreenAudio && usableScreenAudioEntries.length === 0) {
     errors.push("missing applied remote screen audio consumer preference");
   }
-  if (!largestRenderedVideo) {
-    errors.push("missing visible decoded remote screen video");
+  if (!largestRenderedScreenVideo) {
+    errors.push("missing visible decoded remote screen-share video");
   } else if (
-    largestRenderedVideo.videoWidth < 1920 ||
-    largestRenderedVideo.videoHeight < 1080
+    largestRenderedScreenVideo.videoWidth < 1920 ||
+    largestRenderedScreenVideo.videoHeight < 1080
   ) {
     errors.push(
-      `expected full-resolution decoded screen video, got ${largestRenderedVideo.videoWidth}x${largestRenderedVideo.videoHeight}`,
+      `expected full-resolution decoded screen-share video, got ${largestRenderedScreenVideo.videoWidth}x${largestRenderedScreenVideo.videoHeight}`,
     );
   }
   if (scoreAwareEntryErrors.length > 0) {
@@ -3353,12 +3358,13 @@ const validateScreenReceiveSnapshot = (
       screenAudioPreferenceCount: usableScreenAudioEntries.length,
       deferredCount: adaptiveConsumers?.deferredCount ?? null,
       deferredEntries: deferredEntries.slice(0, 8),
-      largestRenderedVideo: largestRenderedVideo
+      visibleScreenRenderedVideoCount: visibleScreenRenderedVideos.length,
+      largestRenderedScreenVideo: largestRenderedScreenVideo
         ? {
-            videoWidth: largestRenderedVideo.videoWidth,
-            videoHeight: largestRenderedVideo.videoHeight,
-            readyState: largestRenderedVideo.readyState,
-            rect: largestRenderedVideo.rect,
+            videoWidth: largestRenderedScreenVideo.videoWidth,
+            videoHeight: largestRenderedScreenVideo.videoHeight,
+            readyState: largestRenderedScreenVideo.readyState,
+            rect: largestRenderedScreenVideo.rect,
           }
         : null,
       renderedVideos: getRenderedVideoSummaries(snapshot),

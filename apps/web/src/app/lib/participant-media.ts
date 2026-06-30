@@ -5,7 +5,9 @@ import type { Participant } from "./types";
 type ParticipantVideoState = Pick<
   Participant,
   "videoStream" | "isCameraOff" | "isVideoAdaptivelyPaused"
->;
+> & {
+  screenShareStream?: MediaStream | null;
+};
 
 export function getRenderableParticipantVideoStream(
   participant: ParticipantVideoState,
@@ -22,4 +24,11 @@ export function hasRenderableParticipantVideo(
   const track = getRenderableParticipantVideoStream(participant)
     ?.getVideoTracks()[0];
   return Boolean(track && track.readyState === "live");
+}
+
+export function isRenderingParticipantScreenShare(
+  participant: ParticipantVideoState,
+  stream: MediaStream | null,
+): boolean {
+  return Boolean(stream && participant.screenShareStream === stream);
 }

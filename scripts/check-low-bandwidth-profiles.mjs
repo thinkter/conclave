@@ -484,6 +484,21 @@ for (const [key, label] of [
     `web ${label} should not replay on benign suspend events`,
   );
 }
+assertRegex(
+  "webParticipantMedia",
+  /isRenderingParticipantScreenShare\([\s\S]*participant\.screenShareStream === stream/,
+  "web participant media can identify screen-share video streams",
+);
+assertRegex(
+  "webParticipantVideo",
+  /isRenderingParticipantScreenShare\([\s\S]*data-meet-video-stream-type=\{[\s\S]*isRenderingScreenShare \? "screen" : "webcam"/,
+  "web participant video tags rendered screen-share streams",
+);
+assertRegex(
+  "webGridLayout",
+  /isRenderingParticipantScreenShare\([\s\S]*data-meet-video-stream-type=\{[\s\S]*isRenderingScreenShare \? "screen" : "webcam"/,
+  "web overflow gallery video tags rendered screen-share streams",
+);
 assertIncludes(
   "webMobileParticipantVideo",
   "createPlaybackRecoveryScheduler",
@@ -638,6 +653,11 @@ assertRegex(
   "webAdaptiveConsumerPreferences",
   /SCREEN_SHARE_RECEIVE_FAIR_BPS = 1500000[\s\S]*SCREEN_SHARE_RECEIVE_POOR_BPS = 550000[\s\S]*SCREEN_SHARE_RECEIVE_EMERGENCY_BPS = 300000[\s\S]*getScreenShareReceiveQualityForAvailableBitrate[\s\S]*availableIncomingBitrateBps <= SCREEN_SHARE_RECEIVE_POOR_BPS[\s\S]*availableIncomingBitrateBps <= SCREEN_SHARE_RECEIVE_FAIR_BPS[\s\S]*isScreenShareReceiveEmergencyBitrate[\s\S]*screenShareEmergency[\s\S]*screenShareQuality === "poor"[\s\S]*bounds\.maxTemporalLayer/,
   "web screen-share receive layers use incoming bitrate while keeping fair-link FPS",
+);
+assertRegex(
+  "webLowBandwidthProbe",
+  /meetVideoStreamType: video\.dataset\.meetVideoStreamType[\s\S]*visibleScreenRenderedVideos = visibleRenderedVideos\.filter[\s\S]*meetVideoStreamType === "screen"[\s\S]*largestRenderedScreenVideo[\s\S]*expected full-resolution decoded screen-share video/,
+  "web screen receive probe verifies the actual rendered screen-share video",
 );
 assertIncludes(
   "webAdaptiveConsumerPreferences",
