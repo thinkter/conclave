@@ -68,7 +68,11 @@ const originFromUrl = (value: string | undefined): string | null => {
 };
 
 const configuredAppOrigins = [
-  firstNonEmpty(process.env.NEXT_PUBLIC_APP_URL, process.env.BETTER_AUTH_URL),
+  firstNonEmpty(
+    process.env.BETTER_AUTH_URL,
+    process.env.BETTER_AUTH_BASE_URL,
+    process.env.NEXT_PUBLIC_APP_URL,
+  ),
   process.env.NEXT_PUBLIC_SITE_URL,
   process.env.VERCEL_URL,
   ...parseCsv(process.env.BETTER_AUTH_TRUSTED_ORIGINS),
@@ -91,8 +95,15 @@ const resolveTrustedOrigins = (): string[] => {
 
 const AUTH_SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 365;
 const isDevAuthEnabled = isLocalDevAuthRuntimeEnabled();
+const authBaseURL = firstNonEmpty(
+  process.env.BETTER_AUTH_URL,
+  process.env.BETTER_AUTH_BASE_URL,
+  process.env.NEXT_PUBLIC_APP_URL,
+  process.env.NEXT_PUBLIC_SITE_URL,
+);
 
 export const auth = betterAuth({
+  ...(authBaseURL ? { baseURL: authBaseURL } : {}),
   session: {
     expiresIn: AUTH_SESSION_MAX_AGE_SECONDS,
     cookieCache: {

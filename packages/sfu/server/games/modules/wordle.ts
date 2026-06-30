@@ -7,7 +7,7 @@ import {
   type GameModule,
   type GameMove,
 } from "../types.js";
-import { numberOption } from "../config.js";
+import { numberOption, selectOption } from "../config.js";
 
 type WordleTile = "green" | "yellow" | "gray";
 
@@ -25,8 +25,11 @@ type PlayerRoundState = {
   solvedAt: number | null;
 };
 
+type WordSource = "setter" | "random";
+
 type WordleState = {
   phase: "lobby" | "set-word" | "playing" | "results";
+  wordSource: WordSource;
   setterId: string | null;
   targetWord: string | null;
   players: Record<string, PlayerRoundState>;
@@ -40,12 +43,12 @@ const WORD_LENGTH = 5;
 const MAX_TRIES = 6;
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
-const wordsPath = resolve(moduleDir, "wordleWords.json");
-const WORD_SET = new Set<string>(
-  (JSON.parse(readFileSync(wordsPath, "utf8")) as string[])
-    .map((word) => word.trim().toUpperCase())
-    .filter((word) => /^[A-Z]{5}$/.test(word)),
-);
+const wordsPath = resolve(moduleDir, "wordleWords.txt");
+const ALL_WORDS: string[] = readFileSync(wordsPath, "utf8")
+  .split("\n")
+  .map((word) => word.trim().toUpperCase())
+  .filter((word) => /^[A-Z]{5}$/.test(word));
+const WORD_SET = new Set<string>(ALL_WORDS);
 
 const setterName = (ctx: GameContext, setterId: string | null): string | null => {
   if (!setterId) return null;
@@ -182,10 +185,20 @@ export const wordleModule: GameModule<WordleState> = {
   id: "wordle",
   name: "Wordle",
   description: "Guess a hidden five-letter word in six tries",
-  minPlayers: 2,
+  minPlayers: 1,
   maxPlayers: 32,
   tickMs: 500,
   options: [
+    {
+      id: "wordSource",
+      type: "select",
+      label: "Word source",
+      default: "random",
+      choices: [
+        { value: "random", label: "Random" },
+        { value: "setter", label: "Player sets" },
+      ],
+    },
     {
       id: "timeLimitMinutes",
       type: "number",
@@ -193,7 +206,7 @@ export const wordleModule: GameModule<WordleState> = {
       min: 1,
       max: 10,
       default: 3,
-      presets: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+      presets: [1, 2, 3, 5, 10],
       suffix: "min",
     },
   ],
@@ -201,6 +214,7 @@ export const wordleModule: GameModule<WordleState> = {
   setup(ctx: GameContext): WordleState {
     return {
       phase: "lobby",
+      wordSource: selectOption(ctx.config, "wordSource", "random") as WordSource,
       setterId: null,
       targetWord: null,
       players: {},
@@ -220,9 +234,32 @@ export const wordleModule: GameModule<WordleState> = {
         if (state.phase !== "lobby") {
           throw new GameMoveError("Wordle has already started");
         }
-        if (ctx.players.length < 2) {
-          throw new GameMoveError("Need at least 2 players");
+        const minPlayers = state.wordSource === "setter" ? 2 : 1;
+        if (ctx.players.length < minPlayers) {
+          throw new GameMoveError(
+            state.wordSource === "setter"
+              ? "Need at least 2 players"
+              : "Need at least 1 player",
+          );
         }
+
+        if (state.wordSource === "random") {
+          const word = ctx.rng.pick(ALL_WORDS);
+          const players: Record<string, PlayerRoundState> = {};
+          for (const player of ctx.players) {
+            players[player.id] = { guesses: [], outcome: null, solvedAt: null };
+          }
+          return {
+            ...state,
+            phase: "playing",
+            setterId: null,
+            targetWord: word,
+            players,
+            deadline: ctx.now + state.timeLimitMs,
+            winnerId: null,
+          };
+        }
+
         const setter = ctx.rng.pick(ctx.players);
         return {
           ...state,
@@ -401,6 +438,7 @@ export const wordleModule: GameModule<WordleState> = {
 
     return {
       phase: state.phase,
+      wordSource: state.wordSource,
       setterId: state.setterId,
       setterName: setterName(ctx, state.setterId),
       serverNow: ctx.now,
