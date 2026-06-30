@@ -1029,10 +1029,8 @@ function GridLayout({
   useEffect(() => {
     if (!isLocalPresenter) {
       setSelfPresentationView("placeholder");
-    } else if (screenShareControlState?.available) {
-      setSelfPresentationView("preview");
     }
-  }, [isLocalPresenter, screenShareControlState?.available]);
+  }, [isLocalPresenter]);
   const presentationSelfView = isLocalPresenter
     ? { mode: selfPresentationView, onModeChange: setSelfPresentationView }
     : undefined;
@@ -3556,6 +3554,13 @@ const PresentationVideoTile = memo(function PresentationVideoTile({
     const video = videoRef.current;
     if (!video) return;
 
+    if (showChooser) {
+      if (video.srcObject) {
+        video.srcObject = null;
+      }
+      return;
+    }
+
     if (video.srcObject !== stream) {
       video.srcObject = stream;
     }
@@ -3610,7 +3615,7 @@ const PresentationVideoTile = memo(function PresentationVideoTile({
         video.srcObject = null;
       }
     };
-  }, [stream, videoTrack]);
+  }, [showChooser, stream, videoTrack]);
 
   return (
     <div

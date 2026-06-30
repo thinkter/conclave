@@ -515,6 +515,16 @@ assertRegex(
   "web presentation mode limits hidden webcam warm decode budget",
 );
 assertRegex(
+  "webGridLayout",
+  /const \[selfPresentationView, setSelfPresentationView\][\s\S]*useState<SelfPresentationView>\("placeholder"\)[\s\S]*useEffect\(\(\) => \{[\s\S]*if \(!isLocalPresenter\) \{[\s\S]*setSelfPresentationView\("placeholder"\);[\s\S]*\}[\s\S]*\}, \[isLocalPresenter\]\)/,
+  "web local screen-share self-view defaults to lightweight placeholder",
+);
+assertRegex(
+  "webGridLayout",
+  /const showChooser = Boolean\(selfView\) && selfView\?\.mode !== "preview"[\s\S]*useEffect\(\(\) => \{[\s\S]*if \(showChooser\) \{[\s\S]*if \(video\.srcObject\) \{[\s\S]*video\.srcObject = null;[\s\S]*return;[\s\S]*if \(video\.srcObject !== stream\) \{[\s\S]*video\.srcObject = stream;[\s\S]*\}, \[showChooser, stream, videoTrack\]\)/,
+  "web local screen-share placeholder detaches hidden preview video",
+);
+assertRegex(
   "webMobilePresentationLayout",
   /const VideoThumbnail = memo\(function VideoThumbnail[\s\S]*createPlaybackRecoveryScheduler[\s\S]*shouldAttemptAnimationFrameReplay[\s\S]*video\.addEventListener\("stalled", scheduleReplay\)[\s\S]*document\.addEventListener\("visibilitychange", handleVisibilityChange\)[\s\S]*window\.addEventListener\("orientationchange", handleWindowChange\)/,
   "web mobile presentation thumbnails keep decoder playback live",
