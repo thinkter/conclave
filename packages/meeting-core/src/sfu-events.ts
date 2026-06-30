@@ -44,6 +44,8 @@ export const SFU_EVENTS = {
 
     // Chat / reactions / hand / identity
     sendChat: "sendChat",
+    // A participant relays a streamed "@Conclave" AI answer for the whole room.
+    conclaveAnswer: "conclaveAnswer",
     sendReaction: "sendReaction",
     setHandRaised: "setHandRaised",
     updateDisplayName: "updateDisplayName",
@@ -159,6 +161,8 @@ export const SFU_EVENTS = {
 
     // Chat / reactions / hand / identity
     chatMessage: "chatMessage",
+    // Streamed "@Conclave" AI answer fanned out to the room.
+    conclaveMessage: "conclaveMessage",
     chatHistorySnapshot: "chatHistorySnapshot",
     reaction: "reaction",
     handRaised: "handRaised",
