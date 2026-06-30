@@ -1765,6 +1765,11 @@ assertRegex(
   /STALL_SAMPLES_BEFORE_PLI = 1[\s\S]*KEYFRAME_REQUEST_COOLDOWN_MS = 3500[\s\S]*bytesNow - prev\.bytes >= MIN_STALL_BYTE_DELTA[\s\S]*sampleNow - lastKeyFrameRequestAt >=[\s\S]*info\.type === "screen"[\s\S]*SCREEN_SHARE_FREEZE_KEYFRAME_REQUEST_COOLDOWN_MS[\s\S]*: KEYFRAME_REQUEST_COOLDOWN_MS[\s\S]*requestKeyFrame: true[\s\S]*lastKeyFrameRequestAt = sampleNow/,
   "web frozen remote video decoders request keyframes after one stalled decode sample with screen-share cooldown",
 );
+assertRegex(
+  "webMeetSocket",
+  /SCREEN_SHARE_FOREGROUND_KEYFRAME_REQUEST_COOLDOWN_MS = 1200[\s\S]*foregroundScreenShareKeyFrameAtRef[\s\S]*requestForegroundScreenShareKeyFrames[\s\S]*isScreenShareVideoProducer\(info\)[\s\S]*adaptivelyPausedConsumerProducerIdsRef\.current\.has\(producerId\)[\s\S]*consumer\.closed \|\| consumer\.paused[\s\S]*requestKeyFrame: true[\s\S]*lastKeyFrameRequestAt: now[\s\S]*requestForegroundScreenShareKeyFrames\(\);[\s\S]*recoverActiveMeeting\("foreground"\)/,
+  "web foreground recovery requests keyframes for active screen-share consumers",
+);
 {
   const text = source.webMeetSocket;
   const start = text.indexOf("const handleTrackMuted = () => {");

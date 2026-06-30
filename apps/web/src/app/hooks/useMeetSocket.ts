@@ -116,6 +116,7 @@ const SCREEN_SHARE_STALE_REPLACEMENT_CLEANUP_DELAY_MS = 1500;
 const CLOSE_CONSUMER_RETRY_DELAY_MS = 500;
 const CLOSE_CONSUMER_MAX_ATTEMPTS = 4;
 const SCREEN_SHARE_FREEZE_KEYFRAME_REQUEST_COOLDOWN_MS = 2000;
+const SCREEN_SHARE_FOREGROUND_KEYFRAME_REQUEST_COOLDOWN_MS = 1200;
 
 const isScreenShareVideoProducer = (
   producerInfo: Pick<ProducerInfo, "kind" | "type">,
@@ -805,6 +806,7 @@ export function useMeetSocket({
       }
     >
   >(new Map());
+  const foregroundScreenShareKeyFrameAtRef = useRef(0);
   const consumerRecoveryInFlightRef = useRef<Set<string>>(new Set());
   const announcedRemoteProducersRef = useRef<Map<string, ProducerInfo>>(
     new Map(),
@@ -3860,6 +3862,58 @@ export function useMeetSocket({
     ],
   );
 
+  const requestForegroundScreenShareKeyFrames = useCallback(() => {
+    const socket = socketRef.current;
+    if (!socket?.connected) return;
+
+    const now = Date.now();
+    if (
+      now - foregroundScreenShareKeyFrameAtRef.current <
+      SCREEN_SHARE_FOREGROUND_KEYFRAME_REQUEST_COOLDOWN_MS
+    ) {
+      return;
+    }
+
+    let requested = false;
+    consumersRef.current.forEach((consumer, producerId) => {
+      const info = producerMapRef.current.get(producerId);
+      if (!info || !isScreenShareVideoProducer(info)) return;
+      if (producerPausedStateRef.current.get(producerId)) return;
+      if (adaptivelyPausedConsumerProducerIdsRef.current.has(producerId)) return;
+      if (consumer.closed || consumer.paused) return;
+
+      const track = consumer.track;
+      if (!track || track.readyState !== "live") return;
+
+      socket.emit(
+        "resumeConsumer",
+        { consumerId: consumer.id, requestKeyFrame: true },
+        () => {},
+      );
+
+      const freezeStats = videoFreezeStatsRef.current.get(producerId);
+      if (freezeStats) {
+        videoFreezeStatsRef.current.set(producerId, {
+          ...freezeStats,
+          stalls: 0,
+          lastKeyFrameRequestAt: now,
+        });
+      }
+      requested = true;
+    });
+
+    if (requested) {
+      foregroundScreenShareKeyFrameAtRef.current = now;
+    }
+  }, [
+    adaptivelyPausedConsumerProducerIdsRef,
+    consumersRef,
+    producerMapRef,
+    producerPausedStateRef,
+    socketRef,
+    videoFreezeStatsRef,
+  ]);
+
   const joinRoomInternal = useCallback(
     async (
       targetRoomId: string,
@@ -5891,6 +5945,7 @@ export function useMeetSocket({
       foregroundRecoveryTimeoutRef.current = window.setTimeout(() => {
         foregroundRecoveryTimeoutRef.current = null;
         clearExpiredParticipantConnectionStatuses();
+        requestForegroundScreenShareKeyFrames();
         recoverActiveMeeting("foreground");
       }, 150);
     };
@@ -5921,7 +5976,11 @@ export function useMeetSocket({
         foregroundRecoveryTimeoutRef.current = null;
       }
     };
-  }, [clearExpiredParticipantConnectionStatuses, recoverActiveMeeting]);
+  }, [
+    clearExpiredParticipantConnectionStatuses,
+    recoverActiveMeeting,
+    requestForegroundScreenShareKeyFrames,
+  ]);
 
   const handleRedirectCallback = useCallback(
     async (newRoomId: string) => {
