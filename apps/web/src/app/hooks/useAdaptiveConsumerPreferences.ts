@@ -507,10 +507,9 @@ const getDesiredPreferences = (
     const screenShareEmergency =
       options.emergencyMode || screenShareReceiveEmergency;
     const screenShareVisible =
-      !options.layout ||
-      options.layout.visible ||
-      options.layout.primary ||
-      options.layout.focus;
+      options.layout?.visible === true ||
+      options.layout?.primary === true ||
+      options.layout?.focus === true;
     return {
       preferredLayers: bounds
         ? buildLayerPreference(

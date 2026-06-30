@@ -418,8 +418,13 @@ assertIncludes(
 );
 assertRegex(
   "webAdaptiveConsumerPreferences",
-  /if \(info\.type === "screen"\) \{[\s\S]*const screenShareQuality = worstQuality\([\s\S]*getConsumerScoreQualityHint\(options\.consumerScoreQuality\)[\s\S]*const screenShareVisible =[\s\S]*options\.layout\.primary[\s\S]*screenShareEmergency[\s\S]*\? 0[\s\S]*: screenShareQuality === "poor" && !screenShareVisible[\s\S]*\? 1[\s\S]*: bounds\.maxTemporalLayer[\s\S]*priority: 240,[\s\S]*paused: false,/,
+  /if \(info\.type === "screen"\) \{[\s\S]*const screenShareQuality = worstQuality\([\s\S]*getConsumerScoreQualityHint\(options\.consumerScoreQuality\)[\s\S]*const screenShareVisible =[\s\S]*options\.layout\?\.visible === true[\s\S]*options\.layout\?\.primary === true[\s\S]*options\.layout\?\.focus === true[\s\S]*screenShareEmergency[\s\S]*\? 0[\s\S]*: screenShareQuality === "poor" && !screenShareVisible[\s\S]*\? 1[\s\S]*: bounds\.maxTemporalLayer[\s\S]*priority: 240,[\s\S]*paused: false,/,
   "web visible screen-share receive adaptation keeps full temporal FPS above emergency bitrate",
+);
+assertNotIncludes(
+  "webAdaptiveConsumerPreferences",
+  "!options.layout ||\n      options.layout.visible",
+  "web missing layout hints must not make screen-share consumers visible",
 );
 assertRegex(
   "webMeetSocket",
