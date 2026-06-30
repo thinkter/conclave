@@ -366,8 +366,8 @@ assertRegex(
 );
 assertRegex(
   "webMeetMedia",
-  /screenProducerTrackRepairInFlightRef[\s\S]*screenOutboundStallStateRef[\s\S]*currentScreenTrack[\s\S]*screenShareStreamRef\.current\?\.getVideoTracks\(\)[\s\S]*track\.id !== currentScreenTrack\?\.id[\s\S]*producer\.replaceTrack\(\{ track: null \}\);[\s\S]*producer\.replaceTrack\(\{ track: liveScreenTrack \}\);[\s\S]*applyScreenShareProducerNetworkProfile\([\s\S]*producer,[\s\S]*getPublishNetworkProfile\(\),/,
-  "web screen-share outbound sender watchdog refreshes stalled producers without stop/start",
+  /screenProducerTrackRepairInFlightRef[\s\S]*screenOutboundStallStateRef[\s\S]*currentScreenTrack[\s\S]*screenShareStreamRef\.current\?\.getVideoTracks\(\)[\s\S]*track\.id !== currentScreenTrack\?\.id[\s\S]*producer\.replaceTrack\(\{ track: null \}\);[\s\S]*producer\.replaceTrack\(\{ track: liveScreenTrack \}\);[\s\S]*applyScreenShareProducerNetworkProfile\([\s\S]*producer,[\s\S]*getScreenSharePublishNetworkProfile\(\),/,
+  "web screen-share outbound sender watchdog refreshes stalled producers with screen-share BWE caps",
 );
 assertRegex(
   "webMeetMedia",

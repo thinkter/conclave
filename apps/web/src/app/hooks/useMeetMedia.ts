@@ -2861,7 +2861,7 @@ export function useMeetMedia({
         detachedForRefresh = false;
         await applyScreenShareProducerNetworkProfile(
           producer,
-          getPublishNetworkProfile(),
+          getScreenSharePublishNetworkProfile(),
         );
         screenOutboundStallStateRef.current = {
           ...createCameraOutboundStallState(producer.id, liveScreenTrack.id),
@@ -3006,7 +3006,7 @@ export function useMeetMedia({
     isObserverMode,
     isMediaRecoveryBlocked,
     isScreenSharing,
-    getPublishNetworkProfile,
+    getScreenSharePublishNetworkProfile,
     screenProducerRef,
     screenShareStreamRef,
   ]);
