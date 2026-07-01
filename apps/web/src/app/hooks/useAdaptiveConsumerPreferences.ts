@@ -1202,7 +1202,9 @@ export function useAdaptiveConsumerPreferences({
       if (!desired) return;
 
       const previousLayers = lastLayersRef.current.get(producerId);
-      const wasPaused = lastPausedRef.current.get(producerId) === true;
+      const wasPaused =
+        lastPausedRef.current.get(producerId) === true ||
+        refs.adaptivelyPausedConsumerProducerIdsRef.current.has(producerId);
       const desiredLayerSignature = getLayerPreferenceSignature(
         desired.preferredLayers,
       );

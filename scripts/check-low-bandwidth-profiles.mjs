@@ -693,7 +693,7 @@ assertRegex(
 );
 assertRegex(
   "webMeetClient",
-  /useState<MeetViewSettings>\(\s*readStoredMeetViewSettings,[\s\S]*writeStoredMeetViewSettings\(viewSettings\)[\s\S]*useAdaptiveConsumerPreferences\(\{[\s\S]*dataSaverMode: viewSettings\.dataSaverMode,[\s\S]*<MeetsMainContent[\s\S]*viewSettings=\{viewSettings\}[\s\S]*onViewSettingsChange=\{setViewSettings\}/,
+  /useState<MeetViewSettings>\(\s*readStoredMeetViewSettings,[\s\S]*writeStoredMeetViewSettings\(viewSettings\)[\s\S]*useMeetSocket\(\{[\s\S]*dataSaverMode: viewSettings\.dataSaverMode,[\s\S]*useAdaptiveConsumerPreferences\(\{[\s\S]*dataSaverMode: viewSettings\.dataSaverMode,[\s\S]*<MeetsMainContent[\s\S]*viewSettings=\{viewSettings\}[\s\S]*onViewSettingsChange=\{setViewSettings\}/,
   "web meeting client owns persisted view settings for adaptive receive",
 );
 assertNotIncludes(
@@ -705,6 +705,16 @@ assertRegex(
   "webAdaptiveConsumerPreferences",
   /if \(info\.type === "screen"\) \{[\s\S]*priority: 240,[\s\S]*paused: false,[\s\S]*if \(options\.dataSaverMode\) \{[\s\S]*priority: OFFSCREEN_WEBCAM_PARK_PRIORITY,[\s\S]*paused: true,/,
   "web data saver parks webcam receive after preserving screen-share video",
+);
+assertRegex(
+  "webMeetSocket",
+  /dataSaverMode\?: boolean[\s\S]*dataSaverMode = false[\s\S]*const shouldStartConsumerPausedForDataSaver =[\s\S]*dataSaverMode &&[\s\S]*producerInfo\.kind === "video" &&[\s\S]*producerInfo\.type === "webcam"[\s\S]*const startsPausedForDataSaver =[\s\S]*shouldStartConsumerPausedForDataSaver && isWebcamVideo[\s\S]*adaptivelyPausedConsumerProducerIdsRef\.current\.add\([\s\S]*UPDATE_VIDEO_ADAPTIVE_PAUSED[\s\S]*if \(!startsPausedForDataSaver\) \{[\s\S]*"resumeConsumer"/,
+  "web data saver prevents initial webcam consumer resume while preserving screen/audio startup",
+);
+assertRegex(
+  "webAdaptiveConsumerPreferences",
+  /const wasPaused =[\s\S]*lastPausedRef\.current\.get\(producerId\) === true \|\|[\s\S]*refs\.adaptivelyPausedConsumerProducerIdsRef\.current\.has\(producerId\)[\s\S]*requestKeyFrame =[\s\S]*preferences\.paused === false/,
+  "web data saver resume requests a keyframe after startup-paused consumers",
 );
 assertRegex(
   "webMeetSocket",

@@ -695,6 +695,7 @@ interface UseMeetSocketOptions {
   setNetworkManagedVideoQuality: (value: VideoQuality) => void;
   videoQualityRef: React.MutableRefObject<VideoQuality>;
   connectionQualityRef?: React.MutableRefObject<ConnectionQualityStats | null>;
+  dataSaverMode?: boolean;
   updateVideoQualityRef: React.MutableRefObject<
     (
       quality: VideoQuality,
@@ -787,6 +788,7 @@ export function useMeetSocket({
   setNetworkManagedVideoQuality,
   videoQualityRef,
   connectionQualityRef,
+  dataSaverMode = false,
   updateVideoQualityRef,
   requestMediaPermissions,
   requestAudioProducerRecovery,
@@ -3048,6 +3050,10 @@ export function useMeetSocket({
           Array.from(pendingProducersRef.current.values()).some(
             (info) => info.kind === "video" && info.type === "screen",
           );
+        const shouldStartConsumerPausedForDataSaver =
+          dataSaverMode &&
+          producerInfo.kind === "video" &&
+          producerInfo.type === "webcam";
         socket.emit(
           "consume",
           {
@@ -3139,6 +3145,13 @@ export function useMeetSocket({
                 response.kind === "audio" && producerInfo.type === "webcam";
               const isWebcamVideo =
                 response.kind === "video" && producerInfo.type === "webcam";
+              const startsPausedForDataSaver =
+                shouldStartConsumerPausedForDataSaver && isWebcamVideo;
+              if (startsPausedForDataSaver) {
+                adaptivelyPausedConsumerProducerIdsRef.current.add(
+                  producerInfo.producerId,
+                );
+              }
 
               const scheduleStaleConsumerRecovery = () => {
                 clearStaleConsumerRecoveryTimeout(producerInfo.producerId);
@@ -3302,6 +3315,14 @@ export function useMeetSocket({
                 stream,
                 producerId: producerInfo.producerId,
               });
+              if (startsPausedForDataSaver) {
+                dispatchParticipants({
+                  type: "UPDATE_VIDEO_ADAPTIVE_PAUSED",
+                  userId: producerInfo.producerUserId,
+                  producerId: producerInfo.producerId,
+                  adaptivelyPaused: true,
+                });
+              }
 
               if (producerInfo.type === "screen" && response.kind === "video") {
                 setActiveScreenShareId(producerInfo.producerId);
@@ -3326,14 +3347,16 @@ export function useMeetSocket({
                 updateCameraState(false);
               }
 
-              socket.emit(
-                "resumeConsumer",
-                {
-                  consumerId: consumer.id,
-                  requestKeyFrame: response.kind === "video",
-                },
-                () => {},
-              );
+              if (!startsPausedForDataSaver) {
+                socket.emit(
+                  "resumeConsumer",
+                  {
+                    consumerId: consumer.id,
+                    requestKeyFrame: response.kind === "video",
+                  },
+                  () => {},
+                );
+              }
               resolve();
             } catch (err) {
               closeServerConsumer(response.id);
@@ -3371,6 +3394,7 @@ export function useMeetSocket({
       producerPausedStateRef,
       setProducerPausedState,
       announcedRemoteProducersRef,
+      dataSaverMode,
       userId,
     ],
   );

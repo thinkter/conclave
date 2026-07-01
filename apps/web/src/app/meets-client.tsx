@@ -2158,6 +2158,7 @@ export default function MeetsClient({
     setNetworkManagedVideoQuality,
     videoQualityRef: refs.videoQualityRef,
     connectionQualityRef: connectionQualityDebugRef,
+    dataSaverMode: viewSettings.dataSaverMode,
     updateVideoQualityRef,
     requestMediaPermissions,
     requestAudioProducerRecovery,
