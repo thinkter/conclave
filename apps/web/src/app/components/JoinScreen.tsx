@@ -57,6 +57,11 @@ import {
   type VideoEffectsState,
 } from "../lib/video-effects";
 import { getBrowserNetworkSnapshot } from "../lib/network-information";
+import {
+  getUserMediaWithTimeout,
+  MEDIA_CAPTURE_PERMISSION_TIMEOUT_MS,
+  MEDIA_CAPTURE_RECOVERY_TIMEOUT_MS,
+} from "../lib/media-capture-timeout";
 import { prewarmVideoEffectsAssetsDeferred } from "../lib/video-effects-lazy";
 import type { VideoEffectsBridgeState } from "./VideoEffectsBridge";
 
@@ -581,10 +586,16 @@ function JoinScreen({
         audio: DEFAULT_AUDIO_CONSTRAINTS,
         video: videoConstraints,
       });
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: DEFAULT_AUDIO_CONSTRAINTS,
-        video: videoConstraints,
-      });
+      const stream = await getUserMediaWithTimeout(
+        {
+          audio: DEFAULT_AUDIO_CONSTRAINTS,
+          video: videoConstraints,
+        },
+        {
+          label: "prejoin microphone and camera permission request",
+          timeoutMs: MEDIA_CAPTURE_PERMISSION_TIMEOUT_MS,
+        },
+      );
       commitRequestedPrejoinTracks(
         stream.getTracks(),
         "get_user_media_full_done",
@@ -599,12 +610,20 @@ function JoinScreen({
       });
       const fallbackTracks: MediaStreamTrack[] = [];
       const [audioResult, videoResult] = await Promise.allSettled([
-        navigator.mediaDevices.getUserMedia({
-          audio: DEFAULT_AUDIO_CONSTRAINTS,
-        }),
-        navigator.mediaDevices.getUserMedia({
-          video: getPrejoinVideoConstraints(),
-        }),
+        getUserMediaWithTimeout(
+          { audio: DEFAULT_AUDIO_CONSTRAINTS },
+          {
+            label: "prejoin microphone fallback permission request",
+            timeoutMs: MEDIA_CAPTURE_PERMISSION_TIMEOUT_MS,
+          },
+        ),
+        getUserMediaWithTimeout(
+          { video: getPrejoinVideoConstraints() },
+          {
+            label: "prejoin camera fallback permission request",
+            timeoutMs: MEDIA_CAPTURE_PERMISSION_TIMEOUT_MS,
+          },
+        ),
       ]);
 
       if (audioResult.status === "fulfilled") {
@@ -828,9 +847,13 @@ function JoinScreen({
         logJoinMedia("get_user_media_video_request", {
           constraints: videoConstraints,
         });
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: videoConstraints,
-        });
+        const stream = await getUserMediaWithTimeout(
+          { video: videoConstraints },
+          {
+            label: "prejoin camera toggle",
+            timeoutMs: MEDIA_CAPTURE_RECOVERY_TIMEOUT_MS,
+          },
+        );
         const videoTrack = stream.getVideoTracks()[0];
         if (!videoTrack) {
           stopTracks(stream.getTracks());
@@ -927,9 +950,13 @@ function JoinScreen({
       logJoinMedia("get_user_media_audio_request", {
         constraints: DEFAULT_AUDIO_CONSTRAINTS,
       });
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: DEFAULT_AUDIO_CONSTRAINTS,
-      });
+      const stream = await getUserMediaWithTimeout(
+        { audio: DEFAULT_AUDIO_CONSTRAINTS },
+        {
+          label: "prejoin microphone toggle",
+          timeoutMs: MEDIA_CAPTURE_RECOVERY_TIMEOUT_MS,
+        },
+      );
       const audioTrack = stream.getAudioTracks()[0];
       if (!audioTrack) {
         stopTracks(stream.getTracks());
@@ -1144,7 +1171,13 @@ function JoinScreen({
         base && typeof base === "object"
           ? { ...base, deviceId: { exact: deviceId } }
           : { deviceId: { exact: deviceId } };
-      const stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints });
+      const stream = await getUserMediaWithTimeout(
+        { video: videoConstraints },
+        {
+          label: "prejoin camera device switch",
+          timeoutMs: MEDIA_CAPTURE_RECOVERY_TIMEOUT_MS,
+        },
+      );
       const newTrack = stream.getVideoTracks()[0];
       if (!newTrack) {
         stopTracks(stream.getTracks());
@@ -1179,9 +1212,18 @@ function JoinScreen({
     if (!isMicOn) return;
     const requestGeneration = beginPrejoinMediaRequest(["audio"]);
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { ...DEFAULT_AUDIO_CONSTRAINTS, deviceId: { exact: deviceId } },
-      });
+      const stream = await getUserMediaWithTimeout(
+        {
+          audio: {
+            ...DEFAULT_AUDIO_CONSTRAINTS,
+            deviceId: { exact: deviceId },
+          },
+        },
+        {
+          label: "prejoin microphone device switch",
+          timeoutMs: MEDIA_CAPTURE_RECOVERY_TIMEOUT_MS,
+        },
+      );
       const newTrack = stream.getAudioTracks()[0];
       if (!newTrack) {
         stopTracks(stream.getTracks());

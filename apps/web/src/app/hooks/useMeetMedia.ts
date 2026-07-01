@@ -23,6 +23,11 @@ import {
   shouldDeferBandwidthHeavyPreload,
 } from "../lib/network-information";
 import { clampMeetVolume, DEFAULT_MEET_VOLUME } from "../lib/meet-volume";
+import {
+  getUserMediaWithTimeout,
+  MEDIA_CAPTURE_PERMISSION_TIMEOUT_MS,
+  MEDIA_CAPTURE_RECOVERY_TIMEOUT_MS,
+} from "../lib/media-capture-timeout";
 import { createMeetError } from "../lib/utils";
 import {
   createCapturedSurfaceControlState,
@@ -1196,10 +1201,16 @@ export function useMeetMedia({
           video: videoConstraintsForRequest,
         });
 
-        return navigator.mediaDevices.getUserMedia({
-          audio: audioConstraints,
-          video: videoConstraintsForRequest,
-        });
+        return getUserMediaWithTimeout(
+          {
+            audio: audioConstraints,
+            video: videoConstraintsForRequest,
+          },
+          {
+            label: "local media permission request",
+            timeoutMs: MEDIA_CAPTURE_PERMISSION_TIMEOUT_MS,
+          },
+        );
       };
       const appendLiveTracks = (stream: MediaStream) => {
         acquiredTracks.push(
@@ -1317,9 +1328,13 @@ export function useMeetMedia({
             selectedAudioInputDeviceId
           );
 
-          const audioStream = await navigator.mediaDevices.getUserMedia({
-            audio: audioOnlyConstraints,
-          });
+          const audioStream = await getUserMediaWithTimeout(
+            { audio: audioOnlyConstraints },
+            {
+              label: "fallback microphone permission request",
+              timeoutMs: MEDIA_CAPTURE_PERMISSION_TIMEOUT_MS,
+            },
+          );
           const audioTrack = audioStream.getAudioTracks()[0];
           if (audioTrack) {
             markAudioTrackForSpeech(audioTrack);
@@ -1368,9 +1383,13 @@ export function useMeetMedia({
         let acquiredAudioTracks: MediaStreamTrack[] = [];
         let committedNewAudioTrack: MediaStreamTrack | null = null;
         try {
-          const newStream = await navigator.mediaDevices.getUserMedia({
-            audio: buildAudioConstraints(deviceId),
-          });
+          const newStream = await getUserMediaWithTimeout(
+            { audio: buildAudioConstraints(deviceId) },
+            {
+              label: "microphone device switch",
+              timeoutMs: MEDIA_CAPTURE_RECOVERY_TIMEOUT_MS,
+            },
+          );
 
           acquiredAudioTracks = newStream.getAudioTracks();
           const newAudioTrack = newStream.getAudioTracks()[0];
@@ -1438,9 +1457,13 @@ export function useMeetMedia({
       let acquiredVideoTracks: MediaStreamTrack[] = [];
       let committedNewVideoTrack: MediaStreamTrack | null = null;
       try {
-        const newStream = await navigator.mediaDevices.getUserMedia({
-          video: buildVideoConstraints(deviceId),
-        });
+        const newStream = await getUserMediaWithTimeout(
+          { video: buildVideoConstraints(deviceId) },
+          {
+            label: "camera device switch",
+            timeoutMs: MEDIA_CAPTURE_RECOVERY_TIMEOUT_MS,
+          },
+        );
 
         acquiredVideoTracks = newStream.getVideoTracks();
         const newVideoTrack = newStream.getVideoTracks()[0];
@@ -1755,24 +1778,34 @@ export function useMeetMedia({
               : undefined;
           let newStream: MediaStream;
           try {
-            newStream = await navigator.mediaDevices.getUserMedia({
-              video:
-                typeof currentDeviceId === "string" && currentDeviceId
-                  ? {
-                      ...constraints,
-                      deviceId: { exact: currentDeviceId },
-                    }
-                  : constraints,
-            });
+            newStream = await getUserMediaWithTimeout(
+              {
+                video:
+                  typeof currentDeviceId === "string" && currentDeviceId
+                    ? {
+                        ...constraints,
+                        deviceId: { exact: currentDeviceId },
+                      }
+                    : constraints,
+              },
+              {
+                label: "camera quality-switch reopen",
+                timeoutMs: MEDIA_CAPTURE_RECOVERY_TIMEOUT_MS,
+              },
+            );
           } catch (err) {
             if (!currentDeviceId) throw err;
             console.warn(
               "[Meets] Camera reopen with current device failed, retrying default device:",
               err,
             );
-            newStream = await navigator.mediaDevices.getUserMedia({
-              video: constraints,
-            });
+            newStream = await getUserMediaWithTimeout(
+              { video: constraints },
+              {
+                label: "camera quality-switch fallback reopen",
+                timeoutMs: MEDIA_CAPTURE_RECOVERY_TIMEOUT_MS,
+              },
+            );
           }
           let newVideoTrack = newStream.getVideoTracks()[0] ?? null;
           if (!newVideoTrack) {
@@ -2008,9 +2041,13 @@ export function useMeetMedia({
       }
 
       if (!audioTrack) {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: buildAudioConstraints(selectedAudioInputDeviceId),
-        });
+        const stream = await getUserMediaWithTimeout(
+          { audio: buildAudioConstraints(selectedAudioInputDeviceId) },
+          {
+            label: "microphone unmute",
+            timeoutMs: MEDIA_CAPTURE_RECOVERY_TIMEOUT_MS,
+          },
+        );
         const nextAudioTrack = stream.getAudioTracks()[0];
         createdTrack = nextAudioTrack ?? null;
 
@@ -2256,9 +2293,13 @@ export function useMeetMedia({
         );
 
         if (!audioTrack || audioTrack.readyState !== "live") {
-          const stream = await navigator.mediaDevices.getUserMedia({
-            audio: buildAudioConstraints(selectedAudioInputDeviceId),
-          });
+          const stream = await getUserMediaWithTimeout(
+            { audio: buildAudioConstraints(selectedAudioInputDeviceId) },
+            {
+              label: "microphone producer recovery",
+              timeoutMs: MEDIA_CAPTURE_RECOVERY_TIMEOUT_MS,
+            },
+          );
           audioTrack = stream.getAudioTracks()[0] ?? null;
           createdTrack = audioTrack;
         }
@@ -2477,9 +2518,13 @@ export function useMeetMedia({
             throw new Error("Video transport unavailable");
           }
 
-          const stream = await navigator.mediaDevices.getUserMedia({
-            video: buildVideoConstraints(),
-          });
+          const stream = await getUserMediaWithTimeout(
+            { video: buildVideoConstraints() },
+            {
+              label: "camera toggle",
+              timeoutMs: MEDIA_CAPTURE_RECOVERY_TIMEOUT_MS,
+            },
+          );
           const videoTrack = stream.getVideoTracks()[0];
           createdTrack = videoTrack ?? null;
 
@@ -3371,9 +3416,13 @@ export function useMeetMedia({
         );
 
         if (!videoTrack || videoTrack.readyState !== "live") {
-          const stream = await navigator.mediaDevices.getUserMedia({
-            video: buildVideoConstraints(),
-          });
+          const stream = await getUserMediaWithTimeout(
+            { video: buildVideoConstraints() },
+            {
+              label: "camera producer recovery",
+              timeoutMs: MEDIA_CAPTURE_RECOVERY_TIMEOUT_MS,
+            },
+          );
           videoTrack = stream.getVideoTracks()[0] ?? null;
           createdTrack = videoTrack;
         }

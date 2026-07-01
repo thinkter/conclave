@@ -10,7 +10,9 @@ const files = {
   webScreenShareNetworkProfile:
     "apps/web/src/app/lib/screen-share-network-profile.ts",
   webNetworkInformation: "apps/web/src/app/lib/network-information.ts",
+  webMediaCaptureTimeout: "apps/web/src/app/lib/media-capture-timeout.ts",
   webConnectionQuality: "apps/web/src/app/hooks/useConnectionQuality.ts",
+  webUtils: "apps/web/src/app/lib/utils.ts",
   webParticipantMedia: "apps/web/src/app/lib/participant-media.ts",
   webSmartParticipantOrder:
     "apps/web/src/app/hooks/useSmartParticipantOrder.ts",
@@ -200,7 +202,7 @@ assertRegex(
 );
 assertRegex(
   "webJoinScreen",
-  /get_user_media_full_failed[\s\S]*Promise\.allSettled\(\[[\s\S]*navigator\.mediaDevices\.getUserMedia\(\{[\s\S]*audio: DEFAULT_AUDIO_CONSTRAINTS,[\s\S]*navigator\.mediaDevices\.getUserMedia\(\{[\s\S]*video: getPrejoinVideoConstraints\(\),[\s\S]*get_user_media_separate_fallback_done/,
+  /get_user_media_full_failed[\s\S]*Promise\.allSettled\(\[[\s\S]*getUserMediaWithTimeout\([\s\S]*prejoin microphone fallback permission request[\s\S]*getUserMediaWithTimeout\([\s\S]*prejoin camera fallback permission request[\s\S]*get_user_media_separate_fallback_done/,
   "web prejoin retries audio and video separately when combined capture fails",
 );
 assertRegex(
@@ -217,6 +219,36 @@ assertRegex(
   "webMeetMedia",
   /Mobile browsers can stop the old camera capture[\s\S]*const allowProcessedWarmupWait = !isLikelyMobileOrTabletNavigator\(\);[\s\S]*!shouldUsePreferredVideoPublishTrack \|\| !allowProcessedWarmupWait[\s\S]*return rawTrack;/,
   "web mobile camera replacement publishes raw immediately while effects warm",
+);
+assertRegex(
+  "webMediaCaptureTimeout",
+  /MEDIA_CAPTURE_PERMISSION_TIMEOUT_MS = 60000[\s\S]*MEDIA_CAPTURE_RECOVERY_TIMEOUT_MS = 15000[\s\S]*createMediaCaptureTimeoutError[\s\S]*error\.name = "TimeoutError"[\s\S]*stopMediaStreamTracks[\s\S]*track\.onended = null;[\s\S]*track\.stop\(\);[\s\S]*getUserMediaWithTimeout[\s\S]*navigator\.mediaDevices\.getUserMedia\(constraints\)[\s\S]*if \(!timedOut\) return;[\s\S]*stopMediaStreamTracks\(stream\)[\s\S]*Promise\.race\(\[mediaPromise, timeoutPromise\]\)/,
+  "web media capture has bounded timeout with late-stream cleanup",
+);
+assertRegex(
+  "webUtils",
+  /isMediaCaptureTimeoutError[\s\S]*Camera or microphone did not respond[\s\S]*recoverable: true/,
+  "web media capture timeout surfaces as recoverable media error",
+);
+assertNotIncludes(
+  "webMeetMedia",
+  "navigator.mediaDevices.getUserMedia(",
+  "web meet media must use bounded getUserMedia helper",
+);
+assertNotIncludes(
+  "webJoinScreen",
+  "navigator.mediaDevices.getUserMedia(",
+  "web prejoin must use bounded getUserMedia helper",
+);
+assertRegex(
+  "webMeetMedia",
+  /getUserMediaWithTimeout\([\s\S]*label: "local media permission request"[\s\S]*MEDIA_CAPTURE_PERMISSION_TIMEOUT_MS[\s\S]*label: "microphone unmute"[\s\S]*MEDIA_CAPTURE_RECOVERY_TIMEOUT_MS[\s\S]*label: "camera producer recovery"[\s\S]*MEDIA_CAPTURE_RECOVERY_TIMEOUT_MS/,
+  "web meeting capture uses permission and recovery timeouts",
+);
+assertRegex(
+  "webJoinScreen",
+  /getUserMediaWithTimeout\([\s\S]*label: "prejoin microphone and camera permission request"[\s\S]*MEDIA_CAPTURE_PERMISSION_TIMEOUT_MS[\s\S]*label: "prejoin camera toggle"[\s\S]*MEDIA_CAPTURE_RECOVERY_TIMEOUT_MS[\s\S]*label: "prejoin microphone device switch"[\s\S]*MEDIA_CAPTURE_RECOVERY_TIMEOUT_MS/,
+  "web prejoin capture uses permission and recovery timeouts",
 );
 assertRegex(
   "webMeetClient",
