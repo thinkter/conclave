@@ -610,6 +610,7 @@ const getDesiredPreferences = (
     activeSpeakerId: string | null;
     webcamVideoCount: number;
     fallbackRank: number | null;
+    fullResolutionEligible: boolean;
     layout: LayoutRole | null;
     emergencyMode: boolean;
     emergencyKeepVideo: boolean;
@@ -832,8 +833,8 @@ const getDesiredPreferences = (
     quality === "good" &&
     (isFocus ||
       (!options.screenShareVideoActive &&
-        (isVisible ||
-          options.webcamVideoCount <= MAX_WEBCAMS_TO_KEEP_FULL_ON_GOOD_LINKS)));
+        isVisible &&
+        options.fullResolutionEligible));
 
   if (quality === "poor") {
     return {
@@ -1099,6 +1100,45 @@ export function useAdaptiveConsumerPreferences({
     const screenShareVideoActive = Array.from(
       refs.producerMapRef.current.values(),
     ).some((info) => info.kind === "video" && info.type === "screen");
+    const fullResolutionWebcamUserIds = new Set<string>();
+    if (layoutHints) {
+      Array.from(refs.producerMapRef.current.values())
+        .filter(
+          (info) => info.kind === "video" && info.type === "webcam",
+        )
+        .map((info) => ({
+          userId: info.userId,
+          focus:
+            info.userId === activeSpeakerId ||
+            layoutHints.focusIds.has(info.userId),
+          primary: layoutHints.primaryIds.has(info.userId),
+          visible: layoutHints.visibleRemoteIds.has(info.userId),
+          rank:
+            layoutHints.orderedRemoteRanks.get(info.userId) ??
+            Number.MAX_SAFE_INTEGER,
+        }))
+        .filter(
+          (candidate) =>
+            candidate.focus || candidate.primary || candidate.visible,
+        )
+        .sort(
+          (left, right) =>
+            Number(right.focus) - Number(left.focus) ||
+            Number(right.primary) - Number(left.primary) ||
+            left.rank - right.rank ||
+            left.userId.localeCompare(right.userId),
+        )
+        .forEach((candidate) => {
+          if (
+            fullResolutionWebcamUserIds.size >=
+              MAX_WEBCAMS_TO_KEEP_FULL_ON_GOOD_LINKS ||
+            fullResolutionWebcamUserIds.has(candidate.userId)
+          ) {
+            return;
+          }
+          fullResolutionWebcamUserIds.add(candidate.userId);
+        });
+    }
     const fallbackWebcamRanks = new Map<string, number>();
     if (!layoutHints) {
       Array.from(refs.consumersRef.current.entries())
@@ -1231,11 +1271,18 @@ export function useAdaptiveConsumerPreferences({
           : null;
       const consumerScoreQuality =
         classifyConsumerScoreQuality(consumerScore);
+      const fallbackRank = fallbackWebcamRanks.get(producerId) ?? null;
       const desired = getDesiredPreferences(info, bounds, {
         quality: connectionQuality,
         activeSpeakerId,
         webcamVideoCount,
-        fallbackRank: fallbackWebcamRanks.get(producerId) ?? null,
+        fallbackRank,
+        fullResolutionEligible:
+          webcamVideoCount <= MAX_WEBCAMS_TO_KEEP_FULL_ON_GOOD_LINKS ||
+          (layoutHints
+            ? fullResolutionWebcamUserIds.has(info.userId)
+            : fallbackRank !== null &&
+              fallbackRank < MAX_WEBCAMS_TO_KEEP_FULL_ON_GOOD_LINKS),
         layout,
         emergencyMode,
         emergencyKeepVideo,

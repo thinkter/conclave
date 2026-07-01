@@ -890,6 +890,11 @@ assertIncludes(
   "const MAX_WEBCAMS_TO_KEEP_FULL_ON_GOOD_LINKS = 4;",
   "web good-link rooms keep small calls at full webcam layers",
 );
+assertRegex(
+  "webAdaptiveConsumerPreferences",
+  /const fullResolutionWebcamUserIds = new Set<string>\(\);[\s\S]*layoutHints[\s\S]*focus:[\s\S]*info\.userId === activeSpeakerId[\s\S]*primary: layoutHints\.primaryIds\.has\(info\.userId\)[\s\S]*visible: layoutHints\.visibleRemoteIds\.has\(info\.userId\)[\s\S]*left\.rank - right\.rank[\s\S]*fullResolutionWebcamUserIds\.size >=[\s\S]*MAX_WEBCAMS_TO_KEEP_FULL_ON_GOOD_LINKS[\s\S]*fullResolutionWebcamUserIds\.has\(candidate\.userId\)[\s\S]*fullResolutionWebcamUserIds\.add\(candidate\.userId\)/,
+  "web Jitsi-style receive policy caps full-resolution webcam tiles in larger rooms",
+);
 assertIncludes(
   "webAdaptiveConsumerPreferences",
   "const fallbackWebcamRanks = new Map<string, number>();",
@@ -904,6 +909,16 @@ assertRegex(
   "webAdaptiveConsumerPreferences",
   /const fallbackVisible =[\s\S]*options\.fallbackRank !== null[\s\S]*options\.fallbackRank < MAX_WEBCAMS_TO_KEEP_FULL_ON_GOOD_LINKS/,
   "web missing layout hints do not mark every webcam visible",
+);
+assertRegex(
+  "webAdaptiveConsumerPreferences",
+  /fullResolutionEligible:[\s\S]*webcamVideoCount <= MAX_WEBCAMS_TO_KEEP_FULL_ON_GOOD_LINKS[\s\S]*fullResolutionWebcamUserIds\.has\(info\.userId\)[\s\S]*fallbackRank !== null[\s\S]*fallbackRank < MAX_WEBCAMS_TO_KEEP_FULL_ON_GOOD_LINKS/,
+  "web small rooms keep full webcam receive layers while large rooms require rank eligibility",
+);
+assertRegex(
+  "webAdaptiveConsumerPreferences",
+  /const keepFull =[\s\S]*quality === "good"[\s\S]*isFocus \|\|[\s\S]*!options\.screenShareVideoActive[\s\S]*isVisible[\s\S]*options\.fullResolutionEligible/,
+  "web good-link receive does not request full layers for every visible large-room webcam",
 );
 assertIncludes(
   "webAdaptiveConsumerPreferences",
