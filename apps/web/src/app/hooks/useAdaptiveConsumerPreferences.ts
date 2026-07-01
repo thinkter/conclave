@@ -62,7 +62,9 @@ interface UseAdaptiveConsumerPreferencesOptions {
 const APPLY_INTERVAL_MS = 2500;
 const MAX_WEBCAMS_TO_KEEP_FULL_ON_GOOD_LINKS = 4;
 const MAX_CONSUMER_PREFERENCE_UPDATES_PER_CYCLE = 8;
+const SCREEN_SHARE_CONSUMER_PREFERENCE_UPDATES_PER_CYCLE = 16;
 const CONSUMER_PREFERENCE_EMIT_SPACING_MS = 75;
+const SCREEN_SHARE_CONSUMER_PREFERENCE_EMIT_SPACING_MS = 50;
 const RATE_LIMIT_RETRY_DELAY_MS = 1000;
 const CONSUMER_PREFERENCE_ACK_TIMEOUT_MS = 3000;
 const AUDIO_CONSUMER_PRIORITY = 255;
@@ -1383,12 +1385,18 @@ export function useAdaptiveConsumerPreferences({
         left.producerId.localeCompare(right.producerId),
     );
 
+    const maxUpdatesThisCycle = screenShareVideoActive
+      ? SCREEN_SHARE_CONSUMER_PREFERENCE_UPDATES_PER_CYCLE
+      : MAX_CONSUMER_PREFERENCE_UPDATES_PER_CYCLE;
+    const emitSpacingMs = screenShareVideoActive
+      ? SCREEN_SHARE_CONSUMER_PREFERENCE_EMIT_SPACING_MS
+      : CONSUMER_PREFERENCE_EMIT_SPACING_MS;
     const updatesToSend = pendingUpdates.slice(
       0,
-      MAX_CONSUMER_PREFERENCE_UPDATES_PER_CYCLE,
+      maxUpdatesThisCycle,
     );
     const deferredUpdates = pendingUpdates.slice(
-      MAX_CONSUMER_PREFERENCE_UPDATES_PER_CYCLE,
+      maxUpdatesThisCycle,
     );
 
     for (const update of deferredUpdates) {
@@ -1659,7 +1667,7 @@ export function useAdaptiveConsumerPreferences({
 
       const timeoutId = window.setTimeout(
         emitPreferenceUpdate,
-        index * CONSUMER_PREFERENCE_EMIT_SPACING_MS,
+        index * emitSpacingMs,
       );
       scheduledPreferenceTimeoutsRef.current.add(timeoutId);
     });

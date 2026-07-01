@@ -999,6 +999,11 @@ assertIncludes(
   "const CONSUMER_PREFERENCE_ACK_TIMEOUT_MS = 3000;",
   "web consumer preference updates have ACK timeout",
 );
+assertRegex(
+  "webAdaptiveConsumerPreferences",
+  /MAX_CONSUMER_PREFERENCE_UPDATES_PER_CYCLE = 8[\s\S]*SCREEN_SHARE_CONSUMER_PREFERENCE_UPDATES_PER_CYCLE = 16[\s\S]*CONSUMER_PREFERENCE_EMIT_SPACING_MS = 75[\s\S]*SCREEN_SHARE_CONSUMER_PREFERENCE_EMIT_SPACING_MS = 50[\s\S]*const maxUpdatesThisCycle = screenShareVideoActive[\s\S]*SCREEN_SHARE_CONSUMER_PREFERENCE_UPDATES_PER_CYCLE[\s\S]*MAX_CONSUMER_PREFERENCE_UPDATES_PER_CYCLE[\s\S]*const emitSpacingMs = screenShareVideoActive[\s\S]*SCREEN_SHARE_CONSUMER_PREFERENCE_EMIT_SPACING_MS[\s\S]*CONSUMER_PREFERENCE_EMIT_SPACING_MS[\s\S]*pendingUpdates\.slice\([\s\S]*maxUpdatesThisCycle[\s\S]*index \* emitSpacingMs/,
+  "web screen-share receiver constraints apply faster while preserving normal pacing",
+);
 assertIncludes(
   "webAdaptiveConsumerPreferences",
   'markDeferredForRetry("setConsumerPreferences ack timeout")',
