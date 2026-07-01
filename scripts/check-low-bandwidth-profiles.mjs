@@ -2109,6 +2109,11 @@ assertRegex(
   /SCREEN_SHARE_FOREGROUND_KEYFRAME_REQUEST_COOLDOWN_MS = 1200[\s\S]*foregroundScreenShareKeyFrameAtRef[\s\S]*requestForegroundScreenShareKeyFrames[\s\S]*isScreenShareVideoProducer\(info\)[\s\S]*adaptivelyPausedConsumerProducerIdsRef\.current\.has\(producerId\)[\s\S]*consumer\.closed \|\| consumer\.paused[\s\S]*requestKeyFrame: true[\s\S]*lastKeyFrameRequestAt: now[\s\S]*requestForegroundScreenShareKeyFrames\(\);[\s\S]*recoverActiveMeeting\("foreground"\)/,
   "web foreground recovery requests keyframes for active screen-share consumers",
 );
+assertRegex(
+  "webMeetSocket",
+  /SUSPENDED_EVENT_LOOP_CHECK_MS = 5000[\s\S]*SUSPENDED_EVENT_LOOP_GAP_MS = 30000[\s\S]*lastEventLoopHeartbeatAt = Date\.now\(\)[\s\S]*handleEventLoopHeartbeat[\s\S]*gapMs < SUSPENDED_EVENT_LOOP_GAP_MS[\s\S]*document\.visibilityState !== "visible"[\s\S]*Browser event loop was suspended; recovering meeting media[\s\S]*scheduleForegroundRecovery\(\)[\s\S]*window\.setInterval\([\s\S]*handleEventLoopHeartbeat,[\s\S]*SUSPENDED_EVENT_LOOP_CHECK_MS/,
+  "web meeting recovers after browser sleep/resume event-loop suspension",
+);
 {
   const text = source.webMeetSocket;
   const start = text.indexOf("const handleTrackMuted = () => {");

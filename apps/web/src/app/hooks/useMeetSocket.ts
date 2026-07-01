@@ -128,6 +128,9 @@ const CLOSE_CONSUMER_RETRY_DELAY_MS = 500;
 const CLOSE_CONSUMER_MAX_ATTEMPTS = 4;
 const SCREEN_SHARE_FREEZE_KEYFRAME_REQUEST_COOLDOWN_MS = 2000;
 const SCREEN_SHARE_FOREGROUND_KEYFRAME_REQUEST_COOLDOWN_MS = 1200;
+const FOREGROUND_RECOVERY_DELAY_MS = 150;
+const SUSPENDED_EVENT_LOOP_CHECK_MS = 5000;
+const SUSPENDED_EVENT_LOOP_GAP_MS = 30000;
 
 const isScreenShareVideoProducer = (
   producerInfo: Pick<ProducerInfo, "kind" | "type">,
@@ -6321,6 +6324,8 @@ export function useMeetSocket({
   useEffect(() => {
     if (typeof window === "undefined") return;
 
+    let lastEventLoopHeartbeatAt = Date.now();
+
     const scheduleForegroundRecovery = () => {
       if (foregroundRecoveryTimeoutRef.current) {
         window.clearTimeout(foregroundRecoveryTimeoutRef.current);
@@ -6331,7 +6336,7 @@ export function useMeetSocket({
         clearExpiredParticipantConnectionStatuses();
         requestForegroundScreenShareKeyFrames();
         recoverActiveMeeting("foreground");
-      }, 150);
+      }, FOREGROUND_RECOVERY_DELAY_MS);
     };
 
     const handleVisibilityChange = () => {
@@ -6347,11 +6352,32 @@ export function useMeetSocket({
       scheduleForegroundRecovery();
     };
 
+    const handleEventLoopHeartbeat = () => {
+      const now = Date.now();
+      const gapMs = now - lastEventLoopHeartbeatAt;
+      lastEventLoopHeartbeatAt = now;
+
+      if (gapMs < SUSPENDED_EVENT_LOOP_GAP_MS) return;
+      if (document.visibilityState !== "visible") return;
+
+      console.warn(
+        "[Meets] Browser event loop was suspended; recovering meeting media.",
+        { gapMs },
+      );
+      scheduleForegroundRecovery();
+    };
+
+    const eventLoopHeartbeatInterval = window.setInterval(
+      handleEventLoopHeartbeat,
+      SUSPENDED_EVENT_LOOP_CHECK_MS,
+    );
+
     document.addEventListener("visibilitychange", handleVisibilityChange);
     window.addEventListener("pageshow", handlePageShow);
     window.addEventListener("focus", handleFocus);
 
     return () => {
+      window.clearInterval(eventLoopHeartbeatInterval);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("pageshow", handlePageShow);
       window.removeEventListener("focus", handleFocus);
