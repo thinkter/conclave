@@ -444,6 +444,11 @@ assertIncludes(
   "web initial screen-share video immediately applies sender priority and maintain-resolution profile",
 );
 assertRegex(
+  "webMeetMedia",
+  /screenProducerRef\.current = producer;[\s\S]*producer\.on\("transportclose"[\s\S]*screenProducerRef\.current\?\.id === producer\.id[\s\S]*screenProducerRef\.current = null;[\s\S]*track\.onended = finishScreenShare;/,
+  "web initial screen-share producer clears stale refs on transport close",
+);
+assertRegex(
   "webMeetSocket",
   /getScreenSharePublishNetworkProfile[\s\S]*getScreenSharePublishNetworkProfileForAvailableOutgoingBitrate\([\s\S]*stats\?\.availableOutgoingBitrate[\s\S]*getMostConstrainedWebcamProducerNetworkProfile\([\s\S]*const screenNetworkProfile = getScreenSharePublishNetworkProfile\(\);[\s\S]*buildScreenShareEncodingForNetworkProfile\([\s\S]*screenNetworkProfile,[\s\S]*videoTrack,[\s\S]*\)/,
   "web screen-share reconnect publish starts with BWE capture-size encoding caps",

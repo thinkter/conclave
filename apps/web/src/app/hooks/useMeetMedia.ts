@@ -3674,6 +3674,11 @@ export function useMeetMedia({
       screenProducerRef.current = producer;
       setIsScreenSharing(true);
       setActiveScreenShareId(producer.id);
+      producer.on("transportclose", () => {
+        if (screenProducerRef.current?.id === producer.id) {
+          screenProducerRef.current = null;
+        }
+      });
 
       let screenVideoEnded = false;
       const closeScreenAudioProducer = (audioProducer: Producer) => {
