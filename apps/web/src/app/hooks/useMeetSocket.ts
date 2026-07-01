@@ -733,6 +733,7 @@ interface UseMeetSocketOptions {
   videoQualityRef: React.MutableRefObject<VideoQuality>;
   connectionQualityRef?: React.MutableRefObject<ConnectionQualityStats | null>;
   dataSaverMode?: boolean;
+  isDocumentVisible?: boolean;
   updateVideoQualityRef: React.MutableRefObject<
     (
       quality: VideoQuality,
@@ -830,6 +831,7 @@ export function useMeetSocket({
   videoQualityRef,
   connectionQualityRef,
   dataSaverMode = false,
+  isDocumentVisible = true,
   updateVideoQualityRef,
   requestMediaPermissions,
   requestAudioProducerRecovery,
@@ -3187,8 +3189,8 @@ export function useMeetSocket({
           Array.from(pendingProducersRef.current.values()).some(
             (info) => info.kind === "video" && info.type === "screen",
           );
-        const shouldStartConsumerPausedForDataSaver =
-          dataSaverMode &&
+        const shouldStartWebcamConsumerPausedForReceiveBudget =
+          (dataSaverMode || !isDocumentVisible) &&
           producerInfo.kind === "video" &&
           producerInfo.type === "webcam";
         socket.emit(
@@ -3283,9 +3285,9 @@ export function useMeetSocket({
                 response.kind === "audio" && producerInfo.type === "webcam";
               const isWebcamVideo =
                 response.kind === "video" && producerInfo.type === "webcam";
-              const startsPausedForDataSaver =
-                shouldStartConsumerPausedForDataSaver && isWebcamVideo;
-              if (startsPausedForDataSaver) {
+              const startsPausedForAdaptiveReceive =
+                shouldStartWebcamConsumerPausedForReceiveBudget && isWebcamVideo;
+              if (startsPausedForAdaptiveReceive) {
                 adaptivelyPausedConsumerProducerIdsRef.current.add(
                   producerInfo.producerId,
                 );
@@ -3453,7 +3455,7 @@ export function useMeetSocket({
                 stream,
                 producerId: producerInfo.producerId,
               });
-              if (startsPausedForDataSaver) {
+              if (startsPausedForAdaptiveReceive) {
                 dispatchParticipants({
                   type: "UPDATE_VIDEO_ADAPTIVE_PAUSED",
                   userId: producerInfo.producerUserId,
@@ -3485,7 +3487,7 @@ export function useMeetSocket({
                 updateCameraState(false);
               }
 
-              if (!startsPausedForDataSaver) {
+              if (!startsPausedForAdaptiveReceive) {
                 socket.emit(
                   "resumeConsumer",
                   {
@@ -3533,6 +3535,7 @@ export function useMeetSocket({
       setProducerPausedState,
       announcedRemoteProducersRef,
       dataSaverMode,
+      isDocumentVisible,
       userId,
     ],
   );

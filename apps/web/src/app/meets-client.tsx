@@ -2198,6 +2198,7 @@ export default function MeetsClient({
     videoQualityRef: refs.videoQualityRef,
     connectionQualityRef: connectionQualityDebugRef,
     dataSaverMode: effectiveDataSaverMode,
+    isDocumentVisible,
     updateVideoQualityRef,
     requestMediaPermissions,
     requestAudioProducerRecovery,

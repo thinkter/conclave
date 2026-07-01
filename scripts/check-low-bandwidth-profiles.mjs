@@ -892,8 +892,8 @@ assertRegex(
 );
 assertRegex(
   "webMeetClient",
-  /const \[isDocumentVisible, setIsDocumentVisible\] = useState[\s\S]*document\.visibilityState === "visible"[\s\S]*document\.addEventListener\("visibilitychange", syncDocumentVisibility\)[\s\S]*useAdaptiveConsumerPreferences\(\{[\s\S]*isDocumentVisible,/,
-  "web meeting client feeds document visibility into receive adaptation",
+  /const \[isDocumentVisible, setIsDocumentVisible\] = useState[\s\S]*document\.visibilityState === "visible"[\s\S]*document\.addEventListener\("visibilitychange", syncDocumentVisibility\)[\s\S]*useMeetSocket\(\{[\s\S]*isDocumentVisible,[\s\S]*useAdaptiveConsumerPreferences\(\{[\s\S]*isDocumentVisible,/,
+  "web meeting client feeds document visibility into startup and steady-state receive adaptation",
 );
 assertNotIncludes(
   "webMeetsMainContent",
@@ -907,8 +907,8 @@ assertRegex(
 );
 assertRegex(
   "webMeetSocket",
-  /dataSaverMode\?: boolean[\s\S]*dataSaverMode = false[\s\S]*const shouldStartConsumerPausedForDataSaver =[\s\S]*dataSaverMode &&[\s\S]*producerInfo\.kind === "video" &&[\s\S]*producerInfo\.type === "webcam"[\s\S]*const startsPausedForDataSaver =[\s\S]*shouldStartConsumerPausedForDataSaver && isWebcamVideo[\s\S]*adaptivelyPausedConsumerProducerIdsRef\.current\.add\([\s\S]*UPDATE_VIDEO_ADAPTIVE_PAUSED[\s\S]*if \(!startsPausedForDataSaver\) \{[\s\S]*"resumeConsumer"/,
-  "web data saver prevents initial webcam consumer resume while preserving screen/audio startup",
+  /dataSaverMode\?: boolean[\s\S]*isDocumentVisible\?: boolean[\s\S]*dataSaverMode = false[\s\S]*isDocumentVisible = true[\s\S]*const shouldStartWebcamConsumerPausedForReceiveBudget =[\s\S]*\(dataSaverMode \|\| !isDocumentVisible\) &&[\s\S]*producerInfo\.kind === "video" &&[\s\S]*producerInfo\.type === "webcam"[\s\S]*const startsPausedForAdaptiveReceive =[\s\S]*shouldStartWebcamConsumerPausedForReceiveBudget && isWebcamVideo[\s\S]*adaptivelyPausedConsumerProducerIdsRef\.current\.add\([\s\S]*UPDATE_VIDEO_ADAPTIVE_PAUSED[\s\S]*if \(!startsPausedForAdaptiveReceive\) \{[\s\S]*"resumeConsumer"/,
+  "web data saver and hidden tabs prevent initial webcam consumer resume while preserving screen/audio startup",
 );
 assertRegex(
   "webAdaptiveConsumerPreferences",
