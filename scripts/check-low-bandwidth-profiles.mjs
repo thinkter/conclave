@@ -42,6 +42,7 @@ const files = {
   webMeetClientPage: "apps/web/src/app/meets-client-page.tsx",
   webMeetMedia: "apps/web/src/app/hooks/useMeetMedia.ts",
   webMeetSocket: "apps/web/src/app/hooks/useMeetSocket.ts",
+  webScreenWakeLock: "apps/web/src/app/hooks/useScreenWakeLock.ts",
   webVideoEffects: "apps/web/src/app/hooks/useVideoEffects.ts",
   meetingParticipantReducer: "packages/meeting-core/src/participant-reducer.ts",
   webJoinScreen: "apps/web/src/app/components/JoinScreen.tsx",
@@ -1189,6 +1190,16 @@ assertRegex(
   "webMeetClient",
   /useAdaptivePublishQuality\(\{[\s\S]*availableOutgoingBitrateBps: selfConnectionStats\.availableOutgoingBitrate,/,
   "web screen-share publish adaptation receives measured outgoing bitrate",
+);
+assertRegex(
+  "webScreenWakeLock",
+  /wakeLock\?\.request[\s\S]*request\("screen"\)[\s\S]*visibilitychange[\s\S]*pageshow[\s\S]*focus[\s\S]*release\(\)/,
+  "web meeting surface holds and reacquires a screen wake lock like production video clients",
+);
+assertRegex(
+  "webMeetClient",
+  /meetingSurfaceWakeLockEnabled[\s\S]*connectionState === "joined"[\s\S]*hasEnteredMeetingSurface[\s\S]*connectionState === "reconnecting"[\s\S]*connectionState === "disconnected"[\s\S]*useScreenWakeLock\(\{ enabled: meetingSurfaceWakeLockEnabled \}\)/,
+  "web meet client keeps wake lock through reconnecting meeting surfaces",
 );
 assertRegex(
   "webMeetClient",

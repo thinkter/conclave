@@ -62,6 +62,7 @@ import {
 } from "./hooks/useConnectionQuality";
 import { useIsMobile } from "./hooks/useIsMobile";
 import { usePrewarmSocket } from "./hooks/usePrewarmSocket";
+import { useScreenWakeLock } from "./hooks/useScreenWakeLock";
 import { useSharedBrowser } from "./hooks/useSharedBrowser";
 import { useVoiceAgentParticipant } from "./hooks/useVoiceAgentParticipant";
 import type { JoinMode, PrejoinMediaHandoff } from "./lib/types";
@@ -2802,6 +2803,16 @@ export default function MeetsClient({
     }, 20000);
     return () => window.clearTimeout(timeout);
   }, [enterAction, enterErrored]);
+
+  const meetingSurfaceWakeLockEnabled =
+    connectionState === "joined" ||
+    (hasEnteredMeetingSurface &&
+      (connectionState === "reconnecting" ||
+        connectionState === "connecting" ||
+        connectionState === "connected" ||
+        connectionState === "joining" ||
+        connectionState === "disconnected"));
+  useScreenWakeLock({ enabled: meetingSurfaceWakeLockEnabled });
 
   if (!mounted) return null;
 
