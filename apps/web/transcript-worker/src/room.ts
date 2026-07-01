@@ -14,6 +14,7 @@ import {
   type TranscriptTranscriptionProvider,
 } from "@conclave/meeting-core/transcript-models";
 import {
+  TRANSCRIPT_PCM_SAMPLE_RATE,
   DEFAULT_MAX_SEGMENTS,
   DEFAULT_QA_MODEL,
   DEFAULT_TRANSCRIPT_MODEL,
@@ -85,6 +86,7 @@ import {
   parsePositiveInt,
   redactSensitiveText,
   safeJsonParse,
+  analyzePcm16Base64,
   createSilentPcm16Base64,
   estimatePcm16Base64SampleCount,
   trimText,
@@ -726,12 +728,13 @@ export class TranscriptRoom {
       this.audioDebugStats.acceptedSamples += sampleCount;
       this.logAudioDebug(
         "accepted audio chunk",
-        {
+        () => ({
           samples: sampleCount,
           pendingSamples: this.pendingAudioSamples,
           speakerUserId: normalizedSpeaker.userId,
           source: normalizedSpeaker.source,
-        },
+          pcm: analyzePcm16Base64(audio, TRANSCRIPT_PCM_SAMPLE_RATE),
+        }),
         this.audioDebugStats.acceptedChunks === 1,
       );
       if (this.isController(viewer) && this.session?.controller) {
@@ -1162,7 +1165,7 @@ export class TranscriptRoom {
 
   private logAudioDebug(
     event: string,
-    details: Record<string, unknown> = {},
+    details: Record<string, unknown> | (() => Record<string, unknown>) = {},
     force = false,
   ): void {
     const now = Date.now();
@@ -1174,6 +1177,8 @@ export class TranscriptRoom {
       return;
     }
     this.audioDebugStats.lastAudioLogAt = now;
+    const resolvedDetails =
+      typeof details === "function" ? details() : details;
     console.info("[TranscriptWorker] audio", {
       event,
       roomId: this.session?.roomId,
@@ -1184,7 +1189,7 @@ export class TranscriptRoom {
       commits: this.audioDebugStats.commits,
       providerCommittedItems: this.audioDebugStats.providerCommittedItems,
       providerFinals: this.audioDebugStats.providerFinals,
-      ...details,
+      ...resolvedDetails,
     });
   }
 
