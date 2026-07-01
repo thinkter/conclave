@@ -3794,6 +3794,9 @@ export function useMeetMedia({
       return;
     }
 
+    let acquiredScreenShareStream: MediaStream | null = null;
+    let screenShareStarted = false;
+
     try {
       let transport = getUsableProducerTransport(producerTransportRef.current);
       if (!transport) {
@@ -3857,6 +3860,7 @@ export function useMeetMedia({
           stream = await getDisplayMedia(relaxedDisplayVideoConstraints, null);
         }
       }
+      acquiredScreenShareStream = stream;
       const track = stream.getVideoTracks()[0];
       if (!track) {
         throw new Error("Screen share did not include a video track");
@@ -3890,6 +3894,7 @@ export function useMeetMedia({
       screenProducerRef.current = producer;
       setIsScreenSharing(true);
       setActiveScreenShareId(producer.id);
+      screenShareStarted = true;
       producer.on("transportclose", () => {
         if (screenProducerRef.current?.id === producer.id) {
           screenProducerRef.current = null;
@@ -4008,6 +4013,13 @@ export function useMeetMedia({
         }
       }
     } catch (err) {
+      if (acquiredScreenShareStream && !screenShareStarted) {
+        if (screenShareStreamRef.current === acquiredScreenShareStream) {
+          screenShareStreamRef.current = null;
+        }
+        stopScreenShareStream(acquiredScreenShareStream);
+        resetScreenShareControlState();
+      }
       if ((err as Error).name === "NotAllowedError") {
         console.log("[Meets] Screen share cancelled by user");
       } else {
@@ -4031,6 +4043,7 @@ export function useMeetMedia({
     setMeetError,
     ensureProducerTransportRef,
     getScreenSharePublishNetworkProfile,
+    resetScreenShareControlState,
     stopScreenShareStream,
     stopLocalTrack,
   ]);

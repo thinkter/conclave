@@ -515,6 +515,11 @@ assertRegex(
 );
 assertRegex(
   "webMeetMedia",
+  /let acquiredScreenShareStream: MediaStream \| null = null;[\s\S]*let screenShareStarted = false;[\s\S]*acquiredScreenShareStream = stream;[\s\S]*const producer = await produceScreenShareTrack[\s\S]*screenShareStarted = true;[\s\S]*catch \(err\) \{[\s\S]*if \(acquiredScreenShareStream && !screenShareStarted\) \{[\s\S]*screenShareStreamRef\.current = null;[\s\S]*stopScreenShareStream\(acquiredScreenShareStream\);[\s\S]*resetScreenShareControlState\(\);/,
+  "web failed screen-share publish stops orphaned display capture before surfacing the error",
+);
+assertRegex(
+  "webMeetMedia",
   /type ExtendedDisplayMediaStreamOptions = DisplayMediaStreamOptions & \{[\s\S]*selfBrowserSurface\?: DisplayMediaIncludePreference;[\s\S]*surfaceSwitching\?: DisplayMediaIncludePreference;[\s\S]*systemAudio\?: DisplayMediaIncludePreference;[\s\S]*selfBrowserSurface: "exclude",[\s\S]*surfaceSwitching: "include",[\s\S]*systemAudio: "include",/,
   "web screen-share picker requests production browser hints for system audio and surface switching",
 );
