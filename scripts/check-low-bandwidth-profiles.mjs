@@ -907,8 +907,8 @@ assertRegex(
 );
 assertRegex(
   "webMeetSocket",
-  /const existingWebcamVideoConsumerCount = Array\.from\([\s\S]*producerMapRef\.current\.values\(\)[\s\S]*info\.kind === "video" && info\.type === "webcam"[\s\S]*knownScreenShareVideoActive[\s\S]*preferHighWebcamLayer:[\s\S]*!knownScreenShareVideoActive[\s\S]*joinMode === "webinar_attendee" \|\|[\s\S]*existingWebcamVideoConsumerCount < 4/,
-  "web initial small-call webcam consumers request high layers immediately",
+  /const HIGH_LAYER_STARTUP_WEBCAM_LIMIT = 4;[\s\S]*const buildWebcamVideoStartupRanks = \([\s\S]*ranks\.set\(producer\.producerId, rank\);[\s\S]*webcamVideoStartupRank < HIGH_LAYER_STARTUP_WEBCAM_LIMIT/,
+  "web initial small-call webcam high-layer startup is rank-based, not race-prone consumer-count based",
 );
 assertRegex(
   "webMeetSocket",
@@ -917,18 +917,18 @@ assertRegex(
 );
 assertRegex(
   "webMeetSocket",
-  /queueProducerConsumeRetry[\s\S]*const pending = Array\.from\(pendingProducersRef\.current\.values\(\)\);[\s\S]*pendingProducersRef\.current\.clear\(\);[\s\S]*const snapshotHasScreenShareVideo = pending\.some\([\s\S]*pendingProducer\.kind === "video" &&[\s\S]*pendingProducer\.type === "screen"[\s\S]*consumeProducerRef\.current\(pendingProducer, \{[\s\S]*knownScreenShareVideoActive: snapshotHasScreenShareVideo/,
+  /const pending = Array\.from\(pendingProducersRef\.current\.values\(\)\);[\s\S]*pendingProducersRef\.current\.clear\(\);[\s\S]*const snapshotHasScreenShareVideo = pending\.some\([\s\S]*producerInfo\.kind === "video" &&[\s\S]*producerInfo\.type === "screen"[\s\S]*const webcamVideoStartupRanks = buildWebcamVideoStartupRanks\([\s\S]*pending,[\s\S]*countWebcamVideoProducerEntries\(producerMapRef\.current\)[\s\S]*webcamVideoStartupRank: webcamVideoStartupRanks\.get\([\s\S]*producerInfo\.producerId/,
   "web pending retry batches preserve screen-share initial receive context",
 );
 assertRegex(
   "webMeetSocket",
-  /snapshotHasScreenShareVideo\s*=\s*producers\.some\([\s\S]*producerInfo\.kind === "video" && producerInfo\.type === "screen"[\s\S]*knownScreenShareVideoActive: snapshotHasScreenShareVideo/,
-  "web producer sync snapshots reserve initial receive bandwidth for active screen shares",
+  /snapshotHasScreenShareVideo\s*=\s*producers\.some\([\s\S]*producerInfo\.kind === "video" && producerInfo\.type === "screen"[\s\S]*const producersToConsume = producers\.filter[\s\S]*const webcamVideoStartupRanks = buildWebcamVideoStartupRanks\([\s\S]*producersToConsume,[\s\S]*countWebcamVideoProducerEntries\(producerMapRef\.current\)[\s\S]*knownScreenShareVideoActive: snapshotHasScreenShareVideo,[\s\S]*webcamVideoStartupRank: webcamVideoStartupRanks\.get\([\s\S]*producerInfo\.producerId/,
+  "web producer sync snapshots reserve screen-share bandwidth and ranks webcam startup layers before parallel consume",
 );
 assertRegex(
   "webMeetSocket",
-  /snapshotHasScreenShareVideo\s*=\s*response\.existingProducers\.some\([\s\S]*producer\.kind === "video" && producer\.type === "screen"[\s\S]*knownScreenShareVideoActive: snapshotHasScreenShareVideo/,
-  "web join snapshots reserve initial receive bandwidth for active screen shares",
+  /snapshotHasScreenShareVideo\s*=\s*response\.existingProducers\.some\([\s\S]*producer\.kind === "video" && producer\.type === "screen"[\s\S]*const webcamVideoStartupRanks = buildWebcamVideoStartupRanks\([\s\S]*response\.existingProducers[\s\S]*knownScreenShareVideoActive: snapshotHasScreenShareVideo,[\s\S]*webcamVideoStartupRank: webcamVideoStartupRanks\.get\([\s\S]*producer\.producerId/,
+  "web join snapshots reserve screen-share bandwidth and rank webcam startup layers before parallel consume",
 );
 assertIncludes(
   "webAdaptiveConsumerPreferences",

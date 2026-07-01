@@ -100,6 +100,7 @@ type ConsumerTelemetryPayload = Omit<
 type ConsumeProducerOptions = {
   replaceExisting?: boolean;
   knownScreenShareVideoActive?: boolean;
+  webcamVideoStartupRank?: number;
 };
 
 type JoinInfo = {
@@ -136,6 +137,36 @@ const SUSPENDED_EVENT_LOOP_GAP_MS = 30000;
 const isScreenShareVideoProducer = (
   producerInfo: Pick<ProducerInfo, "kind" | "type">,
 ): boolean => producerInfo.kind === "video" && producerInfo.type === "screen";
+
+const isWebcamVideoProducer = (
+  producerInfo: Pick<ProducerInfo, "kind" | "type">,
+): boolean => producerInfo.kind === "video" && producerInfo.type === "webcam";
+
+const HIGH_LAYER_STARTUP_WEBCAM_LIMIT = 4;
+
+const countWebcamVideoProducerEntries = (
+  producerMap: Map<
+    string,
+    { userId: string; kind: "audio" | "video"; type: ProducerType }
+  >,
+): number =>
+  Array.from(producerMap.values()).filter(isWebcamVideoProducer).length;
+
+const buildWebcamVideoStartupRanks = (
+  producers: ProducerInfo[],
+  existingWebcamVideoCount = 0,
+): Map<string, number> => {
+  const ranks = new Map<string, number>();
+  let rank = existingWebcamVideoCount;
+
+  for (const producer of producers) {
+    if (!isWebcamVideoProducer(producer)) continue;
+    ranks.set(producer.producerId, rank);
+    rank += 1;
+  }
+
+  return ranks;
+};
 
 const getVideoStallKeyFrameRequestDelayMs = (
   producerInfo: Pick<ProducerInfo, "kind" | "type">,
@@ -3181,10 +3212,10 @@ export function useMeetSocket({
           queueProducerConsumeRetry(producerInfo, 450);
           resolve();
         });
-        const existingWebcamVideoConsumerCount = Array.from(
-          producerMapRef.current.values(),
-        ).filter((info) => info.kind === "video" && info.type === "webcam")
-          .length;
+        const existingWebcamVideoConsumerCount =
+          countWebcamVideoProducerEntries(producerMapRef.current);
+        const webcamVideoStartupRank =
+          options.webcamVideoStartupRank ?? existingWebcamVideoConsumerCount;
         const knownScreenShareVideoActive =
           options.knownScreenShareVideoActive === true ||
           (producerInfo.kind === "video" && producerInfo.type === "screen") ||
@@ -3208,7 +3239,7 @@ export function useMeetSocket({
               preferHighWebcamLayer:
                 !knownScreenShareVideoActive &&
                 (joinMode === "webinar_attendee" ||
-                  existingWebcamVideoConsumerCount < 4),
+                  webcamVideoStartupRank < HIGH_LAYER_STARTUP_WEBCAM_LIMIT),
               networkProfile: getInitialConsumerNetworkProfile(producerInfo),
               screenShareVideoActive: knownScreenShareVideoActive,
             }),
@@ -3870,22 +3901,32 @@ export function useMeetSocket({
         if (pendingProducersRef.current.has(producerInfo.producerId)) continue;
       }
 
-      const consumeTasks: Promise<void>[] = [];
       const snapshotHasScreenShareVideo = producers.some(
         (producerInfo) =>
           producerInfo.kind === "video" && producerInfo.type === "screen",
       );
-      for (const producerInfo of producers) {
-        if (consumersRef.current.has(producerInfo.producerId)) continue;
-        if (pendingProducersRef.current.has(producerInfo.producerId)) continue;
-        consumeTasks.push(
-          consumeProducer(producerInfo, {
-            knownScreenShareVideoActive: snapshotHasScreenShareVideo,
-          }),
+      const producersToConsume = producers.filter((producerInfo) => {
+        if (consumersRef.current.has(producerInfo.producerId)) return false;
+        if (pendingProducersRef.current.has(producerInfo.producerId)) {
+          return false;
+        }
+        return true;
+      });
+      if (producersToConsume.length > 0) {
+        const webcamVideoStartupRanks = buildWebcamVideoStartupRanks(
+          producersToConsume,
+          countWebcamVideoProducerEntries(producerMapRef.current),
         );
-      }
-      if (consumeTasks.length > 0) {
-        await Promise.all(consumeTasks);
+        await Promise.all(
+          producersToConsume.map((producerInfo) =>
+            consumeProducer(producerInfo, {
+              knownScreenShareVideoActive: snapshotHasScreenShareVideo,
+              webcamVideoStartupRank: webcamVideoStartupRanks.get(
+                producerInfo.producerId,
+              ),
+            }),
+          ),
+        );
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err ?? "");
@@ -4046,18 +4087,32 @@ export function useMeetSocket({
       const snapshotHasScreenShareVideo = activeProducers.some(
         (producer) => producer.kind === "video" && producer.type === "screen",
       );
+      const producersToConsume = activeProducers.filter(
+        (producer) =>
+          !consumersRef.current.has(producer.producerId) &&
+          !pendingProducersRef.current.has(producer.producerId),
+      );
+      const webcamVideoStartupRanks = buildWebcamVideoStartupRanks(
+        producersToConsume,
+        countWebcamVideoProducerEntries(producerMapRef.current),
+      );
       await Promise.all(
-        activeProducers.map((producer) =>
+        producersToConsume.map((producer) =>
           consumeProducer(producer, {
             knownScreenShareVideoActive: snapshotHasScreenShareVideo,
+            webcamVideoStartupRank: webcamVideoStartupRanks.get(
+              producer.producerId,
+            ),
           }),
         ),
       );
     },
     [
       consumeProducer,
+      consumersRef,
       dropDepartedProducer,
       handleProducerClosed,
+      pendingProducersRef,
       producerMapRef,
       restoreWebinarFeedParticipant,
       shouldIgnoreDepartedParticipant,
@@ -4081,14 +4136,21 @@ export function useMeetSocket({
       (producerInfo) =>
         producerInfo.kind === "video" && producerInfo.type === "screen",
     );
+    const webcamVideoStartupRanks = buildWebcamVideoStartupRanks(
+      pending,
+      countWebcamVideoProducerEntries(producerMapRef.current),
+    );
     await Promise.all(
       pending.map((producerInfo) =>
         consumeProducer(producerInfo, {
           knownScreenShareVideoActive: snapshotHasScreenShareVideo,
+          webcamVideoStartupRank: webcamVideoStartupRanks.get(
+            producerInfo.producerId,
+          ),
         }),
       ),
     );
-  }, [pendingProducersRef, consumeProducer]);
+  }, [pendingProducersRef, consumeProducer, producerMapRef]);
 
   const recoverActiveMeeting = useCallback(
     (reason: "online" | "foreground") => {
@@ -4386,10 +4448,16 @@ export function useMeetSocket({
                   (producer) =>
                     producer.kind === "video" && producer.type === "screen",
                 );
+              const webcamVideoStartupRanks = buildWebcamVideoStartupRanks(
+                response.existingProducers,
+              );
               const consumePromises = response.existingProducers.map(
                 (producer) =>
                   consumeProducer(producer, {
                     knownScreenShareVideoActive: snapshotHasScreenShareVideo,
+                    webcamVideoStartupRank: webcamVideoStartupRanks.get(
+                      producer.producerId,
+                    ),
                   }),
               );
 
