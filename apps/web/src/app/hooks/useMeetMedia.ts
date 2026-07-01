@@ -241,6 +241,8 @@ const CAMERA_OUTBOUND_STALL_SAMPLES_BEFORE_RECOVERY = 3;
 const SCREEN_SHARE_OUTBOUND_STALL_SAMPLES_BEFORE_REFRESH = 2;
 const CAMERA_OUTBOUND_STALL_RECOVERY_COOLDOWN_MS = 10000;
 const MIN_OUTBOUND_VIDEO_BYTE_DELTA_FOR_PROGRESS = 1200;
+const LOCAL_AUDIO_MUTED_RECOVERY_DELAY_MS = 4000;
+const LOCAL_AUDIO_MUTED_RECOVERY_COOLDOWN_MS = 15000;
 
 const createCameraOutboundStallState = (
   producerId: string | null = null,
@@ -436,6 +438,13 @@ export function useMeetMedia({
     ) => Promise<void>
   >(async () => {});
   const audioRecoveryInFlightRef = useRef(false);
+  const localAudioTrackHandlersRef = useRef<WeakSet<MediaStreamTrack>>(
+    new WeakSet(),
+  );
+  const localAudioMutedRecoveryTimeoutsRef = useRef<Map<string, number>>(
+    new Map(),
+  );
+  const lastLocalAudioMutedRecoveryAtRef = useRef(0);
   const isMediaRecoveryBlocked = useCallback(
     () => mediaRecoveryBlockedRef?.current === true,
     [mediaRecoveryBlockedRef],
@@ -452,6 +461,16 @@ export function useMeetMedia({
       resetScreenShareControlState();
     }
   }, [isScreenSharing, resetScreenShareControlState]);
+
+  useEffect(() => {
+    const recoveryTimeouts = localAudioMutedRecoveryTimeoutsRef.current;
+    return () => {
+      recoveryTimeouts.forEach((timeoutId) => {
+        window.clearTimeout(timeoutId);
+      });
+      recoveryTimeouts.clear();
+    };
+  }, []);
 
   const pendingAudioProducerRecoveryRef = useRef(false);
   const pendingCameraProducerRecoveryRef = useRef(false);
@@ -1161,6 +1180,155 @@ export function useMeetMedia({
     ]
   );
 
+  const clearLocalAudioMutedRecoveryTimer = useCallback(
+    (trackId: string) => {
+      const timeoutId = localAudioMutedRecoveryTimeoutsRef.current.get(trackId);
+      if (timeoutId === undefined) return;
+      window.clearTimeout(timeoutId);
+      localAudioMutedRecoveryTimeoutsRef.current.delete(trackId);
+    },
+    [],
+  );
+
+  const scheduleLocalAudioMutedRecovery = useCallback(
+    (track: MediaStreamTrack) => {
+      if (
+        isMutedRef.current ||
+        connectionStateRef.current !== "joined" ||
+        track.readyState !== "live" ||
+        !track.enabled ||
+        !track.muted ||
+        localAudioMutedRecoveryTimeoutsRef.current.has(track.id)
+      ) {
+        return;
+      }
+
+      const timeoutId = window.setTimeout(() => {
+        localAudioMutedRecoveryTimeoutsRef.current.delete(track.id);
+        if (
+          isMutedRef.current ||
+          connectionStateRef.current !== "joined" ||
+          isMediaRecoveryBlocked() ||
+          track.readyState !== "live" ||
+          !track.enabled ||
+          !track.muted
+        ) {
+          return;
+        }
+
+        const currentProducer = audioProducerRef.current;
+        const producerTrack = currentProducer?.track ?? null;
+        const producerUsesTrack =
+          producerTrack === track || producerTrack?.id === track.id;
+        const currentStream = localStreamRef.current;
+        const streamUsesTrack =
+          currentStream
+            ?.getAudioTracks()
+            .some(
+              (currentTrack) =>
+                currentTrack === track || currentTrack.id === track.id,
+            ) === true;
+
+        if (!producerUsesTrack && !streamUsesTrack) {
+          return;
+        }
+
+        const now = performance.now();
+        if (
+          now - lastLocalAudioMutedRecoveryAtRef.current <
+          LOCAL_AUDIO_MUTED_RECOVERY_COOLDOWN_MS
+        ) {
+          return;
+        }
+        lastLocalAudioMutedRecoveryAtRef.current = now;
+
+        console.warn(
+          "[Meets] Local microphone stopped sending data; refreshing audio producer.",
+          {
+            producerId: currentProducer?.id ?? null,
+            trackId: track.id,
+          },
+        );
+
+        if (currentProducer && producerUsesTrack) {
+          closeLocalAudioProducerForReplacement(currentProducer);
+        }
+        if (streamUsesTrack && currentStream) {
+          const remainingTracks = currentStream
+            .getTracks()
+            .filter(
+              (currentTrack) =>
+                currentTrack !== track && currentTrack.id !== track.id,
+            );
+          commitLocalStream(new MediaStream(remainingTracks));
+        }
+        stopLocalTrack(track);
+        requestAudioProducerRecovery();
+      }, LOCAL_AUDIO_MUTED_RECOVERY_DELAY_MS);
+
+      localAudioMutedRecoveryTimeoutsRef.current.set(track.id, timeoutId);
+    },
+    [
+      audioProducerRef,
+      closeLocalAudioProducerForReplacement,
+      commitLocalStream,
+      isMediaRecoveryBlocked,
+      localStreamRef,
+      requestAudioProducerRecovery,
+      stopLocalTrack,
+    ],
+  );
+
+  const attachLocalAudioTrackHandlers = useCallback(
+    (track: MediaStreamTrack) => {
+      markAudioTrackForSpeech(track);
+
+      if (!localAudioTrackHandlersRef.current.has(track)) {
+        localAudioTrackHandlersRef.current.add(track);
+        track.addEventListener("mute", () => {
+          scheduleLocalAudioMutedRecovery(track);
+        });
+        track.addEventListener("unmute", () => {
+          clearLocalAudioMutedRecoveryTimer(track.id);
+        });
+        track.onended = () => {
+          clearLocalAudioMutedRecoveryTimer(track.id);
+          handleLocalTrackEnded("audio", track);
+        };
+      }
+
+      if (track.muted) {
+        scheduleLocalAudioMutedRecovery(track);
+      }
+    },
+    [
+      clearLocalAudioMutedRecoveryTimer,
+      handleLocalTrackEnded,
+      markAudioTrackForSpeech,
+      scheduleLocalAudioMutedRecovery,
+    ],
+  );
+
+  useEffect(() => {
+    if (ghostEnabled || isObserverMode) return;
+    if (connectionState !== "joined") return;
+    if (isMuted) return;
+
+    const audioTrack = getFirstLiveTrack(
+      (localStreamRef.current ?? localStream)?.getAudioTracks() ?? [],
+    );
+    if (!audioTrack) return;
+    attachLocalAudioTrackHandlers(audioTrack);
+  }, [
+    attachLocalAudioTrackHandlers,
+    connectionState,
+    ghostEnabled,
+    isMuted,
+    isObserverMode,
+    localStream,
+    localStreamRef,
+  ]);
+
   const requestMediaPermissions = useCallback(async (
     options: RequestMediaPermissionsOptions = {},
   ): Promise<MediaStream | null> => {
@@ -1311,7 +1479,7 @@ export function useMeetMedia({
       }
 
       if (nextAudioTrack) {
-        markAudioTrackForSpeech(nextAudioTrack);
+        attachLocalAudioTrackHandlers(nextAudioTrack);
         nextAudioTrack.enabled = !isMuted;
       }
       liveTracks.forEach((track) => {
@@ -1357,10 +1525,7 @@ export function useMeetMedia({
           );
           const audioTrack = audioStream.getAudioTracks()[0];
           if (audioTrack) {
-            markAudioTrackForSpeech(audioTrack);
-            audioTrack.onended = () => {
-              handleLocalTrackEnded("audio", audioTrack);
-            };
+            attachLocalAudioTrackHandlers(audioTrack);
           }
           setMediaState({
             hasAudioPermission: true,
@@ -1384,10 +1549,9 @@ export function useMeetMedia({
     selectedAudioInputDeviceId,
     isMuted,
     isCameraOff,
-    handleLocalTrackEnded,
+    attachLocalAudioTrackHandlers,
     buildAudioConstraints,
     buildVideoConstraints,
-    markAudioTrackForSpeech,
     localStreamRef,
     permissionHintTimeoutRef,
     setMeetError,
@@ -1414,10 +1578,7 @@ export function useMeetMedia({
           acquiredAudioTracks = newStream.getAudioTracks();
           const newAudioTrack = newStream.getAudioTracks()[0];
           if (newAudioTrack) {
-            markAudioTrackForSpeech(newAudioTrack);
-            newAudioTrack.onended = () => {
-              handleLocalTrackEnded("audio", newAudioTrack);
-            };
+            attachLocalAudioTrackHandlers(newAudioTrack);
             newAudioTrack.enabled = !isMuted;
             const previousStream = localStreamRef.current;
             const previousAudioTracks = previousStream?.getAudioTracks() ?? [];
@@ -1456,13 +1617,12 @@ export function useMeetMedia({
     [
       connectionState,
       isMuted,
-      handleLocalTrackEnded,
+      attachLocalAudioTrackHandlers,
       setSelectedAudioInputDeviceId,
       audioProducerRef,
       localStreamRef,
       commitLocalStream,
       buildAudioConstraints,
-      markAudioTrackForSpeech,
       closeLocalAudioProducerForReplacement,
       stopTracksExcept,
       requestAudioProducerRecovery,
@@ -2072,10 +2232,7 @@ export function useMeetMedia({
         createdTrack = nextAudioTrack ?? null;
 
         if (!nextAudioTrack) throw new Error("No audio track obtained");
-        markAudioTrackForSpeech(nextAudioTrack);
-        nextAudioTrack.onended = () => {
-          handleLocalTrackEnded("audio", nextAudioTrack);
-        };
+        attachLocalAudioTrackHandlers(nextAudioTrack);
 
         const previousStream = localStreamRef.current;
         previousStream?.getAudioTracks().forEach((track) => {
@@ -2163,7 +2320,7 @@ export function useMeetMedia({
     isObserverMode,
     isMuted,
     selectedAudioInputDeviceId,
-    handleLocalTrackEnded,
+    attachLocalAudioTrackHandlers,
     stopLocalTrack,
     buildAudioConstraints,
     socketRef,
@@ -2174,7 +2331,6 @@ export function useMeetMedia({
     setMeetError,
     closeLocalAudioProducerForReplacement,
     confirmAudioProducerUnmuted,
-    markAudioTrackForSpeech,
     setMutedIntent,
     requestAudioProducerRecovery,
     toggleMuteInFlightRef,
@@ -2332,11 +2488,8 @@ export function useMeetMedia({
           return;
         }
 
-        markAudioTrackForSpeech(audioTrack);
+        attachLocalAudioTrackHandlers(audioTrack);
         audioTrack.enabled = !shouldStartPaused;
-        audioTrack.onended = () => {
-          handleLocalTrackEnded("audio", audioTrack);
-        };
 
         if (createdTrack) {
           const previousStream = localStreamRef.current;
@@ -2425,7 +2578,7 @@ export function useMeetMedia({
     localStream,
     isMediaRecoveryBlocked,
     selectedAudioInputDeviceId,
-    handleLocalTrackEnded,
+    attachLocalAudioTrackHandlers,
     stopLocalTrack,
     buildAudioConstraints,
     producerTransportRef,
@@ -2437,7 +2590,6 @@ export function useMeetMedia({
     setMeetError,
     closeLocalAudioProducerForReplacement,
     getPublishNetworkProfile,
-    markAudioTrackForSpeech,
     requestAudioProducerRecovery,
   ]);
 

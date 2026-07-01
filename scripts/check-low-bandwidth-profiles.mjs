@@ -219,6 +219,11 @@ assertRegex(
   "web media recovery warms muted microphone tracks without surfacing optional warmup failures",
 );
 assertRegex(
+  "webMeetMedia",
+  /LOCAL_AUDIO_MUTED_RECOVERY_DELAY_MS[\s\S]*scheduleLocalAudioMutedRecovery[\s\S]*closeLocalAudioProducerForReplacement\(currentProducer\)[\s\S]*requestAudioProducerRecovery\(\)[\s\S]*track\.addEventListener\("mute"[\s\S]*scheduleLocalAudioMutedRecovery\(track\)[\s\S]*track\.addEventListener\("unmute"[\s\S]*clearLocalAudioMutedRecoveryTimer\(track\.id\)/,
+  "web local microphone no-source tracks recover without waiting for track ended",
+);
+assertRegex(
   "webJoinScreen",
   /get_user_media_full_failed[\s\S]*Promise\.allSettled\(\[[\s\S]*getUserMediaWithTimeout\([\s\S]*prejoin microphone fallback permission request[\s\S]*getUserMediaWithTimeout\([\s\S]*prejoin camera fallback permission request[\s\S]*get_user_media_separate_fallback_done/,
   "web prejoin retries audio and video separately when combined capture fails",
