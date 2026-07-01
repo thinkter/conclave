@@ -745,6 +745,11 @@ assertRegex(
   /const presentationPresenterId = useMemo\([\s\S]*participant\.screenShareProducerId === activeScreenShareId[\s\S]*presentationPresenterId=\{presentationPresenterId\}/,
   "web screen-share presenter id flows into grid tiling metadata",
 );
+assertRegex(
+  "webGridLayout",
+  /const presentationRenderedAsPrimary =[\s\S]*hasGridPresentationTile[\s\S]*usesSideBySideLayout[\s\S]*usesStageLayout && stageMainKind === "presentation"[\s\S]*const presentationRenderedInRail =[\s\S]*!usesSpotlightLayout[\s\S]*!usesSideBySideLayout[\s\S]*stageMainKind !== "presentation"[\s\S]*const isPresentationRendered =[\s\S]*hasPresentation &&[\s\S]*presentationRenderedAsPrimary \|\| presentationRenderedInRail[\s\S]*presentation: \{[\s\S]*visible: isPresentationRendered,[\s\S]*primary: presentationRenderedAsPrimary,[\s\S]*focus: presentationRenderedAsPrimary,/,
+  "web screen-share tiling metadata only advertises rendered presentations and marks side-by-side/stage presentations primary",
+);
 assertIncludes(
   "webMobileParticipantVideo",
   "createPlaybackRecoveryScheduler",

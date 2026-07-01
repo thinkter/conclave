@@ -1525,14 +1525,20 @@ function GridLayout({
       : stageMainKind !== "local")
       ? 1
       : 0;
-  const stageRailPresentationTileCount =
+  const presentationRenderedAsPrimary =
+    hasGridPresentationTile ||
+    usesSideBySideLayout ||
+    (usesStageLayout && stageMainKind === "presentation");
+  const presentationRenderedInRail =
     usesStageLayout &&
     !usesSpotlightLayout &&
     !usesSideBySideLayout &&
     hasPresentation &&
-    stageMainKind !== "presentation"
-      ? 1
-      : 0;
+    stageMainKind !== "presentation";
+  const isPresentationRendered =
+    hasPresentation &&
+    (presentationRenderedAsPrimary || presentationRenderedInRail);
+  const stageRailPresentationTileCount = presentationRenderedInRail ? 1 : 0;
   const stageRailFixedTileCount =
     stageRailLocalTileCount + stageRailPresentationTileCount;
   const stageBudgetCompanionTileCount =
@@ -2155,13 +2161,9 @@ function GridLayout({
       presentation: {
         tileId: PRESENTATION_TILE_ID,
         presenterId: presentationPresenterId,
-        visible: hasPresentation,
-        primary:
-          hasGridPresentationTile ||
-          (usesStageLayout && stageMainKind === "presentation"),
-        focus:
-          hasGridPresentationTile ||
-          (usesStageLayout && stageMainKind === "presentation"),
+        visible: isPresentationRendered,
+        primary: presentationRenderedAsPrimary,
+        focus: presentationRenderedAsPrimary,
       },
       pinnedId,
       primaryIds: roomTilingPrimaryIds,
@@ -2264,6 +2266,7 @@ function GridLayout({
       hasGridPresentationTile,
       hasPresentation,
       hiddenParticipantsCount,
+      isPresentationRendered,
       gridTilePlacements,
       layout.cols,
       layout.contentHeight,
@@ -2277,6 +2280,7 @@ function GridLayout({
       maxGridTiles,
       orderedRemoteParticipants,
       presentationPresenterId,
+      presentationRenderedAsPrimary,
       pinnedId,
       renderedViewMode,
       requestedMaxTiles,
