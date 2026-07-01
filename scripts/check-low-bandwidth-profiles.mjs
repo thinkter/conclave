@@ -203,6 +203,16 @@ assertRegex(
   /get_user_media_full_failed[\s\S]*Promise\.allSettled\(\[[\s\S]*navigator\.mediaDevices\.getUserMedia\(\{[\s\S]*audio: DEFAULT_AUDIO_CONSTRAINTS,[\s\S]*navigator\.mediaDevices\.getUserMedia\(\{[\s\S]*video: getPrejoinVideoConstraints\(\),[\s\S]*get_user_media_separate_fallback_done/,
   "web prejoin retries audio and video separately when combined capture fails",
 );
+assertRegex(
+  "webNetworkInformation",
+  /export const isLikelyMobileOrTabletNavigator = \(\): boolean =>/,
+  "web exposes mobile browser detection for capture lifecycle workarounds",
+);
+assertRegex(
+  "webMeetMedia",
+  /Mobile browsers can stop the old camera capture[\s\S]*const allowProcessedWarmupWait = !isLikelyMobileOrTabletNavigator\(\);[\s\S]*!shouldUsePreferredVideoPublishTrack \|\| !allowProcessedWarmupWait[\s\S]*return rawTrack;/,
+  "web mobile camera replacement publishes raw immediately while effects warm",
+);
 {
   const mediaAudioProduceMatches =
     source.webMeetMedia.match(

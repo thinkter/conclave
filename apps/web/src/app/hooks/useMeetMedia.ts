@@ -19,6 +19,7 @@ import type {
 } from "../lib/types";
 import {
   getBrowserNetworkSnapshot,
+  isLikelyMobileOrTabletNavigator,
   shouldDeferBandwidthHeavyPreload,
 } from "../lib/network-information";
 import { clampMeetVolume, DEFAULT_MEET_VOLUME } from "../lib/meet-volume";
@@ -870,7 +871,13 @@ export function useMeetMedia({
 
   const waitForPreferredVideoPublishTrack = useCallback(
     async (stream: MediaStream, rawTrack: MediaStreamTrack) => {
-      if (!shouldUsePreferredVideoPublishTrack) return rawTrack;
+      // Mobile browsers can stop the old camera capture as soon as a new one is
+      // opened. Publish the raw replacement immediately; the effects bridge will
+      // replace it with processed output once the pipeline is ready.
+      const allowProcessedWarmupWait = !isLikelyMobileOrTabletNavigator();
+      if (!shouldUsePreferredVideoPublishTrack || !allowProcessedWarmupWait) {
+        return rawTrack;
+      }
 
       const startedAt = performance.now();
       let latestTrack: MediaStreamTrack | null = null;
