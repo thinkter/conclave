@@ -182,6 +182,8 @@ export type GamePublicState = {
   view: unknown;
   finished: boolean;
   hasLeaderboard: boolean;
+  /** Public-safe rematch settings. Text options are omitted. */
+  config: GameConfig;
 };
 
 /** Emitted privately to a single player. */
