@@ -912,8 +912,8 @@ assertRegex(
 );
 assertRegex(
   "webAdaptiveConsumerPreferences",
-  /isDocumentVisible\?: boolean[\s\S]*if \(info\.kind === "audio"\) \{[\s\S]*AUDIO_CONSUMER_PRIORITY[\s\S]*if \(info\.kind !== "video"\) return null;[\s\S]*if \(!options\.isDocumentVisible\) \{[\s\S]*buildLayerPreference\(0, 0, bounds\)[\s\S]*priority: OFFSCREEN_WEBCAM_PARK_PRIORITY,[\s\S]*paused: true,[\s\S]*isDocumentVisible = true[\s\S]*requestKeyFrame =[\s\S]*wasPaused \|\|/,
-  "web hidden tabs pause remote video receive while keeping audio and foreground keyframe resume",
+  /isDocumentVisible\?: boolean[\s\S]*HIDDEN_SCREEN_SHARE_KEEPALIVE_PRIORITY = 60[\s\S]*if \(info\.kind === "audio"\) \{[\s\S]*AUDIO_CONSUMER_PRIORITY[\s\S]*if \(info\.kind !== "video"\) return null;[\s\S]*if \(info\.type === "screen"\) \{[\s\S]*if \(!options\.isDocumentVisible\) \{[\s\S]*buildLayerPreference\(0, 0, bounds\)[\s\S]*priority: HIDDEN_SCREEN_SHARE_KEEPALIVE_PRIORITY,[\s\S]*paused: false,[\s\S]*priority: 240,[\s\S]*paused: false,[\s\S]*if \(!options\.isDocumentVisible\) \{[\s\S]*priority: OFFSCREEN_WEBCAM_PARK_PRIORITY,[\s\S]*paused: true,[\s\S]*isDocumentVisible = true[\s\S]*requestKeyFrame =[\s\S]*wasPaused \|\|/,
+  "web hidden tabs park webcams while keeping active screen share video warm for foreground resume",
 );
 assertRegex(
   "webMeetMedia",

@@ -92,6 +92,7 @@ const UNSUPPORTED_LAYER_RETRY_AFTER_MS = 30000;
 const SCREEN_SHARE_SMALL_RENDERED_HEIGHT = 220;
 const SCREEN_SHARE_FULL_FPS_RENDERED_HEIGHT = 540;
 const OFFSCREEN_WEBCAM_PARK_PRIORITY = 5;
+const HIDDEN_SCREEN_SHARE_KEEPALIVE_PRIORITY = 60;
 
 type PresentationTileSize = "stage" | "grid" | "rail";
 
@@ -627,14 +628,6 @@ const getDesiredPreferences = (
 
   if (info.kind !== "video") return null;
 
-  if (!options.isDocumentVisible) {
-    return {
-      preferredLayers: bounds ? buildLayerPreference(0, 0, bounds) : undefined,
-      priority: OFFSCREEN_WEBCAM_PARK_PRIORITY,
-      paused: true,
-    };
-  }
-
   const screenShareReceiveQuality =
     getScreenShareReceiveQualityForAvailableBitrate(
       options.availableIncomingBitrateBps,
@@ -653,6 +646,14 @@ const getDesiredPreferences = (
   const quality = effectiveQuality === "unknown" ? "good" : effectiveQuality;
 
   if (info.type === "screen") {
+    if (!options.isDocumentVisible) {
+      return {
+        preferredLayers: bounds ? buildLayerPreference(0, 0, bounds) : undefined,
+        priority: HIDDEN_SCREEN_SHARE_KEEPALIVE_PRIORITY,
+        paused: false,
+      };
+    }
+
     const screenShareQuality = worstQuality(
       worstQuality(
         quality,
@@ -688,6 +689,14 @@ const getDesiredPreferences = (
         : undefined,
       priority: 240,
       paused: false,
+    };
+  }
+
+  if (!options.isDocumentVisible) {
+    return {
+      preferredLayers: bounds ? buildLayerPreference(0, 0, bounds) : undefined,
+      priority: OFFSCREEN_WEBCAM_PARK_PRIORITY,
+      paused: true,
     };
   }
 
