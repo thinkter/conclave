@@ -27,6 +27,8 @@ const files = {
   webGridLayout: "apps/web/src/app/components/GridLayout.tsx",
   webMobileGridLayout:
     "apps/web/src/app/components/mobile/MobileGridLayout.tsx",
+  webMeetView: "apps/web/src/app/lib/meet-view.ts",
+  webMeetViewPanel: "apps/web/src/app/components/MeetViewPanel.tsx",
   webPresentationLayout: "apps/web/src/app/components/PresentationLayout.tsx",
   webMobilePresentationLayout:
     "apps/web/src/app/components/mobile/MobilePresentationLayout.tsx",
@@ -678,6 +680,31 @@ assertIncludes(
   "webAdaptiveConsumerPreferences",
   "const isWarm = layout?.warm === true || (!layout && !fallbackVisible);",
   "web missing layout hints keep non-primary webcams warm instead of full",
+);
+assertRegex(
+  "webMeetView",
+  /dataSaverMode: boolean;[\s\S]*dataSaverMode: false,[\s\S]*dataSaverMode:[\s\S]*typeof value\.dataSaverMode === "boolean"[\s\S]*DEFAULT_MEET_VIEW_SETTINGS\.dataSaverMode/,
+  "web meet view settings persist user-controlled data saver mode",
+);
+assertRegex(
+  "webMeetViewPanel",
+  /const setDataSaverMode = \(dataSaverMode: boolean\)[\s\S]*data-meet-data-saver-setting="true"[\s\S]*label="Data saver"[\s\S]*checked=\{settings\.dataSaverMode\}[\s\S]*onChange=\{setDataSaverMode\}/,
+  "web view panel exposes user-controlled data saver mode",
+);
+assertRegex(
+  "webMeetClient",
+  /useState<MeetViewSettings>\(\s*readStoredMeetViewSettings,[\s\S]*writeStoredMeetViewSettings\(viewSettings\)[\s\S]*useAdaptiveConsumerPreferences\(\{[\s\S]*dataSaverMode: viewSettings\.dataSaverMode,[\s\S]*<MeetsMainContent[\s\S]*viewSettings=\{viewSettings\}[\s\S]*onViewSettingsChange=\{setViewSettings\}/,
+  "web meeting client owns persisted view settings for adaptive receive",
+);
+assertNotIncludes(
+  "webMeetsMainContent",
+  "const MEET_VIEW_STORAGE_KEY",
+  "web meet main content must not own persisted view settings",
+);
+assertRegex(
+  "webAdaptiveConsumerPreferences",
+  /if \(info\.type === "screen"\) \{[\s\S]*priority: 240,[\s\S]*paused: false,[\s\S]*if \(options\.dataSaverMode\) \{[\s\S]*priority: OFFSCREEN_WEBCAM_PARK_PRIORITY,[\s\S]*paused: true,/,
+  "web data saver parks webcam receive after preserving screen-share video",
 );
 assertRegex(
   "webMeetSocket",

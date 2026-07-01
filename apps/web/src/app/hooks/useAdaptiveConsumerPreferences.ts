@@ -50,6 +50,7 @@ interface UseAdaptiveConsumerPreferencesOptions {
   emergencyMode: boolean;
   availableIncomingBitrateBps?: number | null;
   activeSpeakerId: string | null;
+  dataSaverMode?: boolean;
   debugStateRef?: React.MutableRefObject<
     AdaptiveConsumerPreferencesDebugSnapshot | null
   >;
@@ -148,6 +149,7 @@ export type AdaptiveConsumerPreferencesDebugSnapshot = {
   timestamp: number;
   connectionQuality: ConnectionQuality;
   emergencyMode: boolean;
+  dataSaverMode: boolean;
   activeSpeakerId: string | null;
   socketConnected: boolean;
   layoutHintsAvailable: boolean;
@@ -600,6 +602,7 @@ const getDesiredPreferences = (
     emergencyMode: boolean;
     emergencyKeepVideo: boolean;
     screenShareVideoActive: boolean;
+    dataSaverMode: boolean;
     availableIncomingBitrateBps: number | null;
     consumerScoreQuality: ConsumerScoreQuality;
   },
@@ -675,6 +678,14 @@ const getDesiredPreferences = (
   const isWarm = layout?.warm === true || (!layout && !fallbackVisible);
   const isHidden = layout?.hidden === true && !isVisible;
   const isFocus = isActiveSpeaker || isLayoutFocus;
+
+  if (options.dataSaverMode) {
+    return {
+      preferredLayers: bounds ? buildLayerPreference(0, 0, bounds) : undefined,
+      priority: OFFSCREEN_WEBCAM_PARK_PRIORITY,
+      paused: true,
+    };
+  }
 
   if (options.emergencyMode) {
     if (isHidden && !isWarm && !isFocus && !options.emergencyKeepVideo) {
@@ -884,6 +895,7 @@ export function useAdaptiveConsumerPreferences({
   emergencyMode,
   availableIncomingBitrateBps = null,
   activeSpeakerId,
+  dataSaverMode = false,
   debugStateRef,
   onVideoAdaptivePauseStateChange,
 }: UseAdaptiveConsumerPreferencesOptions) {
@@ -986,6 +998,7 @@ export function useAdaptiveConsumerPreferences({
         timestamp: Date.now(),
         connectionQuality,
         emergencyMode,
+        dataSaverMode,
         activeSpeakerId,
         socketConnected: lastDebugContextRef.current.socketConnected,
         layoutHintsAvailable:
@@ -1014,6 +1027,7 @@ export function useAdaptiveConsumerPreferences({
       debugStateRef,
       enabled,
       emergencyMode,
+      dataSaverMode,
       publishAdaptiveVideoPauseChanges,
       refs.adaptivelyPausedConsumerProducerIdsRef,
     ],
@@ -1181,6 +1195,7 @@ export function useAdaptiveConsumerPreferences({
         emergencyMode,
         emergencyKeepVideo,
         screenShareVideoActive,
+        dataSaverMode,
         availableIncomingBitrateBps,
         consumerScoreQuality,
       });
@@ -1642,6 +1657,7 @@ export function useAdaptiveConsumerPreferences({
     availableIncomingBitrateBps,
     clearScheduledPreferenceWork,
     connectionQuality,
+    dataSaverMode,
     emergencyMode,
     enabled,
     refs.adaptivelyPausedConsumerProducerIdsRef,

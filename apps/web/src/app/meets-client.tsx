@@ -66,6 +66,11 @@ import { useSharedBrowser } from "./hooks/useSharedBrowser";
 import { useVoiceAgentParticipant } from "./hooks/useVoiceAgentParticipant";
 import type { JoinMode, PrejoinMediaHandoff } from "./lib/types";
 import {
+  readStoredMeetViewSettings,
+  writeStoredMeetViewSettings,
+  type MeetViewSettings,
+} from "./lib/meet-view";
+import {
   countActiveVideoEffects,
   DEFAULT_VIDEO_EFFECTS,
   hasActiveVideoEffects,
@@ -400,10 +405,17 @@ export default function MeetsClient({
   const [guestStorageReady, setGuestStorageReady] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [appsSocket, setAppsSocket] = useState<Socket | null>(null);
+  const [viewSettings, setViewSettings] = useState<MeetViewSettings>(
+    readStoredMeetViewSettings,
+  );
   const uploadAsset: AssetUploadHandler = useMemo(
     () => createAssetUploadHandler(),
     [],
   );
+
+  useEffect(() => {
+    writeStoredMeetViewSettings(viewSettings);
+  }, [viewSettings]);
 
   useEffect(() => {
     if (guestStorageReady || typeof window === "undefined") return;
@@ -2673,6 +2685,7 @@ export default function MeetsClient({
     emergencyMode: selfReceiveEmergencyMode,
     availableIncomingBitrateBps: selfConnectionStats.availableIncomingBitrate,
     activeSpeakerId: effectiveActiveSpeakerId,
+    dataSaverMode: viewSettings.dataSaverMode,
     debugStateRef: adaptiveConsumerDebugRef,
     onVideoAdaptivePauseStateChange: handleVideoAdaptivePauseStateChange,
   });
@@ -3003,6 +3016,8 @@ export default function MeetsClient({
       <MeetsMainContent
         isJoined={isJoined}
         isMobile={isMobile}
+        viewSettings={viewSettings}
+        onViewSettingsChange={setViewSettings}
         connectionState={connectionState}
         isLoading={isLoading}
         roomId={roomId}

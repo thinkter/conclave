@@ -75,11 +75,7 @@ import { useStableSpeakerId } from "../hooks/useStableSpeakerId";
 import {
   type VideoEffectsState,
 } from "../lib/video-effects";
-import {
-  DEFAULT_MEET_VIEW_SETTINGS,
-  normalizeMeetViewSettings,
-  type MeetViewSettings,
-} from "../lib/meet-view";
+import type { MeetViewSettings } from "../lib/meet-view";
 import { getRenderableParticipantVideoStream } from "../lib/participant-media";
 import { isRemoteParticipantVisible } from "../lib/participant-visibility";
 import { prewarmVideoEffectsAssetsDeferred } from "../lib/video-effects-lazy";
@@ -98,6 +94,8 @@ interface MeetsMainContentProps {
   isJoined: boolean;
   /** True under the phone-width breakpoint. Gates compact control/panel layout. */
   isMobile?: boolean;
+  viewSettings: MeetViewSettings;
+  onViewSettingsChange: Dispatch<SetStateAction<MeetViewSettings>>;
   connectionState: ConnectionState;
   isLoading: boolean;
   roomId: string;
@@ -260,29 +258,6 @@ interface MeetsMainContentProps {
   transcript: MeetingTranscriptController;
 }
 
-const MEET_VIEW_STORAGE_KEY = "conclave:meet-view";
-
-const readStoredMeetViewSettings = (): MeetViewSettings => {
-  if (typeof window === "undefined") return DEFAULT_MEET_VIEW_SETTINGS;
-  try {
-    const storedValue = window.localStorage.getItem(MEET_VIEW_STORAGE_KEY);
-    if (!storedValue) return DEFAULT_MEET_VIEW_SETTINGS;
-    return normalizeMeetViewSettings(JSON.parse(storedValue));
-  } catch {
-    return DEFAULT_MEET_VIEW_SETTINGS;
-  }
-};
-
-const writeStoredMeetViewSettings = (settings: MeetViewSettings) => {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(
-      MEET_VIEW_STORAGE_KEY,
-      JSON.stringify(normalizeMeetViewSettings(settings)),
-    );
-  } catch {}
-};
-
 const getLiveVideoStream = (stream: MediaStream | null): MediaStream | null => {
   if (!stream) return null;
   const [track] = stream.getVideoTracks();
@@ -354,6 +329,8 @@ const getPipCornerClass = (corner: PipCorner): string => {
 export default function MeetsMainContent({
   isJoined,
   isMobile = false,
+  viewSettings,
+  onViewSettingsChange,
   connectionState,
   isLoading,
   roomId,
@@ -584,9 +561,6 @@ export default function MeetsMainContent({
     GAME_DOCK_DEFAULT_WIDTH,
   );
   const [showAndroidUpsell, setShowAndroidUpsell] = useState(false);
-  const [viewSettings, setViewSettings] = useState<MeetViewSettings>(
-    readStoredMeetViewSettings,
-  );
   useEffect(() => {
     if (typeof window === "undefined") return;
     const mediaQuery = window.matchMedia("(min-width: 640px)");
@@ -608,9 +582,6 @@ export default function MeetsMainContent({
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
-  useEffect(() => {
-    writeStoredMeetViewSettings(viewSettings);
-  }, [viewSettings]);
   useEffect(() => {
     if (typeof navigator === "undefined" || typeof window === "undefined") return;
     const isAndroid = /android/i.test(navigator.userAgent);
@@ -1725,7 +1696,7 @@ export default function MeetsMainContent({
           isVideoFramingEnabled={videoEffects.framing}
           onToggleVideoFraming={handleToggleVideoFraming}
           viewSettings={viewSettings}
-          onViewSettingsChange={setViewSettings}
+          onViewSettingsChange={onViewSettingsChange}
           presentationStream={effectivePresentationStream}
           presenterName={effectivePresenterName}
           presentationPresenterId={presentationPresenterId}
@@ -2019,7 +1990,7 @@ export default function MeetsMainContent({
       {isJoined && !isWebinarAttendee && isViewPanelOpen && (
         <MeetViewPanel
           settings={viewSettings}
-          onSettingsChange={setViewSettings}
+          onSettingsChange={onViewSettingsChange}
           participantCount={visibleParticipantCount + (ghostEnabled ? 0 : 1)}
           onClose={handleCloseViewPanel}
         />
