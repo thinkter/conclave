@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { Server as SocketIOServer } from "socket.io";
 import { Logger } from "../../utilities/loggers.js";
+import { renewRoomOwnerships } from "../rooms.js";
 import { listScheduledMeetings } from "../scheduledMeetings.js";
 import { listScheduledWebinars } from "../scheduledWebinars.js";
 import type { SfuState } from "../state.js";
@@ -28,6 +29,7 @@ const HISTORY_MAX_POINTS = 360;
 const EVENTS_MAX = 200;
 const EVENTS_PER_TICK_MAX = 40;
 const FIND_MATCH_LIMIT = 20;
+const OWNERSHIP_RECONCILE_MS = 2_000;
 
 export type AdminRoomSummary = {
   channelId: string;
@@ -381,6 +383,39 @@ export const registerAdminGateway = (
   const eventLog: AdminEvent[] = [];
   const history: AdminHistoryPoint[] = [];
   let lastHistorySampleAt = 0;
+  let lastOwnershipReconcileAt = 0;
+  let ownershipReconcilePromise: Promise<void> | null = null;
+  let tickInFlight = false;
+
+  const reconcileRoomOwnerships = async (
+    now: number,
+    opts?: { force?: boolean },
+  ): Promise<void> => {
+    if (state.rooms.size === 0) {
+      lastOwnershipReconcileAt = now;
+      return;
+    }
+    if (
+      !opts?.force &&
+      now - lastOwnershipReconcileAt < OWNERSHIP_RECONCILE_MS
+    ) {
+      return;
+    }
+    if (ownershipReconcilePromise) {
+      await ownershipReconcilePromise;
+      return;
+    }
+
+    lastOwnershipReconcileAt = now;
+    ownershipReconcilePromise = renewRoomOwnerships(state)
+      .catch((error) => {
+        Logger.warn("[AdminGateway] room ownership reconciliation failed", error);
+      })
+      .finally(() => {
+        ownershipReconcilePromise = null;
+      });
+    await ownershipReconcilePromise;
+  };
 
   const watchedChannelIds = (): string[] => {
     const channels: string[] = [];
@@ -447,9 +482,12 @@ export const registerAdminGateway = (
     }
   };
 
-  const tick = () => {
+  const tick = async () => {
+    if (tickInFlight) return;
+    tickInFlight = true;
     const now = Date.now();
     try {
+      await reconcileRoomOwnerships(now);
       // History and the activity log keep recording while nobody watches, so
       // a fresh session opens with context instead of a blank hour.
       sampleHistory(now);
@@ -523,10 +561,14 @@ export const registerAdminGateway = (
       }
     } catch (error) {
       Logger.warn("[AdminGateway] tick failed", error);
+    } finally {
+      tickInFlight = false;
     }
   };
 
-  const interval = setInterval(tick, TICK_MS);
+  const interval = setInterval(() => {
+    void tick();
+  }, TICK_MS);
   interval.unref?.();
 
   const unsubscribeAudit = subscribeAdminAudit((entry) => {
@@ -543,12 +585,20 @@ export const registerAdminGateway = (
       version,
       serverNow: Date.now(),
     });
-    socket.emit("admin:overview", buildOverview());
-    socket.emit("admin:rooms", { rooms: buildRoomSummaries() });
-    socket.emit("admin:history", { points: [...history] });
-    socket.emit("admin:events", { events: [...eventLog], snapshot: true });
-    socket.emit("admin:audit", { entries: getAdminAuditEntries() });
-    socket.emit("admin:scheduled", { items: buildScheduled() });
+    void (async () => {
+      try {
+        await reconcileRoomOwnerships(Date.now(), { force: true });
+        if (!socket.connected) return;
+        socket.emit("admin:overview", buildOverview());
+        socket.emit("admin:rooms", { rooms: buildRoomSummaries() });
+        socket.emit("admin:history", { points: [...history] });
+        socket.emit("admin:events", { events: [...eventLog], snapshot: true });
+        socket.emit("admin:audit", { entries: getAdminAuditEntries() });
+        socket.emit("admin:scheduled", { items: buildScheduled() });
+      } catch (error) {
+        Logger.warn("[AdminGateway] initial snapshot failed", error);
+      }
+    })();
 
     socket.on(
       "admin:watchRoom",

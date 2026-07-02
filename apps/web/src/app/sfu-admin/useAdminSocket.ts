@@ -23,6 +23,20 @@ import type {
 const EVENTS_CAP = 300;
 const AUDIT_CAP = 200;
 const FIND_TIMEOUT_MS = 2_500;
+const LIVE_SCHEDULE_STATUSES = new Set(["live", "started", "in_progress"]);
+const PAST_SCHEDULE_STATUSES = new Set([
+  "ended",
+  "cancelled",
+  "canceled",
+  "completed",
+  "expired",
+]);
+const CONNECTION_RANK: Record<ConnectionState, number> = {
+  offline: 0,
+  connecting: 1,
+  reconnecting: 2,
+  live: 3,
+};
 
 type RoomDetailState = {
   selection: RoomSelection;
@@ -32,6 +46,78 @@ type RoomDetailState = {
 type RoomChatState = {
   selection: RoomSelection;
   messages: AdminChatMessage[];
+};
+
+const roomIdentity = (
+  room: Pick<AdminRoomSummary, "channelId" | "clientId" | "roomId">,
+): string => room.channelId || `${room.clientId}:${room.roomId}`;
+
+const scheduledIdentity = (
+  item: Pick<AdminScheduledItem, "kind" | "clientId" | "id">,
+): string => `${item.kind}:${item.clientId}:${item.id}`;
+
+const scheduleRoomIdentity = (
+  item: Pick<AdminScheduledItem, "clientId" | "roomId">,
+): string => `${item.clientId}:${item.roomId}`;
+
+const roomScore = (room: TaggedRoomSummary): number =>
+  room.participants * 1_000 +
+  room.admins * 100 +
+  room.pending * 10 +
+  (room.screenShare ? 4 : 0) +
+  (room.activeGame ? 2 : 0) +
+  (room.activeAppId ? 1 : 0);
+
+const scheduleStatusRank = (item: AdminScheduledItem): number => {
+  const status = item.status.toLowerCase();
+  if (LIVE_SCHEDULE_STATUSES.has(status)) return 3;
+  if (PAST_SCHEDULE_STATUSES.has(status)) return 1;
+  return 2;
+};
+
+const instanceOrder = (instances: InstanceStatus[]): Map<string, number> => {
+  const order = new Map<string, number>();
+  instances.forEach((instance, index) => order.set(instance.key, index));
+  return order;
+};
+
+const prefersInstance = (
+  nextKey: string,
+  currentKey: string,
+  order: Map<string, number>,
+): boolean => {
+  const nextRank = order.get(nextKey) ?? Number.MAX_SAFE_INTEGER;
+  const currentRank = order.get(currentKey) ?? Number.MAX_SAFE_INTEGER;
+  return nextRank < currentRank;
+};
+
+const prefersRoom = (
+  next: TaggedRoomSummary,
+  current: TaggedRoomSummary,
+  order: Map<string, number>,
+): boolean => {
+  const nextScore = roomScore(next);
+  const currentScore = roomScore(current);
+  if (nextScore !== currentScore) return nextScore > currentScore;
+  return prefersInstance(next.instanceKey, current.instanceKey, order);
+};
+
+const prefersScheduledItem = (
+  next: TaggedScheduledItem,
+  current: TaggedScheduledItem,
+  activeRoomByIdentity: Map<string, TaggedRoomSummary>,
+  order: Map<string, number>,
+): boolean => {
+  const activeRoom = activeRoomByIdentity.get(scheduleRoomIdentity(next));
+  if (activeRoom) {
+    if (next.instanceKey === activeRoom.instanceKey) return true;
+    if (current.instanceKey === activeRoom.instanceKey) return false;
+  }
+
+  const nextRank = scheduleStatusRank(next);
+  const currentRank = scheduleStatusRank(current);
+  if (nextRank !== currentRank) return nextRank > currentRank;
+  return prefersInstance(next.instanceKey, current.instanceKey, order);
 };
 
 /**
@@ -101,6 +187,21 @@ export function useAdminSocket() {
       );
     };
 
+    const clearInstanceLiveState = (key: string) => {
+      setRoomsByInstance((prev) =>
+        prev[key]?.length ? { ...prev, [key]: [] } : prev,
+      );
+      setScheduledByInstance((prev) =>
+        prev[key]?.length ? { ...prev, [key]: [] } : prev,
+      );
+      setDetail((prev) =>
+        prev?.selection.instanceKey === key ? null : prev,
+      );
+      setRoomChat((prev) =>
+        prev?.selection.instanceKey === key ? null : prev,
+      );
+    };
+
     void (async () => {
       try {
         const minted = await mint();
@@ -114,7 +215,7 @@ export function useAdminSocket() {
           minted.map(({ url }) => ({
             key: url,
             url,
-            connection: "connecting" as ConnectionState,
+            connection: "connecting",
             instanceId: null,
             overview: null,
           })),
@@ -150,11 +251,13 @@ export function useAdminSocket() {
             patchInstance(key, {
               connection: hasConnected ? "reconnecting" : "offline",
             });
+            clearInstanceLiveState(key);
           });
           socket.on("connect_error", () => {
             patchInstance(key, {
               connection: hasConnected ? "reconnecting" : "offline",
             });
+            clearInstanceLiveState(key);
           });
 
           socket.on("admin:hello", (data: { instanceId?: string }) => {
@@ -183,7 +286,7 @@ export function useAdminSocket() {
               setDetail(
                 data.room
                   ? {
-                      selection: { instanceKey: key, channelId: data.channelId! },
+                      selection: { instanceKey: key, channelId: data.channelId },
                       room: data.room,
                     }
                   : null,
@@ -258,7 +361,7 @@ export function useAdminSocket() {
                 return;
               }
               setRoomChat({
-                selection: { instanceKey: key, channelId: data.channelId! },
+                selection: { instanceKey: key, channelId: data.channelId },
                 messages: Array.isArray(data.messages) ? data.messages : [],
               });
             },
@@ -361,43 +464,87 @@ export function useAdminSocket() {
 
   const retry = useCallback(() => setRetryNonce((nonce) => nonce + 1), []);
 
-  const rooms: TaggedRoomSummary[] = useMemo(() => {
-    const merged: TaggedRoomSummary[] = [];
+  const visibleInstances = useMemo(() => {
+    const byIdentity = new Map<string, InstanceStatus>();
     for (const instance of instances) {
-      for (const room of roomsByInstance[instance.key] ?? []) {
-        merged.push({ ...room, instanceKey: instance.key, instanceUrl: instance.url });
+      const identity = instance.instanceId
+        ? `instance:${instance.instanceId}`
+        : `url:${instance.url}`;
+      const existing = byIdentity.get(identity);
+      if (
+        !existing ||
+        CONNECTION_RANK[instance.connection] > CONNECTION_RANK[existing.connection]
+      ) {
+        byIdentity.set(identity, instance);
       }
     }
-    return merged;
-  }, [instances, roomsByInstance]);
+    return Array.from(byIdentity.values());
+  }, [instances]);
+
+  const rooms: TaggedRoomSummary[] = useMemo(() => {
+    const order = instanceOrder(visibleInstances);
+    const byRoom = new Map<string, TaggedRoomSummary>();
+    for (const instance of visibleInstances) {
+      for (const room of roomsByInstance[instance.key] ?? []) {
+        const tagged = {
+          ...room,
+          instanceKey: instance.key,
+          instanceUrl: instance.url,
+        };
+        const key = roomIdentity(tagged);
+        const existing = byRoom.get(key);
+        if (!existing || prefersRoom(tagged, existing, order)) {
+          byRoom.set(key, tagged);
+        }
+      }
+    }
+    return Array.from(byRoom.values());
+  }, [roomsByInstance, visibleInstances]);
 
   const scheduled: TaggedScheduledItem[] = useMemo(() => {
-    const merged: TaggedScheduledItem[] = [];
-    for (const instance of instances) {
+    const order = instanceOrder(visibleInstances);
+    const activeRoomByIdentity = new Map<string, TaggedRoomSummary>();
+    for (const room of rooms) {
+      activeRoomByIdentity.set(`${room.clientId}:${room.roomId}`, room);
+    }
+
+    const byItem = new Map<string, TaggedScheduledItem>();
+    for (const instance of visibleInstances) {
       for (const item of scheduledByInstance[instance.key] ?? []) {
-        merged.push({ ...item, instanceKey: instance.key });
+        const tagged = { ...item, instanceKey: instance.key };
+        const key = scheduledIdentity(tagged);
+        const existing = byItem.get(key);
+        if (
+          !existing ||
+          prefersScheduledItem(tagged, existing, activeRoomByIdentity, order)
+        ) {
+          byItem.set(key, tagged);
+        }
       }
     }
+    const merged = Array.from(byItem.values());
     merged.sort((a, b) => a.startAt - b.startAt);
     return merged;
-  }, [instances, scheduledByInstance]);
+  }, [rooms, scheduledByInstance, visibleInstances]);
 
   const connection: ConnectionState = useMemo(() => {
     if (bootError) return "offline";
-    if (instances.length === 0) return "connecting";
-    if (instances.some((instance) => instance.connection === "live")) return "live";
-    if (instances.some((instance) => instance.connection === "reconnecting")) {
+    if (visibleInstances.length === 0) return "connecting";
+    if (visibleInstances.some((instance) => instance.connection === "live")) {
+      return "live";
+    }
+    if (visibleInstances.some((instance) => instance.connection === "reconnecting")) {
       return "reconnecting";
     }
-    if (instances.every((instance) => instance.connection === "offline")) {
+    if (visibleInstances.every((instance) => instance.connection === "offline")) {
       return "offline";
     }
     return "connecting";
-  }, [bootError, instances]);
+  }, [bootError, visibleInstances]);
 
   /** Cross-pool participant history, index-aligned from the newest sample. */
   const participantsHistory: number[] = useMemo(() => {
-    const series = instances
+    const series = visibleInstances
       .map((instance) => historyByInstance[instance.key] ?? [])
       .filter((points) => points.length > 0);
     if (series.length === 0) return [];
@@ -412,12 +559,12 @@ export function useAdminSocket() {
       summed.push(total);
     }
     return summed;
-  }, [historyByInstance, instances]);
+  }, [historyByInstance, visibleInstances]);
 
   return {
     connection,
     bootError,
-    instances,
+    instances: visibleInstances,
     rooms,
     roomDetail: detail?.room ?? null,
     detailSelection: detail?.selection ?? null,
