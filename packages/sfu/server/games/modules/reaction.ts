@@ -89,6 +89,7 @@ export const reactionModule: GameModule<ReactionState> = {
   description: "Tap the instant it turns green",
   minPlayers: 1,
   maxPlayers: 50,
+  lateJoinPhases: ["arming"],
   tickMs: 120,
   hasLeaderboard: true,
   options: [

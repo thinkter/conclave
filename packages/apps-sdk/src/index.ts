@@ -11,3 +11,4 @@ export * from "./sdk/assets/createAssetUploadHandler";
 export * from "./games/index";
 
 export * as WhiteboardCore from "./apps/whiteboard/core/index";
+export * as WatchCore from "./apps/watch/core/index";

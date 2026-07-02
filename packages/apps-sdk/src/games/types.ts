@@ -61,6 +61,10 @@ export type GamePublicState = {
   hasLeaderboard: boolean;
   /** Public-safe rematch settings. Text options are omitted. */
   config: GameConfig;
+  /** Room members queued to be seated at the next round boundary. */
+  pendingJoiners: GamePlayer[];
+  /** Whether a spectator can currently request a seat for the next round. */
+  canJoinLate: boolean;
 };
 
 export type GameMoveResult = {
@@ -96,6 +100,8 @@ export type GameContextValue = {
   userId: string | null;
   startGame: (gameId: string, options?: GameConfig) => Promise<GameMoveResult>;
   endGame: () => Promise<GameMoveResult>;
+  /** Ask for a seat in the running game; granted at the next round boundary. */
+  joinGame: () => Promise<GameMoveResult>;
   move: (type: string, payload?: unknown) => Promise<GameMoveResult>;
   openVote: (candidateIds?: string[]) => Promise<GameMoveResult>;
   castVote: (gameId: string) => Promise<GameMoveResult>;

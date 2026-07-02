@@ -262,6 +262,7 @@ export const bluffModule: GameModule<BluffState> = {
   description: "Fool the room, find the truth",
   minPlayers: 2,
   maxPlayers: 16,
+  lateJoinPhases: ["write"],
   tickMs: 500,
   hasLeaderboard: true,
   options: [

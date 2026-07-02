@@ -4,6 +4,9 @@
 /* Streamdown ships its own utility classes (used by the AI Elements Response
    component); let Tailwind scan them so markdown rendering is styled. */
 @source "../../../../node_modules/streamdown/dist/**/*.js";
+/* The apps SDK ships web components (whiteboard, watch together) styled with
+   Tailwind classes; it lives outside this app's auto-detected sources. */
+@source "../../../../packages/apps-sdk/src/**/*.{ts,tsx}";
 
 @font-face {
   font-family: "Virgil";
@@ -463,7 +466,7 @@ select:focus {
   border-radius: 16px;
   overflow: hidden;
   border: 1px solid rgba(250, 250, 250, 0.08);
-  /* The active-speaker ring is an INSET shadow, not a border-width change —
+  /* The active-speaker ring is an INSET shadow, not a border-width change;
      toggling 1px→2px border resized the video content box on every speaker
      change and read as jitter/flicker. The shadow keeps the box size constant. */
   transition: border-color 0.12s ease, box-shadow 0.12s ease;
@@ -857,7 +860,7 @@ select:focus {
 
 .mobile-sheet {
   background: var(--mobile-sheet-bg);
-  /* 1px border (incl. the top edge) gives the only separation from the stage —
+  /* 1px border (incl. the top edge) gives the only separation from the stage;
      no elevation glow. */
   border: 1px solid var(--mobile-sheet-border);
   border-bottom: 0;

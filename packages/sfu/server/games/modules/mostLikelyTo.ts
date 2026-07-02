@@ -161,6 +161,7 @@ export const mostLikelyToModule: GameModule<MltState> = {
   description: "Vote who the room picks",
   minPlayers: 3,
   maxPlayers: 50,
+  lateJoinPhases: ["vote"],
   tickMs: 500,
   options: [
     GAME_CONTENT_TOPIC_OPTION,
@@ -276,6 +277,9 @@ export const mostLikelyToModule: GameModule<MltState> = {
       prompt: state.phase === "lobby" ? null : (state.prompts[state.index] ?? null),
       players: ctx.players.map((player) => ({ id: player.id, name: player.name })),
       counts,
+      // Who has locked in a vote (never for whom), so tiles can show a check.
+      votedPlayerIds:
+        state.phase === "vote" || reveal ? Object.keys(state.votes) : [],
       answeredCount: Object.keys(state.votes).length,
       totalPlayers: ctx.activePlayers.length,
       winnerId: reveal ? winnerId : null,

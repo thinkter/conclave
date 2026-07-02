@@ -194,6 +194,7 @@ export const triviaModule: GameModule<TriviaState> = {
   description: "Quick-fire quiz",
   minPlayers: 1,
   maxPlayers: 24,
+  lateJoinPhases: ["question"],
   tickMs: 500,
   hasLeaderboard: true,
   options: [

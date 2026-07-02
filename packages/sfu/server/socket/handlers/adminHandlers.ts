@@ -1532,15 +1532,17 @@ export const registerAdminHandlers = (
       });
     }
 
-    if (delayMs > 0) {
-      setTimeout(() => {
+    // Give the roomEnded broadcast and the admin ack a moment to flush before
+    // the hard disconnect. Closing on the very next tick races the network
+    // write, and a client that loses that race sees a raw socket drop (the
+    // "connection interrupted" reconnect banner) instead of the ended screen.
+    const ROOM_END_FLUSH_GRACE_MS = 400;
+    setTimeout(
+      () => {
         scheduleRoomClosure(roomChannelId, pendingSockets);
-      }, delayMs);
-    } else {
-      setTimeout(() => {
-        scheduleRoomClosure(roomChannelId, pendingSockets);
-      }, 0);
-    }
+      },
+      Math.max(delayMs, ROOM_END_FLUSH_GRACE_MS),
+    );
 
     respond(cb, {
       success: true,

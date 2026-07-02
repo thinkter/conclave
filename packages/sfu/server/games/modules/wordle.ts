@@ -265,6 +265,8 @@ export const wordleModule: GameModule<WordleState> = {
   description: "Guess a hidden five-letter word",
   minPlayers: 1,
   maxPlayers: 32,
+  lateJoinPhases: (state) =>
+    state.wordSource === "setter" ? ["set-word"] : [],
   tickMs: 500,
   options: [
     {

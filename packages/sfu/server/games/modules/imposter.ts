@@ -160,6 +160,9 @@ export const imposterModule: GameModule<ImposterState> = {
   description: "Spot the faker in the room",
   minPlayers: 3,
   maxPlayers: 12,
+  // Roles are fixed at setup and the crew view carries the secret word, so
+  // this game supports neither mid-game seating nor spectating.
+  spectatable: false,
   tickMs: 500,
   options: [
     GAME_CONTENT_TOPIC_OPTION,
