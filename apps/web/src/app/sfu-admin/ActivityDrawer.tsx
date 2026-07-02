@@ -15,13 +15,13 @@ import { Dot, Tag, btnTiny } from "./ui";
 
 const EVENT_TONE: Record<AdminEventType, string> = {
   "room-opened": color.success,
-  "room-closed": color.textFaint as string,
+  "room-closed": color.textFaint,
   "user-joined": color.success,
-  "user-left": color.textFaint as string,
+  "user-left": color.textFaint,
   "screen-started": color.accent,
-  "screen-stopped": color.textFaint as string,
+  "screen-stopped": color.textFaint,
   "room-locked": color.warning,
-  "room-unlocked": color.textFaint as string,
+  "room-unlocked": color.textFaint,
   waiting: color.warning,
 };
 
@@ -61,6 +61,14 @@ const formatRelative = (at: number, now: number): string => {
 
 const PAST_STATUSES = new Set(["ended", "cancelled", "canceled", "completed", "expired"]);
 const LIVE_STATUSES = new Set(["live", "started", "in_progress"]);
+
+const eventIdentity = (event: TaggedAdminEvent): string =>
+  [
+    Math.floor(event.at / 1000),
+    event.channelId,
+    event.type,
+    event.message,
+  ].join(":");
 
 function CopyLinkButton({ path }: { path: string }) {
   const [copied, setCopied] = useState(false);
@@ -123,12 +131,17 @@ export function ActivityDrawer({
   }, [instances]);
 
   const visibleEvents = useMemo(() => {
-    if (!onlySelectedRoom || !selected) return events;
-    return events.filter(
-      (event) =>
-        event.instanceKey === selected.instanceKey &&
-        event.channelId === selected.channelId,
-    );
+    const scoped =
+      onlySelectedRoom && selected
+        ? events.filter((event) => event.channelId === selected.channelId)
+        : events;
+    const seen = new Set<string>();
+    return scoped.filter((event) => {
+      const key = eventIdentity(event);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
   }, [events, onlySelectedRoom, selected]);
 
   const scheduledGroups = useMemo(() => {
@@ -140,7 +153,6 @@ export function ActivityDrawer({
       const status = item.status.toLowerCase();
       const activeRoom = rooms.find(
         (room) =>
-          room.instanceKey === item.instanceKey &&
           room.roomId === item.roomId &&
           room.clientId === item.clientId,
       );
@@ -163,7 +175,6 @@ export function ActivityDrawer({
     const status = item.status.toLowerCase();
     const activeRoom = rooms.find(
       (room) =>
-        room.instanceKey === item.instanceKey &&
         room.roomId === item.roomId &&
         room.clientId === item.clientId,
     );
@@ -178,7 +189,7 @@ export function ActivityDrawer({
 
     return (
       <div
-        key={`${item.instanceKey}-${item.kind}-${item.id}`}
+        key={`${item.kind}-${item.clientId}-${item.id}`}
         className="rounded-lg border px-2.5 py-2"
         style={{ borderColor: color.border, backgroundColor: color.surface }}
       >
@@ -302,7 +313,15 @@ export function ActivityDrawer({
                 <li key={`${event.at}-${index}`}>
                   <button
                     type="button"
-                    onClick={() => onPickRoom(event.instanceKey, event.channelId)}
+                    onClick={() => {
+                      const activeRoom = rooms.find(
+                        (room) => room.channelId === event.channelId,
+                      );
+                      onPickRoom(
+                        activeRoom?.instanceKey ?? event.instanceKey,
+                        event.channelId,
+                      );
+                    }}
                     className="flex w-full items-start gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-white/[0.04]"
                   >
                     <span className="mt-[5px]">
