@@ -91,6 +91,10 @@ export type GameMove = {
   payload: unknown;
 };
 
+type LateJoinPhasesResolver<S> = {
+  bivarianceHack(state: S, ctx: GameContext): string[];
+}["bivarianceHack"];
+
 /**
  * A game module is the authoritative definition of one game. It is pure with
  * respect to its own state: every method takes the current state and returns
@@ -109,6 +113,18 @@ export type GameModule<S = unknown> = {
   /** When true, the dock shows a live leaderboard (the publicView must expose a
    *  `scoreboard` array of `{ id, name, score }`). */
   hasLeaderboard?: boolean;
+  /**
+   * Phases whose ENTRY is a safe round boundary for seating queued late
+   * joiners (e.g. trivia's "question"). Omit, leave empty, or return an empty
+   * list when mid-game joining does not fit the current state/config.
+   */
+  lateJoinPhases?: string[] | LateJoinPhasesResolver<S>;
+  /**
+   * Whether non-players may receive this game's `playerView` as a read-only
+   * spectator projection. Defaults to true; set false when the view for an
+   * arbitrary id would leak a secret (imposter's crew view reveals the word).
+   */
+  spectatable?: boolean;
 
   /** Optional async content loader, used before setup for AI-backed prompts. */
   generateContent?(ctx: GameContentContext): Promise<unknown | null>;
@@ -172,6 +188,11 @@ export type GameEndResponse = {
   error?: string;
 };
 
+export type GameJoinResponse = {
+  success: boolean;
+  error?: string;
+};
+
 /** Broadcast to the whole room on every state change. */
 export type GamePublicState = {
   gameId: string;
@@ -182,6 +203,10 @@ export type GamePublicState = {
   view: unknown;
   finished: boolean;
   hasLeaderboard: boolean;
+  /** Room members queued to be seated at the next round boundary. */
+  pendingJoiners: GamePlayer[];
+  /** Whether a spectator can currently request a seat for the next round. */
+  canJoinLate: boolean;
   /** Public-safe rematch settings. Text options are omitted. */
   config: GameConfig;
 };

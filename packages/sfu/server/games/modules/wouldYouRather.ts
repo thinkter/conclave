@@ -198,6 +198,7 @@ export const wouldYouRatherModule: GameModule<WyrState> = {
   description: "Pick a side, no wrong answers",
   minPlayers: 1,
   maxPlayers: 50,
+  lateJoinPhases: ["choose"],
   tickMs: 500,
   options: [
     GAME_CONTENT_TOPIC_OPTION,

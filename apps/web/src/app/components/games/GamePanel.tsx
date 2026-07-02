@@ -41,9 +41,10 @@ export function GamePanel({
   maxDockWidth?: number;
   onDockWidthChange?: (width: number) => void;
 }) {
-  const { publicState, view, isAdmin, isReadOnly, userId, move, endGame, startGame } =
+  const { publicState, view, isAdmin, isReadOnly, userId, move, endGame, startGame, joinGame } =
     useGame();
   const [rematchBusy, setRematchBusy] = useState(false);
+  const [joinBusy, setJoinBusy] = useState(false);
   if (!publicState) return null;
 
   const canControl = isAdmin && !isReadOnly;
@@ -63,6 +64,25 @@ export function GamePanel({
   const isPlayer = Boolean(
     userId && publicState.players.some((player) => player.id === userId),
   );
+  const isPendingJoiner = Boolean(
+    userId &&
+      publicState.pendingJoiners.some((player) => player.id === userId),
+  );
+  // Spectators receive a read-only projection for games that allow it; when
+  // the view is absent (imposter keeps secrets), fall back to the blocked copy.
+  const isSpectating = !isPlayer && view != null;
+  const canRequestSeat =
+    !isPlayer && !isReadOnly && !publicState.finished && publicState.canJoinLate;
+
+  const handleJoin = async () => {
+    if (joinBusy || isPendingJoiner) return;
+    setJoinBusy(true);
+    try {
+      await joinGame();
+    } finally {
+      setJoinBusy(false);
+    }
+  };
 
   return (
     <aside
@@ -108,14 +128,28 @@ export function GamePanel({
           <p style={{ fontSize: 13, color: color.textFaint }}>
             This game is not supported on web yet.
           </p>
-        ) : !isPlayer ? (
+        ) : !isPlayer && !isSpectating ? (
           <div style={{ padding: "18px 4px", textAlign: "center" }}>
             <p style={{ fontFamily: HEAD_FONT, fontSize: 17, color: color.text, margin: 0 }}>
               Game in progress
             </p>
             <p style={{ fontSize: 13, color: color.textMuted, lineHeight: 1.5, margin: "8px 0 0" }}>
-              This round started before you joined. You can watch the room and join the next game.
+              This game keeps its rounds private while running.
             </p>
+            {isPendingJoiner ? (
+              <p style={{ fontSize: 13, color: color.accent, margin: "14px 0 0" }}>
+                You will join at the next round
+              </p>
+            ) : canRequestSeat ? (
+              <button
+                type="button"
+                onClick={handleJoin}
+                disabled={joinBusy}
+                className="mt-4 inline-flex h-8 items-center justify-center rounded-lg border border-white/10 px-3 text-[12px] font-medium text-[#fafafa] transition-colors hover:bg-white/[0.06] disabled:opacity-60"
+              >
+                {joinBusy ? "Joining" : "Join next round"}
+              </button>
+            ) : null}
           </div>
         ) : view == null ? (
           <div style={{ padding: "18px 4px", textAlign: "center" }}>
@@ -128,12 +162,30 @@ export function GamePanel({
           </div>
         ) : (
           <>
+            {!isPlayer ? (
+              <div className="mb-3 flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
+                <span style={{ fontSize: 12.5, color: color.textMuted }}>
+                  {isPendingJoiner ? "Joining at the next round" : "Watching"}
+                </span>
+                {!isPendingJoiner && canRequestSeat ? (
+                  <button
+                    type="button"
+                    onClick={handleJoin}
+                    disabled={joinBusy}
+                    style={{ backgroundColor: color.accent }}
+                    className="inline-flex h-7 shrink-0 items-center justify-center rounded-lg px-2.5 text-[12px] font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+                  >
+                    {joinBusy ? "Joining" : "Join next round"}
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
             <Game
               pub={publicState.view as never}
               me={view as never}
               players={publicState.players}
               isAdmin={isAdmin}
-              readOnly={isReadOnly}
+              readOnly={isReadOnly || !isPlayer}
               userId={userId}
               hostId={publicState.hostId}
               phase={publicState.phase}

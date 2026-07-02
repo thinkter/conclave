@@ -161,6 +161,7 @@ export const mostLikelyToModule: GameModule<MltState> = {
   description: "Vote who the room picks",
   minPlayers: 3,
   maxPlayers: 50,
+  lateJoinPhases: ["vote"],
   tickMs: 500,
   options: [
     GAME_CONTENT_TOPIC_OPTION,

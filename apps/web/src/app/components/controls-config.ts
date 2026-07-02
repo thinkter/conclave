@@ -10,6 +10,7 @@ import {
   Mic,
   MicOff,
   Monitor,
+  MonitorPlay,
   PictureInPicture2,
   ScanFace,
   Shield,
@@ -107,6 +108,9 @@ export interface ControlsBarProps {
   isWhiteboardActive?: boolean;
   onOpenWhiteboard?: () => void;
   onCloseWhiteboard?: () => void;
+  isWatchActive?: boolean;
+  onOpenWatch?: () => void;
+  onCloseWatch?: () => void;
   isDevPlaygroundEnabled?: boolean;
   isDevPlaygroundActive?: boolean;
   onOpenDevPlayground?: () => void;
@@ -182,6 +186,9 @@ export const BROWSER_APPS: { id: string; name: string; description: string; url:
 
 export function canManageWhiteboard(p: ControlsBarProps): boolean {
   return Boolean(p.isAdmin && (p.onOpenWhiteboard || p.onCloseWhiteboard));
+}
+export function canManageWatch(p: ControlsBarProps): boolean {
+  return Boolean(p.isAdmin && (p.onOpenWatch || p.onCloseWatch));
 }
 export function canManageDevPlayground(p: ControlsBarProps): boolean {
   return Boolean(
@@ -404,6 +411,15 @@ export function buildControlsConfig(p: ControlsBarProps): ControlsConfig {
       label: p.isWhiteboardActive ? "Close whiteboard" : "Open whiteboard",
       active: p.isWhiteboardActive,
       onPress: () => (p.isWhiteboardActive ? p.onCloseWhiteboard?.() : p.onOpenWhiteboard?.()),
+    });
+  }
+  if (canManageWatch(p)) {
+    overflow.push({
+      id: "watch",
+      icon: MonitorPlay,
+      label: p.isWatchActive ? "Close watch together" : "Watch together",
+      active: p.isWatchActive,
+      onPress: () => (p.isWatchActive ? p.onCloseWatch?.() : p.onOpenWatch?.()),
     });
   }
   if (canManageDevPlayground(p)) {

@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch, PointerEvent, SetStateAction } from "react";
-import { Home, LogOut, Plus, RefreshCw } from "lucide-react";
+import { Home, Loader2, LogOut, Plus, RefreshCw } from "lucide-react";
 import type { Socket } from "socket.io-client";
 import type { RoomInfo } from "@/lib/sfu-types";
 import ChatOverlay from "./ChatOverlay";
@@ -12,6 +12,7 @@ import ControlsBar from "./ControlsBar";
 import GridLayout from "./GridLayout";
 import ConnectionBanner from "./ConnectionBanner";
 import AdminNoticePill from "./AdminNoticePill";
+import CatchUpPill from "./CatchUpPill";
 import ParticipantsPanel from "./ParticipantsPanel";
 import MeetSettingsPanel from "./MeetSettingsPanel";
 import MeetViewPanel from "./MeetViewPanel";
@@ -21,6 +22,7 @@ import DevPlaygroundLayout from "./DevPlaygroundLayout";
 import ScreenShareAudioPlayers from "./ScreenShareAudioPlayers";
 import SystemAudioPlayers from "./SystemAudioPlayers";
 import WhiteboardLayout from "./WhiteboardLayout";
+import WatchLayout from "./WatchLayout";
 import ParticipantVideo from "./ParticipantVideo";
 import ToastQueue from "./ToastQueue";
 import TranscriptPanel from "./TranscriptPanel";
@@ -29,7 +31,11 @@ import type { BrowserState } from "../hooks/useSharedBrowser";
 import type {
   ConclaveAssistantApiKeyPromptState,
 } from "../hooks/useMeetChat";
-import type { ConclaveAssistantModel } from "../lib/conclave-assistant";
+import {
+  CONCLAVE_ASSISTANT_USER_ID,
+  type AssistantChatMessage,
+  type ConclaveAssistantModel,
+} from "../lib/conclave-assistant";
 import type {
   VideoEffectsDebugStats,
   VideoEffectsRuntimeStatus,
@@ -497,12 +503,15 @@ export default function MeetsMainContent({
   const isDevToolsEnabled = process.env.NODE_ENV === "development";
   const isDevPlaygroundEnabled = isDevToolsEnabled;
   const isWhiteboardActive = appsState.activeAppId === "whiteboard";
+  const isWatchActive = appsState.activeAppId === "watch";
   const isDevPlaygroundActive = appsState.activeAppId === "dev-playground";
   const handleOpenWhiteboard = useCallback(
     () => openApp("whiteboard"),
     [openApp],
   );
   const handleCloseWhiteboard = useCallback(() => closeApp(), [closeApp]);
+  const handleOpenWatch = useCallback(() => openApp("watch"), [openApp]);
+  const handleCloseWatch = useCallback(() => closeApp(), [closeApp]);
   const handleOpenDevPlayground = useCallback(
     () => openApp("dev-playground"),
     [openApp],
@@ -561,6 +570,17 @@ export default function MeetsMainContent({
   const [isVideoEffectsOpen, setIsVideoEffectsOpen] = useState(false);
   const [isViewPanelOpen, setIsViewPanelOpen] = useState(false);
   const [isTranscriptOpen, setIsTranscriptOpen] = useState(false);
+  // Which tab the transcript panel mounts on; the catch-up pill sets "minutes".
+  const [transcriptInitialTab, setTranscriptInitialTab] = useState<
+    "transcript" | "ask" | "minutes"
+  >("transcript");
+  // When this participant joined, for the late-join catch-up gate.
+  const [joinedAt, setJoinedAt] = useState<number | null>(null);
+  useEffect(() => {
+    if (isJoined && joinedAt == null) {
+      setJoinedAt(Date.now());
+    }
+  }, [isJoined, joinedAt]);
   const [canReserveDockedPanel, setCanReserveDockedPanel] = useState(false);
   const [viewportWidth, setViewportWidth] = useState(1280);
   const [gameDockWidth, setGameDockWidth] = useState(
@@ -1117,13 +1137,38 @@ export default function MeetsMainContent({
       setIsHostControlsOpen(false);
       setIsVideoEffectsOpen(false);
       setIsViewPanelOpen(false);
+    } else {
+      setTranscriptInitialTab("transcript");
     }
     setIsTranscriptOpen(opening);
   }, [isTranscriptOpen, setIsParticipantsOpen, toggleChat]);
 
   const handleCloseTranscript = useCallback(() => {
     setIsTranscriptOpen(false);
+    setTranscriptInitialTab("transcript");
   }, []);
+
+  // Catch-up moment for late joiners: while a transcript session is live and
+  // this participant joined well after it started, a quiet pill offers the
+  // live minutes. Opens the panel straight on the minutes tab.
+  const handleOpenCatchUp = useCallback(() => {
+    setTranscriptInitialTab("minutes");
+    if (!isTranscriptOpen) {
+      handleToggleTranscript();
+    }
+  }, [isTranscriptOpen, handleToggleTranscript]);
+
+  // Wrap-up moment: asks Conclave in the room chat for a recap, visible to
+  // everyone through the existing assistant relay. Only offered while the
+  // opt-in transcript session is running (the button lives in the minutes tab).
+  const canPostRecapToChat = !ghostEnabled && (!isChatLocked || isAdmin);
+  const handlePostRecap = useCallback((): boolean => {
+    if (!canPostRecapToChat) return false;
+    sendChat(
+      "@Conclave wrap up the meeting. Post a short recap: what we covered, decisions made, and action items with owners.",
+    );
+    return true;
+  }, [canPostRecapToChat, sendChat]);
 
   const handleToggleVideoFraming = useCallback(() => {
     if (!deferVideoEffectsPreload) {
@@ -1221,10 +1266,72 @@ export default function MeetsMainContent({
     [onPendingUserStale, setPendingUsers],
   );
 
-  const handleEndRoomForEveryone = useCallback(() => {
+  // The wrap-up intercept: when the host ends the call for everyone while the
+  // opt-in transcript is live and has content, offer to post a recap to chat
+  // first. "idle" ends immediately as before; "confirm" shows the choice;
+  // "posting" waits for the recap to land in chat, then ends.
+  const [endFlowState, setEndFlowState] = useState<
+    "idle" | "confirm" | "posting"
+  >("idle");
+  const recapRequestedAtRef = useRef(0);
+
+  const endRoomNow = useCallback(() => {
+    setEndFlowState("idle");
     if (!endRoomForEveryone) return;
     void endRoomForEveryone();
   }, [endRoomForEveryone]);
+
+  const handleEndRoomForEveryone = useCallback(() => {
+    if (!endRoomForEveryone) return;
+    const canOfferRecap =
+      canPostRecapToChat &&
+      transcript.isLive &&
+      transcript.allSegments.length > 0 &&
+      endFlowState === "idle";
+    if (canOfferRecap) {
+      setEndFlowState("confirm");
+      return;
+    }
+    void endRoomForEveryone();
+  }, [
+    endRoomForEveryone,
+    canPostRecapToChat,
+    transcript.isLive,
+    transcript.allSegments.length,
+    endFlowState,
+  ]);
+
+  const handlePostRecapAndEnd = useCallback(() => {
+    recapRequestedAtRef.current = Date.now();
+    if (!handlePostRecap()) {
+      endRoomNow();
+      return;
+    }
+    setEndFlowState("posting");
+  }, [endRoomNow, handlePostRecap]);
+
+  // End once the recap answer finishes streaming into chat (or errors), so the
+  // room actually sees it before the call closes.
+  useEffect(() => {
+    if (endFlowState !== "posting") return;
+    const requestedAt = recapRequestedAtRef.current;
+    const settled = chatMessages.some((message) => {
+      if (message.userId !== CONCLAVE_ASSISTANT_USER_ID) return false;
+      if (message.timestamp < requestedAt) return false;
+      const status = (message as AssistantChatMessage).assistantStatus;
+      return status === "done" || status === "error";
+    });
+    if (settled) {
+      endRoomNow();
+    }
+  }, [chatMessages, endFlowState, endRoomNow]);
+
+  // Safety cap so a stalled stream can never trap the host in the meeting.
+  useEffect(() => {
+    if (endFlowState !== "posting") return;
+    const timer = window.setTimeout(endRoomNow, 30_000);
+    return () => window.clearTimeout(timer);
+  }, [endFlowState, endRoomNow]);
 
   const hasBrowserAudio = useMemo(
     () =>
@@ -1429,6 +1536,83 @@ export default function MeetsMainContent({
         </div>
       )}
       {isJoined && <AdminNoticePill notice={adminNotice} />}
+      {isJoined && !isWebinarAttendee && !isTranscriptOpen && transcript.isLive ? (
+        <CatchUpPill
+          startedAt={transcript.session.startedAt}
+          joinedAt={joinedAt}
+          sessionKey={`${transcript.session.roomId}:${transcript.session.startedAt ?? 0}`}
+          onOpen={handleOpenCatchUp}
+        />
+      ) : null}
+      {endFlowState !== "idle" ? (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/55 px-4">
+          <div
+            className="w-full max-w-[22rem] rounded-2xl border border-white/10 bg-[#18181b] p-5"
+            style={{ fontFamily: "'PolySans Trial', sans-serif" }}
+            role="dialog"
+            aria-modal="true"
+            aria-label="End call for everyone"
+          >
+            {endFlowState === "confirm" ? (
+              <>
+                <h2 className="text-[15px] font-semibold text-[#fafafa]">
+                  End call for everyone?
+                </h2>
+                <p className="mt-1.5 text-[12.5px] leading-relaxed text-[#a1a1aa]">
+                  Conclave can post a recap of the meeting to chat before the
+                  call ends.
+                </p>
+                <div className="mt-4 flex flex-col gap-2">
+                  <button
+                    type="button"
+                    onClick={handlePostRecapAndEnd}
+                    className="w-full rounded-xl bg-[#F95F4A] px-3.5 py-2.5 text-[13px] font-medium text-white transition-opacity hover:opacity-90"
+                  >
+                    Post recap and end
+                  </button>
+                  <button
+                    type="button"
+                    onClick={endRoomNow}
+                    className="w-full rounded-xl border border-white/10 px-3.5 py-2.5 text-[13px] font-medium text-[#fafafa] transition-colors hover:bg-white/[0.06]"
+                  >
+                    End without recap
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEndFlowState("idle")}
+                    className="w-full rounded-xl px-3.5 py-2 text-[12.5px] font-medium text-[#a1a1aa] transition-colors hover:text-[#fafafa]"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h2 className="text-[15px] font-semibold text-[#fafafa]">
+                  Posting recap
+                </h2>
+                <p className="mt-1.5 text-[12.5px] leading-relaxed text-[#a1a1aa]">
+                  Conclave is writing the recap in chat. The call ends for
+                  everyone once it lands.
+                </p>
+                <div className="mt-4 flex items-center justify-between gap-3">
+                  <span className="inline-flex items-center gap-2 text-[12px] text-[#a1a1aa]">
+                    <Loader2 size={13} className="animate-spin text-[#4F9CF9]" />
+                    Posting to chat
+                  </span>
+                  <button
+                    type="button"
+                    onClick={endRoomNow}
+                    className="rounded-xl border border-white/10 px-3 py-1.5 text-[12px] font-medium text-[#fafafa] transition-colors hover:bg-white/[0.06]"
+                  >
+                    End now
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      ) : null}
       <SystemAudioPlayers
         participants={participants}
         audioOutputDeviceId={audioOutputDeviceId}
@@ -1647,6 +1831,21 @@ export default function MeetsMainContent({
           audioOutputDeviceId={audioOutputDeviceId}
           getDisplayName={resolveDisplayName}
         />
+      ) : isWatchActive ? (
+        <WatchLayout
+          localStream={localStream}
+          isCameraOff={isCameraOff}
+          isMuted={isMuted}
+          isHandRaised={isHandRaised}
+          isGhost={ghostEnabled}
+          participants={participants}
+          userEmail={userEmail}
+          isMirrorCamera={mirrorLocalPreview}
+          activeSpeakerId={activeSpeakerId}
+          currentUserId={currentUserId}
+          audioOutputDeviceId={audioOutputDeviceId}
+          getDisplayName={resolveDisplayName}
+        />
       ) : isDevPlaygroundEnabled && isDevPlaygroundActive ? (
         <DevPlaygroundLayout
           localStream={localStream}
@@ -1836,6 +2035,9 @@ export default function MeetsMainContent({
                 isWhiteboardActive={isWhiteboardActive}
                 onOpenWhiteboard={isAdmin ? handleOpenWhiteboard : undefined}
                 onCloseWhiteboard={isAdmin ? handleCloseWhiteboard : undefined}
+                isWatchActive={isWatchActive}
+                onOpenWatch={isAdmin ? handleOpenWatch : undefined}
+                onCloseWatch={isAdmin ? handleCloseWatch : undefined}
                 isDevPlaygroundEnabled={isDevPlaygroundEnabled}
                 isDevPlaygroundActive={isDevPlaygroundActive}
                 onOpenDevPlayground={
@@ -1920,6 +2122,8 @@ export default function MeetsMainContent({
         <TranscriptPanel
           transcript={transcript}
           onClose={handleCloseTranscript}
+          initialTab={transcriptInitialTab}
+          onPostRecap={canPostRecapToChat ? handlePostRecap : undefined}
         />
       )}
 

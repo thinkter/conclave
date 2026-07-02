@@ -17,11 +17,12 @@ import {
   Pause,
   Play,
   RefreshCw,
+  Send,
   Square,
   Tag,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import type {
   MeetingTranscriptController,
   TranscriptQaMessage,
@@ -69,6 +70,13 @@ import {
 interface TranscriptPanelProps {
   transcript: MeetingTranscriptController;
   onClose: () => void;
+  /** Which tab to show when the panel mounts, e.g. "minutes" from catch up. */
+  initialTab?: TranscriptTab;
+  /**
+   * Posts a meeting recap into the room chat through the assistant. Omit to
+   * hide the action (ghost mode, webinar attendees).
+   */
+  onPostRecap?: () => boolean;
 }
 
 type TranscriptTab = "transcript" | "ask" | "minutes";
@@ -181,7 +189,9 @@ function MinutesStatusBar({
         {isWorking ? (
           <>
             <Loader2 size={11} className="animate-spin text-[#4F9CF9]" />
-            <Shimmer className="text-[11.5px]">Updating minutes</Shimmer>
+            <Shimmer as="span" className="text-[11.5px]">
+              Updating minutes
+            </Shimmer>
           </>
         ) : (
           <span className="truncate">
@@ -607,7 +617,7 @@ function MinutesBuilding() {
       title={
         <span className="inline-flex items-center gap-2">
           <Loader2 size={13} className="animate-spin text-[#4F9CF9]" />
-          <Shimmer className="text-[14px] font-semibold">
+          <Shimmer as="span" className="text-[14px] font-semibold">
             Cooking up minutes
           </Shimmer>
         </span>
@@ -618,8 +628,25 @@ function MinutesBuilding() {
   );
 }
 
+/** A pause long enough that a quiet time marker helps you scan back later. */
+const TRANSCRIPT_PAUSE_MARKER_MS = 3 * 60 * 1000;
+
 function TranscriptView({ segments }: { segments: TranscriptSegment[] }) {
-  const groups = useMemo(() => groupSegments(segments), [segments]);
+  // Groups plus a "long pause before this group" flag, so lulls in the
+  // conversation become scannable time markers instead of invisible seams.
+  const rows = useMemo(() => {
+    const groups = groupSegments(segments);
+    let previousEndMs: number | null = null;
+    return groups.map((group) => {
+      const first = group.segments[0];
+      const last = group.segments[group.segments.length - 1];
+      const pauseBefore =
+        previousEndMs != null &&
+        first.startMs - previousEndMs >= TRANSCRIPT_PAUSE_MARKER_MS;
+      previousEndMs = last.endMs ?? last.updatedAt ?? last.startMs;
+      return { group, pauseBefore };
+    });
+  }, [segments]);
 
   if (segments.length === 0) {
     return <TranscriptFallback />;
@@ -628,39 +655,55 @@ function TranscriptView({ segments }: { segments: TranscriptSegment[] }) {
   return (
     <Conversation>
       <ConversationContent className="gap-4">
-        {groups.map((group) => {
+        {rows.map(({ group, pauseBefore }) => {
           const isLive = group.segments.some((segment) => !segment.isFinal);
           return (
-            <Message key={group.key} from="assistant" className="max-w-full gap-1.5">
-              <div className="flex w-full items-baseline justify-between gap-3">
-                <span className="truncate text-[12px] font-semibold text-[#fafafa]">
-                  {group.speakerDisplayName}
-                </span>
-                <span className="shrink-0 text-[10.5px] tabular-nums text-[#71717a]">
-                  {formatTranscriptTimestamp(group.segments[0].startMs)}
-                </span>
-              </div>
-              <MessageContent
-                className={[
-                  "w-full gap-1 transition-colors",
-                  isLive ? "border-[#4F9CF9]/35 bg-[#4F9CF9]/[0.06]" : "",
-                ].join(" ")}
+            <Fragment key={group.key}>
+              {pauseBefore ? (
+                <div className="flex items-center gap-3 px-1" aria-hidden="true">
+                  <span className="h-px flex-1 bg-white/[0.06]" />
+                  <span className="text-[10px] tabular-nums text-[#52525b]">
+                    {formatTranscriptTimestamp(group.segments[0].startMs)}
+                  </span>
+                  <span className="h-px flex-1 bg-white/[0.06]" />
+                </div>
+              ) : null}
+              {/* One-shot settle on mount so new speech eases in instead of
+                  popping. A single fade, never a loop. */}
+              <Message
+                from="assistant"
+                className="max-w-full animate-[acm-fade-in_220ms_ease-out] gap-1.5"
               >
-                {group.segments.map((segment) => (
-                  <p
-                    key={segment.itemId}
-                    className={
-                      segment.isFinal ? "text-[#e4e4e7]" : "text-[#a1a1aa]"
-                    }
-                  >
-                    {segment.text}
-                    {!segment.isFinal ? (
-                      <span className="ml-1 inline-block h-3 w-0.5 animate-pulse rounded-full bg-[#4F9CF9] align-middle" />
-                    ) : null}
-                  </p>
-                ))}
-              </MessageContent>
-            </Message>
+                <div className="flex w-full items-baseline justify-between gap-3">
+                  <span className="truncate text-[12px] font-semibold text-[#fafafa]">
+                    {group.speakerDisplayName}
+                  </span>
+                  <span className="shrink-0 text-[10.5px] tabular-nums text-[#52525b]">
+                    {formatTranscriptTimestamp(group.segments[0].startMs)}
+                  </span>
+                </div>
+                <MessageContent
+                  className={[
+                    "w-full gap-1 transition-colors duration-300",
+                    isLive ? "border-[#4F9CF9]/35 bg-[#4F9CF9]/[0.06]" : "",
+                  ].join(" ")}
+                >
+                  {group.segments.map((segment) => (
+                    <p
+                      key={segment.itemId}
+                      className={`leading-relaxed transition-colors duration-300 ${
+                        segment.isFinal ? "text-[#e4e4e7]" : "text-[#a1a1aa]"
+                      }`}
+                    >
+                      {segment.text}
+                      {!segment.isFinal ? (
+                        <span className="ml-1 inline-block h-3 w-[2px] rounded-full bg-[#4F9CF9]/80 align-middle" />
+                      ) : null}
+                    </p>
+                  ))}
+                </MessageContent>
+              </Message>
+            </Fragment>
           );
         })}
       </ConversationContent>
@@ -821,19 +864,30 @@ function MinutesTask({
 
 function MinutesView({
   transcript,
+  onPostRecap,
 }: {
   transcript: MeetingTranscriptController;
+  onPostRecap?: () => boolean;
 }) {
   const minutes = transcript.minutes;
   const hasMinutes = hasMinutesContent(minutes);
   const status = transcript.session.status;
   const isRunning = status === "live" || status === "paused";
+  const [recapPosted, setRecapPosted] = useState(false);
+
+  useEffect(() => {
+    if (!recapPosted) return;
+    const timer = window.setTimeout(() => setRecapPosted(false), 5_000);
+    return () => window.clearTimeout(timer);
+  }, [recapPosted]);
 
   if (!hasMinutes) {
     // While a session is live we're actively working toward minutes; only fall
     // back to the static "build as you talk" hint when nothing is running.
     return isRunning ? <MinutesBuilding /> : <MinutesFallback />;
   }
+
+  const canPostRecap = Boolean(onPostRecap) && !transcript.isViewOnly;
 
   return (
     <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
@@ -872,6 +926,40 @@ function MinutesView({
         icon={<ListChecks size={14} strokeWidth={1.8} />}
         items={minutes.followUps}
       />
+      {canPostRecap ? (
+        <div className="border-t border-white/[0.06] pt-3">
+          <button
+            type="button"
+            disabled={recapPosted}
+            onClick={() => {
+              if (recapPosted) return;
+              if (onPostRecap?.()) {
+                setRecapPosted(true);
+              }
+            }}
+            className={`flex w-full items-center justify-center gap-2 rounded-xl border px-3.5 py-2.5 text-[12.5px] font-medium transition-colors ${
+              recapPosted
+                ? "border-white/[0.06] bg-white/[0.02] text-[#a1a1aa]"
+                : "border-white/10 bg-white/[0.03] text-[#fafafa] hover:bg-white/[0.07]"
+            }`}
+          >
+            {recapPosted ? (
+              <>
+                <Check size={14} strokeWidth={1.8} className="text-[#22A578]" />
+                Recap posted to chat
+              </>
+            ) : (
+              <>
+                <Send size={13} strokeWidth={1.8} className="text-[#71717a]" />
+                Post recap to chat
+              </>
+            )}
+          </button>
+          <p className="mt-2 text-center text-[11px] leading-snug text-[#71717a]">
+            Conclave writes a short recap in the room chat for everyone.
+          </p>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -879,8 +967,12 @@ function MinutesView({
 export default function TranscriptPanel({
   transcript,
   onClose,
+  initialTab,
+  onPostRecap,
 }: TranscriptPanelProps) {
-  const [activeTab, setActiveTab] = useState<TranscriptTab>("transcript");
+  const [activeTab, setActiveTab] = useState<TranscriptTab>(
+    initialTab ?? "transcript",
+  );
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">(
     "idle",
   );
@@ -1096,7 +1188,7 @@ export default function TranscriptPanel({
             ) : activeTab === "ask" && !transcript.isViewOnly ? (
               <AskView messages={transcript.qaMessages} onAsk={transcript.ask} />
             ) : (
-              <MinutesView transcript={transcript} />
+              <MinutesView transcript={transcript} onPostRecap={onPostRecap} />
             )}
           </div>
 

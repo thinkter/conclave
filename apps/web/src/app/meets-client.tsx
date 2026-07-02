@@ -16,6 +16,7 @@ import {
   registerApps,
 } from "@conclave/apps-sdk";
 import { devPlaygroundApp } from "@conclave/apps-sdk/dev-playground/web";
+import { watchApp } from "@conclave/apps-sdk/watch/web";
 import { whiteboardApp } from "@conclave/apps-sdk/whiteboard/web";
 import MeetsErrorBanner from "./components/MeetsErrorBanner";
 import MeetsHeader from "./components/MeetsHeader";
@@ -545,10 +546,10 @@ export default function MeetsClient({
 
   useEffect(() => {
     if (process.env.NODE_ENV === "development") {
-      registerApps([whiteboardApp, devPlaygroundApp]);
+      registerApps([whiteboardApp, watchApp, devPlaygroundApp]);
       return;
     }
-    registerApps([whiteboardApp]);
+    registerApps([whiteboardApp, watchApp]);
   }, []);
 
   const prewarm = usePrewarmSocket();

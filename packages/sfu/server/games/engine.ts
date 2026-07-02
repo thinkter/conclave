@@ -30,6 +30,8 @@ export class GameSession {
   private readonly content: unknown | null;
   private state: unknown;
   private finished = false;
+  /** Room members waiting for a seat at the next round boundary. */
+  private pendingJoiners: GamePlayer[] = [];
 
   constructor(options: {
     module: GameModule;
@@ -77,7 +79,12 @@ export class GameSession {
     players: GamePlayer[];
     adminIds: Iterable<string>;
   }): void {
-    this.activePlayers = dedupePlayers(options.players).filter((player) =>
+    const roomPlayers = dedupePlayers(options.players);
+    const roomPlayerIds = new Set(roomPlayers.map((player) => player.id));
+    this.pendingJoiners = this.pendingJoiners.filter((player) =>
+      roomPlayerIds.has(player.id),
+    );
+    this.activePlayers = roomPlayers.filter((player) =>
       this.playerIds.has(player.id),
     );
     this.adminIds = new Set(options.adminIds);
@@ -93,6 +100,75 @@ export class GameSession {
       now,
       isAdmin: (playerId: string) => this.adminIds.has(playerId),
     };
+  }
+
+  /** Whether non-players may receive a projected view of this game. */
+  get spectatable(): boolean {
+    return this.module.spectatable !== false;
+  }
+
+  hasPendingPlayer(playerId: string): boolean {
+    return this.pendingJoiners.some((player) => player.id === playerId);
+  }
+
+  private getLateJoinPhases(now: number = Date.now()): string[] {
+    const phases = this.module.lateJoinPhases;
+    if (!phases) return [];
+    if (typeof phases === "function") {
+      return phases(this.state, this.context(now));
+    }
+    return phases;
+  }
+
+  /**
+   * Queue a room member for a seat at the next round boundary. The seat is
+   * granted when the game transitions into one of the module's declared
+   * `lateJoinPhases`, so a joiner never lands mid-round with impossible state.
+   */
+  requestSeat(
+    player: GamePlayer,
+  ): { ok: true } | { ok: false; error: string } {
+    if (this.finished) {
+      return { ok: false, error: "Game has ended" };
+    }
+    if (this.hasPlayer(player.id)) {
+      return { ok: false, error: "You are already in this game" };
+    }
+    if (this.hasPendingPlayer(player.id)) {
+      return { ok: true };
+    }
+    if (this.getLateJoinPhases().length === 0) {
+      return { ok: false, error: "This game does not support joining mid-game" };
+    }
+    if (
+      this.players.length + this.pendingJoiners.length >=
+      this.module.maxPlayers
+    ) {
+      return { ok: false, error: "Game is full" };
+    }
+    this.pendingJoiners.push({ id: player.id, name: player.name });
+    return { ok: true };
+  }
+
+  /**
+   * Seat queued joiners when the phase just transitioned into a declared
+   * late-join phase (a fresh round). Round state in the modules is keyed by
+   * player id with absent-means-not-acted semantics, so a newly seated player
+   * simply participates from this round on; scores default to zero.
+   */
+  private seatPendingIfBoundary(previousPhase: string): void {
+    if (this.pendingJoiners.length === 0 || this.finished) return;
+    const phases = this.getLateJoinPhases();
+    if (phases.length === 0) return;
+    const phase = this.module.getPhase(this.state);
+    if (phase === previousPhase || !phases.includes(phase)) return;
+    for (const joiner of this.pendingJoiners) {
+      if (this.playerIds.has(joiner.id)) continue;
+      this.playerIds.add(joiner.id);
+      this.players.push({ id: joiner.id, name: joiner.name });
+      this.activePlayers.push({ id: joiner.id, name: joiner.name });
+    }
+    this.pendingJoiners = [];
   }
 
   /**
@@ -111,6 +187,7 @@ export class GameSession {
     if (!this.hasPlayer(playerId)) {
       return { ok: false, error: "You are not a player in this game" };
     }
+    const previousPhase = this.module.getPhase(this.state);
     try {
       const next = this.module.onMove(
         this.state,
@@ -119,6 +196,7 @@ export class GameSession {
       );
       this.state = next;
       this.finished = this.module.isFinished?.(next) ?? false;
+      this.seatPendingIfBoundary(previousPhase);
       return { ok: true };
     } catch (error) {
       if (error instanceof GameMoveError) {
@@ -131,15 +209,18 @@ export class GameSession {
   /** Advance time-driven state. Returns true if the projection changed. */
   tick(now: number = Date.now()): boolean {
     if (this.finished || !this.module.onTick) return false;
+    const previousPhase = this.module.getPhase(this.state);
     const next = this.module.onTick(this.state, this.context(now));
     if (next === this.state) return false;
     this.state = next;
     this.finished = this.module.isFinished?.(next) ?? false;
+    this.seatPendingIfBoundary(previousPhase);
     return true;
   }
 
   getPublicState(now: number = Date.now()): GamePublicState {
     const ctx = this.context(now);
+    const lateJoinPhases = this.getLateJoinPhases(now);
     return {
       gameId: this.module.id,
       name: this.module.name,
@@ -150,6 +231,12 @@ export class GameSession {
       finished: this.finished,
       hasLeaderboard: Boolean(this.module.hasLeaderboard),
       config: publicRematchConfig(this.module.options, this.config),
+      pendingJoiners: this.pendingJoiners.slice(),
+      canJoinLate:
+        !this.finished &&
+        lateJoinPhases.length > 0 &&
+        this.players.length + this.pendingJoiners.length <
+          this.module.maxPlayers,
     };
   }
 

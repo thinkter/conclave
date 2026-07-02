@@ -208,6 +208,19 @@ export function GameProvider({
     );
   }, [socket, isReadOnly]);
 
+  const joinGame = useCallback(async (): Promise<GameMoveResult> => {
+    if (isReadOnly) {
+      return { success: false, error: "Observer mode is read-only" };
+    }
+    if (!socket) return { success: false, error: "Not connected" };
+    return emitWithAck<GameMoveResult>(
+      socket,
+      "game:join",
+      undefined,
+      { success: false, error: "Timed out" },
+    );
+  }, [socket, isReadOnly]);
+
   const move = useCallback(
     async (type: string, payload?: unknown): Promise<GameMoveResult> => {
       if (isReadOnly) {
@@ -283,6 +296,7 @@ export function GameProvider({
       userId,
       startGame,
       endGame,
+      joinGame,
       move,
       openVote,
       castVote,
@@ -299,6 +313,7 @@ export function GameProvider({
       userId,
       startGame,
       endGame,
+      joinGame,
       move,
       openVote,
       castVote,
