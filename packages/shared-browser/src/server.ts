@@ -1,10 +1,42 @@
 import express, { type Express } from "express";
 import cors from "cors";
 import { ContainerManager } from "./ContainerManager.js";
-import { defaultConfig } from "./types.js";
+import { defaultConfig, type AudioTarget } from "./types.js";
 
 const app: Express = express();
 const containerManager = new ContainerManager();
+
+// Express types `req.body` as `any`; narrow it once at the boundary so every
+// field is validated before it reaches the container manager.
+const requestBody = (req: { body?: unknown }): Record<string, unknown> =>
+    typeof req.body === "object" && req.body !== null && !Array.isArray(req.body)
+        ? (req.body as Record<string, unknown>)
+        : {};
+
+const readString = (record: Record<string, unknown>, key: string): string | undefined => {
+    const value = record[key];
+    return typeof value === "string" && value ? value : undefined;
+};
+
+/** Decode an RTP forward target ({ip, port, rtcpPort, payloadType, ssrc}). */
+const readRtpTarget = (record: Record<string, unknown>, key: string): AudioTarget | undefined => {
+    const value = record[key];
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+        return undefined;
+    }
+    const target = value as Record<string, unknown>;
+    const { ip, port, rtcpPort, payloadType, ssrc } = target;
+    if (
+        typeof ip !== "string" ||
+        typeof port !== "number" ||
+        typeof rtcpPort !== "number" ||
+        typeof payloadType !== "number" ||
+        typeof ssrc !== "number"
+    ) {
+        return undefined;
+    }
+    return { ip, port, rtcpPort, payloadType, ssrc };
+};
 
 app.use(cors());
 app.use(express.json());
@@ -55,7 +87,9 @@ app.get("/sessions/:roomId", (req, res) => {
 });
 
 app.post("/launch", async (req, res) => {
-    const { roomId, url, controllerUserId, audioTarget, videoTarget } = req.body;
+    const body = requestBody(req);
+    const roomId = readString(body, "roomId");
+    const url = readString(body, "url");
 
     if (!roomId || !url) {
         res.status(400).json({ error: "roomId and url are required" });
@@ -65,9 +99,9 @@ app.post("/launch", async (req, res) => {
     const result = await containerManager.launchBrowser({
         roomId,
         url,
-        controllerUserId,
-        audioTarget,
-        videoTarget,
+        controllerUserId: readString(body, "controllerUserId"),
+        audioTarget: readRtpTarget(body, "audioTarget"),
+        videoTarget: readRtpTarget(body, "videoTarget"),
     });
 
     if (result.success) {
@@ -78,14 +112,21 @@ app.post("/launch", async (req, res) => {
 });
 
 app.post("/navigate", async (req, res) => {
-    const { roomId, url, audioTarget, videoTarget } = req.body;
+    const body = requestBody(req);
+    const roomId = readString(body, "roomId");
+    const url = readString(body, "url");
 
     if (!roomId || !url) {
         res.status(400).json({ error: "roomId and url are required" });
         return;
     }
 
-    const result = await containerManager.navigateTo({ roomId, url, audioTarget, videoTarget });
+    const result = await containerManager.navigateTo({
+        roomId,
+        url,
+        audioTarget: readRtpTarget(body, "audioTarget"),
+        videoTarget: readRtpTarget(body, "videoTarget"),
+    });
 
     if (result.success) {
         res.json(result);
@@ -95,7 +136,7 @@ app.post("/navigate", async (req, res) => {
 });
 
 app.post("/close", async (req, res) => {
-    const { roomId } = req.body;
+    const roomId = readString(requestBody(req), "roomId");
 
     if (!roomId) {
         res.status(400).json({ error: "roomId is required" });
@@ -112,7 +153,7 @@ app.post("/close", async (req, res) => {
 });
 
 app.post("/activity", (req, res) => {
-    const { roomId } = req.body;
+    const roomId = readString(requestBody(req), "roomId");
 
     if (!roomId) {
         res.status(400).json({ error: "roomId is required" });
@@ -141,8 +182,8 @@ const gracefulShutdown = async () => {
     }
 };
 
-process.on("SIGTERM", gracefulShutdown);
-process.on("SIGINT", gracefulShutdown);
+process.on("SIGTERM", () => void gracefulShutdown());
+process.on("SIGINT", () => void gracefulShutdown());
 
 const port = defaultConfig.port;
 app.listen(port, "0.0.0.0", () => {
