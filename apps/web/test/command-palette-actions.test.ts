@@ -209,6 +209,21 @@ describe("buildPaletteActions", () => {
     );
     expect(ids(withoutRoom)).not.toContain("copy-code");
   });
+
+  it("offers the keyboard-shortcuts reference when a handler is provided", () => {
+    const showShortcuts = vi.fn();
+    const without = buildPaletteActions(baseProps(), noDevices);
+    expect(ids(without)).not.toContain("shortcuts-help");
+
+    const withHelp = buildPaletteActions(baseProps(), noDevices, {
+      onShowShortcuts: showShortcuts,
+    });
+    const action = withHelp.find((a) => a.id === "shortcuts-help");
+    expect(action?.section).toBe("Help");
+    expect(action?.hotkey).toBe("Mod+/");
+    action?.run();
+    expect(showShortcuts).toHaveBeenCalled();
+  });
 });
 
 describe("filterPaletteActions", () => {

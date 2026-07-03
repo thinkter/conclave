@@ -10,6 +10,7 @@ import ChatOverlay from "./ChatOverlay";
 import ChatPanel from "./ChatPanel";
 import ControlsBar, { type ControlsBarProps } from "./ControlsBar";
 import CommandPalette from "./CommandPalette";
+import ShortcutsHelpDialog from "./ShortcutsHelpDialog";
 import GridLayout from "./GridLayout";
 import ConnectionBanner from "./ConnectionBanner";
 import AdminNoticePill from "./AdminNoticePill";
@@ -2071,6 +2072,7 @@ export default function MeetsMainContent({
           <div className="safe-area-pb flex w-full flex-col items-center gap-2">
             <ControlsBar {...controlsBarProps} />
             <CommandPalette controls={controlsBarProps} />
+            <ShortcutsHelpDialog />
             {browserAudioNeedsGesture && (
               <div className="w-full mt-2 text-center text-[11px] text-[#F95F4A]/70 uppercase tracking-[0.3em]">
                 Click “Shared browser audio” to unlock the system sound.

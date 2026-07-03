@@ -16,7 +16,8 @@ export type HotkeyAction =
   | "toggleApps"
   | "toggleMiniView"
   | "toggleParticipants"
-  | "commandPalette";
+  | "commandPalette"
+  | "shortcutsHelp";
 
 export const HOTKEYS: Record<HotkeyAction, HotkeyDefinition> = {
   toggleMute: {
@@ -74,9 +75,25 @@ export const HOTKEYS: Record<HotkeyAction, HotkeyDefinition> = {
     label: "Quick actions",
     description: "Search for and run any meeting action.",
   },
+  shortcutsHelp: {
+    keys: "Mod+/",
+    label: "Keyboard shortcuts",
+    description: "Show this list of keyboard shortcuts.",
+  },
 } as const;
 
 export const HOTKEY_LIST: (HotkeyDefinition & { action: HotkeyAction })[] =
   (Object.entries(HOTKEYS) as [HotkeyAction, HotkeyDefinition][]).map(
     ([action, definition]) => ({ action, ...definition }),
   );
+
+/**
+ * Hotkeys worth showing in the shortcuts reference: some actions are declared
+ * here without a binding yet (empty `keys`), and listing those would just be
+ * a row with a blank chip.
+ */
+export function getDisplayableHotkeys(): (HotkeyDefinition & {
+  action: HotkeyAction;
+})[] {
+  return HOTKEY_LIST.filter((hotkey) => hotkey.keys.length > 0);
+}

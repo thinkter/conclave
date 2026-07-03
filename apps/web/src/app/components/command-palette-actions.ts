@@ -2,6 +2,7 @@ import {
   Bot,
   Copy,
   FlipHorizontal2,
+  Keyboard,
   Link2,
   Lock,
   LockOpen,
@@ -62,6 +63,7 @@ export const PALETTE_SECTIONS = [
   "Devices",
   "Host",
   "Meeting",
+  "Help",
 ] as const;
 
 /** Search terms that users reach for but that don't appear in the labels. */
@@ -99,6 +101,7 @@ export function buildPaletteActions(
   extras: {
     onCopyMeetingCode?: () => void;
     onCopyMeetingLink?: () => void;
+    onShowShortcuts?: () => void;
   } = {},
 ): PaletteAction[] {
   const actions: PaletteAction[] = [];
@@ -382,6 +385,18 @@ export function buildPaletteActions(
       icon: PhoneOff,
       danger: true,
       run: p.onEndForEveryone,
+    });
+  }
+
+  if (extras.onShowShortcuts) {
+    actions.push({
+      id: "shortcuts-help",
+      section: "Help",
+      label: "View keyboard shortcuts",
+      keywords: "help hotkeys keys bindings cheatsheet",
+      icon: Keyboard,
+      hotkey: HOTKEYS.shortcutsHelp.keys,
+      run: extras.onShowShortcuts,
     });
   }
 

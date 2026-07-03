@@ -12,6 +12,7 @@ import {
 import { formatForDisplay } from "@tanstack/react-hotkeys";
 import { color } from "@conclave/ui-tokens";
 import { HOTKEYS } from "../lib/hotkeys";
+import { requestShortcutsHelp } from "./ShortcutsHelpDialog";
 import { useEnumeratedDevices } from "./DeviceCaretMenu";
 import type { ControlsBarProps } from "./controls-config";
 import {
@@ -96,6 +97,7 @@ export default function CommandPalette({
             {
               onCopyMeetingCode: copyMeetingCode,
               onCopyMeetingLink: copyMeetingLink,
+              onShowShortcuts: requestShortcutsHelp,
             },
           )
         : [],
