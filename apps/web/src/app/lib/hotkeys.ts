@@ -90,10 +90,15 @@ export const HOTKEY_LIST: (HotkeyDefinition & { action: HotkeyAction })[] =
 /**
  * Hotkeys worth showing in the shortcuts reference: some actions are declared
  * here without a binding yet (empty `keys`), and listing those would just be
- * a row with a blank chip.
+ * a row with a blank chip. The quick-actions palette leads the list — it is
+ * the gateway to every other action, so it gets top billing.
  */
 export function getDisplayableHotkeys(): (HotkeyDefinition & {
   action: HotkeyAction;
 })[] {
-  return HOTKEY_LIST.filter((hotkey) => hotkey.keys.length > 0);
+  const bound = HOTKEY_LIST.filter((hotkey) => hotkey.keys.length > 0);
+  return [
+    ...bound.filter((hotkey) => hotkey.action === "commandPalette"),
+    ...bound.filter((hotkey) => hotkey.action !== "commandPalette"),
+  ];
 }

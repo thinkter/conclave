@@ -20,11 +20,18 @@ describe("getDisplayableHotkeys", () => {
   it("keeps every bound hotkey, including the palette and help bindings", () => {
     const displayable = getDisplayableHotkeys();
     const bound = HOTKEY_LIST.filter((h) => h.keys.length > 0);
-    expect(displayable).toEqual(bound);
+    expect(new Set(displayable.map((h) => h.action))).toEqual(
+      new Set(bound.map((h) => h.action)),
+    );
+    expect(displayable).toHaveLength(bound.length);
 
     const actions = displayable.map((h) => h.action);
     expect(actions).toContain("commandPalette");
     expect(actions).toContain("shortcutsHelp");
+  });
+
+  it("puts the quick-actions palette at the top of the list", () => {
+    expect(getDisplayableHotkeys()[0]?.action).toBe("commandPalette");
   });
 
   it("provides a label and description for every displayable row", () => {
