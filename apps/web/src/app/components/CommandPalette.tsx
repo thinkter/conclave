@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
 } from "react";
 import { formatForDisplay, useHotkey } from "@tanstack/react-hotkeys";
 import type { RegisterableHotkey } from "@tanstack/hotkeys";
@@ -60,6 +61,11 @@ function useShallowStable<T extends object>(value: T): T {
  * list of everything the participant can do (bar controls, More-menu tools,
  * device switching, host toggles, reactions, leaving). Every meeting control
  * stays reachable from the keyboard without memorizing where it lives.
+ *
+ * Selection is tracked by action *id*, never by index or object identity: the
+ * action list rebuilds whenever meeting state changes (unread counts, toggles,
+ * socket events), and an identity-based selection would make those background
+ * rebuilds move the highlight or yank the scroll position around.
  */
 export default function CommandPalette({
   controls: controlsProp,
@@ -74,9 +80,19 @@ export default function CommandPalette({
   const controls = useShallowStable(controlsProp);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [selectedIndex, setSelectedIndex] = useState(0);
+  // null = "first runnable row"; set only by explicit user intent (arrow keys,
+  // pointer hover). Survives action-list rebuilds because ids are stable.
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  // scrollIntoView must only follow *keyboard* selection moves. If it ran on
+  // every selection change, background action rebuilds and hover would fight
+  // the user's own wheel/trackpad scrolling.
+  const keyboardNavRef = useRef(false);
+  // Hover-selects only on real pointer travel. Browsers can emit mouse events
+  // without movement (e.g. after layout shifts), which would otherwise steal
+  // the selection from under the keyboard.
+  const lastPointerRef = useRef<{ x: number; y: number } | null>(null);
   // Device enumeration only runs while the palette is open, mirroring how the
   // caret menus and drawers avoid idle permission/device churn.
   const { audioInput, audioOutput, videoInput } = useEnumeratedDevices(open);
@@ -109,7 +125,8 @@ export default function CommandPalette({
     // (e.g. the Mod+/ shortcuts sheet), and vice versa.
     announceOverlayOpen("command-palette");
     setQuery("");
-    setSelectedIndex(0);
+    setSelectedId(null);
+    lastPointerRef.current = null;
     // The input mounts in the same commit; focus once it exists.
     const id = window.requestAnimationFrame(() => inputRef.current?.focus());
     return () => window.cancelAnimationFrame(id);
@@ -154,7 +171,8 @@ export default function CommandPalette({
     ],
   );
 
-  const filtered = useMemo(
+  const searching = query.trim().length > 0;
+  const results = useMemo(
     () => filterPaletteActions(actions, query),
     [actions, query],
   );
@@ -162,10 +180,10 @@ export default function CommandPalette({
   // shared-browser search instead of a dead end.
   const visible = useMemo(
     () =>
-      filtered.length > 0
-        ? filtered
+      results.length > 0
+        ? results
         : buildQueryFallbackActions(query, controls, { onSendChatMessage }),
-    [filtered, query, controls, onSendChatMessage],
+    [results, query, controls, onSendChatMessage],
   );
   // Arrow keys walk only the runnable rows; disabled rows stay visible but
   // are skipped so Enter can never fire a dead action.
@@ -173,52 +191,119 @@ export default function CommandPalette({
     () => visible.filter((action) => !action.disabled),
     [visible],
   );
-  const selected = selectable[selectedIndex] ?? null;
+  // Derived, not synced by effect: if the remembered id vanished (list
+  // rebuilt, query narrowed), the highlight falls back to the top row with
+  // zero renders spent reconciling state.
+  const selected =
+    (selectedId != null &&
+      selectable.find((action) => action.id === selectedId)) ||
+    selectable[0] ||
+    null;
 
   useEffect(() => {
-    setSelectedIndex(0);
+    // New query = new result set: highlight the top hit and read from the top.
+    setSelectedId(null);
+    listRef.current?.scrollTo({ top: 0 });
   }, [query]);
 
   useEffect(() => {
+    // Follow the highlight only when the keyboard moved it (see keyboardNavRef).
+    if (!keyboardNavRef.current) return;
+    keyboardNavRef.current = false;
     listRef.current
       ?.querySelector('[data-selected="true"]')
       ?.scrollIntoView({ block: "nearest" });
-  }, [selected]);
+  }, [selected?.id]);
 
-  const runAction = useCallback(
-    (action: PaletteAction) => {
-      if (action.disabled) return;
-      setOpen(false);
-      action.run();
-    },
-    [],
-  );
+  const runAction = useCallback((action: PaletteAction) => {
+    if (action.disabled) return;
+    setOpen(false);
+    action.run();
+  }, []);
+
+  // Arm the scroll gate only when the highlight actually moves: a no-op move
+  // (Home on the first row, arrows in a one-item list) must not leave the
+  // flag set, or the next background rebuild would scroll without keyboard
+  // input — the exact bug this component was rewritten to fix.
+  const selectByKeyboard = (target: PaletteAction | undefined) => {
+    if (!target || target.id === selected?.id) return;
+    keyboardNavRef.current = true;
+    setSelectedId(target.id);
+  };
+
+  const moveSelection = (delta: number) => {
+    if (selectable.length === 0) return;
+    const current = selected
+      ? selectable.findIndex((action) => action.id === selected.id)
+      : -1;
+    selectByKeyboard(
+      selectable[(current + delta + selectable.length * 2) % selectable.length],
+    );
+  };
+
+  const jumpSelection = (index: number) => {
+    selectByKeyboard(selectable.at(index));
+  };
 
   const onInputKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      close();
-      return;
+    switch (event.key) {
+      case "Escape":
+        event.preventDefault();
+        close();
+        return;
+      case "ArrowDown":
+        event.preventDefault();
+        moveSelection(1);
+        return;
+      case "ArrowUp":
+        event.preventDefault();
+        moveSelection(-1);
+        return;
+      case "Home":
+        // Only hijack Home/End when they can't mean "move the text caret".
+        if (query.length === 0) {
+          event.preventDefault();
+          jumpSelection(0);
+        }
+        return;
+      case "End":
+        if (query.length === 0) {
+          event.preventDefault();
+          jumpSelection(-1);
+        }
+        return;
+      case "Enter":
+        event.preventDefault();
+        if (selected) runAction(selected);
+        return;
     }
-    if (selectable.length === 0) return;
-    if (event.key === "ArrowDown") {
-      event.preventDefault();
-      setSelectedIndex((i) => (i + 1) % selectable.length);
-    } else if (event.key === "ArrowUp") {
-      event.preventDefault();
-      setSelectedIndex((i) => (i - 1 + selectable.length) % selectable.length);
-    } else if (event.key === "Enter") {
-      event.preventDefault();
-      if (selected) runAction(selected);
+  };
+
+  const onRowMouseMove = (
+    event: ReactMouseEvent<HTMLButtonElement>,
+    action: PaletteAction,
+  ) => {
+    const last = lastPointerRef.current;
+    lastPointerRef.current = { x: event.clientX, y: event.clientY };
+    // Ignore mouse events that carry no actual travel — those are layout
+    // shifts or scrolls happening under a resting cursor, not user intent.
+    if (last && last.x === event.clientX && last.y === event.clientY) return;
+    if (!action.disabled && selected?.id !== action.id) {
+      setSelectedId(action.id);
     }
   };
 
   if (!open) return null;
 
-  const sections = PALETTE_SECTIONS.map((section) => ({
-    section,
-    items: visible.filter((action) => action.section === section),
-  })).filter(({ items }) => items.length > 0);
+  // Browsing (empty query) keeps the calm grouped directory; searching shows
+  // one flat list in relevance order so the best hit is always the first row.
+  const groups: { section: string | null; items: PaletteAction[] }[] =
+    searching
+      ? [{ section: null, items: visible }]
+      : PALETTE_SECTIONS.map((section) => ({
+          section,
+          items: visible.filter((action) => action.section === section),
+        })).filter(({ items }) => items.length > 0);
 
   return (
     <div
@@ -280,9 +365,9 @@ export default function CommandPalette({
           id="command-palette-listbox"
           role="listbox"
           aria-label="Actions"
-          className="max-h-[min(50vh,420px)] overflow-y-auto p-1.5"
+          className="max-h-[min(50vh,420px)] overflow-y-auto overscroll-contain p-1.5"
         >
-          {sections.length === 0 ? (
+          {visible.length === 0 ? (
             <p
               className="px-3 py-6 text-center text-[13px]"
               style={{ color: color.textFaint }}
@@ -290,14 +375,20 @@ export default function CommandPalette({
               No actions match “{query}”
             </p>
           ) : (
-            sections.map(({ section, items }) => (
-              <div key={section} role="group" aria-label={section}>
-                <p
-                  className="px-2.5 pb-1 pt-2.5 text-[10px] font-semibold uppercase tracking-[0.12em]"
-                  style={{ color: color.textFaint }}
-                >
-                  {section}
-                </p>
+            groups.map(({ section, items }) => (
+              <div
+                key={section ?? "results"}
+                role="group"
+                aria-label={section ?? "Results"}
+              >
+                {section ? (
+                  <p
+                    className="px-2.5 pb-1 pt-2.5 text-[11px] font-medium"
+                    style={{ color: color.textFaint }}
+                  >
+                    {section}
+                  </p>
+                ) : null}
                 {items.map((action) => {
                   const Icon = action.icon;
                   const isSelected = selected?.id === action.id;
@@ -315,13 +406,7 @@ export default function CommandPalette({
                       data-selected={isSelected || undefined}
                       disabled={action.disabled}
                       onClick={() => runAction(action)}
-                      onMouseMove={() => {
-                        if (action.disabled) return;
-                        const index = selectable.indexOf(action);
-                        if (index >= 0 && index !== selectedIndex) {
-                          setSelectedIndex(index);
-                        }
-                      }}
+                      onMouseMove={(event) => onRowMouseMove(event, action)}
                       className={
                         "flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left text-[13.5px] disabled:opacity-40 " +
                         (isSelected ? "bg-white/[0.08]" : "")
@@ -366,17 +451,29 @@ export default function CommandPalette({
                       <span className="min-w-0 flex-1 truncate">
                         {action.label}
                       </span>
-                      {action.active ? (
+                      {searching && action.section ? (
                         <span
-                          className="text-[10px] font-semibold uppercase tracking-wide"
-                          style={{ color: color.accent }}
+                          className="truncate text-[11px]"
+                          style={{ color: color.textFaint }}
                         >
-                          On
+                          {action.section}
                         </span>
+                      ) : null}
+                      {action.active ? (
+                        // Dot shows on-state visually; sr-only text keeps it
+                        // announced now that the "ON" badge is gone.
+                        <>
+                          <span className="sr-only">(on)</span>
+                          <span
+                            aria-hidden
+                            className="h-1.5 w-1.5 shrink-0 rounded-full"
+                            style={{ backgroundColor: color.accent }}
+                          />
+                        </>
                       ) : null}
                       {action.hotkey ? (
                         <kbd
-                          className="rounded border px-1.5 py-px text-[10px]"
+                          className="shrink-0 rounded border px-1.5 py-px text-[10px]"
                           style={{
                             borderColor: color.border,
                             color: color.textFaint,

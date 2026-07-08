@@ -470,18 +470,52 @@ export function buildPaletteActions(
   return actions;
 }
 
-/** Case-insensitive multi-token match over label, section, and keywords. */
+/**
+ * How well one token matches an action. 0 = no match (the action is dropped —
+ * every token must land somewhere); higher = more direct match so the ranked
+ * list puts "Mute" above "Disable text-to-speech" for the query "mu".
+ */
+function tokenScore(
+  token: string,
+  label: string,
+  labelWords: string[],
+  rest: string,
+): number {
+  if (label.startsWith(token)) return 4;
+  if (labelWords.some((word) => word.startsWith(token))) return 3;
+  if (label.includes(token)) return 2;
+  if (rest.includes(token)) return 1;
+  return 0;
+}
+
+/**
+ * Case-insensitive multi-token match over label, section, and keywords.
+ * Results come back in relevance order (label prefix > word start > label
+ * substring > keyword/section hit), with the original build order breaking
+ * ties, so the palette's top row is the action the query most directly names.
+ */
 export function filterPaletteActions(
   actions: PaletteAction[],
   query: string,
 ): PaletteAction[] {
   const tokens = query.toLowerCase().split(/\s+/).filter(Boolean);
   if (tokens.length === 0) return actions;
-  return actions.filter((action) => {
-    const haystack =
-      `${action.label} ${action.section} ${action.keywords}`.toLowerCase();
-    return tokens.every((token) => haystack.includes(token));
+
+  const ranked: { action: PaletteAction; score: number; order: number }[] = [];
+  actions.forEach((action, order) => {
+    const label = action.label.toLowerCase();
+    const labelWords = label.split(/[\s:/-]+/);
+    const rest = `${action.section} ${action.keywords}`.toLowerCase();
+    let score = 0;
+    for (const token of tokens) {
+      const s = tokenScore(token, label, labelWords, rest);
+      if (s === 0) return;
+      score += s;
+    }
+    ranked.push({ action, score, order });
   });
+  ranked.sort((a, b) => b.score - a.score || a.order - b.order);
+  return ranked.map((entry) => entry.action);
 }
 
 /**
