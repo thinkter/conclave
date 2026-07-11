@@ -2,6 +2,7 @@ import type { Socket, Server as SocketIOServer } from "socket.io";
 import type { Room } from "../../config/classes/Room.js";
 import type { Client } from "../../config/classes/Client.js";
 import type { SfuState } from "../state.js";
+import type { ActiveConclaveAnswers } from "./conclaveRelayLifecycle.js";
 
 export type ConnectionContext = {
   io: SocketIOServer;
@@ -13,6 +14,10 @@ export type ConnectionContext = {
   pendingRoomChannelId: string | null;
   pendingUserKey: string | null;
   currentUserKey: string | null;
+  // Answers are added only after their first signed packet is relayed and
+  // removed when a terminal packet arrives. Socket disconnect cleanup drains
+  // this map so peers never retain an orphaned streaming assistant bubble.
+  activeConclaveAnswers: ActiveConclaveAnswers;
   // True once admin socket handlers have been bound for this socket. joinRoom
   // (incl. the in-place room-switch path) and the host-promotion paths can each
   // call registerAdminHandlers on the SAME live socket; this guards against
@@ -51,6 +56,7 @@ export const createConnectionContext = (
     pendingRoomChannelId: null,
     pendingUserKey: null,
     currentUserKey: null,
+    activeConclaveAnswers: new Map(),
     adminHandlersRegistered: false,
   };
 };

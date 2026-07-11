@@ -32,6 +32,13 @@ export interface ConclaveAssistantRelayPacket {
   questionMessageId: string;
   content: string;
   done: boolean;
+  // Process state so every participant sees the same thinking/actions flow as
+  // the asker: streamed reasoning summary, whether it finished, and the tool
+  // step timeline. Optional so legacy packets (and their signatures) stay valid.
+  reasoning?: string;
+  reasoningDone?: boolean;
+  tasks?: AssistantTask[];
+  errored?: boolean;
   timestamp: number;
   expiresAt: number;
   signature: string;
@@ -169,10 +176,12 @@ type AssistantStreamEvent =
       type: "reasoning";
       delta?: string;
       done?: boolean;
+      relay?: ConclaveAssistantRelayPacket;
     }
   | {
       type: "task";
       task: AssistantTask;
+      relay?: ConclaveAssistantRelayPacket;
     }
   | {
       type: "done";
@@ -287,30 +296,43 @@ export const streamConclaveAssistant = async ({
   let streamError: string | null = null;
   let completed = false;
   let lastRelayedAt = 0;
-  let lastRelayedContentLength = 0;
+  let lastRelayedStreamedLength = 0;
+  let lastRelayedProcessFingerprint = "";
+
+  // Discrete process-state changes (a task starting/finishing, reasoning
+  // wrapping up, an error) must reach the room immediately; only the steady
+  // text growth of the answer/reasoning is throttled.
+  const packetProcessFingerprint = (
+    packet: ConclaveAssistantRelayPacket,
+  ): string =>
+    [
+      packet.reasoningDone ? "rd" : "",
+      packet.errored ? "err" : "",
+      (packet.tasks ?? [])
+        .map((task) => `${task.id}:${task.kind}:${task.status}`)
+        .join("|"),
+    ].join("~");
 
   const maybeRelay = (packet: ConclaveAssistantRelayPacket) => {
-    if (packet.done) {
-      onRelay(packet);
-      lastRelayedAt = Date.now();
-      lastRelayedContentLength = packet.content.length;
-      return;
-    }
+    const processFingerprint = packetProcessFingerprint(packet);
+    const streamedLength =
+      packet.content.length + (packet.reasoning?.length ?? 0);
 
-    const now = Date.now();
-    const contentDelta = Math.abs(
-      packet.content.length - lastRelayedContentLength,
-    );
-    if (
-      now - lastRelayedAt < CONCLAVE_RELAY_MIN_INTERVAL_MS &&
-      contentDelta < CONCLAVE_RELAY_MIN_CONTENT_DELTA
-    ) {
-      return;
+    if (!packet.done && processFingerprint === lastRelayedProcessFingerprint) {
+      const now = Date.now();
+      const contentDelta = Math.abs(streamedLength - lastRelayedStreamedLength);
+      if (
+        now - lastRelayedAt < CONCLAVE_RELAY_MIN_INTERVAL_MS &&
+        contentDelta < CONCLAVE_RELAY_MIN_CONTENT_DELTA
+      ) {
+        return;
+      }
     }
 
     onRelay(packet);
-    lastRelayedAt = now;
-    lastRelayedContentLength = packet.content.length;
+    lastRelayedAt = Date.now();
+    lastRelayedStreamedLength = streamedLength;
+    lastRelayedProcessFingerprint = processFingerprint;
   };
 
   const handleLine = (line: string) => {

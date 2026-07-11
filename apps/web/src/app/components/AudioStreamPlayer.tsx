@@ -3,7 +3,14 @@
 import { useEffect, useEffectEvent, useRef } from "react";
 import { useMeetVolume } from "../hooks/useMeetVolume";
 import { createPlaybackRecoveryScheduler } from "../lib/playback-recovery";
+import { telemetry } from "../lib/telemetry";
 import { errorName } from "../lib/utils";
+
+// How often to verify that an element with a live, unmuted inbound track is
+// actually playing. Media can arrive perfectly (consumer resumed, RTP
+// flowing) while the element sits paused — blocked autoplay, a failed play()
+// after a sink change — which no transport-level watchdog can see (#177).
+const PLAYBACK_WATCHDOG_INTERVAL_MS = 5000;
 
 const playerConfigs = {
   participant: {
@@ -61,6 +68,7 @@ function AudioStreamPlayer({
 }: AudioStreamPlayerProps) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const autoplayBlockedRef = useRef(false);
+  const reportedStallRef = useRef(false);
   const { meetVolume } = useMeetVolume();
   const {
     audioOutputErrorMessage,
@@ -71,6 +79,10 @@ function AudioStreamPlayer({
   const playbackAudioOutputDeviceId =
     kind === "participant" ? audioOutputDeviceId : undefined;
 
+  const notifyAutoplayBlocked = useEffectEvent(() => {
+    onAutoplayBlocked?.();
+  });
+
   const attemptPlayback = useEffectEvent(() => {
     const audio = audioRef.current;
     if (!audio || !stream || muted) return;
@@ -78,6 +90,10 @@ function AudioStreamPlayer({
     audio.play()
       .then(() => {
         autoplayBlockedRef.current = false;
+        if (reportedStallRef.current) {
+          reportedStallRef.current = false;
+          telemetry.capture("meet_audio_playback_recovered", { kind });
+        }
         onPlaybackStarted?.();
       })
       .catch((err) => {
@@ -104,6 +120,7 @@ function AudioStreamPlayer({
 
     if (!stream) {
       autoplayBlockedRef.current = false;
+      reportedStallRef.current = false;
       if (audio.srcObject) {
         audio.srcObject = null;
       }
@@ -111,6 +128,7 @@ function AudioStreamPlayer({
     }
 
     autoplayBlockedRef.current = false;
+    reportedStallRef.current = false;
     audio.autoplay = true;
     audio.defaultMuted = muted;
     audio.muted = muted;
@@ -153,8 +171,36 @@ function AudioStreamPlayer({
     window.addEventListener("pointerdown", handleUserGesture, true);
     window.addEventListener("keydown", handleUserGesture, true);
 
+    // Watchdog: media flowing but element not playing. Retry playback and
+    // surface the blocked state so the UI can offer a one-click fix; report
+    // the first stall of each episode to telemetry.
+    const watchdogId = window.setInterval(() => {
+      if (cancelled) return;
+      if (
+        !audioTrack ||
+        audioTrack.readyState !== "live" ||
+        audioTrack.muted
+      ) {
+        return;
+      }
+      if (audio.paused && !muted) {
+        if (!reportedStallRef.current) {
+          reportedStallRef.current = true;
+          telemetry.capture("meet_audio_playback_stalled", {
+            kind,
+            autoplayBlocked: autoplayBlockedRef.current,
+          });
+        }
+        if (autoplayBlockedRef.current) {
+          notifyAutoplayBlocked();
+        }
+        scheduleReplay();
+      }
+    }, PLAYBACK_WATCHDOG_INTERVAL_MS);
+
     return () => {
       cancelled = true;
+      window.clearInterval(watchdogId);
       audioTrack?.removeEventListener("unmute", scheduleReplay);
       audio.removeEventListener("loadedmetadata", scheduleReplay);
       audio.removeEventListener("loadeddata", scheduleReplay);

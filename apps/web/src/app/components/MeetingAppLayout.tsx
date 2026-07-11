@@ -20,6 +20,9 @@ interface MeetingAppLayoutProps {
   activeSpeakerId: string | null;
   currentUserId: string;
   audioOutputDeviceId?: string;
+  onAudioAutoplayBlocked?: () => void;
+  onAudioPlaybackStarted?: () => void;
+  audioPlaybackAttemptToken?: number;
   getDisplayName: (userId: string) => string;
 }
 
@@ -36,6 +39,9 @@ function MeetingAppLayout({
   activeSpeakerId,
   currentUserId,
   audioOutputDeviceId,
+  onAudioAutoplayBlocked,
+  onAudioPlaybackStarted,
+  audioPlaybackAttemptToken,
   getDisplayName,
 }: MeetingAppLayoutProps) {
   const isLocalActiveSpeaker = activeSpeakerId === currentUserId;
@@ -80,6 +86,9 @@ function MeetingAppLayout({
             isActiveSpeaker={activeSpeakerId === participant.userId}
             compact
             audioOutputDeviceId={audioOutputDeviceId}
+            onAudioAutoplayBlocked={onAudioAutoplayBlocked}
+            onAudioPlaybackStarted={onAudioPlaybackStarted}
+            audioPlaybackAttemptToken={audioPlaybackAttemptToken}
           />
         ))}
       </aside>

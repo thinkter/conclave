@@ -138,6 +138,12 @@ export interface ConsumeResponse {
   producerId: string;
   kind: MediaKind;
   rtpParameters: RtpParameters;
+  /**
+   * Server-side consumer paused state at creation. Audio consumers are
+   * created unpaused (#177), so `paused: false` tells the client no
+   * resumeConsumer round-trip is needed. Absent on older servers.
+   */
+  paused?: boolean;
   producerPaused?: boolean;
   score?: ConsumerScore;
   preferredLayers?: ConsumerLayerPreference;

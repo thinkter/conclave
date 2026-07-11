@@ -63,9 +63,12 @@ import { createMeetError, isSystemUserId, normalizeDisplayName } from "../lib/ut
 import { normalizeChatMessage } from "../lib/chat-commands";
 import {
   type AssistantChatMessage,
+  type AssistantTask,
   type ConclaveAssistantStatus,
   CONCLAVE_ASSISTANT_NAME,
   CONCLAVE_ASSISTANT_USER_ID,
+  completeAssistantTasks,
+  mergeAssistantTask,
 } from "../lib/conclave-assistant";
 import { telemetry } from "../lib/telemetry";
 import {
@@ -121,6 +124,11 @@ const SCREEN_SHARE_VIDEO_STALL_KEYFRAME_REQUEST_DELAY_MS = 900;
 const STALE_CONSUMER_RECOVERY_DELAY_MS = 9000;
 const SCREEN_SHARE_STALE_CONSUMER_RECOVERY_DELAY_MS = 4500;
 const CRITICAL_SIGNALING_ACK_TIMEOUT_MS = 12000;
+const RESUME_CONSUMER_ACK_TIMEOUT_MS = 8000;
+const RESUME_CONSUMER_MAX_ATTEMPTS = 6;
+
+const getResumeConsumerRetryDelayMs = (attempt: number): number =>
+  Math.min(8000, 400 * 2 ** attempt) + Math.floor(Math.random() * 250);
 const JOIN_ROOM_ACK_TIMEOUT_MS = 15000;
 const RESTART_ICE_ACK_TIMEOUT_MS = 5000;
 const PARTICIPANT_RECONNECTING_STATUS_FALLBACK_MS = 30000;
@@ -872,6 +880,14 @@ export function useMeetSocket({
   const serverRestartNoticeRef = useRef<string | null>(null);
   const adminNoticeTimeoutRef = useRef<number | null>(null);
   const consumeRetryAttemptsRef = useRef<Map<string, number>>(new Map());
+  // One retry chain per producer for acked resumeConsumer delivery; a lost
+  // resume means one silent speaker for this attendee only (#177). The entry
+  // keeps the attempt count so overlapping triggers (sync tick, unmute event)
+  // adopt the running chain's progress instead of resetting it — otherwise
+  // the escalation to a full re-consume could be starved forever.
+  const consumerResumeRetryStateRef = useRef<
+    Map<string, { timeoutId: number | null; attempt: number }>
+  >(new Map());
   const videoStallRecoveryTimeoutsRef = useRef<Map<string, number>>(new Map());
   const participantConnectionStatusTimeoutsRef = useRef<Map<string, number>>(
     new Map(),
@@ -912,12 +928,34 @@ export function useMeetSocket({
     new Map(),
   );
   const pendingScreenProducerCloseIdsRef = useRef<Set<string>>(new Set());
+  // Announce-order bookkeeping for producers, per participant slot
+  // (userId:kind:type). Producers are re-created (mic switch, recovery), and
+  // consume completions can finish out of order — a stale consume must never
+  // overwrite the stream of a newer producer for the same slot, or the viewer
+  // is left playing a dead track while the live consumer goes unheard (#177).
+  // latestBySlot maps a slot to the most recently ANNOUNCED producer (each
+  // producerId is recorded once, so re-listing an old producer in a stale
+  // sync snapshot cannot roll a slot back to it).
+  const producerAnnounceOrderRef = useRef<{
+    slotById: Map<string, string>;
+    latestBySlot: Map<string, string>;
+  }>({
+    slotById: new Map(),
+    latestBySlot: new Map(),
+  });
   const consumeProducerRef = useRef<
     (producerInfo: ProducerInfo, options?: ConsumeProducerOptions) => Promise<void>
   >(async () => {});
   const recoverStaleConsumerRef = useRef<
     (producerInfo: ProducerInfo, reason: string) => Promise<void>
   >(async () => {});
+  const resumeConsumerReliablyRef = useRef<
+    (
+      producerId: string,
+      options?: { requestKeyFrame?: boolean },
+      attempt?: number,
+    ) => void
+  >(() => {});
   const producerTransportCreatePromiseRef = useRef<Promise<boolean> | null>(
     null,
   );
@@ -1090,6 +1128,51 @@ export function useMeetSocket({
       targetUserId !== userId && departedParticipantIdsRef.current.has(targetUserId),
     [userId],
   );
+
+  const getProducerSlotKey = (
+    info: Pick<ProducerInfo, "producerUserId" | "kind" | "type">,
+  ): string => `${info.producerUserId}:${info.kind}:${info.type}`;
+
+  // Record the order the server announced producers in (newProducer, join
+  // snapshot, producer sync). Idempotent per producerId; the server keeps at
+  // most one live producer per slot, so the most recently announced producer
+  // in a slot is the one whose media the participant should be rendering.
+  const noteAnnouncedProducer = useCallback((info: ProducerInfo) => {
+    const state = producerAnnounceOrderRef.current;
+    if (state.slotById.has(info.producerId)) return;
+    const slotKey = getProducerSlotKey(info);
+    state.slotById.set(info.producerId, slotKey);
+    state.latestBySlot.set(slotKey, info.producerId);
+  }, []);
+
+  const isSupersededProducer = useCallback(
+    (info: Pick<
+      ProducerInfo,
+      "producerId" | "producerUserId" | "kind" | "type"
+    >): boolean => {
+      const state = producerAnnounceOrderRef.current;
+      const slotKey =
+        state.slotById.get(info.producerId) ?? getProducerSlotKey(info);
+      const latest = state.latestBySlot.get(slotKey);
+      return latest !== undefined && latest !== info.producerId;
+    },
+    [],
+  );
+
+  const forgetAnnouncedProducer = useCallback((producerId: string) => {
+    const state = producerAnnounceOrderRef.current;
+    const slotKey = state.slotById.get(producerId);
+    state.slotById.delete(producerId);
+    if (slotKey && state.latestBySlot.get(slotKey) === producerId) {
+      state.latestBySlot.delete(slotKey);
+    }
+  }, []);
+
+  const resetAnnouncedProducers = useCallback(() => {
+    const state = producerAnnounceOrderRef.current;
+    state.slotById.clear();
+    state.latestBySlot.clear();
+  }, []);
 
   useEffect(() => {
     isMutedRef.current = isMuted;
@@ -1379,6 +1462,13 @@ export function useMeetSocket({
         window.clearTimeout(timeoutId);
       }
       videoStallRecoveryTimeoutsRef.current.clear();
+      for (const entry of consumerResumeRetryStateRef.current.values()) {
+        if (entry.timeoutId != null) {
+          window.clearTimeout(entry.timeoutId);
+        }
+      }
+      consumerResumeRetryStateRef.current.clear();
+      resetAnnouncedProducers();
       if (!preserveMeetingState) {
         const statusTimeouts =
           participantConnectionStatusTimeoutsRef.current.values();
@@ -1997,6 +2087,153 @@ export function useMeetSocket({
     [],
   );
 
+  const clearConsumerResumeRetry = useCallback((producerId: string) => {
+    const entry = consumerResumeRetryStateRef.current.get(producerId);
+    if (!entry) return;
+    if (entry.timeoutId != null) {
+      window.clearTimeout(entry.timeoutId);
+    }
+    consumerResumeRetryStateRef.current.delete(producerId);
+  }, []);
+
+  // resumeConsumer used to be fire-and-forget: a single dropped request (rate
+  // limit, disconnect blip, lost ack) left the server-side consumer paused
+  // forever, i.e. one speaker permanently silent for this attendee only
+  // (#177). Every resume now goes through this acked helper: retries with
+  // backoff, re-consumes when the server no longer knows the consumer, and
+  // escalates to a full stale-consumer recovery when retries are exhausted.
+  const resumeConsumerReliably = useCallback(
+    (
+      producerId: string,
+      options: { requestKeyFrame?: boolean } = {},
+      attempt = 0,
+    ) => {
+      const socket = socketRef.current;
+      const consumer = consumersRef.current.get(producerId);
+      if (!socket?.connected || !consumer || consumer.closed) {
+        clearConsumerResumeRetry(producerId);
+        return;
+      }
+      const consumerId = consumer.id;
+
+      // Adopt any running chain's progress: cancel its pending timer but keep
+      // the higher attempt count, so a fresh trigger cannot reset a stuck
+      // consumer's escalation clock.
+      const existingRetryState =
+        consumerResumeRetryStateRef.current.get(producerId);
+      if (existingRetryState?.timeoutId != null) {
+        window.clearTimeout(existingRetryState.timeoutId);
+      }
+      const effectiveAttempt = Math.max(
+        attempt,
+        existingRetryState?.attempt ?? 0,
+      );
+      consumerResumeRetryStateRef.current.set(producerId, {
+        timeoutId: null,
+        attempt: effectiveAttempt,
+      });
+
+      const buildProducerInfoForRecovery = (): ProducerInfo | null => {
+        const entry = producerMapRef.current.get(producerId);
+        if (!entry) return null;
+        return {
+          producerId,
+          producerUserId: entry.userId,
+          kind: entry.kind,
+          type: entry.type,
+        };
+      };
+
+      const scheduleRetry = (reason: string) => {
+        const nextAttempt = effectiveAttempt + 1;
+        if (nextAttempt >= RESUME_CONSUMER_MAX_ATTEMPTS) {
+          clearConsumerResumeRetry(producerId);
+          console.warn(
+            `[Meets] resumeConsumer retries exhausted for producer ${producerId}: ${reason}`,
+          );
+          telemetry.capture("meet_consumer_resume_exhausted", {
+            kind: consumer.kind,
+            attempts: nextAttempt,
+            reason,
+          });
+          const producerInfo = buildProducerInfoForRecovery();
+          if (producerInfo) {
+            void recoverStaleConsumerRef.current(
+              producerInfo,
+              `resume retries exhausted (${reason})`,
+            );
+          }
+          return;
+        }
+        clearConsumerResumeRetry(producerId);
+        const timeoutId = window.setTimeout(() => {
+          const entry = consumerResumeRetryStateRef.current.get(producerId);
+          if (entry) {
+            entry.timeoutId = null;
+          }
+          resumeConsumerReliablyRef.current(producerId, options, nextAttempt);
+        }, getResumeConsumerRetryDelayMs(effectiveAttempt));
+        consumerResumeRetryStateRef.current.set(producerId, {
+          timeoutId,
+          attempt: nextAttempt,
+        });
+      };
+
+      const settleResume = startSocketAckTimeout(
+        "resumeConsumer",
+        () => scheduleRetry("ack timeout"),
+        RESUME_CONSUMER_ACK_TIMEOUT_MS,
+      );
+      socket.emit(
+        "resumeConsumer",
+        {
+          consumerId,
+          requestKeyFrame: options.requestKeyFrame === true,
+        },
+        (response?: { success?: boolean; error?: string; code?: string }) => {
+          if (!settleResume()) return;
+          const error =
+            response && typeof response.error === "string"
+              ? response.error
+              : null;
+          if (error) {
+            const code =
+              response?.code ??
+              (/consumer not found/i.test(error)
+                ? "not_found"
+                : /too many consumer control/i.test(error)
+                  ? "rate_limited"
+                  : undefined);
+            if (code === "not_found") {
+              // The server no longer tracks this consumer (displaced or torn
+              // down); retrying the resume can never succeed. Re-consume.
+              clearConsumerResumeRetry(producerId);
+              const producerInfo = buildProducerInfoForRecovery();
+              if (producerInfo) {
+                void recoverStaleConsumerRef.current(
+                  producerInfo,
+                  "server lost consumer on resume",
+                );
+              }
+              return;
+            }
+            scheduleRetry(code ?? error);
+            return;
+          }
+          clearConsumerResumeRetry(producerId);
+          if (effectiveAttempt > 0) {
+            telemetry.capture("meet_consumer_resume_recovered", {
+              kind: consumer.kind,
+              attempts: effectiveAttempt + 1,
+            });
+          }
+        },
+      );
+    },
+    [clearConsumerResumeRetry, consumersRef, producerMapRef, socketRef],
+  );
+  resumeConsumerReliablyRef.current = resumeConsumerReliably;
+
   const setProducerPausedState = useCallback(
     (producerId: string, paused: boolean) => {
       const wasPaused = producerPausedStateRef.current.get(producerId);
@@ -2026,23 +2263,17 @@ export function useMeetSocket({
       }
 
       const consumer = consumersRef.current.get(producerId);
-      const socket = socketRef.current;
-      if (consumer && socket) {
-        socket.emit(
-          "resumeConsumer",
-          {
-            consumerId: consumer.id,
-            requestKeyFrame: consumer.kind === "video",
-          },
-          () => {},
-        );
+      if (consumer) {
+        resumeConsumerReliably(producerId, {
+          requestKeyFrame: consumer.kind === "video",
+        });
       }
     },
     [
       adaptivelyPausedConsumerProducerIdsRef,
       clearStaleConsumerRecoveryTimeout,
       consumersRef,
-      socketRef,
+      resumeConsumerReliably,
     ],
   );
 
@@ -2076,6 +2307,7 @@ export function useMeetSocket({
         window.clearTimeout(scheduledRecoveryTimeout);
         videoStallRecoveryTimeoutsRef.current.delete(producerId);
       }
+      clearConsumerResumeRetry(producerId);
       clearStaleConsumerRecoveryTimeout(producerId);
       clearStaleReplacementCleanupTimeout(producerId);
       mutedConsumerSinceRef.current.delete(producerId);
@@ -2097,6 +2329,7 @@ export function useMeetSocket({
     },
     [
       adaptivelyPausedConsumerProducerIdsRef,
+      clearConsumerResumeRetry,
       clearStaleConsumerRecoveryTimeout,
       clearStaleReplacementCleanupTimeout,
       consumeRetryAttemptsRef,
@@ -2119,7 +2352,9 @@ export function useMeetSocket({
         window.clearTimeout(scheduledRecoveryTimeout);
         videoStallRecoveryTimeoutsRef.current.delete(producerId);
       }
+      clearConsumerResumeRetry(producerId);
       clearStaleConsumerRecoveryTimeout(producerId);
+      forgetAnnouncedProducer(producerId);
       mutedConsumerSinceRef.current.delete(producerId);
       producerPausedStateRef.current.delete(producerId);
       adaptivelyPausedConsumerProducerIdsRef.current.delete(producerId);
@@ -2277,7 +2512,9 @@ export function useMeetSocket({
       videoStallRecoveryTimeoutsRef,
       adaptivelyPausedConsumerProducerIdsRef,
       consumerTelemetryRef,
+      clearConsumerResumeRetry,
       clearStaleConsumerRecoveryTimeout,
+      forgetAnnouncedProducer,
       mutedConsumerSinceRef,
       producerPausedStateRef,
       consumerRecoveryInFlightRef,
@@ -3175,6 +3412,13 @@ export function useMeetSocket({
         dropDepartedProducer(producerInfo);
         return;
       }
+      if (isSupersededProducer(producerInfo)) {
+        // A newer producer for this participant slot has been announced;
+        // consuming this one would attach a stream that is about to die.
+        pendingProducersRef.current.delete(producerInfo.producerId);
+        consumeRetryAttemptsRef.current.delete(producerInfo.producerId);
+        return;
+      }
       const existingConsumer = consumersRef.current.get(producerInfo.producerId);
       if (existingConsumer && !options.replaceExisting) {
         consumeRetryAttemptsRef.current.delete(producerInfo.producerId);
@@ -3270,6 +3514,27 @@ export function useMeetSocket({
                   consumer.close();
                 } catch {}
                 dropDepartedProducer(producerInfo);
+                resolve();
+                return;
+              }
+
+              if (
+                isSupersededProducer({
+                  producerId: producerInfo.producerId,
+                  producerUserId: producerInfo.producerUserId,
+                  kind: response.kind,
+                  type: producerInfo.type,
+                })
+              ) {
+                // A newer producer for this slot was announced while this
+                // consume was in flight. Attaching this stream would clobber
+                // the newer producer's stream and leave the participant
+                // playing a dead track once this one closes.
+                closeServerConsumer(response.id);
+                closeConsumerForSameProducerReconsume(
+                  producerInfo.producerId,
+                  consumer,
+                );
                 resolve();
                 return;
               }
@@ -3418,14 +3683,9 @@ export function useMeetSocket({
                     ) {
                       return;
                     }
-                    socket.emit(
-                      "resumeConsumer",
-                      {
-                        consumerId: activeConsumer.id,
-                        requestKeyFrame: true,
-                      },
-                      () => {},
-                    );
+                    resumeConsumerReliably(producerInfo.producerId, {
+                      requestKeyFrame: true,
+                    });
                   }, getVideoStallKeyFrameRequestDelayMs(producerInfo));
                   videoStallRecoveryTimeoutsRef.current.set(
                     producerInfo.producerId,
@@ -3512,15 +3772,14 @@ export function useMeetSocket({
                 updateCameraState(false);
               }
 
-              if (!startsPausedForAdaptiveReceive) {
-                socket.emit(
-                  "resumeConsumer",
-                  {
-                    consumerId: consumer.id,
-                    requestKeyFrame: response.kind === "video",
-                  },
-                  () => {},
-                );
+              // `response.paused === false` means the server created this
+              // consumer already flowing (audio, on current servers) — no
+              // resume round-trip needed. Older servers omit the field, so
+              // anything other than an explicit false still resumes.
+              if (!startsPausedForAdaptiveReceive && response.paused !== false) {
+                resumeConsumerReliably(producerInfo.producerId, {
+                  requestKeyFrame: response.kind === "video",
+                });
               }
               resolve();
             } catch (err) {
@@ -3547,8 +3806,10 @@ export function useMeetSocket({
       closeServerConsumer,
       dropDepartedProducer,
       getInitialConsumerNetworkProfile,
+      isSupersededProducer,
       joinMode,
       queueProducerConsumeRetry,
+      resumeConsumerReliably,
       setActiveScreenShareId,
       shouldIgnoreDepartedParticipant,
       videoStallRecoveryTimeoutsRef,
@@ -3588,6 +3849,11 @@ export function useMeetSocket({
         console.warn(
           `[Meets] Recovering stale ${producerInfo.kind} consumer ${producerInfo.producerId}: ${reason}`,
         );
+        telemetry.capture("meet_stale_consumer_recovered", {
+          kind: producerInfo.kind,
+          type: producerInfo.type,
+          reason,
+        });
         await consumeProducer(producerInfo, { replaceExisting: true });
       } catch (error) {
         console.error(
@@ -3797,6 +4063,9 @@ export function useMeetSocket({
             continue;
           }
         }
+        if (producerInfo.producerUserId !== userId) {
+          noteAnnouncedProducer(producerInfo);
+        }
         setProducerPausedState(
           producerInfo.producerId,
           Boolean(producerInfo.paused),
@@ -3848,14 +4117,9 @@ export function useMeetSocket({
               mutedConsumerSinceRef.current.get(producerInfo.producerId) ??
               Date.now();
             mutedConsumerSinceRef.current.set(producerInfo.producerId, mutedSince);
-            socket.emit(
-              "resumeConsumer",
-              {
-                consumerId: consumer.id,
-                requestKeyFrame: consumer.kind === "video",
-              },
-              () => {},
-            );
+            resumeConsumerReliably(producerInfo.producerId, {
+              requestKeyFrame: consumer.kind === "video",
+            });
             if (
               Date.now() - mutedSince >=
                 getStaleConsumerRecoveryDelayMs(producerInfo)
@@ -3876,14 +4140,9 @@ export function useMeetSocket({
               consumer.track?.readyState === "live" &&
               consumer.track.muted;
             if (consumer.paused || shouldRequestKeyFrame) {
-              socket.emit(
-                "resumeConsumer",
-                {
-                  consumerId: consumer.id,
-                  requestKeyFrame: shouldRequestKeyFrame,
-                },
-                () => {},
-              );
+              resumeConsumerReliably(producerInfo.producerId, {
+                requestKeyFrame: shouldRequestKeyFrame,
+              });
             }
           }
           continue;
@@ -3942,9 +4201,12 @@ export function useMeetSocket({
     dropDepartedProducer,
     handleProducerClosed,
     joinMode,
+    noteAnnouncedProducer,
     restoreWebinarFeedParticipant,
+    resumeConsumerReliably,
     setProducerPausedState,
     shouldIgnoreDepartedParticipant,
+    userId,
     adaptivelyPausedConsumerProducerIdsRef,
     mutedConsumerSinceRef,
     clearStaleConsumerRecoveryTimeout,
@@ -4430,6 +4692,11 @@ export function useMeetSocket({
               const producePromise =
                 shouldProduce && stream ? produce(stream) : Promise.resolve();
 
+              for (const producer of response.existingProducers) {
+                if (producer.producerUserId !== userId) {
+                  noteAnnouncedProducer(producer);
+                }
+              }
               const snapshotHasScreenShareVideo =
                 response.existingProducers.some(
                   (producer) =>
@@ -4771,6 +5038,35 @@ export function useMeetSocket({
               },
             );
 
+            // Server-side heal sweep resumed an audio consumer this client
+            // failed to resume (#177 backstop). Media starts flowing on its
+            // own; reset the stale-tracking clock and record the event so
+            // partial-audio incidents are visible in telemetry.
+            socket.on(
+              "consumerAutoResumed",
+              (notification: {
+                roomId?: string;
+                consumerId?: string;
+                producerId?: string;
+                pausedForMs?: number;
+              }) => {
+                if (!isRoomEvent(notification?.roomId)) return;
+                const producerId = notification?.producerId;
+                if (typeof producerId !== "string" || !producerId) return;
+                console.warn(
+                  "[Meets] Server auto-resumed a stuck audio consumer:",
+                  notification,
+                );
+                mutedConsumerSinceRef.current.delete(producerId);
+                telemetry.capture("meet_audio_consumer_auto_resumed", {
+                  pausedForMs:
+                    typeof notification.pausedForMs === "number"
+                      ? Math.round(notification.pausedForMs)
+                      : null,
+                });
+              },
+            );
+
             socket.on(
               "hostChanged",
               ({
@@ -4829,6 +5125,7 @@ export function useMeetSocket({
               if (data.producerUserId === userId) {
                 return;
               }
+              noteAnnouncedProducer(data);
               if (joinMode === "webinar_attendee") {
                 void syncProducers();
                 return;
@@ -5461,7 +5758,8 @@ export function useMeetSocket({
             });
 
             // Streamed "@Conclave" AI answers fanned out by the asking client.
-            // Upsert by id so the bubble fills in live for everyone in the room.
+            // Upsert by id so the bubble fills in live for everyone in the
+            // room with the same thinking/actions/answer flow the asker sees.
             socket.on(
               "conclaveMessage",
               (payload: {
@@ -5469,11 +5767,17 @@ export function useMeetSocket({
                 content?: string;
                 done?: boolean;
                 timestamp?: number;
+                reasoning?: string;
+                reasoningDone?: boolean;
+                tasks?: AssistantTask[];
+                errored?: boolean;
               }) => {
                 if (!payload?.id) return;
-                const status: ConclaveAssistantStatus = payload.done
-                  ? "done"
-                  : "streaming";
+                const status: ConclaveAssistantStatus = payload.errored
+                  ? "error"
+                  : payload.done
+                    ? "done"
+                    : "streaming";
                 let isNew = false;
                 chat.setChatMessages((prev) => {
                   const index = prev.findIndex((m) => m.id === payload.id);
@@ -5482,7 +5786,8 @@ export function useMeetSocket({
                       ? (prev[index] as AssistantChatMessage)
                       : undefined;
                   if (
-                    previous?.assistantStatus === "done" &&
+                    (previous?.assistantStatus === "done" ||
+                      previous?.assistantStatus === "error") &&
                     payload.done !== true
                   ) {
                     return prev;
@@ -5494,6 +5799,24 @@ export function useMeetSocket({
                       : previous && previous.content.length > incomingContent.length
                         ? previous.content
                         : incomingContent || previous?.content || "";
+                  // Packets carry cumulative reasoning; keep the longer text so
+                  // a stale snapshot can never rewind the trace, and only trust
+                  // the incoming done flag when the incoming text is current.
+                  const incomingReasoning = payload.reasoning ?? "";
+                  const previousReasoning = previous?.reasoning ?? "";
+                  const reasoningStale =
+                    previousReasoning.length > incomingReasoning.length;
+                  const reasoning = reasoningStale
+                    ? previousReasoning
+                    : incomingReasoning;
+                  const reasoningDone =
+                    payload.done === true ||
+                    (reasoningStale
+                      ? previous?.reasoningStatus === "done"
+                      : payload.reasoningDone === true);
+                  const mergedTasks = (payload.tasks ?? []).reduce<
+                    AssistantTask[] | undefined
+                  >((list, task) => mergeAssistantTask(list, task), previous?.tasks);
                   const base: AssistantChatMessage = {
                     id: payload.id as string,
                     userId: CONCLAVE_ASSISTANT_USER_ID,
@@ -5505,8 +5828,16 @@ export function useMeetSocket({
                         : (payload.timestamp ?? Date.now()),
                     isAssistant: true,
                     assistantStatus: status,
-                    reasoning: previous?.reasoning,
-                    tasks: previous?.tasks,
+                    reasoning: reasoning || undefined,
+                    reasoningStatus: reasoning
+                      ? reasoningDone
+                        ? "done"
+                        : "streaming"
+                      : undefined,
+                    tasks:
+                      payload.done === true
+                        ? completeAssistantTasks(mergedTasks)
+                        : mergedTasks,
                   };
                   if (index === -1) {
                     isNew = true;

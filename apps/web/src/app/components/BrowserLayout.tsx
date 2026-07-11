@@ -28,6 +28,9 @@ interface BrowserLayoutProps {
     activeSpeakerId: string | null;
     currentUserId: string;
     audioOutputDeviceId?: string;
+    onAudioAutoplayBlocked?: () => void;
+    onAudioPlaybackStarted?: () => void;
+    audioPlaybackAttemptToken?: number;
     getDisplayName: (userId: string) => string;
     isAdmin?: boolean;
     isBrowserLaunching?: boolean;
@@ -49,6 +52,9 @@ function BrowserLayout({
     activeSpeakerId,
     currentUserId,
     audioOutputDeviceId,
+    onAudioAutoplayBlocked,
+    onAudioPlaybackStarted,
+    audioPlaybackAttemptToken,
     getDisplayName,
     isAdmin,
     isBrowserLaunching = false,
@@ -397,6 +403,9 @@ function BrowserLayout({
                             isActiveSpeaker={activeSpeakerId === participant.userId}
                             compact
                             audioOutputDeviceId={audioOutputDeviceId}
+                            onAudioAutoplayBlocked={onAudioAutoplayBlocked}
+                            onAudioPlaybackStarted={onAudioPlaybackStarted}
+                            audioPlaybackAttemptToken={audioPlaybackAttemptToken}
                         />
                     ))}
             </div>

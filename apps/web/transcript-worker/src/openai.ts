@@ -23,12 +23,18 @@ import {
   DEFAULT_TRANSCRIPTION_LOCALIZATION_PROMPT,
 } from "./constants";
 import type { Env } from "./types";
-import { parseMinutesFromText } from "./minutes";
+import { applyMinutesUpdateFromText } from "./minutes";
 
-const MINUTES_SYSTEM_PROMPT = [
+export const MINUTES_SYSTEM_PROMPT = [
   "You are Conclave's live meeting secretary.",
-  "Create minutes from the transcript only. Do not infer facts, decisions, owners, deadlines, or commitments that are not supported by the transcript.",
+  "Maintain accumulated meeting minutes using the current minutes and the recent transcript window. The current minutes are trusted memory from earlier parts of the meeting that may no longer appear in the recent window.",
+  "Use transcript evidence only. Do not infer facts, decisions, owners, deadlines, or commitments that are not supported by either the accumulated minutes or recent transcript.",
   "Optimize for a team that will read this after the meeting: short, specific, and operational.",
+  "Return an incremental update, not a replacement snapshot:",
+  "- summary: rewrite the complete summary-so-far, preserving important earlier context while incorporating material recent changes.",
+  "- upsert: include only new items or existing items that need correction or enrichment. Reuse an existing item's ID when updating it.",
+  "- remove: include an existing item ID only when the recent transcript explicitly resolves, cancels, supersedes, corrects, or invalidates it.",
+  "Never remove or omit earlier context merely because it is absent from the recent transcript window. Absence is not evidence of removal.",
   "Classify content carefully:",
   "- topics: major subjects discussed, not every sentence.",
   "- decisions: explicit agreements, approvals, selected options, or settled conclusions.",
@@ -92,6 +98,27 @@ const minutesEntrySchema = {
   },
 };
 
+const minutesSectionUpdateSchema = (maxItems: number) => ({
+  type: "object",
+  additionalProperties: false,
+  required: ["upsert", "remove"],
+  properties: {
+    upsert: {
+      type: "array",
+      maxItems,
+      description: "New or revised items only; reuse the current ID for revisions.",
+      items: minutesEntrySchema,
+    },
+    remove: {
+      type: "array",
+      maxItems,
+      description:
+        "Current item IDs explicitly resolved, cancelled, superseded, corrected, or invalidated by the recent transcript.",
+      items: { type: "string" },
+    },
+  },
+});
+
 const minutesResponseFormat: ResponseFormatTextJSONSchemaConfig = {
   type: "json_schema",
   name: "conclave_meeting_minutes",
@@ -111,33 +138,14 @@ const minutesResponseFormat: ResponseFormatTextJSONSchemaConfig = {
     properties: {
       summary: {
         type: "string",
-        description: "Two to four concise sentences covering the meeting so far.",
+        description:
+          "Two to four concise sentences covering the complete meeting so far, including important earlier context.",
       },
-      topics: {
-        type: "array",
-        maxItems: 8,
-        items: minutesEntrySchema,
-      },
-      decisions: {
-        type: "array",
-        maxItems: 10,
-        items: minutesEntrySchema,
-      },
-      actionItems: {
-        type: "array",
-        maxItems: 12,
-        items: minutesEntrySchema,
-      },
-      openQuestions: {
-        type: "array",
-        maxItems: 10,
-        items: minutesEntrySchema,
-      },
-      followUps: {
-        type: "array",
-        maxItems: 10,
-        items: minutesEntrySchema,
-      },
+      topics: minutesSectionUpdateSchema(8),
+      decisions: minutesSectionUpdateSchema(10),
+      actionItems: minutesSectionUpdateSchema(12),
+      openQuestions: minutesSectionUpdateSchema(10),
+      followUps: minutesSectionUpdateSchema(10),
     },
   },
 };
@@ -199,11 +207,24 @@ export const buildQaTranscriptContext = (
   segments: TranscriptSegment[],
 ): string => segments.map(transcriptLine).join("\n");
 
+export const buildMinutesUpdateInput = (options: {
+  current: TranscriptMinutesSnapshot;
+  transcript: string;
+}): string =>
+  [
+    "Current accumulated minutes (preserve unless recent evidence explicitly changes them):",
+    JSON.stringify(options.current),
+    "",
+    "Recent transcript window:",
+    options.transcript || "(No recent transcript.)",
+  ].join("\n");
+
 export const generateMinutes = async (options: {
   env: Env;
   apiKey: string;
   model: string;
   transcript: string;
+  current: TranscriptMinutesSnapshot;
   fallback: TranscriptMinutesSnapshot;
 }): Promise<TranscriptMinutesSnapshot | null> => {
   const client = createOpenAiClient(options.env, options.apiKey);
@@ -211,7 +232,10 @@ export const generateMinutes = async (options: {
   const request: ResponseCreateParamsNonStreaming = {
     model: options.model,
     instructions: MINUTES_SYSTEM_PROMPT,
-    input: `Transcript so far:\n${options.transcript}`,
+    input: buildMinutesUpdateInput({
+      current: options.current,
+      transcript: options.transcript,
+    }),
     max_output_tokens: modelConfig.minutesMaxOutputTokens,
     store: false,
   };
@@ -228,7 +252,11 @@ export const generateMinutes = async (options: {
   if (reasoning) request.reasoning = reasoning;
 
   const response = await client.responses.create(request);
-  return parseMinutesFromText(response.output_text, options.fallback);
+  return applyMinutesUpdateFromText(
+    response.output_text,
+    options.current,
+    options.fallback,
+  );
 };
 
 export async function* streamQuestionAnswer(options: {

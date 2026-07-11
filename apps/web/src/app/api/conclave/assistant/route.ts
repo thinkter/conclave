@@ -17,12 +17,12 @@ import {
 import {
   CONCLAVE_ASSISTANT_GLOBAL_MODEL,
   isConclaveAssistantModel,
+  mergeAssistantTask,
   type AssistantTask,
   type ConclaveAssistantRelayPacket,
 } from "../../../lib/conclave-assistant";
 import {
   createGithubIssue,
-  isExplicitGithubIssueRequest,
   parseGithubIssueDraft,
 } from "./github-issues";
 
@@ -47,69 +47,22 @@ const CREATE_GITHUB_ISSUE_TOOL: FunctionTool = {
   type: "function",
   name: "create_github_issue",
   description:
-    "Create a detailed issue in the configured Conclave GitHub repository. Use this only when the participant explicitly asks to open, create, file, or submit a GitHub issue. Supports bug reports, feature requests, documentation work, and other requests.",
+    "Create an issue in the configured Conclave GitHub repository. Infer the participant's intent from the full conversation, including natural follow-ups and references such as 'create it'. Call this only when the participant clearly intends the issue to be created now, not when they only want to discuss, draft, or learn about issues.",
   strict: true,
   parameters: {
     type: "object",
     properties: {
-      issue_type: {
-        type: "string",
-        enum: ["bug_report", "feature_request", "documentation", "other"],
-        description: "The category that best matches the requested issue.",
-      },
       title: {
         type: "string",
         description: "A concise, specific, actionable GitHub issue title.",
       },
-      overview: {
+      body: {
         type: "string",
         description:
-          "A self-contained overview of the problem or requested capability and why it matters.",
-      },
-      details: {
-        type: "string",
-        description:
-          "Detailed technical or product context, including scope, affected behavior, and useful implementation notes when known.",
-      },
-      reproduction_steps: {
-        type: ["array", "null"],
-        items: { type: "string" },
-        description:
-          "Ordered steps that reproduce a bug, or null when not applicable or unknown.",
-      },
-      expected_behavior: {
-        type: ["string", "null"],
-        description:
-          "What should happen, or null when it is not applicable or not known.",
-      },
-      actual_behavior: {
-        type: ["string", "null"],
-        description:
-          "What currently happens for a bug, or null for non-bugs or when unknown.",
-      },
-      acceptance_criteria: {
-        type: ["array", "null"],
-        items: { type: "string" },
-        description:
-          "Concrete, verifiable completion criteria, or null when none can be inferred.",
-      },
-      additional_context: {
-        type: ["string", "null"],
-        description:
-          "Other relevant constraints, examples, environment details, or null when there are none.",
+          "A complete, self-contained Markdown issue. Choose the structure and level of detail that best fit the conversation. Include useful context such as motivation, behavior, reproduction steps, expected and actual results, proposal, constraints, or acceptance criteria when they are relevant and supported. Omit irrelevant sections and never invent missing facts.",
       },
     },
-    required: [
-      "issue_type",
-      "title",
-      "overview",
-      "details",
-      "reproduction_steps",
-      "expected_behavior",
-      "actual_behavior",
-      "acceptance_criteria",
-      "additional_context",
-    ],
+    required: ["title", "body"],
     additionalProperties: false,
   },
 };
@@ -142,8 +95,9 @@ const ASSISTANT_SYSTEM_PROMPT = [
   "- For questions about what was said, decided, or asked in THIS meeting, call `get_meeting_transcript` when chat alone is insufficient, then cite the speaker (and timestamp when it helps).",
   "- For general questions (definitions, code, ideas, planning, explanations, quick research-style asks), answer directly even if the transcript has no relevant context.",
   "- Use web search for current facts, links, market/product/news/current-event questions, or when the user asks for sources. Cite sources by name or link when you rely on search.",
-  "- Call `create_github_issue` only when the participant explicitly asks you to open, create, file, or submit a GitHub issue. Discussing a bug or feature idea alone is not permission to create one.",
-  "- Before creating an issue, turn the available details into a self-contained title, overview, detailed context, and relevant reproduction steps or acceptance criteria. Do not invent unknown facts; use null for optional unknowns.",
+  "- Decide whether to call `create_github_issue` from the participant's intent in the full conversation, not from keyword matching. Understand natural references and follow-ups such as `create it` in context.",
+  "- Call the tool only when the participant clearly wants the issue created now. Do not call it when they only want to discuss an idea, draft issue text, ask how GitHub issues work, or explicitly decline creation.",
+  "- Write a complete, self-contained Markdown issue whose structure fits the request. For example, bugs often benefit from reproduction and expected/actual behavior, while features often benefit from motivation, proposed behavior, and acceptance criteria. Include only relevant, supported details and never invent unknown facts.",
   "- Never put API keys, credentials, private raw transcripts, or unrelated personal information in a GitHub issue. Include only the context needed for the requested issue.",
   "- After the issue tool runs, clearly say whether it succeeded and include the returned issue number and link. Never claim an issue exists unless the tool confirms it.",
   "- If meeting context is needed but missing (e.g. transcript is off, or nothing relevant was said), say so briefly, then help as best you can.",
@@ -157,6 +111,12 @@ const MAX_HISTORY_MESSAGES = 40;
 const MAX_HISTORY_CHARS = 12_000;
 const MAX_TRANSCRIPT_CHARS = 24_000;
 const RELAY_PACKET_TTL_MS = 5 * 60 * 1000;
+// Caps for the process state carried inside relay packets. The SFU rejects
+// packets that exceed these, so they must stay in sync with chatHandlers.ts.
+const MAX_RELAY_REASONING_CHARS = 8000;
+const MAX_RELAY_TASKS = 32;
+const MAX_RELAY_TASK_ID_CHARS = 120;
+const MAX_RELAY_TASK_QUERY_CHARS = 600;
 
 interface AssistantHistoryMessage {
   name?: string;
@@ -238,6 +198,20 @@ const relaySigningInput = (packet: Omit<ConclaveAssistantRelayPacket, "signature
     done: packet.done,
     timestamp: packet.timestamp,
     expiresAt: packet.expiresAt,
+    // Optional process-state fields. `undefined` values are dropped by
+    // JSON.stringify, so packets without them produce the exact legacy signing
+    // input. The SFU builds this same canonical shape when verifying.
+    reasoning: packet.reasoning || undefined,
+    reasoningDone: packet.reasoningDone === true ? true : undefined,
+    tasks: packet.tasks?.length
+      ? packet.tasks.map((task) => ({
+          id: task.id,
+          kind: task.kind,
+          status: task.status,
+          query: task.query || undefined,
+        }))
+      : undefined,
+    errored: packet.errored === true ? true : undefined,
   });
 
 const signRelayPacket = (
@@ -399,8 +373,16 @@ export async function POST(request: Request) {
     requestOptions.reasoning = reasoning;
   }
 
-  const makeRelayPacket = (content: string, done: boolean) =>
-    signRelayPacket({
+  // Mirrors of the process state streamed to the asker, so relay packets can
+  // carry the same thinking/actions flow to everyone else in the room.
+  let relayReasoning = "";
+  let relayReasoningDone = false;
+  let relayTasks: AssistantTask[] | undefined;
+
+  const makeRelayPacket = (content: string, done: boolean, errored = false) => {
+    const reasoning = relayReasoning.slice(0, MAX_RELAY_REASONING_CHARS);
+    const tasks = relayTasks?.slice(-MAX_RELAY_TASKS);
+    return signRelayPacket({
       id: answerId,
       roomId: tokenPayload.roomId!,
       channelId: tokenPayload.channelId!,
@@ -408,9 +390,14 @@ export async function POST(request: Request) {
       questionMessageId: tokenPayload.questionMessageId!,
       content,
       done,
+      ...(reasoning ? { reasoning } : {}),
+      ...(relayReasoningDone ? { reasoningDone: true } : {}),
+      ...(tasks?.length ? { tasks } : {}),
+      ...(errored ? { errored: true } : {}),
       timestamp: Date.now(),
       expiresAt: Date.now() + RELAY_PACKET_TTL_MS,
     });
+  };
 
   let createdGithubIssueOutput: string | null = null;
   const executeFunctionTool = async (
@@ -431,13 +418,6 @@ export async function POST(request: Request) {
     }
 
     if (call.name === GITHUB_ISSUE_TOOL_NAME) {
-      if (!isExplicitGithubIssueRequest(question)) {
-        return JSON.stringify({
-          success: false,
-          error:
-            "No issue was created because the current participant did not explicitly ask to open or file one.",
-        });
-      }
       // A single assistant request may loop through tools several times. Reuse a
       // successful result rather than risking duplicate issues in the same run.
       if (createdGithubIssueOutput) return createdGithubIssueOutput;
@@ -501,12 +481,21 @@ export async function POST(request: Request) {
           return;
         }
         taskFingerprints.set(task.id, fingerprint);
+        // Mirror the step into the relay task list (with the SFU's caps) and
+        // ship a relay packet so the whole room sees the step change live.
+        relayTasks = mergeAssistantTask(relayTasks, {
+          id: task.id.slice(0, MAX_RELAY_TASK_ID_CHARS),
+          kind: task.kind,
+          status: task.status,
+          ...(query ? { query: query.slice(0, MAX_RELAY_TASK_QUERY_CHARS) } : {}),
+        });
         writeStreamEvent({
           type: "task",
           task: {
             ...task,
             ...(query ? { query } : {}),
           },
+          relay: makeRelayPacket(fullText, false),
         });
       };
 
@@ -525,6 +514,26 @@ export async function POST(request: Request) {
           id: call.id ?? call.call_id,
           kind,
           status,
+        });
+      };
+
+      // Streams a reasoning-summary chunk to the asker while keeping the relay
+      // mirror in sync, so the packet fanned out to the room carries the same
+      // accumulated reasoning text the asker's client has rendered.
+      const emitReasoning = (delta?: string, done?: boolean): void => {
+        if (delta) {
+          relayReasoning += delta;
+          // A later tool round can resume thinking after a summary finished.
+          relayReasoningDone = false;
+        }
+        if (done) {
+          relayReasoningDone = true;
+        }
+        writeStreamEvent({
+          type: "reasoning",
+          ...(delta ? { delta } : {}),
+          ...(done ? { done: true } : {}),
+          relay: makeRelayPacket(fullText, false),
         });
       };
 
@@ -608,22 +617,21 @@ export async function POST(request: Request) {
               key,
               `${reasoningParts.get(key) ?? ""}${event.delta}`,
             );
-            writeStreamEvent({ type: "reasoning", delta: event.delta });
+            emitReasoning(event.delta);
           });
 
           responseStream.on("response.reasoning_summary_text.done", (event) => {
             const key = `${event.item_id}:${event.summary_index}`;
             const existing = reasoningParts.get(key) ?? "";
             if (event.text && event.text !== existing) {
-              writeStreamEvent({
-                type: "reasoning",
-                delta: event.text.startsWith(existing)
+              emitReasoning(
+                event.text.startsWith(existing)
                   ? event.text.slice(existing.length)
                   : event.text,
-              });
+              );
               reasoningParts.set(key, event.text);
             }
-            writeStreamEvent({ type: "reasoning", done: true });
+            emitReasoning(undefined, true);
           });
 
           // Surface output items (reasoning, hosted tools, function tools, final
@@ -662,7 +670,7 @@ export async function POST(request: Request) {
                 kind: "reasoning",
                 status: "done",
               });
-              writeStreamEvent({ type: "reasoning", done: true });
+              emitReasoning(undefined, true);
             } else if (event.item.type === "message") {
               emitTask({
                 id: event.item.id,
@@ -784,15 +792,19 @@ export async function POST(request: Request) {
         throw new Error("Conclave used too many function tool calls.");
       } catch (error) {
         console.error("[Conclave] assistant stream failed:", error);
-        const relayContent = fullText.trim()
-          ? "Conclave couldn't finish answering."
-          : "";
+        // Always relay the failure: earlier task/reasoning packets may have
+        // already opened a live bubble for the rest of the room, and it must
+        // terminate in the same error state the asker sees.
         writeStreamEvent({
           type: "error",
           error: "Conclave could not answer right now.",
-          ...(relayContent
-            ? { relay: makeRelayPacket(relayContent, true) }
-            : {}),
+          relay: makeRelayPacket(
+            fullText.trim()
+              ? "Conclave couldn't finish answering."
+              : "Conclave could not answer right now.",
+            true,
+            true,
+          ),
         });
       } finally {
         await writeChain;

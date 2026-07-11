@@ -16,6 +16,10 @@ import type {
 import type { Client } from "../../../config/classes/Client.js";
 import type { Room } from "../../../config/classes/Room.js";
 import { Logger } from "../../../utilities/loggers.js";
+import {
+  initConsumerHealState,
+  markConsumerClientPausedIntent,
+} from "../../audioConsumerHeal.js";
 import { emitWebinarFeedChanged } from "../../webinarNotifications.js";
 import type { ConnectionContext } from "../context.js";
 import { RATE_LIMITS, takeToken } from "../rateLimit.js";
@@ -237,6 +241,9 @@ const applyConsumerPreferences = async (
   }
 
   if (options.paused !== undefined) {
+    // Explicit pause/resume from the owning client. Recorded so the audio
+    // heal sweep never resumes a consumer the client intentionally paused.
+    markConsumerClientPausedIntent(consumer, options.paused);
     if (options.paused) {
       await consumer.pause();
     } else {
@@ -627,11 +634,18 @@ export const registerMediaHandlers = (context: ConnectionContext): void => {
           return;
         }
 
+        // Video consumers start paused so the client can resume once its local
+        // consumer exists and receive a clean keyframe. Audio needs no keyframe
+        // and Opus decodes from any packet, so audio consumers start UNPAUSED:
+        // delivery must never depend on a resumeConsumer round-trip that can be
+        // rate-limited or lost (issue #177 — speaker audible to only a subset
+        // of attendees). A resume for an unpaused consumer is a no-op.
         const consumer = await currentClient.consumerTransport.consume({
           producerId,
           rtpCapabilities,
-          paused: true,
+          paused: producerInfo.kind !== "audio",
         });
+        initConsumerHealState(consumer);
 
         const displacedConsumer = currentClient.addConsumer(consumer, {
           producerUserId: producerInfo.producerUserId,
@@ -684,6 +698,26 @@ export const registerMediaHandlers = (context: ConnectionContext): void => {
           });
         });
 
+        // A concurrent consume for the same producer can displace this
+        // consumer while applyConsumerPreferences awaited above. Responding
+        // with a displaced consumer id would hand the client a consumer that
+        // no longer resolves via getConsumerById (resume fails "not found")
+        // and gets force-closed shortly after — a silent dead end. Error out
+        // instead so the client's retry path re-consumes cleanly.
+        if (
+          consumer.closed ||
+          currentClient.getConsumerById(consumer.id) !== consumer
+        ) {
+          try {
+            consumer.close();
+          } catch {}
+          respond(callback, {
+            error: "Consumer displaced during setup",
+            code: "displaced",
+          });
+          return;
+        }
+
         emitConsumerTelemetry(telemetryTarget, "created");
 
         respond(callback, {
@@ -691,6 +725,9 @@ export const registerMediaHandlers = (context: ConnectionContext): void => {
           producerId: consumer.producerId,
           kind: consumer.kind,
           rtpParameters: consumer.rtpParameters,
+          // Tells the client whether a resumeConsumer round-trip is required.
+          // Audio consumers start unpaused, so clients can skip the resume.
+          paused: consumer.paused,
           producerPaused: consumer.producerPaused,
           score: consumer.score,
           preferredLayers: consumer.preferredLayers,
@@ -741,7 +778,9 @@ export const registerMediaHandlers = (context: ConnectionContext): void => {
     "resumeConsumer",
     async (
       data: { consumerId: string; requestKeyFrame?: boolean },
-      callback: (response: { success: boolean } | { error: string }) => void,
+      callback: (
+        response: { success: boolean } | { error: string; code?: string },
+      ) => void,
     ) => {
       try {
         const room = context.currentRoom;
@@ -754,6 +793,7 @@ export const registerMediaHandlers = (context: ConnectionContext): void => {
         if (!takeToken(socket, "resumeConsumer", RATE_LIMITS.consumerControl)) {
           respond(callback, {
             error: "Too many consumer control requests; please retry shortly",
+            code: "rate_limited",
           });
           return;
         }
@@ -766,10 +806,11 @@ export const registerMediaHandlers = (context: ConnectionContext): void => {
 
         const consumer = currentClient.getConsumerById(consumerId);
         if (!consumer) {
-          respond(callback, { error: "Consumer not found" });
+          respond(callback, { error: "Consumer not found", code: "not_found" });
           return;
         }
 
+        markConsumerClientPausedIntent(consumer, false);
         const wasPaused = consumer.paused;
         if (wasPaused) {
           await consumer.resume();

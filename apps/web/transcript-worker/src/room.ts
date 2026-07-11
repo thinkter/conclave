@@ -1994,7 +1994,8 @@ export class TranscriptRoom {
         apiKey: this.responseApiKey,
         model: this.session.qaModel,
         transcript,
-        fallback,
+        current: this.minutes,
+        fallback: this.hasMinutesContent(this.minutes) ? this.minutes : fallback,
       });
       if (minutes) {
         this.minutes = minutes;

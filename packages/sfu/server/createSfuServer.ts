@@ -28,6 +28,10 @@ import {
 } from "./socket/createSocketServer.js";
 import { createRoomRegistry } from "./roomRegistry.js";
 import {
+  AUDIO_CONSUMER_HEAL_INTERVAL_MS,
+  healAllRooms,
+} from "./audioConsumerHeal.js";
+import {
   releaseAllRoomOwnerships,
   renewRoomOwnerships,
 } from "./rooms.js";
@@ -76,6 +80,7 @@ export const createSfuServer = (
 
   let scheduledMeetingTickTimer: NodeJS.Timeout | null = null;
   let roomOwnershipRenewTimer: NodeJS.Timeout | null = null;
+  let audioConsumerHealTimer: NodeJS.Timeout | null = null;
   let socketAdapterLifecycle: SocketAdapterLifecycle | null = null;
 
   const start = async (): Promise<void> => {
@@ -114,6 +119,15 @@ export const createSfuServer = (
       scheduledMeetingTickTimer.unref();
     }
 
+    audioConsumerHealTimer = setInterval(() => {
+      healAllRooms(state).catch((error) => {
+        Logger.warn("Audio consumer heal sweep failed", error);
+      });
+    }, AUDIO_CONSUMER_HEAL_INTERVAL_MS);
+    if (audioConsumerHealTimer.unref) {
+      audioConsumerHealTimer.unref();
+    }
+
     await new Promise<void>((resolve) => {
       httpServer.listen(config.port, () => {
         Logger.success(`Server running on port ${config.port}`);
@@ -132,6 +146,10 @@ export const createSfuServer = (
     if (roomOwnershipRenewTimer) {
       clearInterval(roomOwnershipRenewTimer);
       roomOwnershipRenewTimer = null;
+    }
+    if (audioConsumerHealTimer) {
+      clearInterval(audioConsumerHealTimer);
+      audioConsumerHealTimer = null;
     }
     state.scheduledWebinarPersistence?.close?.();
     state.scheduledWebinarPersistence = null;
