@@ -60,6 +60,11 @@ export type WordleMove =
   | { type: "guess"; word: string }
   | { type: "nextRound" };
 
+/** Mirrors SpinWheelMove in modules/spinWheel.ts. */
+export type SpinWheelMove =
+  | { type: "toggle"; target: string }
+  | { type: "spin" };
+
 /** Mirrors ChessMove in modules/chess.ts. */
 export type ChessMove =
   | { type: "start" }
