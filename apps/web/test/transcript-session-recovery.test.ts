@@ -30,7 +30,7 @@ const session = (
     lastSeenAt: 2,
   },
   transcriptModel: "gpt-realtime-whisper",
-  qaModel: "gpt-5.5",
+  qaModel: "gpt-5.6-terra",
   transportMode: "browser",
   keySource: "global",
   startedAt: 1,

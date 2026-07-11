@@ -34,7 +34,7 @@ const activeSession = (
     lastSeenAt: 1,
   },
   transcriptModel: "gpt-realtime-whisper",
-  qaModel: "gpt-5.5",
+  qaModel: "gpt-5.6-terra",
   transportMode: "sfu",
   keySource: "global",
   startedAt: 1,
