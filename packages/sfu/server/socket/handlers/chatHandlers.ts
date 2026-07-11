@@ -11,6 +11,7 @@ import { config } from "../../../config/config.js";
 import { Logger } from "../../../utilities/loggers.js";
 import type { Room } from "../../../config/classes/Room.js";
 import type { ConnectionContext } from "../context.js";
+import { trackConclaveAnswerPacket } from "../conclaveRelayLifecycle.js";
 import { respond } from "./ack.js";
 import { RATE_LIMITS, takeToken } from "../rateLimit.js";
 
@@ -24,6 +25,20 @@ const CONCLAVE_MENTION_PATTERN = /(^|\s)@conclave\b/i;
 const CONCLAVE_BOT_USER_ID = "conclave-assistant";
 const CONCLAVE_BOT_DISPLAY_NAME = "Conclave";
 const MAX_CONCLAVE_CONTENT_LENGTH = 6000;
+// Caps for the assistant process state (reasoning trace + tool steps) relayed
+// alongside the answer. Must stay in sync with the web assistant API route,
+// which clamps to the same limits before signing.
+const MAX_CONCLAVE_REASONING_LENGTH = 8000;
+const MAX_CONCLAVE_TASKS = 32;
+const MAX_CONCLAVE_TASK_ID_LENGTH = 120;
+const MAX_CONCLAVE_TASK_QUERY_LENGTH = 600;
+const CONCLAVE_TASK_KINDS = new Set([
+  "reasoning",
+  "web_search",
+  "transcript",
+  "github_issue",
+  "answer",
+]);
 const CONCLAVE_AUTH_TOKEN_TTL_SECONDS = 5 * 60;
 
 const isConclaveMention = (content: string): boolean =>
@@ -262,12 +277,25 @@ type ConclaveAnswerData = {
   questionMessageId?: unknown;
   content?: unknown;
   done?: unknown;
+  reasoning?: unknown;
+  reasoningDone?: unknown;
+  tasks?: unknown;
+  errored?: unknown;
   timestamp?: unknown;
   expiresAt?: unknown;
   signature?: unknown;
 };
 
-const relaySigningInput = (packet: {
+// One step of the assistant's process timeline (thinking, web search,
+// transcript read, GitHub issue, answer writing) relayed to the room.
+type ConclaveAnswerTask = {
+  id: string;
+  kind: string;
+  status: "running" | "done";
+  query?: string;
+};
+
+type ConclaveRelayPacketFields = {
   id: string;
   roomId: string;
   channelId: string;
@@ -275,9 +303,15 @@ const relaySigningInput = (packet: {
   questionMessageId: string;
   content: string;
   done: boolean;
+  reasoning?: string;
+  reasoningDone?: boolean;
+  tasks?: ConclaveAnswerTask[];
+  errored?: boolean;
   timestamp: number;
   expiresAt: number;
-}): string =>
+};
+
+const relaySigningInput = (packet: ConclaveRelayPacketFields): string =>
   JSON.stringify({
     id: packet.id,
     roomId: packet.roomId,
@@ -288,19 +322,23 @@ const relaySigningInput = (packet: {
     done: packet.done,
     timestamp: packet.timestamp,
     expiresAt: packet.expiresAt,
+    // Optional process-state fields. `undefined` values are dropped by
+    // JSON.stringify, so legacy packets without them keep the exact signing
+    // input they were signed with. Must match the web assistant API route.
+    reasoning: packet.reasoning || undefined,
+    reasoningDone: packet.reasoningDone === true ? true : undefined,
+    tasks: packet.tasks?.length
+      ? packet.tasks.map((task) => ({
+          id: task.id,
+          kind: task.kind,
+          status: task.status,
+          query: task.query || undefined,
+        }))
+      : undefined,
+    errored: packet.errored === true ? true : undefined,
   });
 
-const signRelayPacket = (packet: {
-  id: string;
-  roomId: string;
-  channelId: string;
-  requesterUserId: string;
-  questionMessageId: string;
-  content: string;
-  done: boolean;
-  timestamp: number;
-  expiresAt: number;
-}): string =>
+const signRelayPacket = (packet: ConclaveRelayPacketFields): string =>
   createHmac("sha256", config.sfuSecret)
     .update(relaySigningInput(packet))
     .digest("base64url");
@@ -312,20 +350,47 @@ const safeSignatureEquals = (left: string, right: string): boolean => {
   return timingSafeEqual(leftBuffer, rightBuffer);
 };
 
+// Validates the relayed task list without altering any value (a mutated value
+// would fail the signature check anyway). Returns undefined when absent and
+// null when malformed, in which case the whole packet is dropped.
+const normalizeConclaveTasks = (
+  value: unknown,
+): ConclaveAnswerTask[] | null | undefined => {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length > MAX_CONCLAVE_TASKS) return null;
+  const tasks: ConclaveAnswerTask[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return null;
+    const task = item as Record<string, unknown>;
+    const id = typeof task.id === "string" ? task.id : "";
+    const kind = typeof task.kind === "string" ? task.kind : "";
+    const status =
+      task.status === "running" || task.status === "done" ? task.status : null;
+    const query = task.query === undefined ? undefined : task.query;
+    if (
+      !id ||
+      id.length > MAX_CONCLAVE_TASK_ID_LENGTH ||
+      !CONCLAVE_TASK_KINDS.has(kind) ||
+      !status ||
+      (query !== undefined &&
+        (typeof query !== "string" ||
+          query.length > MAX_CONCLAVE_TASK_QUERY_LENGTH))
+    ) {
+      return null;
+    }
+    tasks.push({
+      id,
+      kind,
+      status,
+      ...(query ? { query } : {}),
+    });
+  }
+  return tasks;
+};
+
 const normalizeConclaveAnswer = (
   data: ConclaveAnswerData,
-): (Required<ConclaveAnswerData> & {
-  id: string;
-  roomId: string;
-  channelId: string;
-  requesterUserId: string;
-  questionMessageId: string;
-  content: string;
-  done: boolean;
-  timestamp: number;
-  expiresAt: number;
-  signature: string;
-}) | null => {
+): (ConclaveRelayPacketFields & { signature: string }) | null => {
   const id = typeof data.id === "string" ? data.id.trim().slice(0, 120) : "";
   const roomId = typeof data.roomId === "string" ? data.roomId.trim() : "";
   const channelId =
@@ -343,6 +408,15 @@ const normalizeConclaveAnswer = (
       ? data.content.slice(0, MAX_CONCLAVE_CONTENT_LENGTH)
       : "";
   const done = data.done === true;
+  const reasoning =
+    data.reasoning === undefined
+      ? ""
+      : typeof data.reasoning === "string"
+        ? data.reasoning
+        : null;
+  const reasoningDone = data.reasoningDone === true;
+  const tasks = normalizeConclaveTasks(data.tasks);
+  const errored = data.errored === true;
   const timestamp = typeof data.timestamp === "number" ? data.timestamp : 0;
   const expiresAt = typeof data.expiresAt === "number" ? data.expiresAt : 0;
   const signature =
@@ -354,6 +428,9 @@ const normalizeConclaveAnswer = (
     !channelId ||
     !requesterUserId ||
     !questionMessageId ||
+    reasoning === null ||
+    reasoning.length > MAX_CONCLAVE_REASONING_LENGTH ||
+    tasks === null ||
     !timestamp ||
     !expiresAt ||
     !signature
@@ -369,6 +446,10 @@ const normalizeConclaveAnswer = (
     questionMessageId,
     content,
     done,
+    ...(reasoning ? { reasoning } : {}),
+    ...(reasoningDone ? { reasoningDone: true } : {}),
+    ...(tasks?.length ? { tasks } : {}),
+    ...(errored ? { errored: true } : {}),
     timestamp,
     expiresAt,
     signature,
@@ -823,6 +904,10 @@ export const registerChatHandlers = (context: ConnectionContext): void => {
           questionMessageId: packet.questionMessageId,
           content: packet.content,
           done: packet.done,
+          reasoning: packet.reasoning,
+          reasoningDone: packet.reasoningDone,
+          tasks: packet.tasks,
+          errored: packet.errored,
           timestamp: packet.timestamp,
           expiresAt: packet.expiresAt,
         });
@@ -836,13 +921,21 @@ export const registerChatHandlers = (context: ConnectionContext): void => {
           timestamp: packet.timestamp,
         };
 
+        // Fan out the process state too so every participant renders the same
+        // thinking/actions flow the asker sees.
         socket.to(room.channelId).emit("conclaveMessage", {
           ...message,
           done: packet.done,
+          ...(packet.reasoning ? { reasoning: packet.reasoning } : {}),
+          ...(packet.reasoningDone ? { reasoningDone: true } : {}),
+          ...(packet.tasks?.length ? { tasks: packet.tasks } : {}),
+          ...(packet.errored ? { errored: true } : {}),
         });
+        trackConclaveAnswerPacket(context.activeConclaveAnswers, packet);
 
         if (
           packet.done &&
+          !packet.errored &&
           packet.content.trim() &&
           !room
             .getChatHistorySnapshot()

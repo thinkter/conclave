@@ -9,6 +9,7 @@ import {
   emitWebinarFeedChanged,
 } from "../../webinarNotifications.js";
 import { getSocketContext, type ConnectionContext } from "../context.js";
+import { interruptActiveConclaveAnswers } from "../conclaveRelayLifecycle.js";
 import { emitChatHistorySnapshot } from "./chatHistory.js";
 import { registerAdminHandlers } from "./adminHandlers.js";
 
@@ -32,6 +33,7 @@ export const registerDisconnectHandlers = (
 
   socket.on("disconnect", (reason) => {
     Logger.info(`Client disconnected: ${socket.id} (${reason})`);
+    interruptActiveConclaveAnswers(io, context.activeConclaveAnswers);
 
     if (context.currentRoom && context.currentClient) {
       const room = context.currentRoom;

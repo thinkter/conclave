@@ -1,111 +1,66 @@
 import { describe, expect, it } from "vitest";
 import {
   createGithubIssue,
-  formatGithubIssueBody,
-  isExplicitGithubIssueRequest,
   parseGithubIssueDraft,
   resolveGithubIssuesConfig,
   type GithubIssueDraft,
 } from "../src/app/api/conclave/assistant/github-issues";
+import {
+  createGithubIssueApproval,
+  verifyGithubIssueApproval,
+  type GithubIssueApprovalIdentity,
+} from "../src/app/api/conclave/assistant/route";
 
-const bugDraft: GithubIssueDraft = {
-  issueType: "bug_report",
-  title: "Chat freezes after reconnecting to a meeting",
-  overview: "The meeting chat stops accepting input after a reconnect.",
-  details:
-    "This affects participants whose network briefly disconnects while the chat dock is open.",
-  reproductionSteps: [
-    "Join a meeting and open chat.",
-    "Disconnect and reconnect the network.",
-    "Try to send a chat message.",
-  ],
-  expectedBehavior: "The message is sent after the meeting reconnects.",
-  actualBehavior: "The composer remains disabled.",
-  acceptanceCriteria: [
-    "The composer is enabled after reconnecting.",
-    "Queued messages are not duplicated.",
-  ],
-  additionalContext: "Seen in the web client.",
+const issueDraft: GithubIssueDraft = {
+  title: "Add per-message copy action",
+  body: [
+    "## Overview",
+    "",
+    "Add a copy action to each chat message, positioned alongside Reply.",
+    "",
+    "## Expected behavior",
+    "",
+    "Selecting Copy places that message's text on the clipboard.",
+    "",
+    "## Acceptance criteria",
+    "",
+    "- [ ] Copy is available for every text message.",
+    "- [ ] The action provides visible success feedback.",
+  ].join("\n"),
+};
+
+const approvalIdentity: GithubIssueApprovalIdentity = {
+  answerId: "answer-1",
+  questionMessageId: "question-1",
+  userId: "user-1",
+  roomId: "room-1",
+  clientId: "client-1",
+  channelId: "room:room-1",
 };
 
 describe("Conclave GitHub issues", () => {
-  it("requires an explicit issue-creation action in the current request", () => {
-    expect(
-      isExplicitGithubIssueRequest(
-        "Open a GitHub issue for the reconnect bug we discussed.",
-      ),
-    ).toBe(true);
-    expect(
-      isExplicitGithubIssueRequest(
-        "File a detailed feature request for templates.",
-      ),
-    ).toBe(true);
-    expect(
-      isExplicitGithubIssueRequest("Turn this into an issue on GitHub."),
-    ).toBe(true);
-    expect(
-      isExplicitGithubIssueRequest("This sounds like a bug we should fix."),
-    ).toBe(false);
-    expect(
-      isExplicitGithubIssueRequest("Draft a GitHub issue, but do not create it."),
-    ).toBe(false);
-    expect(
-      isExplicitGithubIssueRequest(
-        "Do not open a GitHub issue; just summarize it.",
-      ),
-    ).toBe(false);
-    expect(isExplicitGithubIssueRequest("How do I open a GitHub issue?")).toBe(
-      false,
-    );
-  });
-
-  it("parses structured tool arguments and normalizes empty optional fields", () => {
+  it("accepts a complete model-authored title and Markdown body", () => {
     const draft = parseGithubIssueDraft(
       JSON.stringify({
-        issue_type: "feature_request",
         title: "  Add meeting templates  ",
-        overview: "Let hosts start from reusable settings.",
-        details: "Templates should capture room settings, not participant data.",
-        reproduction_steps: null,
-        expected_behavior: "",
-        actual_behavior: null,
-        acceptance_criteria: [
-          "Hosts can save a template",
-          "  Templates can be renamed  ",
-        ],
-        additional_context: null,
+        body: "  ## Overview\n\nLet hosts reuse meeting settings.  ",
       }),
     );
 
     expect(draft).toEqual({
-      issueType: "feature_request",
       title: "Add meeting templates",
-      overview: "Let hosts start from reusable settings.",
-      details: "Templates should capture room settings, not participant data.",
-      reproductionSteps: null,
-      expectedBehavior: null,
-      actualBehavior: null,
-      acceptanceCriteria: [
-        "Hosts can save a template",
-        "Templates can be renamed",
-      ],
-      additionalContext: null,
+      body: "## Overview\n\nLet hosts reuse meeting settings.",
     });
   });
 
-  it("formats a detailed bug report with ordered steps and checkboxes", () => {
-    const body = formatGithubIssueBody(bugDraft);
-
-    expect(body).toContain("## Overview\n\nThe meeting chat stops");
-    expect(body).toContain("## Issue type\n\nBug report");
-    expect(body).toContain("1. Join a meeting and open chat.");
-    expect(body).toContain("## Expected behavior");
-    expect(body).toContain("## Actual behavior");
-    expect(body).toContain("- [ ] The composer is enabled after reconnecting.");
-    expect(body).toContain("_Created by the Conclave in-meeting assistant._");
+  it("rejects malformed or incomplete tool output", () => {
+    expect(() => parseGithubIssueDraft("not json")).toThrow("valid JSON");
+    expect(() =>
+      parseGithubIssueDraft(JSON.stringify({ title: "Missing body" })),
+    ).toThrow("body is required");
   });
 
-  it("creates the issue with server credentials and the default bug label", async () => {
+  it("creates exactly the issue authored by the model", async () => {
     const requests: Array<{ input: string; init?: RequestInit }> = [];
     const fetcher = (async (
       input: string | URL | Request,
@@ -114,19 +69,19 @@ describe("Conclave GitHub issues", () => {
       requests.push({ input: String(input), init });
       return Response.json({
         number: 42,
-        title: bugDraft.title,
+        title: issueDraft.title,
         html_url: "https://github.com/ACM-VIT/conclave/issues/42",
       });
     }) as typeof fetch;
 
-    const result = await createGithubIssue(bugDraft, {
+    const result = await createGithubIssue(issueDraft, {
       env: { GITHUB_ISSUES_TOKEN: "secret-token" },
       fetcher,
     });
 
     expect(result).toEqual({
       number: 42,
-      title: bugDraft.title,
+      title: issueDraft.title,
       url: "https://github.com/ACM-VIT/conclave/issues/42",
       repository: "ACM-VIT/conclave",
     });
@@ -138,42 +93,27 @@ describe("Conclave GitHub issues", () => {
       Authorization: "Bearer secret-token",
       "X-GitHub-Api-Version": "2022-11-28",
     });
-    expect(JSON.parse(String(requests[0]?.init?.body))).toMatchObject({
-      title: bugDraft.title,
-      labels: ["bug"],
-    });
+    expect(JSON.parse(String(requests[0]?.init?.body))).toEqual(issueDraft);
   });
 
-  it("retries without a default label when a repository rejects it", async () => {
-    const requestBodies: Array<Record<string, unknown>> = [];
-    const fetcher = (async (
-      _input: string | URL | Request,
-      init?: RequestInit,
-    ) => {
-      requestBodies.push(
-        JSON.parse(String(init?.body)) as Record<string, unknown>,
-      );
-      if (requestBodies.length === 1) {
-        return Response.json({ message: "Validation Failed" }, { status: 422 });
-      }
-      return Response.json({
-        number: 7,
-        title: bugDraft.title,
-        html_url: "https://github.com/example/project/issues/7",
-      });
-    }) as typeof fetch;
+  it("binds approval to the exact issue draft and requester", () => {
+    const approval = createGithubIssueApproval(issueDraft, approvalIdentity);
 
-    await createGithubIssue(bugDraft, {
-      env: {
-        GITHUB_ISSUES_TOKEN: "secret-token",
-        GITHUB_ISSUES_REPOSITORY: "example/project",
-      },
-      fetcher,
-    });
-
-    expect(requestBodies).toHaveLength(2);
-    expect(requestBodies[0]?.labels).toEqual(["bug"]);
-    expect(requestBodies[1]?.labels).toBeUndefined();
+    expect(verifyGithubIssueApproval(approval, approvalIdentity)?.draft).toEqual(
+      issueDraft,
+    );
+    expect(
+      verifyGithubIssueApproval(
+        { ...approval, title: "A tampered title" },
+        approvalIdentity,
+      ),
+    ).toBeNull();
+    expect(
+      verifyGithubIssueApproval(approval, {
+        ...approvalIdentity,
+        userId: "different-user",
+      }),
+    ).toBeNull();
   });
 
   it("requires server-side GitHub configuration", () => {

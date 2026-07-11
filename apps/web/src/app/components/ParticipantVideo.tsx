@@ -17,6 +17,8 @@ import GameTileOverlay from "./games/GameTileOverlay";
 import VoiceAgentOrb from "./VoiceAgentOrb";
 import { Avatar } from "@conclave/ui-tokens/web";
 import { color } from "@conclave/ui-tokens";
+import { useElementSize } from "../hooks/useElementSize";
+import { computeTileChrome } from "../lib/tile-chrome";
 
 interface ParticipantVideoProps {
   participant: Participant;
@@ -58,8 +60,27 @@ function ParticipantVideo({
   onToggleFullVideo,
 }: ParticipantVideoProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const labelWidthClass = compact ? "max-w-[65%]" : "max-w-[75%]";
-  const displayLabel = truncateDisplayName(displayName, compact ? 12 : 18);
+  // The grid packer shrinks tiles well below the fixed chrome sizes in big
+  // calls — measure the tile and scale the face/pill/badges to fit.
+  const tileRef = useRef<HTMLDivElement>(null);
+  const tileSize = useElementSize(tileRef);
+  const { dense, avatarSize, avatarLift } = computeTileChrome(tileSize, {
+    maxAvatar: compact ? 48 : 80,
+  });
+  // Dense tiles dedicate the bottom strip to the name pill (the face is
+  // lifted clear of it), so the pill may run wider before truncating.
+  const labelWidthClass = dense
+    ? "max-w-[82%]"
+    : compact
+      ? "max-w-[65%]"
+      : "max-w-[75%]";
+  const labelPillClass = dense
+    ? "bottom-1.5 left-1.5 gap-1 px-2 py-0.5 text-[10px]"
+    : `bottom-3 left-3 gap-2 px-3 py-1.5 ${compact ? "text-[10px]" : "text-xs"}`;
+  const displayLabel = truncateDisplayName(
+    displayName,
+    dense ? 16 : compact ? 12 : 18,
+  );
   const isAgent = isVoiceAgentUserId(participant.userId);
   const videoStream = getRenderableParticipantVideoStream(participant);
   const isRenderingScreenShare = isRenderingParticipantScreenShare(
@@ -171,6 +192,7 @@ function ParticipantVideo({
   if (isAgent) {
     return (
       <div
+        ref={tileRef}
         className={`acm-video-tile group ${
           compact ? "h-36 w-48 shrink-0 sm:w-auto" : "w-full h-full"
         } ${isActiveSpeaker ? "speaking" : ""}`}
@@ -199,9 +221,7 @@ function ParticipantVideo({
           />
         </div>
         <div
-          className={`absolute bottom-3 left-3 bg-black/70 border border-[#fafafa]/10 rounded-full px-3 py-1.5 flex items-center gap-2 ${
-            compact ? "text-[10px]" : "text-xs"
-          }`}
+          className={`absolute bg-black/70 border border-[#fafafa]/10 rounded-full flex items-center ${labelPillClass}`}
         >
           <span className="font-medium text-[#fafafa] truncate" title={displayName}>
             {displayLabel}
@@ -232,15 +252,20 @@ function ParticipantVideo({
   const fullVideoToggleLabel = isFullVideoShown
     ? "Crop this video"
     : "Show the full video";
+  // Hover controls stack right-to-left in fixed slots; dense tiles use
+  // smaller buttons, so the slots sit closer together.
+  const controlTopClass = dense ? "top-1.5" : "top-3";
+  const controlPadClass = dense ? "p-1.5" : "p-2";
+  const controlIconClass = dense ? "w-3.5 h-3.5" : "w-4 h-4";
+  const controlRightClasses = dense
+    ? ["right-1.5", "right-[2.375rem]", "right-[4.375rem]"]
+    : ["right-3", "right-14", "right-[6.5rem]"];
   const adminControlOffset =
-    showFullVideoToggle && onTogglePin
-      ? "right-[6.5rem]"
-      : showFullVideoToggle || onTogglePin
-        ? "right-14"
-        : "right-3";
+    controlRightClasses[(onTogglePin ? 1 : 0) + (showFullVideoToggle ? 1 : 0)];
 
   return (
     <div
+      ref={tileRef}
       onClick={handleClick}
       className={`acm-video-tile group ${
         compact ? "h-36 w-48 shrink-0 sm:w-auto" : "w-full h-full"
@@ -275,12 +300,20 @@ function ParticipantVideo({
             isReconnecting ? "opacity-90" : ""
           }`}
         >
-          <Avatar
-            className={compact ? "text-lg" : "text-3xl"}
-            id={participant.userId}
-            name={displayName}
-            size={compact ? 48 : 80}
-          />
+          <div
+            style={
+              avatarLift > 0
+                ? { transform: `translateY(-${avatarLift}px)` }
+                : undefined
+            }
+          >
+            <Avatar
+              className={compact ? "text-lg" : "text-3xl"}
+              id={participant.userId}
+              name={displayName}
+              size={avatarSize}
+            />
+          </div>
         </div>
       )}
       <ParticipantConnectionOverlay
@@ -298,18 +331,16 @@ function ParticipantVideo({
       )}
       {participant.isHandRaised && (
         <div
-          className={`absolute top-3 left-3 rounded-full bg-amber-500/20 border border-amber-400/40 text-amber-300 ${
-            compact ? "p-1.5" : "p-2"
-          }`}
+          className={`absolute rounded-full bg-amber-500/20 border border-amber-400/40 text-amber-300 ${
+            dense ? "top-1.5 left-1.5" : "top-3 left-3"
+          } ${compact || dense ? "p-1.5" : "p-2"}`}
           title="Hand raised"
         >
-          <Hand className={compact ? "w-3 h-3" : "w-4 h-4"} />
+          <Hand className={compact || dense ? "w-3 h-3" : "w-4 h-4"} />
         </div>
       )}
       <div
-        className={`absolute bottom-3 left-3 bg-black/70 border border-[#fafafa]/10 rounded-full px-3 py-1.5 flex items-center gap-2 ${labelWidthClass} ${
-          compact ? "text-[10px]" : "text-xs"
-        }`}
+        className={`absolute bg-black/70 border border-[#fafafa]/10 rounded-full flex items-center ${labelWidthClass} ${labelPillClass}`}
       >
         <span
           className="font-medium text-[#fafafa] truncate"
@@ -324,7 +355,11 @@ function ParticipantVideo({
             <span />
           </span>
         )}
-        {participant.isMuted && <MicOff className="w-3 h-3 text-[#F95F4A] shrink-0" />}
+        {participant.isMuted && (
+          <MicOff
+            className={`text-[#F95F4A] shrink-0 ${dense ? "w-2.5 h-2.5" : "w-3 h-3"}`}
+          />
+        )}
       </div>
       {onTogglePin && (
         <button
@@ -333,13 +368,17 @@ function ParticipantVideo({
             e.stopPropagation();
             onTogglePin(participant.userId);
           }}
-          className={`absolute top-3 right-3 p-2 bg-black/60 rounded-full border border-[#fafafa]/10 text-[#fafafa]/82 transition-[border-color,color,opacity] duration-[120ms] hover:border-[#F95F4A]/40 hover:text-[#fafafa] focus-visible:opacity-100 ${
+          className={`absolute ${controlTopClass} ${controlRightClasses[0]} ${controlPadClass} bg-black/60 rounded-full border border-[#fafafa]/10 text-[#fafafa]/82 transition-[border-color,color,opacity] duration-[120ms] hover:border-[#F95F4A]/40 hover:text-[#fafafa] focus-visible:opacity-100 ${
             isPinned ? "opacity-100" : "opacity-0 group-hover:opacity-100"
           }`}
           title={isPinned ? "Unpin" : "Pin to spotlight"}
           aria-label={isPinned ? "Unpin" : "Pin to spotlight"}
         >
-          {isPinned ? <PinOff className="w-4 h-4" /> : <Pin className="w-4 h-4" />}
+          {isPinned ? (
+            <PinOff className={controlIconClass} />
+          ) : (
+            <Pin className={controlIconClass} />
+          )}
         </button>
       )}
       {showFullVideoToggle && (
@@ -351,21 +390,23 @@ function ParticipantVideo({
           }}
           data-meet-tile-crop-toggle={participant.userId}
           data-meet-tile-crop-state={isFullVideoShown ? "full" : "cropped"}
-          className={`absolute top-3 ${onTogglePin ? "right-14" : "right-3"} rounded-full border border-[#fafafa]/10 bg-black/60 p-2 text-[#fafafa]/82 opacity-0 transition-[border-color,color,opacity] duration-[120ms] hover:border-[#F95F4A]/40 hover:text-[#fafafa] group-hover:opacity-100 focus-visible:opacity-100`}
+          className={`absolute ${controlTopClass} ${
+            controlRightClasses[onTogglePin ? 1 : 0]
+          } rounded-full border border-[#fafafa]/10 bg-black/60 ${controlPadClass} text-[#fafafa]/82 opacity-0 transition-[border-color,color,opacity] duration-[120ms] hover:border-[#F95F4A]/40 hover:text-[#fafafa] group-hover:opacity-100 focus-visible:opacity-100`}
           title={fullVideoToggleLabel}
           aria-label={fullVideoToggleLabel}
           aria-pressed={isFullVideoShown}
         >
           {isFullVideoShown ? (
-            <Crop className="h-4 w-4" />
+            <Crop className={controlIconClass} />
           ) : (
-            <Maximize2 className="h-4 w-4" />
+            <Maximize2 className={controlIconClass} />
           )}
         </button>
       )}
       {isAdmin && onAdminClick && (
-        <div className={`absolute top-3 ${adminControlOffset} p-2 bg-black/60 rounded-full border border-[#fafafa]/10 opacity-0 transition-[border-color,opacity] duration-[120ms] group-hover:opacity-100 hover:border-[#F95F4A]/40`}>
-          <Info className="w-4 h-4 text-[#fafafa]/82" />
+        <div className={`absolute ${controlTopClass} ${adminControlOffset} ${controlPadClass} bg-black/60 rounded-full border border-[#fafafa]/10 opacity-0 transition-[border-color,opacity] duration-[120ms] group-hover:opacity-100 hover:border-[#F95F4A]/40`}>
+          <Info className={`${controlIconClass} text-[#fafafa]/82`} />
         </div>
       )}
       <GameTileOverlay userId={participant.userId} compact={compact} />

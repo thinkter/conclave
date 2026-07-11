@@ -49,7 +49,16 @@ describe("cloned TTS voice tokens", () => {
       voiceName: "Alice · Conclave",
       ownerId: "user-123",
     });
-    const tampered = `${token.slice(0, -1)}${token.endsWith("a") ? "b" : "a"}`;
+    const parts = token.split(".");
+    const ciphertext = parts[3];
+    if (!ciphertext) {
+      throw new Error("Expected a compact JWE ciphertext segment.");
+    }
+    const tamperIndex = Math.floor(ciphertext.length / 2);
+    parts[3] = `${ciphertext.slice(0, tamperIndex)}${
+      ciphertext[tamperIndex] === "a" ? "b" : "a"
+    }${ciphertext.slice(tamperIndex + 1)}`;
+    const tampered = parts.join(".");
 
     await expect(verifyVoiceToken(tampered)).rejects.toThrow();
   });

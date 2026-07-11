@@ -1,17 +1,24 @@
 "use client";
 
-import { memo } from "react";
-import type { ReactionEvent } from "../lib/types";
+import { memo, useSyncExternalStore } from "react";
+import type { ReactionStore } from "../lib/reaction-store";
 
 interface ReactionOverlayProps {
-  reactions: ReactionEvent[];
+  store: ReactionStore;
   getDisplayName: (userId: string) => string;
 }
 
-function ReactionOverlay({
-  reactions,
-  getDisplayName,
-}: ReactionOverlayProps) {
+function ReactionOverlay({ store, getDisplayName }: ReactionOverlayProps) {
+  // Subscribing here (instead of receiving reactions as a prop) keeps
+  // reaction traffic from re-rendering anything above this overlay.
+  const reactions = useSyncExternalStore(
+    store.subscribe,
+    store.getSnapshot,
+    store.getSnapshot
+  );
+
+  if (reactions.length === 0) return null;
+
   return (
     <div className="pointer-events-none absolute inset-0 z-20">
       {reactions.map((reaction) => {

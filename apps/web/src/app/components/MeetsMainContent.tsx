@@ -34,6 +34,7 @@ import type {
 import {
   CONCLAVE_ASSISTANT_USER_ID,
   type AssistantChatMessage,
+  type AssistantToolApprovalDecision,
   type ConclaveAssistantModel,
 } from "../lib/conclave-assistant";
 import type {
@@ -57,13 +58,13 @@ import type {
   MeetingUpdateRequest,
   Participant,
   ReconnectRecoveryStatus,
-  ReactionEvent,
   ReactionOption,
   WebinarConfigSnapshot,
   WebinarLinkResponse,
   WebinarUpdateRequest,
   PrejoinMediaHandoff,
 } from "../lib/types";
+import type { ReactionStore } from "../lib/reaction-store";
 import {
   formatDisplayName,
   isBrowserVideoUserId,
@@ -220,10 +221,14 @@ interface MeetsMainContentProps {
     model: ConclaveAssistantModel,
   ) => void;
   onCancelAssistantApiKey: () => void;
+  onAssistantToolApproval: (
+    answerId: string,
+    decision: AssistantToolApprovalDecision,
+  ) => void;
   socket: Socket | null;
   setPendingUsers: Dispatch<SetStateAction<Map<string, string>>>;
   resolveDisplayName: (userId: string) => string;
-  reactions: ReactionEvent[];
+  reactionStore: ReactionStore;
   onUserChange: (
     user: { id: string; email: string; name: string } | null,
   ) => void;
@@ -463,10 +468,11 @@ export default function MeetsMainContent({
   assistantApiKeyPrompt,
   onSubmitAssistantApiKey,
   onCancelAssistantApiKey,
+  onAssistantToolApproval,
   socket,
   setPendingUsers,
   resolveDisplayName,
-  reactions,
+  reactionStore,
   onUserChange,
   onIsAdminChange,
   onPendingUserStale,
@@ -621,6 +627,9 @@ export default function MeetsMainContent({
   } | null>(null);
   const [webinarAudioBlocked, setWebinarAudioBlocked] = useState(false);
   const [webinarAudioPlaybackAttempt, setWebinarAudioPlaybackAttempt] = useState(0);
+  const [participantAudioBlocked, setParticipantAudioBlocked] = useState(false);
+  const [participantAudioPlaybackAttempt, setParticipantAudioPlaybackAttempt] =
+    useState(0);
   // Right-docked panels are owned here so the stage reserve stays in sync.
   const [isHostControlsOpen, setIsHostControlsOpen] = useState(false);
   const [isVideoEffectsOpen, setIsVideoEffectsOpen] = useState(false);
@@ -993,6 +1002,21 @@ export default function MeetsMainContent({
     setWebinarAudioBlocked(false);
     setWebinarAudioPlaybackAttempt(0);
   }, [isJoined, isWebinarAttendee]);
+  const handleParticipantAudioAutoplayBlocked = useCallback(() => {
+    setParticipantAudioBlocked(true);
+  }, []);
+  const handleParticipantAudioPlaybackStarted = useCallback(() => {
+    setParticipantAudioBlocked(false);
+  }, []);
+  const handlePlayParticipantAudio = useCallback(() => {
+    setParticipantAudioBlocked(false);
+    setParticipantAudioPlaybackAttempt((attempt) => attempt + 1);
+  }, []);
+  useEffect(() => {
+    if (isJoined) return;
+    setParticipantAudioBlocked(false);
+    setParticipantAudioPlaybackAttempt(0);
+  }, [isJoined]);
   const visibleParticipantCount = nonSystemParticipants.length;
   const mentionableParticipants = useMemo(
     () =>
@@ -1851,9 +1875,9 @@ export default function MeetsMainContent({
           isWebinarAttendee ? webinarAudioPlaybackAttempt : undefined
         }
       />
-      {isJoined && reactions.length > 0 && (
+      {isJoined && (
         <ReactionOverlay
-          reactions={reactions}
+          store={reactionStore}
           getDisplayName={resolveDisplayName}
         />
       )}
@@ -2043,6 +2067,9 @@ export default function MeetsMainContent({
           activeSpeakerId={activeSpeakerId}
           currentUserId={currentUserId}
           audioOutputDeviceId={audioOutputDeviceId}
+          onAudioAutoplayBlocked={handleParticipantAudioAutoplayBlocked}
+          onAudioPlaybackStarted={handleParticipantAudioPlaybackStarted}
+          audioPlaybackAttemptToken={participantAudioPlaybackAttempt}
           getDisplayName={resolveDisplayName}
         />
       ) : browserState?.active && browserState.noVncUrl ? (
@@ -2062,6 +2089,9 @@ export default function MeetsMainContent({
           activeSpeakerId={activeSpeakerId}
           currentUserId={currentUserId}
           audioOutputDeviceId={audioOutputDeviceId}
+          onAudioAutoplayBlocked={handleParticipantAudioAutoplayBlocked}
+          onAudioPlaybackStarted={handleParticipantAudioPlaybackStarted}
+          audioPlaybackAttemptToken={participantAudioPlaybackAttempt}
           getDisplayName={resolveDisplayName}
           isAdmin={isAdmin}
           isBrowserLaunching={isBrowserLaunching}
@@ -2080,6 +2110,9 @@ export default function MeetsMainContent({
           activeSpeakerId={effectiveActiveSpeakerId}
           currentUserId={currentUserId}
           audioOutputDeviceId={audioOutputDeviceId}
+          onAudioAutoplayBlocked={handleParticipantAudioAutoplayBlocked}
+          onAudioPlaybackStarted={handleParticipantAudioPlaybackStarted}
+          audioPlaybackAttemptToken={participantAudioPlaybackAttempt}
           onOpenParticipantsPanel={handleOpenParticipants}
           activeVideoEffectsCount={activeVideoEffectsCount}
           isVideoFramingEnabled={videoEffects.framing}
@@ -2129,6 +2162,20 @@ export default function MeetsMainContent({
               : null,
           ]}
         />
+      )}
+
+      {isJoined && !isWebinarAttendee && participantAudioBlocked && (
+        <div className="pointer-events-none fixed inset-x-0 top-16 z-[70] flex justify-center px-4">
+          <button
+            type="button"
+            onClick={handlePlayParticipantAudio}
+            className="pointer-events-auto inline-flex items-center gap-2.5 rounded-full border border-[#F95F4A]/60 bg-[#131316] px-5 py-2.5 text-xs uppercase tracking-[0.14em] text-[#fafafa] transition hover:bg-[#F95F4A]/15"
+            style={{ fontFamily: "'PolySans Trial', sans-serif" }}
+          >
+            <span className="h-2 w-2 rounded-full bg-[#F95F4A] animate-pulse" />
+            Audio is paused by your browser — click to listen
+          </button>
+        </div>
       )}
 
       {isJoined &&
@@ -2194,6 +2241,7 @@ export default function MeetsMainContent({
           assistantApiKeyPrompt={assistantApiKeyPrompt}
           onSubmitAssistantApiKey={onSubmitAssistantApiKey}
           onCancelAssistantApiKey={onCancelAssistantApiKey}
+          onAssistantToolApproval={onAssistantToolApproval}
         />
       )}
 

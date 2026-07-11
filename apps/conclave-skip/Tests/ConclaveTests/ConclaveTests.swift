@@ -597,7 +597,7 @@ final class ConclaveTests: XCTestCase {
 
         let meetingSource = try sourceFileContents("Sources/Conclave/Features/Meeting/MeetingView.swift")
         let bannerSource = try sourceFileContents("Sources/Conclave/Features/Meeting/MeetingBannerOverlay.swift")
-        XCTAssertTrue(meetingSource.contains("banners float over the stage"))
+        XCTAssertTrue(meetingSource.contains("removes the old 58pt empty slot"))
         XCTAssertTrue(meetingSource.contains(".padding(.top, MeetingHeaderLayout.barHeight)"))
         XCTAssertFalse(bannerSource.contains("MeetingBannerSlotLayout.reservedHeight"))
     }
@@ -610,7 +610,13 @@ final class ConclaveTests: XCTestCase {
         )
         XCTAssertEqual(
             blocks.map(\.kind),
-            [.heading, .unorderedListItem, .orderedListItem, .quote, .codeFence]
+            [
+                StreamingMarkdownBlockKind.heading,
+                StreamingMarkdownBlockKind.unorderedListItem,
+                StreamingMarkdownBlockKind.orderedListItem,
+                StreamingMarkdownBlockKind.quote,
+                StreamingMarkdownBlockKind.codeFence,
+            ]
         )
         XCTAssertEqual(blocks.last?.language, "swift")
 
@@ -627,6 +633,14 @@ final class ConclaveTests: XCTestCase {
         )
         XCTAssertEqual(finalizedRuns.map(\.text).joined(), "Writing **the answer")
         XCTAssertFalse(finalizedRuns.last?.style.isStrong == true)
+
+        let unicodeRuns = StreamingMarkdownInlineParser.runs(
+            in: "**Résumé ✅** [docs](https://conclave.dev)",
+            isStreaming: false
+        )
+        XCTAssertEqual(unicodeRuns.map(\.text).joined(), "Résumé ✅ docs")
+        XCTAssertTrue(unicodeRuns.first?.style.isStrong == true)
+        XCTAssertEqual(unicodeRuns.last?.style.linkURL, "https://conclave.dev")
     }
 
     func testStreamingMarkdownCommitsStablePrefixAndReparsesOnlyLiveTail() throws {
@@ -649,11 +663,13 @@ final class ConclaveTests: XCTestCase {
     func testNativeShimmerMatchesWebDynamicSpreadWithoutUnboundedBands() throws {
         XCTAssertEqual(
             NativeTextShimmerLayout.highlightWidth(textLength: 8, spread: 2, containerWidth: 120),
-            28
+            28,
+            accuracy: 0.001
         )
         XCTAssertEqual(
             NativeTextShimmerLayout.highlightWidth(textLength: 40, spread: 2, containerWidth: 100),
-            58
+            58,
+            accuracy: 0.001
         )
 
         let chatSource = try sourceFileContents("Sources/Conclave/Features/Meeting/ChatViews.swift")
@@ -4884,7 +4900,8 @@ final class ConclaveTests: XCTestCase {
         XCTAssertTrue(source.contains("socketManager.relayConclaveAnswer(relay)"))
         XCTAssertFalse(source.contains("Conclave AI is not available in the native app yet."))
         XCTAssertTrue(chatViewsSource.contains("return \"Thinking...\""))
-        XCTAssertTrue(chatViewsSource.contains("content: ChatMessagePresentation.content(for: message)"))
+        XCTAssertTrue(chatViewsSource.contains(": ChatMessagePresentation.content(for: message)"))
+        XCTAssertTrue(chatViewsSource.contains("rendersMarkdown: isConclaveAssistantMessage"))
     }
 
     @MainActor

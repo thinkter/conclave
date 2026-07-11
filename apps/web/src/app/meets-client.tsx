@@ -1017,7 +1017,7 @@ export default function MeetsClient({
   });
 
   const {
-    reactions: reactionEvents,
+    reactionStore,
     reactionOptions,
     addReaction,
     sendReaction,
@@ -1073,6 +1073,7 @@ export default function MeetsClient({
     assistantApiKeyPrompt,
     submitAssistantApiKey,
     cancelAssistantApiKeyPrompt,
+    resolveAssistantToolApproval,
   } = useMeetChat({
     socketRef: refs.socketRef,
     currentUserId: userId,
@@ -3158,10 +3159,11 @@ export default function MeetsClient({
         assistantApiKeyPrompt={assistantApiKeyPrompt}
         onSubmitAssistantApiKey={submitAssistantApiKey}
         onCancelAssistantApiKey={cancelAssistantApiKeyPrompt}
+        onAssistantToolApproval={resolveAssistantToolApproval}
         socket={refs.socketRef.current}
         setPendingUsers={setPendingUsers}
         resolveDisplayName={resolveDisplayName}
-        reactions={reactionEvents}
+        reactionStore={reactionStore}
         onUserChange={(user) => setCurrentUser(user ?? undefined)}
         onIsAdminChange={setCurrentIsAdmin}
         onPendingUserStale={(userId) => {

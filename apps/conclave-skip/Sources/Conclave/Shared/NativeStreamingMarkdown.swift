@@ -244,45 +244,50 @@ enum StreamingMarkdownParser {
     }
 
     private static func heading(in line: String) -> (level: Int, text: String)? {
-        let characters = Array(line)
+        // Markdown structure is ASCII, so scan UTF-8 bytes rather than
+        // materializing a Character array. This is cheaper and maps directly
+        // to Skip's UByte array on Android.
+        let bytes = Array(line.utf8)
         var level = 0
-        while level < min(6, characters.count), characters[level] == "#" {
+        while level < min(6, bytes.count), bytes[level] == UInt8(35) {
             level += 1
         }
-        guard level > 0, level < characters.count, characters[level] == " " else {
+        guard level > 0, level < bytes.count, bytes[level] == UInt8(32) else {
             return nil
         }
         return (
             level,
-            String(characters.dropFirst(level + 1))
+            String(line.dropFirst(level + 1))
                 .trimmingCharacters(in: .whitespaces)
         )
     }
 
     private static func unorderedListItem(in line: String) -> String? {
-        let characters = Array(line)
-        guard characters.count >= 2,
-              (characters[0] == "-" || characters[0] == "*" || characters[0] == "+"),
-              characters[1] == " " else {
+        let bytes = Array(line.utf8)
+        guard bytes.count >= 2,
+              (bytes[0] == UInt8(45) || bytes[0] == UInt8(42) || bytes[0] == UInt8(43)),
+              bytes[1] == UInt8(32) else {
             return nil
         }
-        return String(characters.dropFirst(2))
+        return String(line.dropFirst(2))
     }
 
     private static func orderedListItem(in line: String) -> (ordinal: Int, text: String)? {
-        let characters = Array(line)
+        let bytes = Array(line.utf8)
         var digitCount = 0
-        while digitCount < characters.count, characters[digitCount].isNumber {
+        while digitCount < bytes.count,
+              bytes[digitCount] >= UInt8(48),
+              bytes[digitCount] <= UInt8(57) {
             digitCount += 1
         }
         guard digitCount > 0,
-              digitCount + 1 < characters.count,
-              characters[digitCount] == ".",
-              characters[digitCount + 1] == " ",
-              let ordinal = Int(String(characters.prefix(digitCount))) else {
+              digitCount + 1 < bytes.count,
+              bytes[digitCount] == UInt8(46),
+              bytes[digitCount + 1] == UInt8(32),
+              let ordinal = Int(String(line.prefix(digitCount))) else {
             return nil
         }
-        return (ordinal, String(characters.dropFirst(digitCount + 2)))
+        return (ordinal, String(line.dropFirst(digitCount + 2)))
     }
 
     private static func isRule(_ line: String) -> Bool {
@@ -323,13 +328,13 @@ enum StreamingMarkdownInlineParser {
 
     static func runs(in source: String, isStreaming: Bool) -> [StreamingMarkdownInlineRun] {
         guard !source.isEmpty else { return [] }
-        let characters = Array(source)
-        let delimiterCounts = counts(in: characters)
+        let bytes = Array(source.utf8)
+        let delimiterCounts = counts(in: bytes)
         var delimiterOccurrences: [String: Int] = [:]
         var activeTokens = Set<String>()
         var style = StreamingMarkdownInlineStyle()
         var result: [StreamingMarkdownInlineRun] = []
-        var buffer = ""
+        var buffer: [UInt8] = []
         var index = 0
 
         func appendRun(_ text: String, style runStyle: StreamingMarkdownInlineStyle) {
@@ -345,20 +350,24 @@ enum StreamingMarkdownInlineParser {
         }
 
         func flushBuffer() {
-            appendRun(buffer, style: style)
-            buffer = ""
+            appendRun(decoded(buffer), style: style)
+            buffer = []
         }
 
-        while index < characters.count {
-            if characters[index] == "\\", index + 1 < characters.count {
-                buffer += String(characters[index + 1])
+        while index < bytes.count {
+            // CommonMark escapes target ASCII punctuation. Keep non-ASCII
+            // bytes together so names and multilingual responses remain valid.
+            if bytes[index] == UInt8(92),
+               index + 1 < bytes.count,
+               bytes[index + 1] < UInt8(128) {
+                buffer.append(bytes[index + 1])
                 index += 2
                 continue
             }
 
             if !style.isCode,
-               characters[index] == "[",
-               let link = completeLink(in: characters, startingAt: index) {
+               bytes[index] == UInt8(91),
+               let link = completeLink(in: bytes, startingAt: index) {
                 flushBuffer()
                 var linkStyle = style
                 linkStyle.linkURL = link.url
@@ -368,11 +377,11 @@ enum StreamingMarkdownInlineParser {
             }
 
             guard let delimiter = delimiter(
-                in: characters,
+                in: bytes,
                 at: index,
                 codeIsActive: style.isCode
             ) else {
-                buffer += String(characters[index])
+                buffer.append(bytes[index])
                 index += 1
                 continue
             }
@@ -382,7 +391,7 @@ enum StreamingMarkdownInlineParser {
             let total = delimiterCounts[delimiter] ?? 0
             let shouldInterpret = isStreaming || total % 2 == 0 || occurrence < total
             guard shouldInterpret else {
-                buffer += delimiter
+                buffer.append(contentsOf: delimiter.utf8)
                 index += delimiter.count
                 continue
             }
@@ -401,12 +410,12 @@ enum StreamingMarkdownInlineParser {
         return result
     }
 
-    private static func counts(in characters: [Character]) -> [String: Int] {
+    private static func counts(in bytes: [UInt8]) -> [String: Int] {
         var result: [String: Int] = [:]
         var index = 0
         var codeIsActive = false
-        while index < characters.count {
-            guard let token = delimiter(in: characters, at: index, codeIsActive: codeIsActive) else {
+        while index < bytes.count {
+            guard let token = delimiter(in: bytes, at: index, codeIsActive: codeIsActive) else {
                 index += 1
                 continue
             }
@@ -420,23 +429,23 @@ enum StreamingMarkdownInlineParser {
     }
 
     private static func delimiter(
-        in characters: [Character],
+        in bytes: [UInt8],
         at index: Int,
         codeIsActive: Bool
     ) -> String? {
         if codeIsActive {
-            return matches("`", in: characters, at: index) ? "`" : nil
+            return matches("`", in: bytes, at: index) ? "`" : nil
         }
-        for delimiter in delimiterPriority where matches(delimiter, in: characters, at: index) {
+        for delimiter in delimiterPriority where matches(delimiter, in: bytes, at: index) {
             return delimiter
         }
         return nil
     }
 
-    private static func matches(_ token: String, in characters: [Character], at index: Int) -> Bool {
-        let tokenCharacters = Array(token)
-        guard index + tokenCharacters.count <= characters.count else { return false }
-        for offset in tokenCharacters.indices where characters[index + offset] != tokenCharacters[offset] {
+    private static func matches(_ token: String, in bytes: [UInt8], at index: Int) -> Bool {
+        let tokenBytes = Array(token.utf8)
+        guard index + tokenBytes.count <= bytes.count else { return false }
+        for offset in tokenBytes.indices where bytes[index + offset] != tokenBytes[offset] {
             return false
         }
         return true
@@ -455,30 +464,43 @@ enum StreamingMarkdownInlineParser {
     }
 
     private static func completeLink(
-        in characters: [Character],
+        in bytes: [UInt8],
         startingAt start: Int
     ) -> (label: String, url: String, endIndex: Int)? {
         var closeBracket = start + 1
-        while closeBracket < characters.count, characters[closeBracket] != "]" {
+        while closeBracket < bytes.count, bytes[closeBracket] != UInt8(93) {
             closeBracket += 1
         }
-        guard closeBracket + 2 < characters.count,
-              characters[closeBracket] == "]",
-              characters[closeBracket + 1] == "(" else {
+        guard closeBracket + 2 < bytes.count,
+              bytes[closeBracket] == UInt8(93),
+              bytes[closeBracket + 1] == UInt8(40) else {
             return nil
         }
 
         var closeParenthesis = closeBracket + 2
-        while closeParenthesis < characters.count, characters[closeParenthesis] != ")" {
+        while closeParenthesis < bytes.count, bytes[closeParenthesis] != UInt8(41) {
             closeParenthesis += 1
         }
-        guard closeParenthesis < characters.count else { return nil }
+        guard closeParenthesis < bytes.count else { return nil }
 
         return (
-            String(characters[(start + 1)..<closeBracket]),
-            String(characters[(closeBracket + 2)..<closeParenthesis]),
+            decoded(bytes, from: start + 1, to: closeBracket),
+            decoded(bytes, from: closeBracket + 2, to: closeParenthesis),
             closeParenthesis + 1
         )
+    }
+
+    private static func decoded(_ bytes: [UInt8]) -> String {
+        String(data: Data(bytes), encoding: String.Encoding.utf8) ?? ""
+    }
+
+    private static func decoded(_ bytes: [UInt8], from start: Int, to end: Int) -> String {
+        guard start >= 0, end >= start, end <= bytes.count else { return "" }
+        var slice: [UInt8] = []
+        for index in start..<end {
+            slice.append(bytes[index])
+        }
+        return decoded(slice)
     }
 }
 
@@ -639,6 +661,16 @@ private struct StreamingMarkdownBlockView: View, Equatable {
     }
 
     private func inlineText(_ content: String) -> Text {
+        #if SKIP
+        // SkipUI turns AttributedString markdown into one Compose
+        // AnnotatedString, preserving native wrapping and tappable links. The
+        // surrounding equatable block means completed content is not reparsed.
+        let rendered = content + (showsCursor ? " ▍" : "")
+        if let attributed = try? AttributedString(markdown: rendered) {
+            return Text(attributed)
+        }
+        return Text(verbatim: rendered)
+        #else
         var output = Text("")
         let runs = StreamingMarkdownInlineParser.runs(
             in: content,
@@ -652,6 +684,7 @@ private struct StreamingMarkdownBlockView: View, Equatable {
                 .foregroundColor(ACMColors.primaryOrange)
         }
         return output
+        #endif
     }
 
     private func styledText(_ run: StreamingMarkdownInlineRun) -> Text {
@@ -696,7 +729,12 @@ struct NativeTextShimmer: View {
     var font: Font = ACMFont.trial(12)
     var duration: Double = 2.0
     var spread: CGFloat = 2.0
+    #if SKIP
+    // SkipUI does not currently expose this SwiftUI environment value.
+    private let reduceMotion = false
+    #else
     @Environment(\.accessibilityReduceMotion) private var reduceMotion: Bool
+    #endif
     @State private var isAnimating = false
 
     var body: some View {

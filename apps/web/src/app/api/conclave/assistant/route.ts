@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 import jwt from "jsonwebtoken";
-import { createHmac } from "node:crypto";
+import { createHash, createHmac, randomUUID } from "node:crypto";
 import type {
   FunctionTool,
   ResponseCreateParamsStreaming,
@@ -17,13 +17,16 @@ import {
 import {
   CONCLAVE_ASSISTANT_GLOBAL_MODEL,
   isConclaveAssistantModel,
+  mergeAssistantTask,
+  type AssistantToolApproval,
+  type AssistantToolApprovalDecision,
   type AssistantTask,
   type ConclaveAssistantRelayPacket,
 } from "../../../lib/conclave-assistant";
 import {
   createGithubIssue,
-  isExplicitGithubIssueRequest,
   parseGithubIssueDraft,
+  type GithubIssueDraft,
 } from "./github-issues";
 
 const CONCLAVE_ASSISTANT_WEB_SEARCH_TOOL: WebSearchTool = {
@@ -47,69 +50,22 @@ const CREATE_GITHUB_ISSUE_TOOL: FunctionTool = {
   type: "function",
   name: "create_github_issue",
   description:
-    "Create a detailed issue in the configured Conclave GitHub repository. Use this only when the participant explicitly asks to open, create, file, or submit a GitHub issue. Supports bug reports, feature requests, documentation work, and other requests.",
+    "Prepare an issue for the configured Conclave GitHub repository. The app will show the exact title and body to the participant and require inline approval before any write occurs. Infer intent from the full conversation, including natural follow-ups such as 'create it'. Call this only when the participant clearly wants to enter that approval flow, not when they only want to discuss, draft, or learn about issues.",
   strict: true,
   parameters: {
     type: "object",
     properties: {
-      issue_type: {
-        type: "string",
-        enum: ["bug_report", "feature_request", "documentation", "other"],
-        description: "The category that best matches the requested issue.",
-      },
       title: {
         type: "string",
         description: "A concise, specific, actionable GitHub issue title.",
       },
-      overview: {
+      body: {
         type: "string",
         description:
-          "A self-contained overview of the problem or requested capability and why it matters.",
-      },
-      details: {
-        type: "string",
-        description:
-          "Detailed technical or product context, including scope, affected behavior, and useful implementation notes when known.",
-      },
-      reproduction_steps: {
-        type: ["array", "null"],
-        items: { type: "string" },
-        description:
-          "Ordered steps that reproduce a bug, or null when not applicable or unknown.",
-      },
-      expected_behavior: {
-        type: ["string", "null"],
-        description:
-          "What should happen, or null when it is not applicable or not known.",
-      },
-      actual_behavior: {
-        type: ["string", "null"],
-        description:
-          "What currently happens for a bug, or null for non-bugs or when unknown.",
-      },
-      acceptance_criteria: {
-        type: ["array", "null"],
-        items: { type: "string" },
-        description:
-          "Concrete, verifiable completion criteria, or null when none can be inferred.",
-      },
-      additional_context: {
-        type: ["string", "null"],
-        description:
-          "Other relevant constraints, examples, environment details, or null when there are none.",
+          "A complete, self-contained Markdown issue. Choose the structure and level of detail that best fit the conversation. Include useful context such as motivation, behavior, reproduction steps, expected and actual results, proposal, constraints, or acceptance criteria when they are relevant and supported. Omit irrelevant sections and never invent missing facts.",
       },
     },
-    required: [
-      "issue_type",
-      "title",
-      "overview",
-      "details",
-      "reproduction_steps",
-      "expected_behavior",
-      "actual_behavior",
-      "acceptance_criteria",
-      "additional_context",
-    ],
+    required: ["title", "body"],
     additionalProperties: false,
   },
 };
@@ -142,8 +98,9 @@ const ASSISTANT_SYSTEM_PROMPT = [
   "- For questions about what was said, decided, or asked in THIS meeting, call `get_meeting_transcript` when chat alone is insufficient, then cite the speaker (and timestamp when it helps).",
   "- For general questions (definitions, code, ideas, planning, explanations, quick research-style asks), answer directly even if the transcript has no relevant context.",
   "- Use web search for current facts, links, market/product/news/current-event questions, or when the user asks for sources. Cite sources by name or link when you rely on search.",
-  "- Call `create_github_issue` only when the participant explicitly asks you to open, create, file, or submit a GitHub issue. Discussing a bug or feature idea alone is not permission to create one.",
-  "- Before creating an issue, turn the available details into a self-contained title, overview, detailed context, and relevant reproduction steps or acceptance criteria. Do not invent unknown facts; use null for optional unknowns.",
+  "- Decide whether to call `create_github_issue` from the participant's intent in the full conversation, not from keyword matching. Understand natural references and follow-ups such as `create it` in context.",
+  "- Call the tool only when the participant clearly wants to review and approve an issue for creation now. The app always requires their inline approval before performing the write. Do not call it when they only want to discuss an idea, draft issue text, ask how GitHub issues work, or explicitly decline creation.",
+  "- Write a complete, self-contained Markdown issue whose structure fits the request. For example, bugs often benefit from reproduction and expected/actual behavior, while features often benefit from motivation, proposed behavior, and acceptance criteria. Include only relevant, supported details and never invent unknown facts.",
   "- Never put API keys, credentials, private raw transcripts, or unrelated personal information in a GitHub issue. Include only the context needed for the requested issue.",
   "- After the issue tool runs, clearly say whether it succeeded and include the returned issue number and link. Never claim an issue exists unless the tool confirms it.",
   "- If meeting context is needed but missing (e.g. transcript is off, or nothing relevant was said), say so briefly, then help as best you can.",
@@ -157,6 +114,12 @@ const MAX_HISTORY_MESSAGES = 40;
 const MAX_HISTORY_CHARS = 12_000;
 const MAX_TRANSCRIPT_CHARS = 24_000;
 const RELAY_PACKET_TTL_MS = 5 * 60 * 1000;
+// Caps for the process state carried inside relay packets. The SFU rejects
+// packets that exceed these, so they must stay in sync with chatHandlers.ts.
+const MAX_RELAY_REASONING_CHARS = 8000;
+const MAX_RELAY_TASKS = 32;
+const MAX_RELAY_TASK_ID_CHARS = 120;
+const MAX_RELAY_TASK_QUERY_CHARS = 600;
 
 interface AssistantHistoryMessage {
   name?: string;
@@ -172,6 +135,11 @@ interface AssistantRequestBody {
   transcriptActive?: boolean;
   apiKey?: string;
   model?: string;
+  supportsToolApproval?: boolean;
+  githubIssueApproval?: {
+    decision?: AssistantToolApprovalDecision;
+    approval?: Partial<AssistantToolApproval>;
+  };
 }
 
 const asString = (value: unknown): string =>
@@ -188,6 +156,27 @@ type ConclaveAssistantTokenPayload = jwt.JwtPayload & {
   roomId?: string;
   clientId?: string;
   channelId?: string;
+};
+
+type GithubIssueApprovalTokenPayload = jwt.JwtPayload & {
+  tokenUse?: string;
+  approvalId?: string;
+  answerId?: string;
+  questionMessageId?: string;
+  userId?: string;
+  roomId?: string;
+  clientId?: string;
+  channelId?: string;
+  issueHash?: string;
+};
+
+export type GithubIssueApprovalIdentity = {
+  answerId: string;
+  questionMessageId: string;
+  userId: string;
+  roomId: string;
+  clientId: string;
+  channelId: string;
 };
 
 const resolveSfuSecret = (): string =>
@@ -227,6 +216,96 @@ const verifyAssistantToken = (
   }
 };
 
+const githubIssueDraftHash = (draft: GithubIssueDraft): string =>
+  createHash("sha256")
+    .update(JSON.stringify({ title: draft.title, body: draft.body }))
+    .digest("base64url");
+
+export const createGithubIssueApproval = (
+  draft: GithubIssueDraft,
+  assistant: GithubIssueApprovalIdentity,
+): AssistantToolApproval => {
+  const id = randomUUID();
+  const token = jwt.sign(
+    {
+      tokenUse: "conclave:github-issue-approval",
+      approvalId: id,
+      answerId: assistant.answerId,
+      questionMessageId: assistant.questionMessageId,
+      userId: assistant.userId,
+      roomId: assistant.roomId,
+      clientId: assistant.clientId,
+      channelId: assistant.channelId,
+      issueHash: githubIssueDraftHash(draft),
+    } satisfies GithubIssueApprovalTokenPayload,
+    resolveSfuSecret(),
+    {
+      algorithm: "HS256",
+      audience: "conclave-web",
+      issuer: "conclave-web",
+      expiresIn: "10m",
+    },
+  );
+  return {
+    id,
+    tool: GITHUB_ISSUE_TOOL_NAME,
+    title: draft.title,
+    body: draft.body,
+    token,
+  };
+};
+
+export const verifyGithubIssueApproval = (
+  approval: Partial<AssistantToolApproval> | undefined,
+  assistant: GithubIssueApprovalIdentity,
+): { approval: AssistantToolApproval; draft: GithubIssueDraft } | null => {
+  if (
+    !approval ||
+    approval.tool !== GITHUB_ISSUE_TOOL_NAME ||
+    typeof approval.id !== "string" ||
+    typeof approval.title !== "string" ||
+    typeof approval.body !== "string" ||
+    typeof approval.token !== "string"
+  ) {
+    return null;
+  }
+  let payload: GithubIssueApprovalTokenPayload;
+  try {
+    payload = jwt.verify(approval.token, resolveSfuSecret(), {
+      algorithms: ["HS256"],
+      audience: "conclave-web",
+      issuer: "conclave-web",
+    }) as GithubIssueApprovalTokenPayload;
+  } catch {
+    return null;
+  }
+  let draft: GithubIssueDraft;
+  try {
+    draft = parseGithubIssueDraft(
+      JSON.stringify({ title: approval.title, body: approval.body }),
+    );
+  } catch {
+    return null;
+  }
+  if (
+    payload.tokenUse !== "conclave:github-issue-approval" ||
+    payload.approvalId !== approval.id ||
+    payload.answerId !== assistant.answerId ||
+    payload.questionMessageId !== assistant.questionMessageId ||
+    payload.userId !== assistant.userId ||
+    payload.roomId !== assistant.roomId ||
+    payload.clientId !== assistant.clientId ||
+    payload.channelId !== assistant.channelId ||
+    payload.issueHash !== githubIssueDraftHash(draft)
+  ) {
+    return null;
+  }
+  return {
+    approval: approval as AssistantToolApproval,
+    draft,
+  };
+};
+
 const relaySigningInput = (packet: Omit<ConclaveAssistantRelayPacket, "signature">): string =>
   JSON.stringify({
     id: packet.id,
@@ -238,6 +317,20 @@ const relaySigningInput = (packet: Omit<ConclaveAssistantRelayPacket, "signature
     done: packet.done,
     timestamp: packet.timestamp,
     expiresAt: packet.expiresAt,
+    // Optional process-state fields. `undefined` values are dropped by
+    // JSON.stringify, so packets without them produce the exact legacy signing
+    // input. The SFU builds this same canonical shape when verifying.
+    reasoning: packet.reasoning || undefined,
+    reasoningDone: packet.reasoningDone === true ? true : undefined,
+    tasks: packet.tasks?.length
+      ? packet.tasks.map((task) => ({
+          id: task.id,
+          kind: task.kind,
+          status: task.status,
+          query: task.query || undefined,
+        }))
+      : undefined,
+    errored: packet.errored === true ? true : undefined,
   });
 
 const signRelayPacket = (
@@ -316,6 +409,14 @@ export async function POST(request: Request) {
       { status: 401 },
     );
   }
+  const approvalIdentity: GithubIssueApprovalIdentity = {
+    answerId: tokenPayload.answerId!,
+    questionMessageId: tokenPayload.questionMessageId!,
+    userId: tokenPayload.userId!,
+    roomId: tokenPayload.roomId!,
+    clientId: tokenPayload.clientId!,
+    channelId: tokenPayload.channelId!,
+  };
 
   const serverApiKey = process.env.OPENAI_API_KEY?.trim();
   const participantApiKey = asString(body.apiKey).trim();
@@ -339,6 +440,25 @@ export async function POST(request: Request) {
   if (!question) {
     return Response.json({ error: "Ask Conclave a question." }, { status: 400 });
   }
+
+  const rawApprovalDecision = body.githubIssueApproval?.decision;
+  const approvalDecision =
+    rawApprovalDecision === "approve" || rawApprovalDecision === "deny"
+      ? rawApprovalDecision
+      : null;
+  const resolvedGithubApproval = body.githubIssueApproval
+    ? verifyGithubIssueApproval(
+        body.githubIssueApproval.approval,
+        approvalIdentity,
+      )
+    : null;
+  const githubApprovalError = body.githubIssueApproval
+    ? !approvalDecision
+      ? "Choose whether to approve or deny the GitHub issue."
+      : !resolvedGithubApproval
+        ? "This GitHub issue approval is invalid or expired."
+        : null
+    : null;
 
   const history = Array.isArray(body.history) ? body.history : [];
   const chatLog = buildChatLog(history);
@@ -366,6 +486,11 @@ export async function POST(request: Request) {
 
   const modelConfig = getTranscriptResponseModelConfig(model);
   const client = createOpenAiClient(apiKey);
+  const tools = body.supportsToolApproval
+    ? CONCLAVE_ASSISTANT_TOOLS
+    : CONCLAVE_ASSISTANT_TOOLS.filter(
+        (tool) => !("name" in tool) || tool.name !== GITHUB_ISSUE_TOOL_NAME,
+      );
 
   const buildRequestParams = (
     nextInput: ResponseInputItem[],
@@ -377,7 +502,7 @@ export async function POST(request: Request) {
     max_output_tokens: modelConfig.qaMaxOutputTokens,
     store: false,
     tool_choice: "auto",
-    tools: CONCLAVE_ASSISTANT_TOOLS,
+    tools,
     ...requestOptions,
   });
 
@@ -399,8 +524,16 @@ export async function POST(request: Request) {
     requestOptions.reasoning = reasoning;
   }
 
-  const makeRelayPacket = (content: string, done: boolean) =>
-    signRelayPacket({
+  // Mirrors of the process state streamed to the asker, so relay packets can
+  // carry the same thinking/actions flow to everyone else in the room.
+  let relayReasoning = "";
+  let relayReasoningDone = false;
+  let relayTasks: AssistantTask[] | undefined;
+
+  const makeRelayPacket = (content: string, done: boolean, errored = false) => {
+    const reasoning = relayReasoning.slice(0, MAX_RELAY_REASONING_CHARS);
+    const tasks = relayTasks?.slice(-MAX_RELAY_TASKS);
+    return signRelayPacket({
       id: answerId,
       roomId: tokenPayload.roomId!,
       channelId: tokenPayload.channelId!,
@@ -408,11 +541,15 @@ export async function POST(request: Request) {
       questionMessageId: tokenPayload.questionMessageId!,
       content,
       done,
+      ...(reasoning ? { reasoning } : {}),
+      ...(relayReasoningDone ? { reasoningDone: true } : {}),
+      ...(tasks?.length ? { tasks } : {}),
+      ...(errored ? { errored: true } : {}),
       timestamp: Date.now(),
       expiresAt: Date.now() + RELAY_PACKET_TTL_MS,
     });
+  };
 
-  let createdGithubIssueOutput: string | null = null;
   const executeFunctionTool = async (
     call: ResponseFunctionToolCall,
   ): Promise<string> => {
@@ -428,33 +565,6 @@ export async function POST(request: Request) {
           ? "Use this transcript only for meeting-specific claims."
           : "The transcript panel is off, so no transcript is available.",
       });
-    }
-
-    if (call.name === GITHUB_ISSUE_TOOL_NAME) {
-      if (!isExplicitGithubIssueRequest(question)) {
-        return JSON.stringify({
-          success: false,
-          error:
-            "No issue was created because the current participant did not explicitly ask to open or file one.",
-        });
-      }
-      // A single assistant request may loop through tools several times. Reuse a
-      // successful result rather than risking duplicate issues in the same run.
-      if (createdGithubIssueOutput) return createdGithubIssueOutput;
-      try {
-        const draft = parseGithubIssueDraft(call.arguments);
-        const issue = await createGithubIssue(draft);
-        createdGithubIssueOutput = JSON.stringify({ success: true, issue });
-        return createdGithubIssueOutput;
-      } catch (error) {
-        return JSON.stringify({
-          success: false,
-          error:
-            error instanceof Error
-              ? error.message
-              : "GitHub issue creation failed.",
-        });
-      }
     }
 
     return JSON.stringify({
@@ -501,12 +611,21 @@ export async function POST(request: Request) {
           return;
         }
         taskFingerprints.set(task.id, fingerprint);
+        // Mirror the step into the relay task list (with the SFU's caps) and
+        // ship a relay packet so the whole room sees the step change live.
+        relayTasks = mergeAssistantTask(relayTasks, {
+          id: task.id.slice(0, MAX_RELAY_TASK_ID_CHARS),
+          kind: task.kind,
+          status: task.status,
+          ...(query ? { query: query.slice(0, MAX_RELAY_TASK_QUERY_CHARS) } : {}),
+        });
         writeStreamEvent({
           type: "task",
           task: {
             ...task,
             ...(query ? { query } : {}),
           },
+          relay: makeRelayPacket(fullText, false),
         });
       };
 
@@ -527,6 +646,77 @@ export async function POST(request: Request) {
           status,
         });
       };
+
+      // Streams a reasoning-summary chunk to the asker while keeping the relay
+      // mirror in sync, so the packet fanned out to the room carries the same
+      // accumulated reasoning text the asker's client has rendered.
+      const emitReasoning = (delta?: string, done?: boolean): void => {
+        if (delta) {
+          relayReasoning += delta;
+          // A later tool round can resume thinking after a summary finished.
+          relayReasoningDone = false;
+        }
+        if (done) {
+          relayReasoningDone = true;
+        }
+        writeStreamEvent({
+          type: "reasoning",
+          ...(delta ? { delta } : {}),
+          ...(done ? { done: true } : {}),
+          relay: makeRelayPacket(fullText, false),
+        });
+      };
+
+      if (githubApprovalError) {
+        fullText = githubApprovalError;
+        writeStreamEvent({
+          type: "error",
+          error: githubApprovalError,
+          relay: makeRelayPacket(fullText, true, true),
+        });
+        return;
+      }
+
+      if (resolvedGithubApproval && approvalDecision) {
+        const approvalTaskId = `approval-${resolvedGithubApproval.approval.id}`;
+        emitTask({
+          id: approvalTaskId,
+          kind: "github_issue",
+          status: "running",
+          query: resolvedGithubApproval.draft.title,
+        });
+        let content: string;
+        if (approvalDecision === "deny") {
+          content = "GitHub issue creation cancelled.";
+        } else {
+          try {
+            const issue = await createGithubIssue(resolvedGithubApproval.draft);
+            content = `Created GitHub issue [#${issue.number}](${issue.url}): ${issue.title}`;
+          } catch (error) {
+            content =
+              error instanceof Error
+                ? `I couldn't create the GitHub issue: ${error.message}`
+                : "I couldn't create the GitHub issue.";
+          }
+        }
+        emitTask({
+          id: approvalTaskId,
+          kind: "github_issue",
+          status: "done",
+          query: resolvedGithubApproval.draft.title,
+        });
+        fullText = content;
+        writeStreamEvent({
+          type: "delta",
+          delta: content,
+          relay: makeRelayPacket(fullText, false),
+        });
+        writeStreamEvent({
+          type: "done",
+          relay: makeRelayPacket(fullText, true),
+        });
+        return;
+      }
 
       try {
         let nextInput = input;
@@ -608,22 +798,21 @@ export async function POST(request: Request) {
               key,
               `${reasoningParts.get(key) ?? ""}${event.delta}`,
             );
-            writeStreamEvent({ type: "reasoning", delta: event.delta });
+            emitReasoning(event.delta);
           });
 
           responseStream.on("response.reasoning_summary_text.done", (event) => {
             const key = `${event.item_id}:${event.summary_index}`;
             const existing = reasoningParts.get(key) ?? "";
             if (event.text && event.text !== existing) {
-              writeStreamEvent({
-                type: "reasoning",
-                delta: event.text.startsWith(existing)
+              emitReasoning(
+                event.text.startsWith(existing)
                   ? event.text.slice(existing.length)
                   : event.text,
-              });
+              );
               reasoningParts.set(key, event.text);
             }
-            writeStreamEvent({ type: "reasoning", done: true });
+            emitReasoning(undefined, true);
           });
 
           // Surface output items (reasoning, hosted tools, function tools, final
@@ -662,7 +851,7 @@ export async function POST(request: Request) {
                 kind: "reasoning",
                 status: "done",
               });
-              writeStreamEvent({ type: "reasoning", done: true });
+              emitReasoning(undefined, true);
             } else if (event.item.type === "message") {
               emitTask({
                 id: event.item.id,
@@ -767,6 +956,19 @@ export async function POST(request: Request) {
 
           const functionOutputs: ResponseInputItem[] = [];
           for (const call of functionCalls) {
+            if (call.name === GITHUB_ISSUE_TOOL_NAME) {
+              const draft = parseGithubIssueDraft(call.arguments);
+              const approval = createGithubIssueApproval(
+                draft,
+                approvalIdentity,
+              );
+              writeStreamEvent({
+                type: "approval",
+                approval,
+                relay: makeRelayPacket(fullText, false),
+              });
+              return;
+            }
             const output = await executeFunctionTool(call);
             emitFunctionTask(call, "done");
             functionOutputs.push({
@@ -784,15 +986,19 @@ export async function POST(request: Request) {
         throw new Error("Conclave used too many function tool calls.");
       } catch (error) {
         console.error("[Conclave] assistant stream failed:", error);
-        const relayContent = fullText.trim()
-          ? "Conclave couldn't finish answering."
-          : "";
+        // Always relay the failure: earlier task/reasoning packets may have
+        // already opened a live bubble for the rest of the room, and it must
+        // terminate in the same error state the asker sees.
         writeStreamEvent({
           type: "error",
           error: "Conclave could not answer right now.",
-          ...(relayContent
-            ? { relay: makeRelayPacket(relayContent, true) }
-            : {}),
+          relay: makeRelayPacket(
+            fullText.trim()
+              ? "Conclave couldn't finish answering."
+              : "Conclave could not answer right now.",
+            true,
+            true,
+          ),
         });
       } finally {
         await writeChain;
